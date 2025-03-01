@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { UserService } from "../../application/services/UserService";
+import { UserService } from "../services/UserService";
 import { User } from "../../domain/entities/User";
 import { RepositoryFactory } from "../factories/RepositoryFactory";
 
