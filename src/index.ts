@@ -11,7 +11,6 @@ try {
 
   console.log(user);
   console.log(user.id);
-  console.log(userController.getAllUsers());
 
   //   userRepo?.getAll();
   //   userSeqRepo.getAll();

@@ -1,3 +1,4 @@
+import { Request, Response } from "express";
 import { UserService } from "../../application/services/UserService";
 import { User } from "../../domain/entities/User";
 import { RepositoryFactory } from "../factories/RepositoryFactory";
@@ -5,8 +6,8 @@ import { RepositoryFactory } from "../factories/RepositoryFactory";
 const userService = new UserService(RepositoryFactory.getUserRepository());
 
 export class UserController {
-  static getAllUsers() {
-    return userService.getAllUsers();
+  static getAllUsers(req: Request, res: Response) {
+    res.json(userService.getAllUsers());
   }
 
   static getUserById(id: User["id"]) {
