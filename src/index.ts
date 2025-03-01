@@ -1,7 +1,7 @@
 import { User } from "./domain/entities/User";
 import { UserSeqRepository } from "./domain/repositories/user/UserSeqRepository";
-import { UserController } from "./infra/controllers/UserController";
-import { RepositoryFactory } from "./infra/factories/RepositoryFactory";
+import { UserController } from "./app/controllers/UserController";
+import { RepositoryFactory } from "./app/factories/RepositoryFactory";
 
 try {
   const user = new User({ id: 1, name: "John Doe", email: "email@mail.com" });
