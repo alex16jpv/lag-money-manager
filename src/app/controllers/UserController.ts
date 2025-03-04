@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { UserService } from "../services/UserService";
 import { User } from "../../domain/entities/User";
 import { RepositoryFactory } from "../factories/RepositoryFactory";
@@ -6,8 +6,13 @@ import { RepositoryFactory } from "../factories/RepositoryFactory";
 const userService = new UserService(RepositoryFactory.getUserRepository());
 
 export class UserController {
-  static getAllUsers(req: Request, res: Response) {
-    res.json(userService.getAllUsers());
+  static async getAllUsers(req: Request, res: Response, next: NextFunction) {
+    try {
+      const users = await userService.getAllUsers();
+      res.status(200).json(users);
+    } catch (error) {
+      next(error);
+    }
   }
 
   static getUserById(id: User["id"]) {

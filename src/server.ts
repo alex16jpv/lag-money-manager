@@ -1,5 +1,6 @@
 import express from "express";
 import userRoutes from "./app/routes/userRoutes";
+import { errorMiddleware } from "./shared/middlewares";
 const app = express();
 const port = 3000;
 
@@ -10,6 +11,8 @@ app.get("/", (req, res) => {
 });
 
 app.use("/users", userRoutes);
+
+app.use(errorMiddleware);
 
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
