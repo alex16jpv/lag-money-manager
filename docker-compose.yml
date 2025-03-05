@@ -1,0 +1,31 @@
+version: "3.1"
+
+services:
+  db:
+    image: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: lag
+      MYSQL_USER: lag
+      MYSQL_PASSWORD: lag
+    ports:
+      - "3306:3306"
+    expose:
+      - "3306"
+    networks:
+      - lag
+
+  phpmyadmin:
+    image: phpmyadmin
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      - PMA_ARBITRARY=1
+    networks:
+      - lag
+
+networks:
+  lag:
+    driver: bridge

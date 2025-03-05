@@ -16,8 +16,8 @@ export class UserService {
     return this.repo.create(user);
   }
 
-  async updateUser(user: User) {
-    return this.repo.update(user);
+  async updateUser(id: User["id"], user: User) {
+    return this.repo.update(id, user);
   }
 
   async deleteUser(id: User["id"]) {
