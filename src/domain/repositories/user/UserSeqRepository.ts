@@ -10,9 +10,14 @@ export class UserSeqRepository implements IUserRepository {
     this.model = userModel;
   }
 
-  getById(id: User["id"]): Promise<User> {
-    throw new ApiError("NotFound", "Method not implemented");
+  async getById(id: User["id"]): Promise<User> {
+    const user = await this.model.findByPk(id);
+    if (!user) {
+      throw new ApiError("NotFound", "User not found");
+    }
+    return new User(user);
   }
+
   async getAll(): Promise<User[]> {
     const users = await this.model.findAll();
     return users.map((user) => {
@@ -22,13 +27,27 @@ export class UserSeqRepository implements IUserRepository {
       });
     });
   }
-  create(user: User): Promise<void> {
-    throw new ApiError("NotFound", "Method not implemented");
+
+  async create(user: Partial<User>): Promise<User> {
+    const result = await this.model.create(user);
+    return result.toJSON();
   }
-  update(user: User): Promise<void> {
-    throw new ApiError("NotFound", "Method not implemented");
+
+  async update(id: User["id"], user: Partial<User>): Promise<User> {
+    const userToUpdate = await this.model.findByPk(id);
+    if (!userToUpdate) {
+      throw new ApiError("NotFound", "User not found");
+    }
+    await userToUpdate.update(user);
+    await userToUpdate.reload();
+    return userToUpdate.toJSON();
   }
-  delete(id: User["id"]): Promise<void> {
-    throw new ApiError("NotFound", "Method not implemented");
+
+  async delete(id: User["id"]): Promise<void> {
+    const user = await this.model.findByPk(id);
+    if (!user) {
+      throw new ApiError("NotFound", "User not found");
+    }
+    await user.destroy();
   }
 }
