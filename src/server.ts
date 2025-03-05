@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import userRoutes from "./app/routes/userRoutes";
 import accountRoutes from "./app/routes/accountRoutes";
+import categoryRoutes from "./app/routes/categoryRoutes";
 import { errorMiddleware } from "./shared/middlewares";
 import { ENVIRONMENT } from "./shared/constants";
 const app = express();
@@ -15,6 +16,7 @@ app.get("/", (req, res) => {
 
 app.use("/users", userRoutes);
 app.use("/accounts", accountRoutes);
+app.use("/categories", categoryRoutes);
 
 app.use(errorMiddleware);
 

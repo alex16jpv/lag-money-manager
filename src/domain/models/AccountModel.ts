@@ -1,18 +1,6 @@
 import { DataTypes, Model, Sequelize } from "sequelize";
-import { MODEL_NAMES } from "../../shared/constants";
+import { ACCOUNT_TYPES, MODEL_NAMES } from "../../shared/constants";
 import { UserModel } from "./UserModel";
-
-export const ACCOUNT_TYPES = {
-  CASH: "CASH",
-  ACCOUNT: "ACCOUNT",
-  CARD: "CARD",
-  DEBIT_CARD: "DEBIT_CARD",
-  SAVINGS: "SAVINGS",
-  INVESTMENT: "INVESTMENT",
-  OVERDRAFT: "OVERDRAFT",
-  LOAN: "LOAN",
-  OTHER: "OTHER",
-};
 
 export class AccountModel extends Model {
   id!: number;

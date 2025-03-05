@@ -1,5 +1,5 @@
 import { ApiError } from "../../shared/errors";
-import { ACCOUNT_TYPES } from "../models/AccountModel";
+import { ACCOUNT_TYPES } from "../../shared/constants";
 
 export interface AccountProps {
   id: number;

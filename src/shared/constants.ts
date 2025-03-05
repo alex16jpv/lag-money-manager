@@ -12,6 +12,24 @@ export const MODEL_NAMES = {
   CATEGORY: "Category",
 };
 
+export const ACCOUNT_TYPES = {
+  CASH: "CASH",
+  ACCOUNT: "ACCOUNT",
+  CARD: "CARD",
+  DEBIT_CARD: "DEBIT_CARD",
+  SAVINGS: "SAVINGS",
+  INVESTMENT: "INVESTMENT",
+  OVERDRAFT: "OVERDRAFT",
+  LOAN: "LOAN",
+  OTHER: "OTHER",
+};
+
+export const TRANSACTION_TYPES = {
+  INCOME: "INCOME",
+  EXPENSE: "EXPENSE",
+  TRANSFER: "TRANSFER",
+};
+
 export const ENVIRONMENT = {
   // App Config
   PORT: process.env.PORT || 3000,
