@@ -3,6 +3,7 @@ import { ApiError } from "./errors";
 
 interface ValidationError extends Error {
   errors: { message: string }[];
+  fields: string[];
 }
 
 export const errorMiddleware = (
@@ -30,6 +31,16 @@ export const errorMiddleware = (
         ?.map((err: any) => err.message)
         ?.join(", "),
     });
+    return;
+  }
+
+  if (error?.name === "SequelizeForeignKeyConstraintError") {
+    res.status(400).json({
+      error: "ValidationError",
+      message: "Foreign key constraint error",
+      details: { fields: (error as ValidationError).fields?.join(", ") },
+    });
+    return;
   }
 
   res.status(500).json({

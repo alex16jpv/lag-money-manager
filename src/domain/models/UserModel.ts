@@ -1,13 +1,21 @@
 import { DataTypes, Model, Sequelize } from "sequelize";
 import { MODEL_NAMES } from "../../shared/constants";
+import { AccountModel } from "./AccountModel";
 
 export class UserModel extends Model {
   id!: number;
   name!: string;
   email!: string;
+
+  static associate() {
+    UserModel.hasMany(AccountModel, {
+      foreignKey: "userId",
+      as: "accounts",
+    });
+  }
 }
 
-export const userModelInit = (sequelize: Sequelize) => {
+export default (sequelize: Sequelize) => {
   UserModel.init(
     {
       id: {
@@ -30,8 +38,6 @@ export const userModelInit = (sequelize: Sequelize) => {
       modelName: MODEL_NAMES.USER,
     }
   );
-
-  UserModel.sync({ force: false });
 
   return UserModel;
 };

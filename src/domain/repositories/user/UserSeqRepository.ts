@@ -6,8 +6,8 @@ import { IUserRepository } from "./IUserRepository";
 export class UserSeqRepository implements IUserRepository {
   model: typeof UserModel;
 
-  constructor(userModel: typeof UserModel) {
-    this.model = userModel;
+  constructor() {
+    this.model = UserModel;
   }
 
   async getById(id: User["id"]): Promise<User> {
