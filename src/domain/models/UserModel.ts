@@ -1,10 +1,10 @@
 import { DataTypes, Model, Sequelize } from "sequelize";
-
 import { MODEL_NAMES } from "../../shared/constants";
 
 export class UserModel extends Model {
   id!: number;
   name!: string;
+  email!: string;
 }
 
 export const userModelInit = (sequelize: Sequelize) => {
@@ -18,6 +18,11 @@ export const userModelInit = (sequelize: Sequelize) => {
       name: {
         type: DataTypes.STRING,
         allowNull: false,
+      },
+      email: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
       },
     },
     {

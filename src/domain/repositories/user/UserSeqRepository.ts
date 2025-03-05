@@ -11,7 +11,8 @@ export class UserSeqRepository implements IUserRepository {
   }
 
   async getById(id: User["id"]): Promise<User> {
-    const user = await this.model.findByPk(id);
+    const user = (await this.model.findByPk(id))?.toJSON();
+
     if (!user) {
       throw new ApiError("NotFound", "User not found");
     }
@@ -20,11 +21,8 @@ export class UserSeqRepository implements IUserRepository {
 
   async getAll(): Promise<User[]> {
     const users = await this.model.findAll();
-    return users.map((user) => {
-      return new User({
-        id: user.id,
-        name: user.name,
-      });
+    return users?.map((user) => {
+      return new User(user);
     });
   }
 
