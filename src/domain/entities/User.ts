@@ -1,4 +1,4 @@
-interface UserProps {
+export interface UserProps {
   id: number;
   name: string;
   email: string;
@@ -7,11 +7,9 @@ interface UserProps {
 export class User {
   id: UserProps["id"];
   name: UserProps["name"];
-  email: UserProps["email"];
 
-  constructor({ id, name, email }: UserProps) {
-    this.id = id;
-    this.name = name;
-    this.email = email;
+  constructor({ id, name }: Partial<UserProps>) {
+    this.id = id!;
+    this.name = name!;
   }
 }
