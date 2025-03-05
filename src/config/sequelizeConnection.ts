@@ -8,6 +8,7 @@ const sequelize = new Sequelize({
   database: SEQ_DATABASE,
   host: SEQ_HOST,
   dialect: "mysql",
+  logging: false,
 });
 
 export default sequelize;

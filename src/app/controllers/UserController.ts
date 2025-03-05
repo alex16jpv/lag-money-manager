@@ -1,9 +1,9 @@
 import { NextFunction, Request, Response } from "express";
 import { UserService } from "../services/UserService";
 import { User } from "../../domain/entities/User";
-import { RepositoryFactory } from "../factories/RepositoryFactory";
+import repositoryFactory from "../factories/RepositoryFactory";
 
-const userService = new UserService(RepositoryFactory.getUserRepository());
+const userService = new UserService(repositoryFactory.getUserRepository());
 
 export class UserController {
   static async getAllUsers(req: Request, res: Response, next: NextFunction) {

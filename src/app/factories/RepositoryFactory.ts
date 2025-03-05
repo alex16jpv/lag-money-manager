@@ -8,12 +8,19 @@ import { ENVIRONMENT } from "../../shared/constants";
 const dbType = ENVIRONMENT.DB_TYPE;
 
 export class RepositoryFactory {
-  static getUserRepository(): IUserRepository {
-    console.log("GETTING USER REPOSITORY");
+  userRepository: IUserRepository | null = null;
 
+  getUserRepository(): IUserRepository {
+    if (this.userRepository) {
+      console.log("USING CACHED USER REPOSITORY");
+      return this.userRepository;
+    }
+
+    console.log("GETTING USER REPOSITORY");
     if (dbType === DB_TYPES.SEQ) {
       const userModel = userModelInit(sequelize);
-      return new UserSeqRepository(userModel);
+      this.userRepository = new UserSeqRepository(userModel);
+      return this.userRepository;
     } else if (dbType === DB_TYPES.MONGO) {
       // add mongo repository...
     }
@@ -21,3 +28,6 @@ export class RepositoryFactory {
     throw new Error("Invalid database type");
   }
 }
+
+const repositoryFactory = new RepositoryFactory();
+export default repositoryFactory;
