@@ -36,13 +36,11 @@ _(No remaining high-priority issues.)_
 
 9. **`package-lock.json` is in `.gitignore`** — ~~Fixed: removed from `.gitignore`.~~
 
-10. **`dbModels` in `loadSequelizeModels` Uses `any`** — The local variable is typed as `any`, losing type safety.
-    - [src/domain/models/index.ts](src/domain/models/index.ts#L10)
+10. ~~**`dbModels` in `loadSequelizeModels` Uses `any`**~~ — ✅ Fixed: Replaced `any` with `Record<string, ModelStatic<Model>>`.
 
 11. ~~**`ACCOUNT_TYPES` and `TRANSACTION_TYPES` Should Be TypeScript Enums or `as const`**~~ — ✅ Fixed: Converted to `as const` objects with exported derived union types (`AccountType`, `TransactionType`, `DbType`).
 
-12. **Missing `@types/node` in devDependencies** — Node.js type definitions are not explicitly listed.
-    - [package.json](package.json)
+12. ~~**Missing `@types/node` in devDependencies**~~ — ✅ Fixed: Installed `@types/node` as a devDependency.
 
 ---
 
@@ -202,14 +200,14 @@ Input validation is now handled by `zod` schemas applied via middleware on all r
 
 **Remaining Issues:**
 
-| Issue                                                  | File                                                         | Line                     |
-| ------------------------------------------------------ | ------------------------------------------------------------ | ------------------------ |
-| `any` in model loader                                  | [src/domain/models/index.ts](src/domain/models/index.ts#L10) | `let dbModels: any = {}` |
-| Missing `@types/node` in devDependencies               | [package.json](package.json)                                 | —                        |
-| `noUnusedLocals` and `noUnusedParameters` are disabled | [tsconfig.json](tsconfig.json)                               | Commented out            |
-| `noImplicitReturns` is disabled                        | [tsconfig.json](tsconfig.json)                               | Commented out            |
+| Issue                                                      | File                                                         | Line       |
+| ---------------------------------------------------------- | ------------------------------------------------------------ | ---------- |
+| ~~`any` in model loader~~                                  | [src/domain/models/index.ts](src/domain/models/index.ts#L10) | ✅ Fixed   |
+| ~~Missing `@types/node` in devDependencies~~               | [package.json](package.json)                                 | ✅ Fixed   |
+| ~~`noUnusedLocals` and `noUnusedParameters` are disabled~~ | [tsconfig.json](tsconfig.json)                               | ✅ Enabled |
+| ~~`noImplicitReturns` is disabled~~                        | [tsconfig.json](tsconfig.json)                               | ✅ Enabled |
 
-**Recommendation:** Enable additional tsconfig strict options:
+**Recommendation:** ~~Enable additional tsconfig strict options:~~ ✅ Done — all four options now enabled.
 
 ```json
 "noUnusedLocals": true,
@@ -236,20 +234,20 @@ Input validation is now handled by `zod` schemas applied via middleware on all r
 
 #### To Add:
 
-| Package                                                  | Reason                                |
-| -------------------------------------------------------- | ------------------------------------- |
-| ~~`cors` + `@types/cors`~~                               | ✅ Added                              |
-| ~~`helmet`~~                                             | ✅ Added                              |
-| ~~`express-rate-limit`~~                                 | ✅ Added                              |
-| ~~`zod`~~                                                | ✅ Added                              |
-| ~~`swagger-jsdoc` + `swagger-ui-express`~~               | ✅ Added                              |
-| ~~`@types/swagger-jsdoc` + `@types/swagger-ui-express`~~ | ✅ Added                              |
-| ~~`pino`~~                                               | ✅ Added                              |
-| `@types/node` (devDep)                                   | Node.js type definitions — not listed |
-| ~~`eslint` + `@typescript-eslint/*` (devDep)~~           | ✅ Added                              |
-| ~~`prettier` (devDep)~~                                  | ✅ Added                              |
-| ~~`jest` + `ts-jest` + `@types/jest` (devDep)~~          | ✅ Added                              |
-| ~~`supertest` + `@types/supertest` (devDep)~~            | ✅ Added                              |
+| Package                                                  | Reason                                             |
+| -------------------------------------------------------- | -------------------------------------------------- |
+| ~~`cors` + `@types/cors`~~                               | ✅ Added                                           |
+| ~~`helmet`~~                                             | ✅ Added                                           |
+| ~~`express-rate-limit`~~                                 | ✅ Added                                           |
+| ~~`zod`~~                                                | ✅ Added                                           |
+| ~~`swagger-jsdoc` + `swagger-ui-express`~~               | ✅ Added                                           |
+| ~~`@types/swagger-jsdoc` + `@types/swagger-ui-express`~~ | ✅ Added                                           |
+| ~~`pino`~~                                               | ✅ Added                                           |
+| `@types/node` (devDep)                                   | ~~Node.js type definitions — not listed~~ ✅ Added |
+| ~~`eslint` + `@typescript-eslint/*` (devDep)~~           | ✅ Added                                           |
+| ~~`prettier` (devDep)~~                                  | ✅ Added                                           |
+| ~~`jest` + `ts-jest` + `@types/jest` (devDep)~~          | ✅ Added                                           |
+| ~~`supertest` + `@types/supertest` (devDep)~~            | ✅ Added                                           |
 
 #### Security Concerns:
 
@@ -659,3 +657,25 @@ npm install -D jest ts-jest @types/jest supertest @types/supertest
 **Dependencies added:**
 
 - _(None)_
+
+### March 29, 2026 - Remaining Issues Cleanup
+
+**Fixed points:**
+
+- **`any` in model loader (#10):** Replaced `let dbModels: any = {}` with `const dbModels: Record<string, ModelStatic<Model>> = {}` in `loadSequelizeModels`.
+- **Missing `@types/node` (#12):** Installed `@types/node` as a devDependency.
+- **tsconfig strict options (Section 8):** Enabled `noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns`, and `noFallthroughCasesInSwitch`.
+- **Dead import in swagger.ts:** Removed unused `import { format } from "sequelize/types/utils"`.
+- **Unused parameter in app.ts:** Changed `(req, res)` to `(_req, res)` in health check route to satisfy `noUnusedParameters`.
+
+**Files modified:**
+
+- `src/domain/models/index.ts`: `any` → `Record<string, ModelStatic<Model>>`
+- `src/config/swagger.ts`: Removed unused `format` import
+- `src/app.ts`: Prefixed unused `req` parameter with `_`
+- `tsconfig.json`: Enabled 4 additional strict options
+- `package.json`: Added `@types/node` devDependency
+
+**Dependencies added:**
+
+- `@types/node` (dev): Node.js type definitions

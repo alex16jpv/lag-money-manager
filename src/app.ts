@@ -30,7 +30,7 @@ app.use(
 );
 app.use(express.json());
 
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.status(200).send({ hello: "world!" });
 });
 

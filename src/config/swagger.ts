@@ -1,4 +1,3 @@
-import { format } from "sequelize/types/utils";
 import swaggerJsdoc from "swagger-jsdoc";
 
 const options: swaggerJsdoc.Options = {
