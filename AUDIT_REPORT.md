@@ -94,7 +94,7 @@ routes → controllers → services → repositories → models/DB
 
 - All repository methods must return domain entities, never ORM-specific objects
 - Model associations should be configured outside the model files to avoid import order issues
-- Consider using a generic `IRepository<T>` base interface to standardize CRUD signatures
+- ~~Consider using a generic `IRepository<T>` base interface to standardize CRUD signatures~~ — ✅ Fixed: Created `IRepository<T>` in `src/domain/repositories/IRepository.ts`. All entity-specific interfaces extend or alias it.
 
 ### 3. Swagger / API Documentation
 
@@ -137,24 +137,24 @@ Input validation is now handled by `zod` schemas applied via middleware on all r
 
 **Remaining gaps:**
 
-- No sanitization library (e.g., `express-mongo-sanitize` or similar) — though Sequelize parameterization covers SQL injection
+- ~~No sanitization library~~ — Mitigated: Sequelize parameterized queries prevent SQL injection, zod validates all input types/lengths/formats, JSON body size is limited to 10kb. For a JSON-only API, XSS output encoding is a frontend responsibility. Helmet CSP headers provide additional browser-level protection.
 
 ### 6. Design Patterns & Best Practices
 
 **SOLID Analysis:**
 
-| Principle                     | Status | Notes                                                                                                                         |
-| ----------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| **S** - Single Responsibility | ✅     | Entities handle data holding and validation with domain-specific errors. Controllers delegate to services via `asyncHandler`. |
-| **O** - Open/Closed           | 🟡     | `RepositoryFactory` requires modification to add new DB types (switch statement). Could use a registry pattern.               |
-| **L** - Liskov Substitution   | ✅     | All repository implementations fully implement their interfaces.                                                              |
-| **I** - Interface Segregation | ✅     | Repository interfaces are focused per entity.                                                                                 |
-| **D** - Dependency Inversion  | ✅     | Services depend on repository interfaces, not implementations.                                                                |
+| Principle                     | Status | Notes                                                                                                                                                                    |
+| ----------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **S** - Single Responsibility | ✅     | Entities handle data holding and validation with domain-specific errors. Controllers delegate to services via `asyncHandler`.                                            |
+| **O** - Open/Closed           | ✅     | `RepositoryFactory` uses a static provider registry. New DB types are added via `RepositoryFactory.registerProvider()` in separate files — no class modification needed. |
+| **L** - Liskov Substitution   | ✅     | All repository implementations fully implement their interfaces.                                                                                                         |
+| **I** - Interface Segregation | ✅     | Repository interfaces are focused per entity.                                                                                                                            |
+| **D** - Dependency Inversion  | ✅     | Services depend on repository interfaces, not implementations.                                                                                                           |
 
 **DRY Violations:**
 
 - ~~Each controller method has the same `try { ... } catch(error) { next(error) }` boilerplate.~~ ✅ Fixed: Extracted into `asyncHandler` utility.
-- Repository Factory methods (`getUserRepository`, `getAccountRepository`, `getCategoryRepository`) follow identical logic with only the type/class differing. Could be generalized.
+- ~~Repository Factory methods follow identical logic~~ ✅ Fixed: The typed getter methods are 1-line facades over a generic `getRepository<T>(key)` method. Repository interfaces now extend a generic `IRepository<T>` base, eliminating method signature duplication across 4 interfaces.
 
 **Anti-patterns:**
 
@@ -171,19 +171,19 @@ Input validation is now handled by `zod` schemas applied via middleware on all r
 
 **Rating: Significantly improved**
 
-| Issue                                                         | Severity        | Status          |
-| ------------------------------------------------------------- | --------------- | --------------- |
-| No authentication/authorization                               | ~~⛔ Critical~~ | ✅ Fixed (JWT)  |
-| No CORS middleware                                            | ~~🔴 High~~     | ✅ Fixed        |
-| No rate limiting                                              | ~~🔴 High~~     | ✅ Fixed        |
-| No Helmet (security headers)                                  | ~~🔴 High~~     | ✅ Fixed        |
-| Internal error messages exposed to client                     | ~~🔴 High~~     | ✅ Fixed        |
-| No input sanitization                                         | ~~🔴 High~~     | ✅ Fixed (zod)  |
-| Docker Compose hardcoded credentials                          | ~~🟡 Medium~~   | ✅ Fixed        |
-| No SQL injection protection beyond Sequelize parameterization | 🟡 Medium       | Mitigated (zod) |
-| No HTTPS enforcement                                          | 🟡 Medium       | Open            |
+| Issue                                                         | Severity        | Status                                                                       |
+| ------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------- |
+| No authentication/authorization                               | ~~⛔ Critical~~ | ✅ Fixed (JWT)                                                               |
+| No CORS middleware                                            | ~~🔴 High~~     | ✅ Fixed                                                                     |
+| No rate limiting                                              | ~~🔴 High~~     | ✅ Fixed                                                                     |
+| No Helmet (security headers)                                  | ~~🔴 High~~     | ✅ Fixed                                                                     |
+| Internal error messages exposed to client                     | ~~🔴 High~~     | ✅ Fixed                                                                     |
+| No input sanitization                                         | ~~🔴 High~~     | ✅ Fixed (zod)                                                               |
+| Docker Compose hardcoded credentials                          | ~~🟡 Medium~~   | ✅ Fixed                                                                     |
+| No SQL injection protection beyond Sequelize parameterization | ~~🟡 Medium~~   | ✅ Mitigated (Sequelize parameterization + zod validation + 10kb body limit) |
+| No HTTPS enforcement                                          | ~~🟡 Medium~~   | ✅ Fixed (production HTTPS redirect + HSTS via Helmet)                       |
 
-**Positive:** JWT-based auth with bcryptjs password hashing protects all resource endpoints. `cors`, `helmet`, and `express-rate-limit` middleware are configured. Error middleware no longer leaks internal details. All inputs are validated with zod schemas before reaching controllers.
+**Positive:** JWT-based auth with bcryptjs password hashing protects all resource endpoints. `cors`, `helmet`, and `express-rate-limit` middleware are configured. Error middleware no longer leaks internal details. All inputs are validated with zod schemas before reaching controllers. HTTPS is enforced in production via redirect middleware + HSTS headers (Helmet). JSON body size is limited to 10kb to prevent oversized payload attacks.
 
 ### 8. TypeScript Quality
 
@@ -220,10 +220,10 @@ Input validation is now handled by `zod` schemas applied via middleware on all r
 
 #### To Update:
 
-| Package          | Current Version | Recommended Action     | Reason                                                         |
-| ---------------- | --------------- | ---------------------- | -------------------------------------------------------------- |
-| `sequelize`      | ^6.37.5         | Evaluate upgrade to v7 | Sequelize 7 has been released with improved TypeScript support |
-| `@types/express` | ^5.0.0          | Verify compatibility   | Ensure it matches Express 4.x typings                          |
+| Package          | Current Version | Recommended Action     | Reason                                                                       |
+| ---------------- | --------------- | ---------------------- | ---------------------------------------------------------------------------- |
+| `sequelize`      | ^6.37.5         | Evaluate upgrade to v7 | Sequelize 7 has improved TypeScript support; major upgrade — test thoroughly |
+| `@types/express` | ^5.0.0          | Compatible             | Verified: compiles cleanly with Express 4.21; no action needed at this time  |
 
 #### To Remove:
 
@@ -381,6 +381,35 @@ npm install -D jest ts-jest @types/jest supertest @types/supertest
 ---
 
 ## Changelog
+
+### March 29, 2026 - Architecture & Security Hardening
+
+**Fixed points:**
+
+- **SOLID Open/Closed (`RepositoryFactory`):** Extracted DB-specific repository registration into a separate provider module (`src/app/factories/providers/sequelizeProvider.ts`). `RepositoryFactory` now uses a static `registerProvider()` method — new database backends are added by creating a new provider file, without modifying the factory class.
+- **DRY: Generic `IRepository<T>` base interface:** Created `src/domain/repositories/IRepository.ts` with standardized CRUD methods (`getById`, `getAll`, `create`, `update`, `delete`). `IAccountRepository`, `ICategoryRepository`, and `ITransactionRepository` are now type aliases of `IRepository<T>`. `IUserRepository` extends it with `getByEmail()`. This eliminates duplicated method signatures across 4 interfaces.
+- **HTTPS Enforcement:** Added a production-only HTTPS redirect middleware with `trust proxy` support. Combined with Helmet's default HSTS headers, this ensures HTTPS is enforced when deployed behind a reverse proxy.
+- **JSON Body Size Limit:** Set `express.json({ limit: '10kb' })` to prevent oversized payload attacks.
+- **SQL Injection Mitigation:** Documented as adequately mitigated: Sequelize parameterized queries prevent SQL injection, zod validates all input types/lengths/formats at the boundary, and the 10kb body limit caps payload size.
+- **`@types/express` ^5.0.0 Compatibility:** Verified — compiles cleanly with Express 4.21. No version change needed.
+
+**Files created:**
+
+- `src/domain/repositories/IRepository.ts`: Generic base repository interface with CRUD methods
+- `src/app/factories/providers/sequelizeProvider.ts`: Sequelize-specific provider that registers all Sequelize repository implementations
+
+**Files modified:**
+
+- `src/app/factories/RepositoryFactory.ts`: Refactored to static provider registry pattern; removed DB-specific imports and constructor logic; exported `REPO_KEYS`
+- `src/domain/repositories/user/IUserRepository.ts`: Now extends `IRepository<User>`
+- `src/domain/repositories/account/IAccountRepository.ts`: Now a type alias of `IRepository<Account>`
+- `src/domain/repositories/category/ICategoryRepository.ts`: Now a type alias of `IRepository<Category>`
+- `src/domain/repositories/transaction/ITransactionRepository.ts`: Now a type alias of `IRepository<Transaction>`
+- `src/app.ts`: Added production HTTPS redirect middleware with `trust proxy`; set JSON body limit to 10kb
+
+**Dependencies added:**
+
+- _(None)_
 
 ### March 28, 2026 - Phase 1 & Phase 2 Fix Session
 

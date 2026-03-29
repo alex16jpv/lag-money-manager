@@ -1,9 +1,4 @@
 import { Account } from "../../entities/Account";
+import { IRepository } from "../IRepository";
 
-export interface IAccountRepository {
-  getById(id: Account["id"]): Promise<Account | null>;
-  getAll(): Promise<Account[]>;
-  create(account: Account): Promise<Account>;
-  update(id: Account["id"], account: Partial<Account>): Promise<Account>;
-  delete(id: Account["id"]): Promise<void>;
-}
+export type IAccountRepository = IRepository<Account>;

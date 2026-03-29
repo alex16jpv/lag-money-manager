@@ -14,6 +14,18 @@ import { authMiddleware } from "./app/middlewares/authMiddleware";
 
 const app = express();
 
+// In production, enforce HTTPS via redirect
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+  app.use((req, res, next) => {
+    if (req.secure || req.headers["x-forwarded-proto"] === "https") {
+      next();
+    } else {
+      res.redirect(301, `https://${req.headers.host}${req.url}`);
+    }
+  });
+}
+
 app.use(helmet());
 app.use(cors());
 app.use(
@@ -28,7 +40,7 @@ app.use(
     },
   }),
 );
-app.use(express.json());
+app.use(express.json({ limit: "10kb" }));
 
 app.get("/", (_req, res) => {
   res.status(200).send({ hello: "world!" });
