@@ -1,26 +1,29 @@
 import { ApiError } from "../../shared/errors";
 
 export interface UserProps {
-  id: number;
+  id?: number;
   name: string;
   email: string;
-  createdAt: Date;
-  updatedAt: Date;
+  password?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export class User {
-  id: UserProps["id"];
-  name: UserProps["name"];
-  email: UserProps["email"];
-  createdAt: UserProps["createdAt"];
-  updatedAt: UserProps["updatedAt"];
+  id: number;
+  name: string;
+  email: string;
+  password?: string;
+  createdAt: Date;
+  updatedAt: Date;
 
-  constructor({ id, name, email, createdAt, updatedAt }: any) {
-    this.id = id || null;
+  constructor({ id, name, email, password, createdAt, updatedAt }: UserProps) {
+    this.id = id!;
     this.name = name;
     this.email = email;
-    this.createdAt = createdAt;
-    this.updatedAt = updatedAt;
+    this.password = password;
+    this.createdAt = createdAt!;
+    this.updatedAt = updatedAt!;
   }
 
   validate() {

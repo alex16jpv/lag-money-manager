@@ -26,11 +26,15 @@ export class AccountService {
     return new Account(await this.repo.create(accountToCreate));
   }
 
-  async updateAccount(id: number, account: Account): Promise<Account> {
+  async updateAccount(id: number, account: Partial<Account>): Promise<Account> {
     if (account?.id && account.id !== id) {
       throw new ApiError("BadRequest", "Account id does not match");
     }
 
     return await this.repo.update(id, account);
+  }
+
+  async deleteAccount(id: number): Promise<void> {
+    return await this.repo.delete(id);
   }
 }

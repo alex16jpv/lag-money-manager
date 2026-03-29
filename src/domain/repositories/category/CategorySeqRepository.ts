@@ -1,5 +1,6 @@
+import { ApiError } from "../../../shared/errors";
 import { Category } from "../../entities/Category";
-import { CategoryModel } from "../../models/Category";
+import { CategoryModel } from "../../models/CategoryModel";
 import { ICategoryRepository } from "./ICategoryRepository";
 
 export class CategorySeqRepository implements ICategoryRepository {
@@ -9,23 +10,39 @@ export class CategorySeqRepository implements ICategoryRepository {
     this.model = CategoryModel;
   }
 
-  getAll(): Promise<Category[]> {
-    return this.model.findAll();
+  async getAll(): Promise<Category[]> {
+    const results = await this.model.findAll();
+    return results.map((result) => new Category(result.toJSON()));
   }
 
-  getById(id: number): Promise<Category | null> {
-    return this.model.findByPk(id);
+  async getById(id: number): Promise<Category | null> {
+    const result = await this.model.findByPk(id);
+    if (!result) {
+      return null;
+    }
+    return new Category(result.toJSON());
   }
 
-  create(category: Partial<Category>): Promise<Category> {
-    return this.model.create(category);
+  async create(category: Partial<Category>): Promise<Category> {
+    const result = await this.model.create(category);
+    return new Category(result.toJSON());
   }
 
-  delete(id: number): Promise<void> {
-    throw new Error("Method not implemented.");
+  async update(id: number, category: Partial<Category>): Promise<Category> {
+    const categoryToUpdate = await this.model.findByPk(id);
+    if (!categoryToUpdate) {
+      throw new ApiError("NotFound", "Category not found");
+    }
+    await categoryToUpdate.update(category);
+    await categoryToUpdate.reload();
+    return new Category(categoryToUpdate.toJSON());
   }
 
-  update(category: Partial<Category>): Promise<Category> {
-    throw new Error("Method not implemented.");
+  async delete(id: number): Promise<void> {
+    const category = await this.model.findByPk(id);
+    if (!category) {
+      throw new ApiError("NotFound", "Category not found");
+    }
+    await category.destroy();
   }
 }

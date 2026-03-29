@@ -1,6 +1,6 @@
 import { DataTypes, Model, Sequelize } from "sequelize";
 import { MODEL_NAMES, TRANSACTION_TYPES } from "../../shared/constants";
-import { CategoryModel } from "./Category";
+import { CategoryModel } from "./CategoryModel";
 import { AccountModel } from "./AccountModel";
 
 export class TransactionModel extends Model {
@@ -70,7 +70,7 @@ export default (sequelize: Sequelize) => {
     {
       sequelize,
       modelName: MODEL_NAMES.TRANSACTION,
-    }
+    },
   );
 
   return TransactionModel;

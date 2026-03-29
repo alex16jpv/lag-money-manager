@@ -1,11 +1,9 @@
 import { NextFunction, Request, Response } from "express";
 import { AccountService } from "../services/AccountService";
-import { Account } from "../../domain/entities/Account";
 import repositoryFactory from "../factories/RepositoryFactory";
-import { ApiError } from "../../shared/errors";
 
 const accountService = new AccountService(
-  repositoryFactory.getAccountRepository()
+  repositoryFactory.getAccountRepository(),
 );
 
 export class AccountController {
@@ -31,7 +29,7 @@ export class AccountController {
   static async getAccountById(req: Request, res: Response, next: NextFunction) {
     try {
       const account = await accountService.getAccountById(
-        Number(req.params.id)
+        Number(req.params.id),
       );
       res.status(200).json(account);
     } catch (error) {
@@ -42,11 +40,18 @@ export class AccountController {
   static async updateAccount(req: Request, res: Response, next: NextFunction) {
     try {
       const id = Number(req.params.id);
-      const account = req.body as Account;
-
-      const updatedAccount = await accountService.updateAccount(id, account);
+      const updatedAccount = await accountService.updateAccount(id, req.body);
 
       res.status(200).json(updatedAccount);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteAccount(req: Request, res: Response, next: NextFunction) {
+    try {
+      await accountService.deleteAccount(Number(req.params.id));
+      res.status(204).send();
     } catch (error) {
       next(error);
     }

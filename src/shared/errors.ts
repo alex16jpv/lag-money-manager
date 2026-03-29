@@ -5,7 +5,7 @@ class BaseError extends Error {
   constructor(
     message: string,
     statusCode: number,
-    details?: Record<string, unknown>
+    details?: Record<string, unknown>,
   ) {
     super(message);
     this.statusCode = statusCode;
@@ -25,24 +25,9 @@ export class ApiError extends BaseError {
   constructor(
     name: keyof typeof ApiError.errors,
     message?: string,
-    details?: Record<string, unknown>
+    details?: Record<string, unknown>,
   ) {
     super(message || name, ApiError.errors[name], details);
     this.name = name + "Error";
-  }
-}
-
-export class CustomError extends BaseError {
-  constructor({
-    message,
-    statusCode = 500,
-    details,
-  }: {
-    message: string;
-    statusCode?: number;
-    details?: Record<string, unknown>;
-  }) {
-    super(message, statusCode, details);
-    this.name = "Error";
   }
 }

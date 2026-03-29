@@ -1,0 +1,118 @@
+import { z } from "zod";
+import { ACCOUNT_TYPES } from "../../shared/constants";
+
+const accountTypeValues = Object.keys(ACCOUNT_TYPES) as [string, ...string[]];
+
+export const createUserSchema = z.object({
+  body: z.object({
+    name: z.string().min(1, "Name is required").max(255),
+    email: z.string().email("Invalid email format").max(255),
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .max(128),
+  }),
+});
+
+export const updateUserSchema = z.object({
+  params: z.object({
+    id: z.string().regex(/^\d+$/, "ID must be a numeric value"),
+  }),
+  body: z
+    .object({
+      name: z.string().min(1).max(255).optional(),
+      email: z.string().email("Invalid email format").max(255).optional(),
+      password: z
+        .string()
+        .min(8, "Password must be at least 8 characters")
+        .max(128)
+        .optional(),
+    })
+    .refine(
+      (data) =>
+        data.name !== undefined ||
+        data.email !== undefined ||
+        data.password !== undefined,
+      {
+        message: "At least one field (name, email, password) must be provided",
+      },
+    ),
+});
+
+export const createAccountSchema = z.object({
+  body: z.object({
+    name: z.string().min(1, "Name is required").max(255),
+    type: z.enum(accountTypeValues, {
+      error: `Invalid account type. Available: ${accountTypeValues.join(", ")}`,
+    }),
+    balance: z.number().finite("Balance must be a finite number").default(0),
+    userId: z.number().int().positive("userId must be a positive integer"),
+  }),
+});
+
+export const updateAccountSchema = z.object({
+  params: z.object({
+    id: z.string().regex(/^\d+$/, "ID must be a numeric value"),
+  }),
+  body: z
+    .object({
+      name: z.string().min(1).max(255).optional(),
+      type: z
+        .enum(accountTypeValues, {
+          error: `Invalid account type. Available: ${accountTypeValues.join(", ")}`,
+        })
+        .optional(),
+      balance: z.number().finite("Balance must be a finite number").optional(),
+      userId: z
+        .number()
+        .int()
+        .positive("userId must be a positive integer")
+        .optional(),
+    })
+    .refine((data) => Object.values(data).some((v) => v !== undefined), {
+      message: "At least one field must be provided",
+    }),
+});
+
+export const createCategorySchema = z.object({
+  body: z.object({
+    name: z.string().min(1, "Name is required").max(255),
+  }),
+});
+
+export const updateCategorySchema = z.object({
+  params: z.object({
+    id: z.string().regex(/^\d+$/, "ID must be a numeric value"),
+  }),
+  body: z
+    .object({
+      name: z.string().min(1).max(255).optional(),
+    })
+    .refine((data) => data.name !== undefined, {
+      message: "At least one field (name) must be provided",
+    }),
+});
+
+export const idParamSchema = z.object({
+  params: z.object({
+    id: z.string().regex(/^\d+$/, "ID must be a numeric value"),
+  }),
+});
+
+export const loginSchema = z.object({
+  body: z.object({
+    email: z.string().email("Invalid email format"),
+    password: z.string().min(1, "Password is required"),
+  }),
+});
+
+export const registerSchema = z.object({
+  body: z.object({
+    name: z.string().min(1, "Name is required").max(255),
+    email: z.string().email("Invalid email format").max(255),
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .max(128),
+  }),
+});

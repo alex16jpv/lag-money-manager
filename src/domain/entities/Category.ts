@@ -1,12 +1,17 @@
 import { ApiError } from "../../shared/errors";
 
-export class Category {
+export interface CategoryProps {
   id: number;
   name: string;
+}
 
-  constructor({ id, name }: any) {
+export class Category {
+  id: CategoryProps["id"];
+  name: CategoryProps["name"];
+
+  constructor({ id, name }: CategoryProps) {
     this.id = id;
-    this.name = name!;
+    this.name = name;
   }
 
   validate() {

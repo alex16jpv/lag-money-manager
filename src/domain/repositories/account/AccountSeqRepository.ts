@@ -11,16 +11,21 @@ export class AccountSeqRepository implements IAccountRepository {
   }
 
   async getById(id: Account["id"]): Promise<Account | null> {
-    return await this.model.findByPk(id);
+    const result = await this.model.findByPk(id);
+    if (!result) {
+      return null;
+    }
+    return new Account(result.toJSON());
   }
 
   async getAll(): Promise<Account[]> {
-    return await this.model.findAll();
+    const results = await this.model.findAll();
+    return results.map((result) => new Account(result.toJSON()));
   }
 
   async create(account: Partial<Account>): Promise<Account> {
     const result = await this.model.create(account);
-    return result;
+    return new Account(result.toJSON());
   }
 
   async update(id: Account["id"], account: Partial<Account>): Promise<Account> {
@@ -30,10 +35,14 @@ export class AccountSeqRepository implements IAccountRepository {
     }
     await accountToUpdate.update(account);
     await accountToUpdate.reload();
-    return accountToUpdate.toJSON();
+    return new Account(accountToUpdate.toJSON());
   }
 
-  delete(id: Account["id"]): Promise<void> {
-    throw new Error("Method not implemented.");
+  async delete(id: Account["id"]): Promise<void> {
+    const account = await this.model.findByPk(id);
+    if (!account) {
+      throw new ApiError("NotFound", "Account not found");
+    }
+    await account.destroy();
   }
 }

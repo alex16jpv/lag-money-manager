@@ -7,6 +7,7 @@ import { ENVIRONMENT } from "../../shared/constants";
 import { loadSequelizeModels } from "../../domain/models/index";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { CategorySeqRepository } from "../../domain/repositories/category/CategorySeqRepository";
+import logger from "../../shared/logger";
 
 const dbType = ENVIRONMENT.DB_TYPE;
 
@@ -23,11 +24,10 @@ export class RepositoryFactory {
 
   getUserRepository(): IUserRepository {
     if (this.userRepository) {
-      console.log("USING CACHED USER REPOSITORY");
       return this.userRepository;
     }
 
-    console.log("GETTING USER REPOSITORY");
+    logger.debug("Initializing user repository");
     if (dbType === DB_TYPES.SEQ) {
       this.userRepository = new UserSeqRepository();
       return this.userRepository;
@@ -40,11 +40,10 @@ export class RepositoryFactory {
 
   getAccountRepository(): IAccountRepository {
     if (this.accountRepository) {
-      console.log("USING CACHED ACCOUNT REPOSITORY");
       return this.accountRepository;
     }
 
-    console.log("GETTING ACCOUNT REPOSITORY");
+    logger.debug("Initializing account repository");
     if (dbType === DB_TYPES.SEQ) {
       this.accountRepository = new AccountSeqRepository();
       return this.accountRepository;
@@ -57,11 +56,10 @@ export class RepositoryFactory {
 
   getCategoryRepository(): ICategoryRepository {
     if (this.categoryRepository) {
-      console.log("USING CACHED CATEGORY REPOSITORY");
       return this.categoryRepository;
     }
 
-    console.log("GETTING CATEGORY REPOSITORY");
+    logger.debug("Initializing category repository");
     if (dbType === DB_TYPES.SEQ) {
       this.categoryRepository = new CategorySeqRepository();
       return this.categoryRepository;

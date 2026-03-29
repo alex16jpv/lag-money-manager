@@ -1,6 +1,5 @@
 import { NextFunction, Request, Response } from "express";
 import { UserService } from "../services/UserService";
-import { User } from "../../domain/entities/User";
 import repositoryFactory from "../factories/RepositoryFactory";
 
 const userService = new UserService(repositoryFactory.getUserRepository());
@@ -27,8 +26,7 @@ export class UserController {
 
   static async createUser(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = req.body as User;
-      const newUser = await userService.createUser(user);
+      const newUser = await userService.createUser(req.body);
       res.status(201).json(newUser);
     } catch (error) {
       next(error);
@@ -38,9 +36,7 @@ export class UserController {
   static async updateUser(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const user = req.body as User;
-
-      const updatedUser = await userService.updateUser(Number(id), user);
+      const updatedUser = await userService.updateUser(Number(id), req.body);
       res.status(200).json(updatedUser);
     } catch (error) {
       next(error);

@@ -16,12 +16,12 @@ export class Account {
   balance: AccountProps["balance"];
   userId: AccountProps["userId"];
 
-  constructor({ id, name, type, balance, userId }: any) {
-    this.id = id || null;
-    this.name = name!;
-    this.type = type!;
-    this.balance = balance! || 0;
-    this.userId = userId!;
+  constructor({ id, name, type, balance, userId }: AccountProps) {
+    this.id = id || null!;
+    this.name = name;
+    this.type = type;
+    this.balance = balance ?? 0;
+    this.userId = userId;
   }
 
   validate() {
