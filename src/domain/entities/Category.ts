@@ -1,16 +1,16 @@
 import { DomainValidationError } from "../errors";
 
 export interface CategoryProps {
-  id: number;
+  id?: number;
   name: string;
 }
 
 export class Category {
-  id: CategoryProps["id"];
-  name: CategoryProps["name"];
+  id: number;
+  name: string;
 
   constructor({ id, name }: CategoryProps) {
-    this.id = id;
+    this.id = id!;
     this.name = name;
   }
 

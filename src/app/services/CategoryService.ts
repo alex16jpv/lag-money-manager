@@ -1,6 +1,7 @@
 import { Category } from "../../domain/entities/Category";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ApiError } from "../../shared/errors";
+import { CreateCategoryDTO, UpdateCategoryDTO } from "../dtos/CategoryDTO";
 
 export class CategoryService {
   constructor(private repo: ICategoryRepository) {
@@ -20,20 +21,17 @@ export class CategoryService {
     return new Category(category);
   }
 
-  async createCategory(category: Category): Promise<Category> {
-    const categoryToCreate = new Category(category);
-    categoryToCreate.validate();
-    return this.repo.create(categoryToCreate);
+  async createCategory(dto: CreateCategoryDTO): Promise<Category> {
+    const category = new Category(dto);
+    category.validate();
+    return this.repo.create(category);
   }
 
-  async updateCategory(
-    id: number,
-    category: Partial<Category>,
-  ): Promise<Category> {
-    if (category?.id && category.id !== id) {
+  async updateCategory(id: number, dto: UpdateCategoryDTO): Promise<Category> {
+    if (dto.id && dto.id !== id) {
       throw new ApiError("BadRequest", "Category id does not match");
     }
-    return await this.repo.update(id, category);
+    return await this.repo.update(id, dto);
   }
 
   async deleteCategory(id: number): Promise<void> {

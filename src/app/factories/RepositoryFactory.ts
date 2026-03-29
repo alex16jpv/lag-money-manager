@@ -13,80 +13,63 @@ import logger from "../../shared/logger";
 
 const dbType = ENVIRONMENT.DB_TYPE;
 
+const REPO_KEYS = {
+  USER: "user",
+  ACCOUNT: "account",
+  CATEGORY: "category",
+  TRANSACTION: "transaction",
+} as const;
+
 export class RepositoryFactory {
-  userRepository: IUserRepository | null = null;
-  accountRepository: IAccountRepository | null = null;
-  categoryRepository: ICategoryRepository | null = null;
-  transactionRepository: ITransactionRepository | null = null;
+  private cache = new Map<string, unknown>();
+  private creators = new Map<string, () => unknown>();
 
   constructor() {
     if (dbType === DB_TYPES.SEQ) {
       loadSequelizeModels();
+      this.register(REPO_KEYS.USER, () => new UserSeqRepository());
+      this.register(REPO_KEYS.ACCOUNT, () => new AccountSeqRepository());
+      this.register(REPO_KEYS.CATEGORY, () => new CategorySeqRepository());
+      this.register(
+        REPO_KEYS.TRANSACTION,
+        () => new TransactionSeqRepository(),
+      );
     }
+  }
+
+  register(key: string, creator: () => unknown): void {
+    this.creators.set(key, creator);
+    this.cache.delete(key);
+  }
+
+  private getRepository<T>(key: string): T {
+    if (this.cache.has(key)) {
+      return this.cache.get(key) as T;
+    }
+    const creator = this.creators.get(key);
+    if (!creator) {
+      throw new Error(`No repository registered for key: ${key}`);
+    }
+    const repo = creator() as T;
+    this.cache.set(key, repo);
+    logger.debug(`Initialized ${key} repository`);
+    return repo;
   }
 
   getUserRepository(): IUserRepository {
-    if (this.userRepository) {
-      return this.userRepository;
-    }
-
-    logger.debug("Initializing user repository");
-    if (dbType === DB_TYPES.SEQ) {
-      this.userRepository = new UserSeqRepository();
-      return this.userRepository;
-    } else if (dbType === DB_TYPES.MONGO) {
-      // add mongo repository...
-    }
-
-    throw new Error("Invalid database type");
+    return this.getRepository<IUserRepository>(REPO_KEYS.USER);
   }
 
   getAccountRepository(): IAccountRepository {
-    if (this.accountRepository) {
-      return this.accountRepository;
-    }
-
-    logger.debug("Initializing account repository");
-    if (dbType === DB_TYPES.SEQ) {
-      this.accountRepository = new AccountSeqRepository();
-      return this.accountRepository;
-    } else if (dbType === DB_TYPES.MONGO) {
-      // add mongo account repository...
-    }
-
-    throw new Error("Invalid database type");
+    return this.getRepository<IAccountRepository>(REPO_KEYS.ACCOUNT);
   }
 
   getCategoryRepository(): ICategoryRepository {
-    if (this.categoryRepository) {
-      return this.categoryRepository;
-    }
-
-    logger.debug("Initializing category repository");
-    if (dbType === DB_TYPES.SEQ) {
-      this.categoryRepository = new CategorySeqRepository();
-      return this.categoryRepository;
-    } else if (dbType === DB_TYPES.MONGO) {
-      // add mongo category repository...
-    }
-
-    throw new Error("Invalid database type");
+    return this.getRepository<ICategoryRepository>(REPO_KEYS.CATEGORY);
   }
 
   getTransactionRepository(): ITransactionRepository {
-    if (this.transactionRepository) {
-      return this.transactionRepository;
-    }
-
-    logger.debug("Initializing transaction repository");
-    if (dbType === DB_TYPES.SEQ) {
-      this.transactionRepository = new TransactionSeqRepository();
-      return this.transactionRepository;
-    } else if (dbType === DB_TYPES.MONGO) {
-      // add mongo transaction repository...
-    }
-
-    throw new Error("Invalid database type");
+    return this.getRepository<ITransactionRepository>(REPO_KEYS.TRANSACTION);
   }
 }
 

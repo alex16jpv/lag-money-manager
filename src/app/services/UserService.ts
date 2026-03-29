@@ -2,6 +2,7 @@ import bcryptjs from "bcryptjs";
 import { User } from "../../domain/entities/User";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
+import { CreateUserDTO, UpdateUserDTO } from "../dtos/UserDTO";
 
 export class UserService {
   constructor(private repo: IUserRepository) {}
@@ -10,7 +11,7 @@ export class UserService {
     return await this.repo.getAll();
   }
 
-  async getUserById(id: User["id"]): Promise<User> {
+  async getUserById(id: number): Promise<User> {
     const user = await this.repo.getById(id);
     if (!user) {
       throw new ApiError("NotFound", "User not found");
@@ -18,30 +19,30 @@ export class UserService {
     return user;
   }
 
-  async createUser(user: User): Promise<User> {
-    const userToCreate = new User(user);
-    userToCreate.validate();
-
-    if (userToCreate.password) {
-      userToCreate.password = await bcryptjs.hash(userToCreate.password, 12);
-    }
-
-    return await this.repo.create(userToCreate);
-  }
-
-  async updateUser(id: User["id"], user: Partial<User>): Promise<User> {
-    if (user?.id && id !== user.id) {
-      throw new ApiError("BadRequest", "User id does not match");
-    }
+  async createUser(dto: CreateUserDTO): Promise<User> {
+    const user = new User(dto);
+    user.validate();
 
     if (user.password) {
       user.password = await bcryptjs.hash(user.password, 12);
     }
 
-    return await this.repo.update(id, user);
+    return await this.repo.create(user);
   }
 
-  async deleteUser(id: User["id"]): Promise<void> {
+  async updateUser(id: number, dto: UpdateUserDTO): Promise<User> {
+    if (dto.id && id !== dto.id) {
+      throw new ApiError("BadRequest", "User id does not match");
+    }
+
+    if (dto.password) {
+      dto.password = await bcryptjs.hash(dto.password, 12);
+    }
+
+    return await this.repo.update(id, dto);
+  }
+
+  async deleteUser(id: number): Promise<void> {
     return await this.repo.delete(id);
   }
 }

@@ -4,30 +4,27 @@ import { ENVIRONMENT } from "../../shared/constants";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { User } from "../../domain/entities/User";
 import { ApiError } from "../../shared/errors";
+import { CreateUserDTO, UserResponseDTO } from "../dtos/UserDTO";
 
 export class AuthService {
   constructor(private repo: IUserRepository) {}
 
-  async register(data: {
-    name: string;
-    email: string;
-    password: string;
-  }): Promise<Omit<User, "password">> {
-    const hashedPassword = await bcryptjs.hash(data.password, 12);
-    const user = new User({ ...data, password: hashedPassword });
+  async register(dto: CreateUserDTO): Promise<UserResponseDTO> {
+    const hashedPassword = await bcryptjs.hash(dto.password, 12);
+    const user = new User({ ...dto, password: hashedPassword });
     user.validate();
 
     const created = await this.repo.create(user);
     const { password: _, ...userWithoutPassword } = created as User & {
       password?: string;
     };
-    return userWithoutPassword as User;
+    return userWithoutPassword as UserResponseDTO;
   }
 
   async login(
     email: string,
     password: string,
-  ): Promise<{ token: string; user: Omit<User, "password"> }> {
+  ): Promise<{ token: string; user: UserResponseDTO }> {
     const user = await this.repo.getByEmail(email);
     if (!user) {
       throw new ApiError("Unauthorized", "Invalid email or password");
@@ -50,6 +47,6 @@ export class AuthService {
     const { password: _, ...userWithoutPassword } = user as User & {
       password?: string;
     };
-    return { token, user: userWithoutPassword as User };
+    return { token, user: userWithoutPassword as UserResponseDTO };
   }
 }

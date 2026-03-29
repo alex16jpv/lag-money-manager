@@ -3,6 +3,7 @@ import { ICategoryRepository } from "../../domain/repositories/category/ICategor
 import { Category } from "../../domain/entities/Category";
 import { ApiError } from "../../shared/errors";
 import { DomainValidationError } from "../../domain/errors";
+import { CreateCategoryDTO } from "../../app/dtos/CategoryDTO";
 
 const mockCategory = new Category({ id: 1, name: "Food" });
 
@@ -67,19 +68,16 @@ describe("CategoryService", () => {
     it("should create and return a category", async () => {
       repo.create.mockResolvedValue(mockCategory);
 
-      const result = await service.createCategory(
-        new Category({ id: 0, name: "Food" }),
-      );
+      const result = await service.createCategory({ name: "Food" });
 
       expect(repo.create).toHaveBeenCalledTimes(1);
       expect(result.name).toBe("Food");
     });
 
     it("should throw when validation fails (missing name)", async () => {
-      const invalid = new Category({
-        id: 0,
+      const invalid: CreateCategoryDTO = {
         name: "" as unknown as string,
-      });
+      };
 
       await expect(service.createCategory(invalid)).rejects.toThrow(
         DomainValidationError,
@@ -103,12 +101,12 @@ describe("CategoryService", () => {
     });
 
     it("should throw when id in body does not match param id", async () => {
-      await expect(
-        service.updateCategory(1, { id: 2 } as Partial<Category>),
-      ).rejects.toThrow(ApiError);
-      await expect(
-        service.updateCategory(1, { id: 2 } as Partial<Category>),
-      ).rejects.toThrow("Category id does not match");
+      await expect(service.updateCategory(1, { id: 2 })).rejects.toThrow(
+        ApiError,
+      );
+      await expect(service.updateCategory(1, { id: 2 })).rejects.toThrow(
+        "Category id does not match",
+      );
     });
   });
 

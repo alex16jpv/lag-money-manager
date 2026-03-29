@@ -1,9 +1,9 @@
 import { DomainValidationError } from "../errors";
-import { TRANSACTION_TYPES } from "../../shared/constants";
+import { TRANSACTION_TYPES, TransactionType } from "../../shared/constants";
 
 export interface TransactionProps {
   id?: number;
-  type: keyof typeof TRANSACTION_TYPES;
+  type: TransactionType;
   amount: number;
   date: Date | string;
   categoryId?: number | null;
@@ -19,7 +19,7 @@ export interface TransactionProps {
 
 export class Transaction {
   id: number;
-  type: TransactionProps["type"];
+  type: TransactionType;
   amount: number;
   date: Date;
   categoryId: number | null;

@@ -4,6 +4,7 @@ import { User } from "../../domain/entities/User";
 import { ApiError } from "../../shared/errors";
 import { DomainValidationError } from "../../domain/errors";
 import bcryptjs from "bcryptjs";
+import { CreateUserDTO, UpdateUserDTO } from "../../app/dtos/UserDTO";
 
 const mockUser: User = new User({
   id: 1,
@@ -71,11 +72,11 @@ describe("UserService", () => {
 
   describe("createUser", () => {
     it("should create a user and hash the password", async () => {
-      const input = new User({
+      const input: CreateUserDTO = {
         name: "Jane",
         email: "jane@example.com",
         password: "plaintext123",
-      });
+      };
       repo.create.mockResolvedValue(mockUser);
 
       const result = await service.createUser(input);
@@ -90,11 +91,11 @@ describe("UserService", () => {
     });
 
     it("should throw when validation fails (missing email)", async () => {
-      const input = new User({
+      const input: CreateUserDTO = {
         name: "Jane",
         email: "",
         password: "password123",
-      });
+      };
 
       await expect(service.createUser(input)).rejects.toThrow(
         DomainValidationError,
@@ -106,7 +107,10 @@ describe("UserService", () => {
     });
 
     it("should create user without hashing when no password provided", async () => {
-      const input = new User({ name: "Jane", email: "jane@example.com" });
+      const input = {
+        name: "Jane",
+        email: "jane@example.com",
+      } as CreateUserDTO;
       repo.create.mockResolvedValue(mockUser);
 
       await service.createUser(input);
@@ -132,10 +136,10 @@ describe("UserService", () => {
 
     it("should throw when id in body does not match param id", async () => {
       await expect(
-        service.updateUser(1, { id: 2, name: "Test" } as Partial<User>),
+        service.updateUser(1, { id: 2, name: "Test" }),
       ).rejects.toThrow(ApiError);
       await expect(
-        service.updateUser(1, { id: 2, name: "Test" } as Partial<User>),
+        service.updateUser(1, { id: 2, name: "Test" }),
       ).rejects.toThrow("User id does not match");
     });
 

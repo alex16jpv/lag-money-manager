@@ -2,6 +2,10 @@ import { Transaction } from "../../domain/entities/Transaction";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ApiError } from "../../shared/errors";
+import {
+  CreateTransactionDTO,
+  UpdateTransactionDTO,
+} from "../dtos/TransactionDTO";
 
 export class TransactionService {
   constructor(
@@ -21,8 +25,8 @@ export class TransactionService {
     return transaction;
   }
 
-  async createTransaction(data: Transaction): Promise<Transaction> {
-    const transaction = new Transaction(data);
+  async createTransaction(dto: CreateTransactionDTO): Promise<Transaction> {
+    const transaction = new Transaction(dto);
     transaction.validate();
 
     await this.applyBalanceChanges(transaction);
@@ -37,9 +41,9 @@ export class TransactionService {
 
   async updateTransaction(
     id: number,
-    data: Partial<Transaction>,
+    dto: UpdateTransactionDTO,
   ): Promise<Transaction> {
-    if (data?.id && data.id !== id) {
+    if (dto.id && dto.id !== id) {
       throw new ApiError("BadRequest", "Transaction id does not match");
     }
 
@@ -50,12 +54,12 @@ export class TransactionService {
 
     await this.reverseBalanceChanges(existing);
 
-    const updated = new Transaction({ ...existing, ...data });
+    const updated = new Transaction({ ...existing, ...dto });
     updated.validate();
 
     await this.applyBalanceChanges(updated);
 
-    return await this.transactionRepo.update(id, data);
+    return await this.transactionRepo.update(id, dto);
   }
 
   async deleteTransaction(id: number): Promise<void> {

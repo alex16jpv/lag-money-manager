@@ -2,7 +2,9 @@ export const DB_TYPES = {
   SEQ: "SEQ",
   MONGO: "MONGO",
   LOCAL_STORAGE: "LOCAL_STORAGE",
-};
+} as const;
+
+export type DbType = keyof typeof DB_TYPES;
 
 export const MODEL_NAMES = {
   USER: "User",
@@ -10,7 +12,7 @@ export const MODEL_NAMES = {
   TRANSACTION: "Transaction",
   BUDGET: "Budget",
   CATEGORY: "Category",
-};
+} as const;
 
 export const ACCOUNT_TYPES = {
   CASH: "CASH",
@@ -22,13 +24,17 @@ export const ACCOUNT_TYPES = {
   OVERDRAFT: "OVERDRAFT",
   LOAN: "LOAN",
   OTHER: "OTHER",
-};
+} as const;
+
+export type AccountType = keyof typeof ACCOUNT_TYPES;
 
 export const TRANSACTION_TYPES = {
   INCOME: "INCOME",
   EXPENSE: "EXPENSE",
   TRANSFER: "TRANSFER",
-};
+} as const;
+
+export type TransactionType = keyof typeof TRANSACTION_TYPES;
 
 import { z } from "zod";
 

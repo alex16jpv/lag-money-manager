@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The project implements a layered architecture with controllers, services, and repositories — a good foundation. After the Phase 1, Phase 2, Phase 3, Phase 4, and Phase 5 fix sessions, the API now has **JWT authentication/authorization**, **zod-based input validation**, **security middleware** (CORS, Helmet, rate limiting), **structured logging** with pino, **environment variable validation at startup**, a **comprehensive test suite** (136 tests across 11 suites covering entities, services, middleware, and full HTTP integration), **OpenAPI 3.0 documentation** served at `/api-docs`, **ESLint + Prettier** for code quality enforcement, an **`asyncHandler` utility** eliminating controller try/catch boilerplate, **domain-specific validation errors** separated from HTTP-level errors, a **Sequelize CLI migration strategy** with initial migrations for all tables, and a **complete Transaction feature** (entity, repository, service, controller, routes with balance management for income/expense/transfer flows). The remaining gaps are in **architecture refinements** (DTOs, RepositoryFactory registry pattern).
+The project implements a layered architecture with controllers, services, and repositories — a good foundation. After the Phase 1, Phase 2, Phase 3, Phase 4, and Phase 5 fix sessions, the API now has **JWT authentication/authorization**, **zod-based input validation**, **security middleware** (CORS, Helmet, rate limiting), **structured logging** with pino, **environment variable validation at startup**, a **comprehensive test suite** (136 tests across 11 suites covering entities, services, middleware, and full HTTP integration), **OpenAPI 3.0 documentation** served at `/api-docs`, **ESLint + Prettier** for code quality enforcement, an **`asyncHandler` utility** eliminating controller try/catch boilerplate, **domain-specific validation errors** separated from HTTP-level errors, a **Sequelize CLI migration strategy** with initial migrations for all tables, a **complete Transaction feature** (entity, repository, service, controller, routes with balance management for income/expense/transfer flows), a **DTO layer** decoupling HTTP request shapes from domain entities, **`as const` type-safe constants** with derived TypeScript union types, and a **RepositoryFactory registry pattern** for extensible repository management. All Phase 1–5 action items have been resolved.
 
 ---
 
@@ -39,8 +39,7 @@ _(No remaining high-priority issues.)_
 10. **`dbModels` in `loadSequelizeModels` Uses `any`** — The local variable is typed as `any`, losing type safety.
     - [src/domain/models/index.ts](src/domain/models/index.ts#L10)
 
-11. **`ACCOUNT_TYPES` and `TRANSACTION_TYPES` Should Be TypeScript Enums or `as const`** — Currently plain objects; no type narrowing benefit.
-    - [src/shared/constants.ts](src/shared/constants.ts#L16-L34)
+11. ~~**`ACCOUNT_TYPES` and `TRANSACTION_TYPES` Should Be TypeScript Enums or `as const`**~~ — ✅ Fixed: Converted to `as const` objects with exported derived union types (`AccountType`, `TransactionType`, `DbType`).
 
 12. **Missing `@types/node` in devDependencies** — Node.js type definitions are not explicitly listed.
     - [package.json](package.json)
@@ -71,7 +70,7 @@ routes → controllers → services → repositories → models/DB
 - ~~**Domain entities live in `domain/entities/` but also depend on `shared/errors.ts`**~~ — ✅ Fixed: Entities now throw `DomainValidationError` from `domain/errors.ts` instead of `ApiError`. The error middleware maps `DomainValidationError` to HTTP 400 responses.
 - ~~**No Transaction entity, controller, service, or routes**~~ — ✅ Fixed: Complete Transaction feature implemented with entity, repository (interface + Sequelize), service (with account balance management for income/expense/transfer), controller, routes, Zod validation schemas, and OpenAPI documentation.
 - ~~**`src/index.ts` is a scratch/test file**~~ — ✅ Removed.
-- **No DTOs (Data Transfer Objects)** — Controllers cast `req.body` directly to domain entities. A DTO layer would decouple HTTP request shapes from domain objects.
+- **No DTOs (Data Transfer Objects)** — ~~Controllers cast `req.body` directly to domain entities. A DTO layer would decouple HTTP request shapes from domain objects.~~ — ✅ Fixed: DTO interfaces created for all entities (`CreateUserDTO`, `UpdateUserDTO`, `UserResponseDTO`, etc.). Services accept DTOs instead of domain entities.
 - ~~**No middleware layer for cross-cutting concerns**~~ — ✅ Fixed: auth middleware, validation middleware, error middleware, `asyncHandler` utility.
 
 ### 2. Database Abstraction
@@ -91,8 +90,7 @@ routes → controllers → services → repositories → models/DB
 
 **Issues:**
 
-- **`RepositoryFactory` constructor calls `loadSequelizeModels()` as a side effect** — model loading is triggered by importing the factory, creating tight coupling between module load order and DB initialization.
-  - [src/app/factories/RepositoryFactory.ts](src/app/factories/RepositoryFactory.ts#L19-L21)
+- ~~**`RepositoryFactory` constructor calls `loadSequelizeModels()` as a side effect**~~ — ✅ Fixed: Refactored to registry pattern. Model loading now happens in the constructor only for the configured DB type, and repository creators are registered lazily via `register(key, creator)` with caching via `getRepository<T>(key)`.
 
 **To achieve full DB-swappability:**
 
@@ -374,13 +372,13 @@ npm install -D jest ts-jest @types/jest supertest @types/supertest
 ~~23. Create domain-specific validation errors (separate from HTTP `ApiError`)~~
 ~~24. Add database migration strategy (Sequelize CLI migrations)~~
 
-### Phase 5: Architecture Refinement (Low Priority)
+### ~~Phase 5: Architecture Refinement (Low Priority)~~ ✅ COMPLETED
 
-25. Add DTO layer between controllers and services
+25. ~~Add DTO layer between controllers and services~~ — ✅ Fixed in Phase 5
 26. ~~Decouple entity validation from `ApiError` (use domain-specific errors)~~ — ✅ Fixed in Phase 4
-27. Consider converting `ACCOUNT_TYPES` / `TRANSACTION_TYPES` to `as const` objects with derived types
+27. ~~Consider converting `ACCOUNT_TYPES` / `TRANSACTION_TYPES` to `as const` objects with derived types~~ — ✅ Fixed in Phase 5
 28. ~~Complete the Transaction feature (entity, repository, service, controller, routes) or remove the model~~ — ✅ Fixed in Phase 5
-29. Refactor `RepositoryFactory` to use a registry pattern for extensibility
+29. ~~Refactor `RepositoryFactory` to use a registry pattern for extensibility~~ — ✅ Fixed in Phase 5
 
 ---
 
@@ -624,3 +622,40 @@ npm install -D jest ts-jest @types/jest supertest @types/supertest
 **Dependencies added:**
 
 - _(None — all required dependencies were already installed from previous phases)_
+
+### March 29, 2026 - Phase 5 Architecture Refinement Fix Session
+
+**Fixed points:**
+
+- **DTO Layer (#25):** Created DTO interfaces for all entities (`CreateUserDTO`, `UpdateUserDTO`, `UserResponseDTO`, `CreateAccountDTO`, `UpdateAccountDTO`, `CreateCategoryDTO`, `UpdateCategoryDTO`, `CreateTransactionDTO`, `UpdateTransactionDTO`). All service methods now accept DTOs instead of domain entities for create/update operations. `AuthService.register` uses `CreateUserDTO`, return types use `UserResponseDTO`. This decouples HTTP request shapes from domain objects.
+- **`as const` Types (#27):** Converted `DB_TYPES`, `MODEL_NAMES`, `ACCOUNT_TYPES`, and `TRANSACTION_TYPES` to `as const` objects. Exported derived union types (`DbType`, `AccountType`, `TransactionType`) for type-safe usage throughout the codebase. Entity types now use these aliases instead of `keyof typeof X` indirection.
+- **RepositoryFactory Registry Pattern (#29):** Refactored `RepositoryFactory` from repetitive per-entity getter methods to a generic registry pattern. Uses a `Map<string, () => unknown>` for creators and `Map<string, unknown>` for caching. A public `register(key, creator)` method allows external registration of new repository types. Typed getter methods (`getUserRepository()`, etc.) delegate to the generic `getRepository<T>(key)`. Eliminates ~60 lines of boilerplate.
+
+**Files created:**
+
+- `src/app/dtos/UserDTO.ts`: CreateUserDTO, UpdateUserDTO, UserResponseDTO interfaces
+- `src/app/dtos/AccountDTO.ts`: CreateAccountDTO, UpdateAccountDTO interfaces
+- `src/app/dtos/CategoryDTO.ts`: CreateCategoryDTO, UpdateCategoryDTO interfaces
+- `src/app/dtos/TransactionDTO.ts`: CreateTransactionDTO, UpdateTransactionDTO interfaces
+
+**Files modified:**
+
+- `src/shared/constants.ts`: Added `as const` to all constant objects; exported `DbType`, `AccountType`, `TransactionType` union types
+- `src/app/factories/RepositoryFactory.ts`: Refactored to registry pattern with `register()`, `getRepository<T>()`, `REPO_KEYS`, lazy init + caching
+- `src/domain/entities/Account.ts`: Made `id` and `balance` optional in `AccountProps`; used `AccountType` alias; changed class fields from `AccountProps["x"]` to direct types
+- `src/domain/entities/Category.ts`: Made `id` optional in `CategoryProps`; changed class fields from `CategoryProps["x"]` to direct types
+- `src/domain/entities/Transaction.ts`: Used `TransactionType` alias instead of `keyof typeof TRANSACTION_TYPES`
+- `src/app/services/UserService.ts`: Changed `createUser`/`updateUser` to accept DTOs; imported DTO types
+- `src/app/services/AccountService.ts`: Changed `createAccount`/`updateAccount` to accept DTOs
+- `src/app/services/CategoryService.ts`: Changed `createCategory`/`updateCategory` to accept DTOs
+- `src/app/services/TransactionService.ts`: Changed `createTransaction`/`updateTransaction` to accept DTOs
+- `src/app/services/AuthService.ts`: Changed `register` to accept `CreateUserDTO`, return `UserResponseDTO`; login returns `UserResponseDTO`
+- `src/__tests__/services/UserService.test.ts`: Updated create/update tests to pass DTO objects
+- `src/__tests__/services/AccountService.test.ts`: Updated create/update tests to pass DTO objects
+- `src/__tests__/services/CategoryService.test.ts`: Updated create/update tests to pass DTO objects
+- `src/__tests__/services/TransactionService.test.ts`: Split test data into DTOs (for create calls) and stored entities (for mock returns)
+- `AUDIT_REPORT.md`: Marked all Phase 5 items as completed
+
+**Dependencies added:**
+
+- _(None)_

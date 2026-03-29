@@ -33,6 +33,10 @@ import { Transaction } from "../../domain/entities/Transaction";
 import { Account } from "../../domain/entities/Account";
 import { ApiError } from "../../shared/errors";
 import { DomainValidationError } from "../../domain/errors";
+import {
+  CreateTransactionDTO,
+  UpdateTransactionDTO,
+} from "../../app/dtos/TransactionDTO";
 
 const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   getAll: jest.fn(),
@@ -60,33 +64,35 @@ const makeAccount = (overrides: Partial<Account> = {}): Account =>
     ...overrides,
   });
 
-const validExpense: Transaction = new Transaction({
-  id: 1,
+const validExpense: CreateTransactionDTO = {
   type: "EXPENSE",
   amount: 100,
   date: new Date("2026-03-28"),
   fromAccountId: 1,
   userId: 1,
-});
+};
 
-const validIncome: Transaction = new Transaction({
-  id: 2,
+const validIncome: CreateTransactionDTO = {
   type: "INCOME",
   amount: 200,
   date: new Date("2026-03-28"),
   toAccountId: 2,
   userId: 1,
-});
+};
 
-const validTransfer: Transaction = new Transaction({
-  id: 3,
+const validTransfer: CreateTransactionDTO = {
   type: "TRANSFER",
   amount: 150,
   date: new Date("2026-03-28"),
   fromAccountId: 1,
   toAccountId: 2,
   userId: 1,
-});
+};
+
+// Stored entities for mock repo returns
+const storedExpense = new Transaction({ id: 1, ...validExpense });
+const storedIncome = new Transaction({ id: 2, ...validIncome });
+const storedTransfer = new Transaction({ id: 3, ...validTransfer });
 
 describe("TransactionService", () => {
   let service: TransactionService;
@@ -101,7 +107,7 @@ describe("TransactionService", () => {
 
   describe("getAllTransactions", () => {
     it("should return all transactions", async () => {
-      txRepo.getAll.mockResolvedValue([validExpense]);
+      txRepo.getAll.mockResolvedValue([storedExpense]);
 
       const result = await service.getAllTransactions();
 
@@ -120,7 +126,7 @@ describe("TransactionService", () => {
 
   describe("getTransactionById", () => {
     it("should return transaction when found", async () => {
-      txRepo.getById.mockResolvedValue(validExpense);
+      txRepo.getById.mockResolvedValue(storedExpense);
 
       const result = await service.getTransactionById(1);
 
@@ -142,7 +148,7 @@ describe("TransactionService", () => {
     it("should create an expense and subtract from source account", async () => {
       const account = makeAccount({ id: 1, balance: 1000 });
       acctRepo.getById.mockResolvedValue(account);
-      txRepo.create.mockResolvedValue(validExpense);
+      txRepo.create.mockResolvedValue(storedExpense);
 
       const result = await service.createTransaction(validExpense);
 
@@ -155,7 +161,7 @@ describe("TransactionService", () => {
     it("should create an income and add to destination account", async () => {
       const account = makeAccount({ id: 2, balance: 500 });
       acctRepo.getById.mockResolvedValue(account);
-      txRepo.create.mockResolvedValue(validIncome);
+      txRepo.create.mockResolvedValue(storedIncome);
 
       const result = await service.createTransaction(validIncome);
 
@@ -170,7 +176,7 @@ describe("TransactionService", () => {
       acctRepo.getById
         .mockResolvedValueOnce(fromAccount)
         .mockResolvedValueOnce(toAccount);
-      txRepo.create.mockResolvedValue(validTransfer);
+      txRepo.create.mockResolvedValue(storedTransfer);
 
       const result = await service.createTransaction(validTransfer);
 
@@ -180,13 +186,13 @@ describe("TransactionService", () => {
     });
 
     it("should throw when validation fails", async () => {
-      const invalid = new Transaction({
+      const invalid: CreateTransactionDTO = {
         type: "EXPENSE",
         amount: -10,
         date: new Date(),
         fromAccountId: 1,
         userId: 1,
-      });
+      };
 
       await expect(service.createTransaction(invalid)).rejects.toThrow(
         DomainValidationError,
@@ -247,10 +253,10 @@ describe("TransactionService", () => {
 
     it("should throw when id in body does not match param id", async () => {
       await expect(
-        service.updateTransaction(1, { id: 2 } as Partial<Transaction>),
+        service.updateTransaction(1, { id: 2 } as UpdateTransactionDTO),
       ).rejects.toThrow(ApiError);
       await expect(
-        service.updateTransaction(1, { id: 2 } as Partial<Transaction>),
+        service.updateTransaction(1, { id: 2 } as UpdateTransactionDTO),
       ).rejects.toThrow("Transaction id does not match");
     });
 
@@ -265,7 +271,7 @@ describe("TransactionService", () => {
 
   describe("deleteTransaction", () => {
     it("should reverse balance and delete an expense", async () => {
-      txRepo.getById.mockResolvedValue(validExpense);
+      txRepo.getById.mockResolvedValue(storedExpense);
       const account = makeAccount({ id: 1, balance: 900 });
       acctRepo.getById.mockResolvedValue(account);
       txRepo.delete.mockResolvedValue();
@@ -278,7 +284,7 @@ describe("TransactionService", () => {
     });
 
     it("should reverse balance and delete an income", async () => {
-      txRepo.getById.mockResolvedValue(validIncome);
+      txRepo.getById.mockResolvedValue(storedIncome);
       const account = makeAccount({ id: 2, balance: 700 });
       acctRepo.getById.mockResolvedValue(account);
       txRepo.delete.mockResolvedValue();
@@ -291,7 +297,7 @@ describe("TransactionService", () => {
     });
 
     it("should reverse balance on both accounts for transfer delete", async () => {
-      txRepo.getById.mockResolvedValue(validTransfer);
+      txRepo.getById.mockResolvedValue(storedTransfer);
       const fromAccount = makeAccount({ id: 1, balance: 850 });
       const toAccount = makeAccount({ id: 2, balance: 650 });
       acctRepo.getById
@@ -318,7 +324,7 @@ describe("TransactionService", () => {
     });
 
     it("should gracefully handle deleted account on reverse", async () => {
-      txRepo.getById.mockResolvedValue(validExpense);
+      txRepo.getById.mockResolvedValue(storedExpense);
       acctRepo.getById.mockResolvedValue(null);
       txRepo.delete.mockResolvedValue();
 
