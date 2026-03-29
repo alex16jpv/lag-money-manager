@@ -15,6 +15,11 @@ export class CategorySeqRepository implements ICategoryRepository {
     return results.map((result) => new Category(result.toJSON()));
   }
 
+  async getAllByUserId(userId: string): Promise<Category[]> {
+    const results = await this.model.findAll({ where: { userId } });
+    return results.map((result) => new Category(result.toJSON()));
+  }
+
   async getById(id: string): Promise<Category | null> {
     const result = await this.model.findByPk(id);
     if (!result) {

@@ -40,6 +40,7 @@ import {
 
 const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
   getById: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
@@ -48,6 +49,7 @@ const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
 
 const createMockAccountRepo = (): jest.Mocked<IAccountRepository> => ({
   getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
   getById: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
@@ -115,30 +117,37 @@ describe("TransactionService", () => {
   });
 
   describe("getAllTransactions", () => {
-    it("should return all transactions", async () => {
-      txRepo.getAll.mockResolvedValue([storedExpense]);
+    it("should return all transactions for the user", async () => {
+      txRepo.getAllByUserId.mockResolvedValue([storedExpense]);
 
-      const result = await service.getAllTransactions();
+      const result = await service.getAllTransactions(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
 
-      expect(txRepo.getAll).toHaveBeenCalledTimes(1);
+      expect(txRepo.getAllByUserId).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
       expect(result).toHaveLength(1);
     });
 
     it("should return empty array when none exist", async () => {
-      txRepo.getAll.mockResolvedValue([]);
+      txRepo.getAllByUserId.mockResolvedValue([]);
 
-      const result = await service.getAllTransactions();
+      const result = await service.getAllTransactions(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
 
       expect(result).toEqual([]);
     });
   });
 
   describe("getTransactionById", () => {
-    it("should return transaction when found", async () => {
+    it("should return transaction when found and owned by user", async () => {
       txRepo.getById.mockResolvedValue(storedExpense);
 
       const result = await service.getTransactionById(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       );
 
       expect(txRepo.getById).toHaveBeenCalledWith(
@@ -151,10 +160,16 @@ describe("TransactionService", () => {
       txRepo.getById.mockResolvedValue(null);
 
       await expect(
-        service.getTransactionById("019576a0-d7b6-7d6d-af6a-000000000000"),
+        service.getTransactionById(
+          "019576a0-d7b6-7d6d-af6a-000000000000",
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        ),
       ).rejects.toThrow(ApiError);
       await expect(
-        service.getTransactionById("019576a0-d7b6-7d6d-af6a-000000000000"),
+        service.getTransactionById(
+          "019576a0-d7b6-7d6d-af6a-000000000000",
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        ),
       ).rejects.toThrow("Transaction not found");
     });
   });
@@ -278,14 +293,12 @@ describe("TransactionService", () => {
       });
       // First call: reverseBalanceChanges (reads account at 900, restores to 1000)
       // Second call: applyBalanceChanges (reads account at 1000 from mock, subtracts 200)
-      acctRepo.getById
-        .mockResolvedValueOnce(account)
-        .mockResolvedValueOnce(
-          makeAccount({
-            id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
-            balance: 1000,
-          }),
-        );
+      acctRepo.getById.mockResolvedValueOnce(account).mockResolvedValueOnce(
+        makeAccount({
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+          balance: 1000,
+        }),
+      );
 
       const updatedTx = new Transaction({
         ...existingTx,
@@ -296,6 +309,7 @@ describe("TransactionService", () => {
       const result = await service.updateTransaction(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
         { amount: 200 },
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       );
 
       // Reverse: 900 + 100 = 1000
@@ -316,14 +330,22 @@ describe("TransactionService", () => {
 
     it("should throw when id in body does not match param id", async () => {
       await expect(
-        service.updateTransaction("019576a0-d7b6-7d6d-af6a-2b7545f5ac80", {
-          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac81",
-        } as UpdateTransactionDTO),
+        service.updateTransaction(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+          {
+            id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac81",
+          } as UpdateTransactionDTO,
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        ),
       ).rejects.toThrow(ApiError);
       await expect(
-        service.updateTransaction("019576a0-d7b6-7d6d-af6a-2b7545f5ac80", {
-          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac81",
-        } as UpdateTransactionDTO),
+        service.updateTransaction(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+          {
+            id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac81",
+          } as UpdateTransactionDTO,
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        ),
       ).rejects.toThrow("Transaction id does not match");
     });
 
@@ -331,9 +353,13 @@ describe("TransactionService", () => {
       txRepo.getById.mockResolvedValue(null);
 
       await expect(
-        service.updateTransaction("019576a0-d7b6-7d6d-af6a-000000000000", {
-          amount: 50,
-        }),
+        service.updateTransaction(
+          "019576a0-d7b6-7d6d-af6a-000000000000",
+          {
+            amount: 50,
+          },
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        ),
       ).rejects.toThrow("Transaction not found");
     });
   });
@@ -348,7 +374,10 @@ describe("TransactionService", () => {
       acctRepo.getById.mockResolvedValue(account);
       txRepo.delete.mockResolvedValue();
 
-      await service.deleteTransaction("019576a0-d7b6-7d6d-af6a-2b7545f5ac80");
+      await service.deleteTransaction(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
 
       // Reverse: 900 + 100 = 1000
       expect(acctRepo.update).toHaveBeenCalledWith(
@@ -369,7 +398,10 @@ describe("TransactionService", () => {
       acctRepo.getById.mockResolvedValue(account);
       txRepo.delete.mockResolvedValue();
 
-      await service.deleteTransaction("019576a0-d7b6-7d6d-af6a-2b7545f5ac81");
+      await service.deleteTransaction(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac81",
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
 
       // Reverse: 700 - 200 = 500
       expect(acctRepo.update).toHaveBeenCalledWith(
@@ -396,7 +428,10 @@ describe("TransactionService", () => {
         .mockResolvedValueOnce(toAccount);
       txRepo.delete.mockResolvedValue();
 
-      await service.deleteTransaction("019576a0-d7b6-7d6d-af6a-2b7545f5ac82");
+      await service.deleteTransaction(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac82",
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
 
       // Reverse from: 850 + 150 = 1000
       expect(acctRepo.update).toHaveBeenCalledWith(
@@ -417,10 +452,16 @@ describe("TransactionService", () => {
       txRepo.getById.mockResolvedValue(null);
 
       await expect(
-        service.deleteTransaction("019576a0-d7b6-7d6d-af6a-000000000000"),
+        service.deleteTransaction(
+          "019576a0-d7b6-7d6d-af6a-000000000000",
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        ),
       ).rejects.toThrow(ApiError);
       await expect(
-        service.deleteTransaction("019576a0-d7b6-7d6d-af6a-000000000000"),
+        service.deleteTransaction(
+          "019576a0-d7b6-7d6d-af6a-000000000000",
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        ),
       ).rejects.toThrow("Transaction not found");
     });
 
@@ -429,7 +470,10 @@ describe("TransactionService", () => {
       acctRepo.getById.mockResolvedValue(null);
       txRepo.delete.mockResolvedValue();
 
-      await service.deleteTransaction("019576a0-d7b6-7d6d-af6a-2b7545f5ac80");
+      await service.deleteTransaction(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
 
       expect(acctRepo.update).not.toHaveBeenCalled();
       expect(txRepo.delete).toHaveBeenCalledWith(

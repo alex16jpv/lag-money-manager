@@ -2,24 +2,41 @@ import bcryptjs from "bcryptjs";
 import { User } from "../../domain/entities/User";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
-import { CreateUserDTO, UpdateUserDTO } from "../dtos/UserDTO";
+import { CreateUserDTO, UpdateUserDTO, UserResponseDTO } from "../dtos/UserDTO";
 
 export class UserService {
   constructor(private repo: IUserRepository) {}
 
-  async getAllUsers(): Promise<User[]> {
-    return await this.repo.getAll();
+  private toResponseDTO(user: User): UserResponseDTO {
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
   }
 
-  async getUserById(id: string): Promise<User> {
+  async getAllUsers(userId: string): Promise<UserResponseDTO[]> {
+    const user = await this.repo.getById(userId);
+    if (!user) {
+      throw new ApiError("NotFound", "User not found");
+    }
+    return [this.toResponseDTO(user)];
+  }
+
+  async getUserById(id: string, userId: string): Promise<UserResponseDTO> {
+    if (id !== userId) {
+      throw new ApiError("Forbidden", "Access denied");
+    }
     const user = await this.repo.getById(id);
     if (!user) {
       throw new ApiError("NotFound", "User not found");
     }
-    return user;
+    return this.toResponseDTO(user);
   }
 
-  async createUser(dto: CreateUserDTO): Promise<User> {
+  async createUser(dto: CreateUserDTO): Promise<UserResponseDTO> {
     const user = new User(dto);
     user.validate();
 
@@ -27,22 +44,39 @@ export class UserService {
       user.password = await bcryptjs.hash(user.password, 12);
     }
 
-    return await this.repo.create(user);
+    const created = await this.repo.create(user);
+    return this.toResponseDTO(created);
   }
 
-  async updateUser(id: string, dto: UpdateUserDTO): Promise<User> {
+  async updateUser(
+    id: string,
+    dto: UpdateUserDTO,
+    userId: string,
+  ): Promise<UserResponseDTO> {
+    if (id !== userId) {
+      throw new ApiError("Forbidden", "Access denied");
+    }
     if (dto.id && id !== dto.id) {
       throw new ApiError("BadRequest", "User id does not match");
     }
 
     if (dto.password) {
-      dto.password = await bcryptjs.hash(dto.password, 12);
+      const hashedDto = {
+        ...dto,
+        password: await bcryptjs.hash(dto.password, 12),
+      };
+      const updated = await this.repo.update(id, hashedDto);
+      return this.toResponseDTO(updated);
     }
 
-    return await this.repo.update(id, dto);
+    const updated = await this.repo.update(id, dto);
+    return this.toResponseDTO(updated);
   }
 
-  async deleteUser(id: string): Promise<void> {
+  async deleteUser(id: string, userId: string): Promise<void> {
+    if (id !== userId) {
+      throw new ApiError("Forbidden", "Access denied");
+    }
     return await this.repo.delete(id);
   }
 }

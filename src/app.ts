@@ -11,6 +11,7 @@ import categoryRoutes from "./app/routes/categoryRoutes";
 import transactionRoutes from "./app/routes/transactionRoutes";
 import { errorMiddleware } from "./shared/middlewares";
 import { authMiddleware } from "./app/middlewares/authMiddleware";
+import { ENVIRONMENT } from "./shared/constants";
 
 const app = express();
 
@@ -27,7 +28,11 @@ if (process.env.NODE_ENV === "production") {
 }
 
 app.use(helmet());
-app.use(cors());
+app.use(
+  cors({
+    origin: ENVIRONMENT.CORS_ORIGIN.split(","),
+  }),
+);
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,

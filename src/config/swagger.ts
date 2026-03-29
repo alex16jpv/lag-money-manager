@@ -100,7 +100,7 @@ const options: swaggerJsdoc.Options = {
         },
         CreateAccount: {
           type: "object",
-          required: ["name", "type", "userId"],
+          required: ["name", "type"],
           properties: {
             name: { type: "string", minLength: 1, maxLength: 255 },
             type: {
@@ -118,7 +118,6 @@ const options: swaggerJsdoc.Options = {
               ],
             },
             balance: { type: "number", default: 0 },
-            userId: { type: "string", format: "uuid" },
           },
         },
         UpdateAccount: {
@@ -140,7 +139,6 @@ const options: swaggerJsdoc.Options = {
               ],
             },
             balance: { type: "number" },
-            userId: { type: "string", format: "uuid" },
           },
         },
         Category: {
@@ -152,6 +150,11 @@ const options: swaggerJsdoc.Options = {
               example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
             },
             name: { type: "string", example: "Food" },
+            userId: {
+              type: "string",
+              format: "uuid",
+              example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            },
           },
         },
         CreateCategory: {
@@ -286,7 +289,7 @@ const options: swaggerJsdoc.Options = {
         },
         CreateTransaction: {
           type: "object",
-          required: ["type", "amount", "date", "userId"],
+          required: ["type", "amount", "date"],
           properties: {
             type: {
               type: "string",
@@ -298,7 +301,6 @@ const options: swaggerJsdoc.Options = {
             description: { type: "string", maxLength: 255, nullable: true },
             fromAccountId: { type: "string", format: "uuid", nullable: true },
             toAccountId: { type: "string", format: "uuid", nullable: true },
-            userId: { type: "string", format: "uuid" },
             tags: { type: "string", maxLength: 500, nullable: true },
             note: { type: "string", maxLength: 1000, nullable: true },
           },
@@ -316,7 +318,6 @@ const options: swaggerJsdoc.Options = {
             description: { type: "string", maxLength: 255, nullable: true },
             fromAccountId: { type: "string", format: "uuid", nullable: true },
             toAccountId: { type: "string", format: "uuid", nullable: true },
-            userId: { type: "string", format: "uuid" },
             tags: { type: "string", maxLength: 500, nullable: true },
             note: { type: "string", maxLength: 1000, nullable: true },
           },

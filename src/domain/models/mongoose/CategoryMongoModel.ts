@@ -4,6 +4,7 @@ import { MODEL_NAMES } from "../../../shared/constants";
 export interface ICategoryDocument {
   _id: string;
   name: string;
+  userId: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -12,6 +13,7 @@ const CategorySchema = new Schema<ICategoryDocument>(
   {
     _id: { type: String, required: true },
     name: { type: String, required: true },
+    userId: { type: String, required: true },
   },
   { timestamps: true },
 );

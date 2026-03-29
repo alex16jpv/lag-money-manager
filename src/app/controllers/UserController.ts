@@ -5,14 +5,16 @@ import repositoryFactory from "../factories/RepositoryFactory";
 const userService = new UserService(repositoryFactory.getUserRepository());
 
 export class UserController {
-  static getAllUsers = async (_req: Request, res: Response) => {
-    const users = await userService.getAllUsers();
+  static getAllUsers = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const users = await userService.getAllUsers(userId);
     res.status(200).json(users);
   };
 
   static getUserById = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
     const id = req.params.id as string;
-    const user = await userService.getUserById(id);
+    const user = await userService.getUserById(id, userId);
     res.status(200).json(user);
   };
 
@@ -22,14 +24,16 @@ export class UserController {
   };
 
   static updateUser = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
     const id = req.params.id as string;
-    const updatedUser = await userService.updateUser(id, req.body);
+    const updatedUser = await userService.updateUser(id, req.body, userId);
     res.status(200).json(updatedUser);
   };
 
   static deleteUser = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
     const id = req.params.id as string;
-    await userService.deleteUser(id);
+    await userService.deleteUser(id, userId);
     res.status(204).send();
   };
 }

@@ -13,14 +13,17 @@ export class TransactionService {
     private accountRepo: IAccountRepository,
   ) {}
 
-  async getAllTransactions(): Promise<Transaction[]> {
-    return await this.transactionRepo.getAll();
+  async getAllTransactions(userId: string): Promise<Transaction[]> {
+    return await this.transactionRepo.getAllByUserId(userId);
   }
 
-  async getTransactionById(id: string): Promise<Transaction> {
+  async getTransactionById(id: string, userId: string): Promise<Transaction> {
     const transaction = await this.transactionRepo.getById(id);
     if (!transaction) {
       throw new ApiError("NotFound", "Transaction not found");
+    }
+    if (transaction.userId !== userId) {
+      throw new ApiError("Forbidden", "Access denied");
     }
     return transaction;
   }
@@ -42,6 +45,7 @@ export class TransactionService {
   async updateTransaction(
     id: string,
     dto: UpdateTransactionDTO,
+    userId: string,
   ): Promise<Transaction> {
     if (dto.id && dto.id !== id) {
       throw new ApiError("BadRequest", "Transaction id does not match");
@@ -50,6 +54,9 @@ export class TransactionService {
     const existing = await this.transactionRepo.getById(id);
     if (!existing) {
       throw new ApiError("NotFound", "Transaction not found");
+    }
+    if (existing.userId !== userId) {
+      throw new ApiError("Forbidden", "Access denied");
     }
 
     await this.reverseBalanceChanges(existing);
@@ -62,10 +69,13 @@ export class TransactionService {
     return await this.transactionRepo.update(id, dto);
   }
 
-  async deleteTransaction(id: string): Promise<void> {
+  async deleteTransaction(id: string, userId: string): Promise<void> {
     const transaction = await this.transactionRepo.getById(id);
     if (!transaction) {
       throw new ApiError("NotFound", "Transaction not found");
+    }
+    if (transaction.userId !== userId) {
+      throw new ApiError("Forbidden", "Access denied");
     }
 
     await this.reverseBalanceChanges(transaction);

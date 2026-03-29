@@ -36,6 +36,13 @@ export class TransactionMongoRepository implements ITransactionRepository {
     );
   }
 
+  async getAllByUserId(userId: string): Promise<Transaction[]> {
+    const docs = await TransactionMongoModel.find({ userId }).lean();
+    return docs.map((doc) =>
+      this.toEntity(doc as unknown as Record<string, unknown>),
+    );
+  }
+
   async create(transaction: Partial<Transaction>): Promise<Transaction> {
     const id = uuidv7();
     const doc = await TransactionMongoModel.create({ _id: id, ...transaction });

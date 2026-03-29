@@ -42,6 +42,7 @@ const baseEnvSchema = z.object({
   PORT: z.coerce.number().default(3000),
   DB_TYPE: z.string().default(DB_TYPES.SEQ),
   JWT_SECRET: z.string().min(1, "JWT_SECRET is required"),
+  CORS_ORIGIN: z.string().min(1, "CORS_ORIGIN is required"),
 });
 
 const seqEnvSchema = baseEnvSchema.extend({

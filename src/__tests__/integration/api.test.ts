@@ -20,6 +20,7 @@ const mockUserRepo: jest.Mocked<IUserRepository> = {
 
 const mockAccountRepo: jest.Mocked<IAccountRepository> = {
   getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
   getById: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
@@ -28,6 +29,7 @@ const mockAccountRepo: jest.Mocked<IAccountRepository> = {
 
 const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
   getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
   getById: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
@@ -36,6 +38,7 @@ const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
 
 const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
   getById: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
@@ -48,6 +51,7 @@ jest.mock("../../shared/constants", () => ({
     PORT: 3000,
     DB_TYPE: "SEQ",
     JWT_SECRET: "test-secret-for-integration",
+    CORS_ORIGIN: "http://localhost:5173",
   },
   DB_TYPES: { SEQ: "SEQ", MONGO: "MONGO", LOCAL_STORAGE: "LOCAL_STORAGE" },
   ACCOUNT_TYPES: {
@@ -134,6 +138,7 @@ const testAccount = new Account({
 const testCategory = new Category({
   id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
   name: "Food",
+  userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
 });
 
 const testTransaction = new Transaction({
@@ -270,8 +275,8 @@ describe("Integration Tests", () => {
 
   // ==================== User Routes ====================
   describe("GET /users", () => {
-    it("should return all users", async () => {
-      mockUserRepo.getAll.mockResolvedValue([testUser]);
+    it("should return the authenticated user", async () => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
 
       const res = await request(app)
         .get("/users")
@@ -279,11 +284,12 @@ describe("Integration Tests", () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(1);
+      expect(res.body[0].password).toBeUndefined();
     });
   });
 
   describe("GET /users/:id", () => {
-    it("should return a user by id", async () => {
+    it("should return own user by id", async () => {
       mockUserRepo.getById.mockResolvedValue(testUser);
 
       const res = await request(app)
@@ -292,16 +298,15 @@ describe("Integration Tests", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.name).toBe("John Doe");
+      expect(res.body.password).toBeUndefined();
     });
 
-    it("should return 404 for non-existent user", async () => {
-      mockUserRepo.getById.mockResolvedValue(null);
-
+    it("should return 403 for accessing another user", async () => {
       const res = await request(app)
         .get("/users/019576a0-d7b6-7d6d-af6a-000000000000")
         .set("Authorization", `Bearer ${token}`);
 
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(403);
     });
 
     it("should return 400 for non-numeric id", async () => {
@@ -314,7 +319,7 @@ describe("Integration Tests", () => {
   });
 
   describe("POST /users", () => {
-    it("should create a user", async () => {
+    it("should create a user and not expose password", async () => {
       mockUserRepo.create.mockResolvedValue(testUser);
 
       const res = await request(app)
@@ -327,6 +332,7 @@ describe("Integration Tests", () => {
         });
 
       expect(res.status).toBe(201);
+      expect(res.body.password).toBeUndefined();
     });
 
     it("should return 400 for invalid body", async () => {
@@ -340,7 +346,7 @@ describe("Integration Tests", () => {
   });
 
   describe("PUT /users/:id", () => {
-    it("should update a user", async () => {
+    it("should update own user", async () => {
       const updatedUser = new User({ ...testUser, name: "Updated" });
       mockUserRepo.update.mockResolvedValue(updatedUser);
 
@@ -351,6 +357,7 @@ describe("Integration Tests", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.name).toBe("Updated");
+      expect(res.body.password).toBeUndefined();
     });
 
     it("should return 400 for empty update body", async () => {
@@ -364,7 +371,7 @@ describe("Integration Tests", () => {
   });
 
   describe("DELETE /users/:id", () => {
-    it("should delete a user", async () => {
+    it("should delete own user", async () => {
       mockUserRepo.delete.mockResolvedValue();
 
       const res = await request(app)
@@ -380,8 +387,8 @@ describe("Integration Tests", () => {
 
   // ==================== Account Routes ====================
   describe("GET /accounts", () => {
-    it("should return all accounts", async () => {
-      mockAccountRepo.getAll.mockResolvedValue([testAccount]);
+    it("should return accounts for the authenticated user", async () => {
+      mockAccountRepo.getAllByUserId.mockResolvedValue([testAccount]);
 
       const res = await request(app)
         .get("/accounts")
@@ -403,7 +410,6 @@ describe("Integration Tests", () => {
           name: "Savings",
           type: "SAVINGS",
           balance: 1000,
-          userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         });
 
       expect(res.status).toBe(201);
@@ -417,7 +423,6 @@ describe("Integration Tests", () => {
           name: "Test",
           type: "INVALID_TYPE",
           balance: 100,
-          userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         });
 
       expect(res.status).toBe(400);
@@ -459,6 +464,7 @@ describe("Integration Tests", () => {
   describe("PUT /accounts/:id", () => {
     it("should update an account", async () => {
       const updated = new Account({ ...testAccount, name: "Updated" });
+      mockAccountRepo.getById.mockResolvedValue(testAccount);
       mockAccountRepo.update.mockResolvedValue(updated);
 
       const res = await request(app)
@@ -473,6 +479,7 @@ describe("Integration Tests", () => {
 
   describe("DELETE /accounts/:id", () => {
     it("should delete an account", async () => {
+      mockAccountRepo.getById.mockResolvedValue(testAccount);
       mockAccountRepo.delete.mockResolvedValue();
 
       const res = await request(app)
@@ -488,8 +495,8 @@ describe("Integration Tests", () => {
 
   // ==================== Category Routes ====================
   describe("GET /categories", () => {
-    it("should return all categories", async () => {
-      mockCategoryRepo.getAll.mockResolvedValue([testCategory]);
+    it("should return categories for the authenticated user", async () => {
+      mockCategoryRepo.getAllByUserId.mockResolvedValue([testCategory]);
 
       const res = await request(app)
         .get("/categories")
@@ -550,7 +557,9 @@ describe("Integration Tests", () => {
       const updated = new Category({
         id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
         name: "Transport",
+        userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       });
+      mockCategoryRepo.getById.mockResolvedValue(testCategory);
       mockCategoryRepo.update.mockResolvedValue(updated);
 
       const res = await request(app)
@@ -565,6 +574,7 @@ describe("Integration Tests", () => {
 
   describe("DELETE /categories/:id", () => {
     it("should delete a category", async () => {
+      mockCategoryRepo.getById.mockResolvedValue(testCategory);
       mockCategoryRepo.delete.mockResolvedValue();
 
       const res = await request(app)
@@ -580,8 +590,8 @@ describe("Integration Tests", () => {
 
   // ==================== Transaction Routes ====================
   describe("GET /transactions", () => {
-    it("should return all transactions", async () => {
-      mockTransactionRepo.getAll.mockResolvedValue([testTransaction]);
+    it("should return transactions for the authenticated user", async () => {
+      mockTransactionRepo.getAllByUserId.mockResolvedValue([testTransaction]);
 
       const res = await request(app)
         .get("/transactions")
@@ -605,7 +615,6 @@ describe("Integration Tests", () => {
           amount: 50,
           date: "2026-03-28T00:00:00.000Z",
           fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
-          userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         });
 
       expect(res.status).toBe(201);
@@ -620,7 +629,6 @@ describe("Integration Tests", () => {
           amount: 50,
           date: "2026-03-28T00:00:00.000Z",
           fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
-          userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         });
 
       expect(res.status).toBe(400);
@@ -643,7 +651,6 @@ describe("Integration Tests", () => {
           type: "EXPENSE",
           amount: 50,
           date: "2026-03-28T00:00:00.000Z",
-          userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         });
 
       expect(res.status).toBe(400);
@@ -659,7 +666,6 @@ describe("Integration Tests", () => {
           date: "2026-03-28T00:00:00.000Z",
           fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
           toAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
-          userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         });
 
       expect(res.status).toBe(400);

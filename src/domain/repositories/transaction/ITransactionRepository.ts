@@ -1,4 +1,6 @@
 import { Transaction } from "../../entities/Transaction";
 import { IRepository } from "../IRepository";
 
-export type ITransactionRepository = IRepository<Transaction>;
+export interface ITransactionRepository extends IRepository<Transaction> {
+  getAllByUserId(userId: string): Promise<Transaction[]>;
+}

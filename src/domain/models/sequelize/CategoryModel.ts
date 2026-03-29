@@ -5,6 +5,7 @@ import { v7 as uuidv7 } from "uuid";
 export class CategoryModel extends Model {
   id!: string;
   name!: string;
+  userId!: string;
 
   static associate() {}
 }
@@ -19,6 +20,10 @@ export default (sequelize: Sequelize) => {
       },
       name: {
         type: DataTypes.STRING,
+        allowNull: false,
+      },
+      userId: {
+        type: DataTypes.CHAR(36),
         allowNull: false,
       },
     },

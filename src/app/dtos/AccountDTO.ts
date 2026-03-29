@@ -12,5 +12,4 @@ export interface UpdateAccountDTO {
   name?: string;
   type?: AccountType;
   balance?: number;
-  userId?: string;
 }

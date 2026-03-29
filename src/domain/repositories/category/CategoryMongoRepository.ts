@@ -8,18 +8,29 @@ export class CategoryMongoRepository implements ICategoryRepository {
   async getById(id: string): Promise<Category | null> {
     const doc = await CategoryMongoModel.findById(id).lean();
     if (!doc) return null;
-    return new Category({ id: doc._id, name: doc.name });
+    return new Category({ id: doc._id, name: doc.name, userId: doc.userId });
   }
 
   async getAll(): Promise<Category[]> {
     const docs = await CategoryMongoModel.find().lean();
-    return docs.map((doc) => new Category({ id: doc._id, name: doc.name }));
+    return docs.map(
+      (doc) =>
+        new Category({ id: doc._id, name: doc.name, userId: doc.userId }),
+    );
+  }
+
+  async getAllByUserId(userId: string): Promise<Category[]> {
+    const docs = await CategoryMongoModel.find({ userId }).lean();
+    return docs.map(
+      (doc) =>
+        new Category({ id: doc._id, name: doc.name, userId: doc.userId }),
+    );
   }
 
   async create(category: Partial<Category>): Promise<Category> {
     const id = uuidv7();
     const doc = await CategoryMongoModel.create({ _id: id, ...category });
-    return new Category({ id: doc._id, name: doc.name });
+    return new Category({ id: doc._id, name: doc.name, userId: doc.userId });
   }
 
   async update(id: string, category: Partial<Category>): Promise<Category> {
@@ -29,7 +40,7 @@ export class CategoryMongoRepository implements ICategoryRepository {
     if (!doc) {
       throw new ApiError("NotFound", "Category not found");
     }
-    return new Category({ id: doc._id, name: doc.name });
+    return new Category({ id: doc._id, name: doc.name, userId: doc.userId });
   }
 
   async delete(id: string): Promise<void> {

@@ -23,6 +23,11 @@ export class AccountSeqRepository implements IAccountRepository {
     return results.map((result) => new Account(result.toJSON()));
   }
 
+  async getAllByUserId(userId: string): Promise<Account[]> {
+    const results = await this.model.findAll({ where: { userId } });
+    return results.map((result) => new Account(result.toJSON()));
+  }
+
   async create(account: Partial<Account>): Promise<Account> {
     const result = await this.model.create(account);
     return new Account(result.toJSON());

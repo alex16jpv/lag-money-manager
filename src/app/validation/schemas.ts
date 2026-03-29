@@ -50,7 +50,6 @@ export const createAccountSchema = z.object({
       error: `Invalid account type. Available: ${accountTypeValues.join(", ")}`,
     }),
     balance: z.number().finite("Balance must be a finite number").default(0),
-    userId: z.string().uuid("userId must be a valid UUID"),
   }),
 });
 
@@ -67,7 +66,6 @@ export const updateAccountSchema = z.object({
         })
         .optional(),
       balance: z.number().finite("Balance must be a finite number").optional(),
-      userId: z.string().uuid("userId must be a valid UUID").optional(),
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {
       message: "At least one field must be provided",
@@ -143,7 +141,6 @@ export const createTransactionSchema = z.object({
         .uuid("toAccountId must be a valid UUID")
         .optional()
         .nullable(),
-      userId: z.string().uuid("userId must be a valid UUID"),
       tags: z.string().max(500).optional().nullable(),
       note: z.string().max(1000).optional().nullable(),
     })
@@ -224,7 +221,6 @@ export const updateTransactionSchema = z.object({
         .uuid("toAccountId must be a valid UUID")
         .optional()
         .nullable(),
-      userId: z.string().uuid("userId must be a valid UUID").optional(),
       tags: z.string().max(500).optional().nullable(),
       note: z.string().max(1000).optional().nullable(),
     })

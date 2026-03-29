@@ -45,6 +45,7 @@ const mockAccount = new Account(validAccountProps);
 
 const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
   getById: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
@@ -61,31 +62,34 @@ describe("AccountService", () => {
   });
 
   describe("getAllAccounts", () => {
-    it("should return all accounts", async () => {
-      repo.getAll.mockResolvedValue([mockAccount]);
+    it("should return all accounts for the user", async () => {
+      repo.getAllByUserId.mockResolvedValue([mockAccount]);
 
-      const result = await service.getAllAccounts();
+      const result = await service.getAllAccounts(validAccountProps.userId);
 
-      expect(repo.getAll).toHaveBeenCalledTimes(1);
+      expect(repo.getAllByUserId).toHaveBeenCalledWith(
+        validAccountProps.userId,
+      );
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe("Savings");
     });
 
     it("should return empty array when no accounts exist", async () => {
-      repo.getAll.mockResolvedValue([]);
+      repo.getAllByUserId.mockResolvedValue([]);
 
-      const result = await service.getAllAccounts();
+      const result = await service.getAllAccounts(validAccountProps.userId);
 
       expect(result).toEqual([]);
     });
   });
 
   describe("getAccountById", () => {
-    it("should return account when found", async () => {
+    it("should return account when found and owned by user", async () => {
       repo.getById.mockResolvedValue(mockAccount);
 
       const result = await service.getAccountById(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        validAccountProps.userId,
       );
 
       expect(repo.getById).toHaveBeenCalledWith(
@@ -98,10 +102,16 @@ describe("AccountService", () => {
       repo.getById.mockResolvedValue(null);
 
       await expect(
-        service.getAccountById("019576a0-d7b6-7d6d-af6a-000000000000"),
+        service.getAccountById(
+          "019576a0-d7b6-7d6d-af6a-000000000000",
+          validAccountProps.userId,
+        ),
       ).rejects.toThrow(ApiError);
       await expect(
-        service.getAccountById("019576a0-d7b6-7d6d-af6a-000000000000"),
+        service.getAccountById(
+          "019576a0-d7b6-7d6d-af6a-000000000000",
+          validAccountProps.userId,
+        ),
       ).rejects.toThrow("Account not found");
     });
   });
@@ -147,11 +157,13 @@ describe("AccountService", () => {
   describe("updateAccount", () => {
     it("should update an account", async () => {
       const updated = new Account({ ...validAccountProps, name: "Updated" });
+      repo.getById.mockResolvedValue(mockAccount);
       repo.update.mockResolvedValue(updated);
 
       const result = await service.updateAccount(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         { name: "Updated" },
+        validAccountProps.userId,
       );
 
       expect(repo.update).toHaveBeenCalledWith(
@@ -163,23 +175,35 @@ describe("AccountService", () => {
 
     it("should throw when id in body does not match param id", async () => {
       await expect(
-        service.updateAccount("019576a0-d7b6-7d6d-af6a-2b7545f5ac70", {
-          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
-        }),
+        service.updateAccount(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          {
+            id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+          },
+          validAccountProps.userId,
+        ),
       ).rejects.toThrow(ApiError);
       await expect(
-        service.updateAccount("019576a0-d7b6-7d6d-af6a-2b7545f5ac70", {
-          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
-        }),
+        service.updateAccount(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          {
+            id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+          },
+          validAccountProps.userId,
+        ),
       ).rejects.toThrow("Account id does not match");
     });
   });
 
   describe("deleteAccount", () => {
     it("should delete an account", async () => {
+      repo.getById.mockResolvedValue(mockAccount);
       repo.delete.mockResolvedValue();
 
-      await service.deleteAccount("019576a0-d7b6-7d6d-af6a-2b7545f5ac70");
+      await service.deleteAccount(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        validAccountProps.userId,
+      );
 
       expect(repo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",

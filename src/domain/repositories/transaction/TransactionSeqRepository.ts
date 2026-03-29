@@ -23,6 +23,11 @@ export class TransactionSeqRepository implements ITransactionRepository {
     return results.map((result) => new Transaction(result.toJSON()));
   }
 
+  async getAllByUserId(userId: string): Promise<Transaction[]> {
+    const results = await this.model.findAll({ where: { userId } });
+    return results.map((result) => new Transaction(result.toJSON()));
+  }
+
   async create(transaction: Partial<Transaction>): Promise<Transaction> {
     const result = await this.model.create(transaction);
     return new Transaction(result.toJSON());

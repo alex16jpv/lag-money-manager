@@ -6,8 +6,10 @@ import { DomainValidationError } from "../../domain/errors";
 import bcryptjs from "bcryptjs";
 import { CreateUserDTO, UpdateUserDTO } from "../../app/dtos/UserDTO";
 
+const testUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
+
 const mockUser: User = new User({
-  id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+  id: testUserId,
   name: "John Doe",
   email: "john@example.com",
   password: "hashedpassword",
@@ -34,52 +36,54 @@ describe("UserService", () => {
   });
 
   describe("getAllUsers", () => {
-    it("should return all users from the repository", async () => {
-      repo.getAll.mockResolvedValue([mockUser]);
+    it("should return the authenticated user", async () => {
+      repo.getById.mockResolvedValue(mockUser);
 
-      const result = await service.getAllUsers();
+      const result = await service.getAllUsers(testUserId);
 
-      expect(repo.getAll).toHaveBeenCalledTimes(1);
-      expect(result).toEqual([mockUser]);
+      expect(repo.getById).toHaveBeenCalledWith(testUserId);
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe("John Doe");
+      expect((result[0] as Record<string, unknown>).password).toBeUndefined();
     });
 
-    it("should return empty array when no users exist", async () => {
-      repo.getAll.mockResolvedValue([]);
+    it("should throw NotFound when authenticated user does not exist", async () => {
+      repo.getById.mockResolvedValue(null);
 
-      const result = await service.getAllUsers();
-
-      expect(result).toEqual([]);
+      await expect(service.getAllUsers(testUserId)).rejects.toThrow(
+        "User not found",
+      );
     });
   });
 
   describe("getUserById", () => {
-    it("should return user when found", async () => {
+    it("should return user when found and is own user", async () => {
       repo.getById.mockResolvedValue(mockUser);
 
-      const result = await service.getUserById(
-        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-      );
+      const result = await service.getUserById(testUserId, testUserId);
 
-      expect(repo.getById).toHaveBeenCalledWith(
-        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-      );
-      expect(result).toEqual(mockUser);
+      expect(repo.getById).toHaveBeenCalledWith(testUserId);
+      expect(result.name).toBe("John Doe");
+      expect((result as Record<string, unknown>).password).toBeUndefined();
+    });
+
+    it("should throw Forbidden when accessing another user", async () => {
+      await expect(
+        service.getUserById("019576a0-d7b6-7d6d-af6a-000000000000", testUserId),
+      ).rejects.toThrow("Access denied");
     });
 
     it("should throw NotFound when user does not exist", async () => {
       repo.getById.mockResolvedValue(null);
 
-      await expect(
-        service.getUserById("019576a0-d7b6-7d6d-af6a-000000000000"),
-      ).rejects.toThrow(ApiError);
-      await expect(
-        service.getUserById("019576a0-d7b6-7d6d-af6a-000000000000"),
-      ).rejects.toThrow("User not found");
+      await expect(service.getUserById(testUserId, testUserId)).rejects.toThrow(
+        "User not found",
+      );
     });
   });
 
   describe("createUser", () => {
-    it("should create a user and hash the password", async () => {
+    it("should create a user, hash the password, and strip password from response", async () => {
       const input: CreateUserDTO = {
         name: "Jane",
         email: "jane@example.com",
@@ -95,7 +99,7 @@ describe("UserService", () => {
       expect(await bcryptjs.compare("plaintext123", createdArg.password!)).toBe(
         true,
       );
-      expect(result).toEqual(mockUser);
+      expect((result as Record<string, unknown>).password).toBeUndefined();
     });
 
     it("should throw when validation fails (missing email)", async () => {
@@ -129,7 +133,7 @@ describe("UserService", () => {
   });
 
   describe("updateUser", () => {
-    it("should update a user", async () => {
+    it("should update a user and strip password from response", async () => {
       const updatedUser = new User({
         ...mockUser,
         name: "Updated Name",
@@ -137,38 +141,63 @@ describe("UserService", () => {
       repo.update.mockResolvedValue(updatedUser);
 
       const result = await service.updateUser(
-        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        testUserId,
         { name: "Updated Name" },
+        testUserId,
       );
 
-      expect(repo.update).toHaveBeenCalledWith(
-        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-        { name: "Updated Name" },
-      );
+      expect(repo.update).toHaveBeenCalledWith(testUserId, {
+        name: "Updated Name",
+      });
       expect(result.name).toBe("Updated Name");
+      expect((result as Record<string, unknown>).password).toBeUndefined();
+    });
+
+    it("should throw Forbidden when updating another user", async () => {
+      await expect(
+        service.updateUser(
+          "019576a0-d7b6-7d6d-af6a-000000000000",
+          {
+            name: "Test",
+          },
+          testUserId,
+        ),
+      ).rejects.toThrow("Access denied");
     });
 
     it("should throw when id in body does not match param id", async () => {
       await expect(
-        service.updateUser("019576a0-d7b6-7d6d-af6a-2b7545f5ac70", {
-          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
-          name: "Test",
-        }),
+        service.updateUser(
+          testUserId,
+          {
+            id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+            name: "Test",
+          },
+          testUserId,
+        ),
       ).rejects.toThrow(ApiError);
       await expect(
-        service.updateUser("019576a0-d7b6-7d6d-af6a-2b7545f5ac70", {
-          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
-          name: "Test",
-        }),
+        service.updateUser(
+          testUserId,
+          {
+            id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+            name: "Test",
+          },
+          testUserId,
+        ),
       ).rejects.toThrow("User id does not match");
     });
 
     it("should hash password when updating with a new password", async () => {
       repo.update.mockResolvedValue(mockUser);
 
-      await service.updateUser("019576a0-d7b6-7d6d-af6a-2b7545f5ac70", {
-        password: "newpassword",
-      });
+      await service.updateUser(
+        testUserId,
+        {
+          password: "newpassword",
+        },
+        testUserId,
+      );
 
       const updateArg = repo.update.mock.calls[0][1];
       expect(updateArg.password).not.toBe("newpassword");
@@ -179,14 +208,18 @@ describe("UserService", () => {
   });
 
   describe("deleteUser", () => {
-    it("should delete a user", async () => {
+    it("should delete the authenticated user", async () => {
       repo.delete.mockResolvedValue();
 
-      await service.deleteUser("019576a0-d7b6-7d6d-af6a-2b7545f5ac70");
+      await service.deleteUser(testUserId, testUserId);
 
-      expect(repo.delete).toHaveBeenCalledWith(
-        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-      );
+      expect(repo.delete).toHaveBeenCalledWith(testUserId);
+    });
+
+    it("should throw Forbidden when deleting another user", async () => {
+      await expect(
+        service.deleteUser("019576a0-d7b6-7d6d-af6a-000000000000", testUserId),
+      ).rejects.toThrow("Access denied");
     });
   });
 });

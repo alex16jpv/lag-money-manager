@@ -31,6 +31,20 @@ export class AccountMongoRepository implements IAccountRepository {
     );
   }
 
+  async getAllByUserId(userId: string): Promise<Account[]> {
+    const docs = await AccountMongoModel.find({ userId }).lean();
+    return docs.map(
+      (doc) =>
+        new Account({
+          id: doc._id,
+          name: doc.name,
+          type: doc.type as Account["type"],
+          balance: doc.balance,
+          userId: doc.userId,
+        }),
+    );
+  }
+
   async create(account: Partial<Account>): Promise<Account> {
     const id = uuidv7();
     const doc = await AccountMongoModel.create({ _id: id, ...account });

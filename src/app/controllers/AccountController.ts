@@ -7,31 +7,44 @@ const accountService = new AccountService(
 );
 
 export class AccountController {
-  static getAllAccounts = async (_req: Request, res: Response) => {
-    const accounts = await accountService.getAllAccounts();
+  static getAllAccounts = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const accounts = await accountService.getAllAccounts(userId);
     res.status(200).json(accounts);
   };
 
   static createAccount = async (req: Request, res: Response) => {
-    const newAccount = await accountService.createAccount(req.body);
+    const userId = req.user!.userId;
+    const newAccount = await accountService.createAccount({
+      ...req.body,
+      userId,
+    });
     res.status(201).json(newAccount);
   };
 
   static getAccountById = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
     const account = await accountService.getAccountById(
       req.params.id as string,
+      userId,
     );
     res.status(200).json(account);
   };
 
   static updateAccount = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
     const id = req.params.id as string;
-    const updatedAccount = await accountService.updateAccount(id, req.body);
+    const updatedAccount = await accountService.updateAccount(
+      id,
+      req.body,
+      userId,
+    );
     res.status(200).json(updatedAccount);
   };
 
   static deleteAccount = async (req: Request, res: Response) => {
-    await accountService.deleteAccount(req.params.id as string);
+    const userId = req.user!.userId;
+    await accountService.deleteAccount(req.params.id as string, userId);
     res.status(204).send();
   };
 }
