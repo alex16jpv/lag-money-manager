@@ -2,7 +2,9 @@ export const DB_TYPES = {
   SEQ: "SEQ",
   MONGO: "MONGO",
   LOCAL_STORAGE: "LOCAL_STORAGE",
-};
+} as const;
+
+export type DbType = keyof typeof DB_TYPES;
 
 export const MODEL_NAMES = {
   USER: "User",
@@ -10,7 +12,7 @@ export const MODEL_NAMES = {
   TRANSACTION: "Transaction",
   BUDGET: "Budget",
   CATEGORY: "Category",
-};
+} as const;
 
 export const ACCOUNT_TYPES = {
   CASH: "CASH",
@@ -22,25 +24,29 @@ export const ACCOUNT_TYPES = {
   OVERDRAFT: "OVERDRAFT",
   LOAN: "LOAN",
   OTHER: "OTHER",
-};
+} as const;
+
+export type AccountType = keyof typeof ACCOUNT_TYPES;
 
 export const TRANSACTION_TYPES = {
   INCOME: "INCOME",
   EXPENSE: "EXPENSE",
   TRANSFER: "TRANSFER",
-};
+} as const;
 
-export const ENVIRONMENT = {
-  // App Config
-  PORT: process.env.PORT || 3000,
-  // DB Config
-  DB_TYPE: process.env.DB_TYPE || DB_TYPES.SEQ,
-  // Sequelize Config
-  SEQ_PORT: process.env.SEQ_PORT || 3306,
-  SEQ_HOST: process.env.SEQ_HOST,
-  SEQ_DATABASE: process.env.SEQ_DATABASE,
-  SEQ_USERNAME: process.env.SEQ_USERNAME,
-  SEQ_PASSWORD: process.env.SEQ_PASSWORD,
-  // Other Config
-  // ...
-};
+export type TransactionType = keyof typeof TRANSACTION_TYPES;
+
+import { z } from "zod";
+
+const envSchema = z.object({
+  PORT: z.coerce.number().default(3000),
+  DB_TYPE: z.string().default(DB_TYPES.SEQ),
+  SEQ_PORT: z.coerce.number().default(3306),
+  SEQ_HOST: z.string().min(1, "SEQ_HOST is required"),
+  SEQ_DATABASE: z.string().min(1, "SEQ_DATABASE is required"),
+  SEQ_USERNAME: z.string().min(1, "SEQ_USERNAME is required"),
+  SEQ_PASSWORD: z.string().min(1, "SEQ_PASSWORD is required"),
+  JWT_SECRET: z.string().min(1, "JWT_SECRET is required"),
+});
+
+export const ENVIRONMENT = envSchema.parse(process.env);

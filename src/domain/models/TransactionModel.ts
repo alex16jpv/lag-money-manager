@@ -1,22 +1,25 @@
 import { DataTypes, Model, Sequelize } from "sequelize";
 import { MODEL_NAMES, TRANSACTION_TYPES } from "../../shared/constants";
-import { CategoryModel } from "./Category";
+import { CategoryModel } from "./CategoryModel";
 import { AccountModel } from "./AccountModel";
+import { UserModel } from "./UserModel";
 
 export class TransactionModel extends Model {
   id!: number;
   type!: keyof typeof TRANSACTION_TYPES;
   amount!: number;
   date!: Date;
-  idCategory?: number;
+  categoryId?: number;
   description?: string;
   fromAccountId?: number;
   toAccountId?: number;
   userId!: number;
+  tags?: string;
+  note?: string;
 
   static associate() {
     TransactionModel.belongsTo(CategoryModel, {
-      foreignKey: "idCategory",
+      foreignKey: "categoryId",
       as: "category",
     });
     TransactionModel.belongsTo(AccountModel, {
@@ -26,6 +29,10 @@ export class TransactionModel extends Model {
     TransactionModel.belongsTo(AccountModel, {
       foreignKey: "toAccountId",
       as: "toAccount",
+    });
+    TransactionModel.belongsTo(UserModel, {
+      foreignKey: "userId",
+      as: "user",
     });
   }
 }
@@ -50,7 +57,7 @@ export default (sequelize: Sequelize) => {
         type: DataTypes.DATE,
         allowNull: false,
       },
-      idCategory: {
+      categoryId: {
         type: DataTypes.INTEGER,
       },
       description: {
@@ -66,11 +73,17 @@ export default (sequelize: Sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+      tags: {
+        type: DataTypes.STRING(500),
+      },
+      note: {
+        type: DataTypes.STRING(1000),
+      },
     },
     {
       sequelize,
       modelName: MODEL_NAMES.TRANSACTION,
-    }
+    },
   );
 
   return TransactionModel;

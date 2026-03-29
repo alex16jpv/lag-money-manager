@@ -1,6 +1,7 @@
 import { Account } from "../../domain/entities/Account";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ApiError } from "../../shared/errors";
+import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
 
 export class AccountService {
   constructor(private repo: IAccountRepository) {}
@@ -19,18 +20,21 @@ export class AccountService {
     return new Account(account);
   }
 
-  async createAccount(account: Account): Promise<Account> {
-    const accountToCreate = new Account(account);
-
-    accountToCreate.validate();
-    return new Account(await this.repo.create(accountToCreate));
+  async createAccount(dto: CreateAccountDTO): Promise<Account> {
+    const account = new Account(dto);
+    account.validate();
+    return new Account(await this.repo.create(account));
   }
 
-  async updateAccount(id: number, account: Account): Promise<Account> {
-    if (account?.id && account.id !== id) {
+  async updateAccount(id: number, dto: UpdateAccountDTO): Promise<Account> {
+    if (dto.id && dto.id !== id) {
       throw new ApiError("BadRequest", "Account id does not match");
     }
 
-    return await this.repo.update(id, account);
+    return await this.repo.update(id, dto);
+  }
+
+  async deleteAccount(id: number): Promise<void> {
+    return await this.repo.delete(id);
   }
 }

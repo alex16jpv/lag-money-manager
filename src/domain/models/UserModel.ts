@@ -6,6 +6,9 @@ export class UserModel extends Model {
   id!: number;
   name!: string;
   email!: string;
+  password!: string;
+  createdAt!: Date;
+  updatedAt!: Date;
 
   static associate() {
     UserModel.hasMany(AccountModel, {
@@ -32,11 +35,15 @@ export default (sequelize: Sequelize) => {
         allowNull: false,
         unique: true,
       },
+      password: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
     },
     {
       sequelize,
       modelName: MODEL_NAMES.USER,
-    }
+    },
   );
 
   return UserModel;

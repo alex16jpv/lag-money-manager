@@ -1,46 +1,47 @@
-import { ApiError } from "../../shared/errors";
-import { ACCOUNT_TYPES } from "../../shared/constants";
+import { DomainValidationError } from "../errors";
+import { ACCOUNT_TYPES, AccountType } from "../../shared/constants";
 
 export interface AccountProps {
-  id: number;
+  id?: number;
   name: string;
-  type: keyof typeof ACCOUNT_TYPES;
-  balance: number;
+  type: AccountType;
+  balance?: number;
   userId: number;
 }
 
 export class Account {
-  id: AccountProps["id"];
-  name: AccountProps["name"];
-  type: AccountProps["type"];
-  balance: AccountProps["balance"];
-  userId: AccountProps["userId"];
+  id: number;
+  name: string;
+  type: AccountType;
+  balance: number;
+  userId: number;
 
-  constructor({ id, name, type, balance, userId }: any) {
-    this.id = id || null;
-    this.name = name!;
-    this.type = type!;
-    this.balance = balance! || 0;
-    this.userId = userId!;
+  constructor({ id, name, type, balance, userId }: AccountProps) {
+    this.id = id!;
+    this.name = name;
+    this.type = type;
+    this.balance = balance ?? 0;
+    this.userId = userId;
   }
 
   validate() {
     if (!this.userId) {
-      throw new ApiError("BadRequest", "'userId' is required");
+      throw new DomainValidationError("'userId' is required", "userId");
     }
 
     if (!this.name) {
-      throw new ApiError("BadRequest", "'name' is required");
+      throw new DomainValidationError("'name' is required", "name");
     }
 
     if (!this.type) {
-      throw new ApiError("BadRequest", "'type' is required");
+      throw new DomainValidationError("'type' is required", "type");
     }
 
     if (!ACCOUNT_TYPES[this.type]) {
-      throw new ApiError("BadRequest", "Invalid account type", {
-        availableTypes: Object.values(ACCOUNT_TYPES),
-      });
+      throw new DomainValidationError(
+        `Invalid account type. Available: ${Object.values(ACCOUNT_TYPES).join(", ")}`,
+        "type",
+      );
     }
   }
 }

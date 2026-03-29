@@ -1,9 +1,6 @@
 import { User } from "../../entities/User";
+import { IRepository } from "../IRepository";
 
-export interface IUserRepository {
-  getById(id: User["id"]): Promise<User>;
-  getAll(): Promise<User[]>;
-  create(user: User): Promise<User>;
-  update(id: User["id"], user: User): Promise<User>;
-  delete(id: User["id"]): Promise<void>;
+export interface IUserRepository extends IRepository<User> {
+  getByEmail(email: string): Promise<User | null>;
 }

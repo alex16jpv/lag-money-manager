@@ -7,7 +7,7 @@ interface AssociableModel extends ModelStatic<Model> {
 }
 
 export const loadSequelizeModels = () => {
-  let dbModels: any = {};
+  const dbModels: Record<string, ModelStatic<Model>> = {};
 
   Object.entries(models).forEach(([key, model]) => {
     dbModels[key] = model(sequelize);

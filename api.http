@@ -1,0 +1,591 @@
+### ============================================================
+### Money Manager API - Individual Endpoint Testing
+### Usa la extensión "REST Client" de VS Code (humao.rest-client)
+### Click en "Send Request" sobre cualquier request para ejecutarlo
+### ============================================================
+
+@baseUrl = http://localhost:3000
+@token = {{login.response.body.token}}
+
+### ============================================================
+### 1. HEALTH CHECK
+### ============================================================
+
+GET {{baseUrl}}/
+
+### ============================================================
+### 2. AUTH
+### ============================================================
+
+### Register
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Test User",
+  "email": "testuser@test.com",
+  "password": "SecureP@ss123"
+}
+
+### Login (el token se captura automáticamente como @token)
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "testuser@test.com",
+  "password": "SecureP@ss123"
+}
+
+### Register - email duplicado (400)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Test User",
+  "email": "testuser@test.com",
+  "password": "SecureP@ss123"
+}
+
+### Register - email inválido (400)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Bad",
+  "email": "not-an-email",
+  "password": "SecureP@ss123"
+}
+
+### Register - contraseña corta (400)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Short",
+  "email": "short@test.com",
+  "password": "123"
+}
+
+### Register - campos vacíos (400)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{}
+
+### Login - contraseña incorrecta (401)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "testuser@test.com",
+  "password": "wrongpassword1"
+}
+
+### Login - email no existe (401)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "ghost@test.com",
+  "password": "anything123"
+}
+
+### Login - campos vacíos (400)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{}
+
+### ============================================================
+### 3. AUTH MIDDLEWARE - Sin token / token inválido
+### ============================================================
+
+### Sin token (401)
+GET {{baseUrl}}/users
+
+### Token inválido (401)
+GET {{baseUrl}}/users
+Authorization: Bearer invalidtoken123
+
+### Header malformado (401)
+GET {{baseUrl}}/users
+Authorization: Token {{token}}
+
+### ============================================================
+### 4. USERS - CRUD
+### ============================================================
+
+### Crear usuario
+# @name createUser
+POST {{baseUrl}}/users
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "CRUD User",
+  "email": "cruduser@test.com",
+  "password": "TestP@ss123"
+}
+
+### Obtener todos los usuarios
+GET {{baseUrl}}/users
+Authorization: Bearer {{token}}
+
+### Obtener usuario por ID
+@userId = {{createUser.response.body.id}}
+GET {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+
+### Actualizar nombre
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Updated User"
+}
+
+### Actualizar email
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "email": "updated@test.com"
+}
+
+### Obtener usuario inexistente (404)
+GET {{baseUrl}}/users/99999
+Authorization: Bearer {{token}}
+
+### ID no numérico (400)
+GET {{baseUrl}}/users/abc
+Authorization: Bearer {{token}}
+
+### Crear sin campos (400)
+POST {{baseUrl}}/users
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Crear con email inválido (400)
+POST {{baseUrl}}/users
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Test",
+  "email": "bad"
+}
+
+### Actualizar con body vacío (400)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Eliminar ID no numérico (400)
+DELETE {{baseUrl}}/users/abc
+Authorization: Bearer {{token}}
+
+### Eliminar inexistente (404)
+DELETE {{baseUrl}}/users/99999
+Authorization: Bearer {{token}}
+
+### Eliminar usuario
+DELETE {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+
+### ============================================================
+### 5. CATEGORIES - CRUD
+### ============================================================
+
+### Crear categoría
+# @name createCategory
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Test Category"
+}
+
+### Obtener todas
+GET {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+
+### Obtener por ID
+@categoryId = {{createCategory.response.body.id}}
+GET {{baseUrl}}/categories/{{categoryId}}
+Authorization: Bearer {{token}}
+
+### Actualizar nombre
+PUT {{baseUrl}}/categories/{{categoryId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Updated Category"
+}
+
+### Categoría inexistente (404)
+GET {{baseUrl}}/categories/99999
+Authorization: Bearer {{token}}
+
+### ID no numérico (400)
+GET {{baseUrl}}/categories/abc
+Authorization: Bearer {{token}}
+
+### Crear sin nombre (400)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Actualizar con body vacío (400)
+PUT {{baseUrl}}/categories/{{categoryId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Eliminar inexistente (404)
+DELETE {{baseUrl}}/categories/99999
+Authorization: Bearer {{token}}
+
+### Eliminar categoría
+DELETE {{baseUrl}}/categories/{{categoryId}}
+Authorization: Bearer {{token}}
+
+### ============================================================
+### 6. ACCOUNTS - CRUD
+### ============================================================
+
+### Crear cuenta (CASH)
+# @name createAccount
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Test Account",
+  "type": "CASH",
+  "balance": 1000,
+  "userId": {{userId}}
+}
+
+### Crear cuenta (SAVINGS)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Savings Account",
+  "type": "SAVINGS",
+  "balance": 5000,
+  "userId": {{userId}}
+}
+
+### Obtener todas
+GET {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+
+### Obtener por ID
+@accountId = {{createAccount.response.body.id}}
+GET {{baseUrl}}/accounts/{{accountId}}
+Authorization: Bearer {{token}}
+
+### Actualizar nombre
+PUT {{baseUrl}}/accounts/{{accountId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Updated Account"
+}
+
+### Actualizar balance
+PUT {{baseUrl}}/accounts/{{accountId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "balance": 2500.50
+}
+
+### Actualizar tipo
+PUT {{baseUrl}}/accounts/{{accountId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "CARD"
+}
+
+### Cuenta inexistente (404)
+GET {{baseUrl}}/accounts/99999
+Authorization: Bearer {{token}}
+
+### ID no numérico (400)
+GET {{baseUrl}}/accounts/abc
+Authorization: Bearer {{token}}
+
+### Crear sin campos (400)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Crear con tipo inválido (400)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Bad Type",
+  "type": "INVALID",
+  "balance": 0,
+  "userId": {{userId}}
+}
+
+### Crear con userId negativo (400)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Bad",
+  "type": "CASH",
+  "balance": 0,
+  "userId": -1
+}
+
+### Crear con userId inexistente (400)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Ghost",
+  "type": "CASH",
+  "balance": 0,
+  "userId": 999999
+}
+
+### Actualizar con body vacío (400)
+PUT {{baseUrl}}/accounts/{{accountId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Eliminar inexistente (404)
+DELETE {{baseUrl}}/accounts/99999
+Authorization: Bearer {{token}}
+
+### Eliminar cuenta
+DELETE {{baseUrl}}/accounts/{{accountId}}
+Authorization: Bearer {{token}}
+
+### ============================================================
+### 7. TRANSACTIONS - CRUD
+### ============================================================
+
+### Crear transacción EXPENSE
+# @name createTransaction
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "EXPENSE",
+  "amount": 150.50,
+  "date": "2026-03-29T12:00:00.000Z",
+  "description": "Groceries",
+  "fromAccountId": {{accountId}},
+  "userId": {{userId}},
+  "categoryId": {{categoryId}},
+  "tags": "food,weekly",
+  "note": "Weekly grocery shopping"
+}
+
+### Crear transacción INCOME
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "INCOME",
+  "amount": 3000,
+  "date": "2026-03-29T09:00:00.000Z",
+  "description": "Salary",
+  "toAccountId": {{accountId}},
+  "userId": {{userId}},
+  "categoryId": {{categoryId}}
+}
+
+### Crear transacción TRANSFER
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "TRANSFER",
+  "amount": 500,
+  "date": "2026-03-29T15:00:00.000Z",
+  "description": "Move to savings",
+  "fromAccountId": {{accountId}},
+  "toAccountId": {{accountId}},
+  "userId": {{userId}}
+}
+
+### Obtener todas
+GET {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+
+### Obtener por ID
+@transactionId = {{createTransaction.response.body.id}}
+GET {{baseUrl}}/transactions/{{transactionId}}
+Authorization: Bearer {{token}}
+
+### Actualizar monto
+PUT {{baseUrl}}/transactions/{{transactionId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": 200
+}
+
+### Actualizar descripción y nota
+PUT {{baseUrl}}/transactions/{{transactionId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "description": "Updated groceries",
+  "note": "Changed store"
+}
+
+### Transacción inexistente (404)
+GET {{baseUrl}}/transactions/99999
+Authorization: Bearer {{token}}
+
+### ID no numérico (400)
+GET {{baseUrl}}/transactions/abc
+Authorization: Bearer {{token}}
+
+### Crear sin campos (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Crear con tipo inválido (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "INVALID",
+  "amount": 100,
+  "date": "2026-03-29T12:00:00.000Z",
+  "userId": {{userId}}
+}
+
+### Crear EXPENSE sin fromAccountId (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "EXPENSE",
+  "amount": 100,
+  "date": "2026-03-29T12:00:00.000Z",
+  "userId": {{userId}}
+}
+
+### Crear INCOME sin toAccountId (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "INCOME",
+  "amount": 100,
+  "date": "2026-03-29T12:00:00.000Z",
+  "userId": {{userId}}
+}
+
+### Crear TRANSFER con misma cuenta (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "TRANSFER",
+  "amount": 100,
+  "date": "2026-03-29T12:00:00.000Z",
+  "fromAccountId": {{accountId}},
+  "toAccountId": {{accountId}},
+  "userId": {{userId}}
+}
+
+### Crear con monto negativo (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "EXPENSE",
+  "amount": -50,
+  "date": "2026-03-29T12:00:00.000Z",
+  "fromAccountId": {{accountId}},
+  "userId": {{userId}}
+}
+
+### Crear con fecha inválida (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "EXPENSE",
+  "amount": 50,
+  "date": "not-a-date",
+  "fromAccountId": {{accountId}},
+  "userId": {{userId}}
+}
+
+### Actualizar con body vacío (400)
+PUT {{baseUrl}}/transactions/{{transactionId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Eliminar inexistente (404)
+DELETE {{baseUrl}}/transactions/99999
+Authorization: Bearer {{token}}
+
+### Eliminar transacción
+DELETE {{baseUrl}}/transactions/{{transactionId}}
+Authorization: Bearer {{token}}
+
+### ============================================================
+### 8. RUTAS INEXISTENTES
+### ============================================================
+
+### Ruta no existente (404)
+GET {{baseUrl}}/nonexistent
+Authorization: Bearer {{token}}
+
+### API version no existente (404)
+POST {{baseUrl}}/api/v2/users
+Authorization: Bearer {{token}}

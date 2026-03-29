@@ -10,11 +10,18 @@ export class UserSeqRepository implements IUserRepository {
     this.model = UserModel;
   }
 
-  async getById(id: User["id"]): Promise<User> {
+  async getById(id: User["id"]): Promise<User | null> {
     const user = (await this.model.findByPk(id))?.toJSON();
-
     if (!user) {
-      throw new ApiError("NotFound", "User not found");
+      return null;
+    }
+    return new User(user);
+  }
+
+  async getByEmail(email: string): Promise<User | null> {
+    const user = (await this.model.findOne({ where: { email } }))?.toJSON();
+    if (!user) {
+      return null;
     }
     return new User(user);
   }
@@ -28,7 +35,7 @@ export class UserSeqRepository implements IUserRepository {
 
   async create(user: Partial<User>): Promise<User> {
     const result = await this.model.create(user);
-    return result.toJSON();
+    return new User(result.toJSON());
   }
 
   async update(id: User["id"], user: Partial<User>): Promise<User> {
@@ -38,7 +45,7 @@ export class UserSeqRepository implements IUserRepository {
     }
     await userToUpdate.update(user);
     await userToUpdate.reload();
-    return userToUpdate.toJSON();
+    return new User(userToUpdate.toJSON());
   }
 
   async delete(id: User["id"]): Promise<void> {

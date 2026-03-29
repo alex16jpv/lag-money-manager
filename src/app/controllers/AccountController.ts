@@ -1,54 +1,36 @@
-import { NextFunction, Request, Response } from "express";
+import { Request, Response } from "express";
 import { AccountService } from "../services/AccountService";
-import { Account } from "../../domain/entities/Account";
 import repositoryFactory from "../factories/RepositoryFactory";
-import { ApiError } from "../../shared/errors";
+import { asyncHandler } from "../../shared/asyncHandler";
 
 const accountService = new AccountService(
-  repositoryFactory.getAccountRepository()
+  repositoryFactory.getAccountRepository(),
 );
 
 export class AccountController {
-  static async getAllAccounts(req: Request, res: Response, next: NextFunction) {
-    try {
-      const accounts = await accountService.getAllAccounts();
-      res.status(200).json(accounts);
-    } catch (error) {
-      next(error);
-    }
-  }
+  static getAllAccounts = asyncHandler(async (_req: Request, res: Response) => {
+    const accounts = await accountService.getAllAccounts();
+    res.status(200).json(accounts);
+  });
 
-  static async createAccount(req: Request, res: Response, next: NextFunction) {
-    try {
-      const newAccount = await accountService.createAccount(req.body);
+  static createAccount = asyncHandler(async (req: Request, res: Response) => {
+    const newAccount = await accountService.createAccount(req.body);
+    res.status(201).json(newAccount);
+  });
 
-      res.status(201).json(newAccount);
-    } catch (error) {
-      next(error);
-    }
-  }
+  static getAccountById = asyncHandler(async (req: Request, res: Response) => {
+    const account = await accountService.getAccountById(Number(req.params.id));
+    res.status(200).json(account);
+  });
 
-  static async getAccountById(req: Request, res: Response, next: NextFunction) {
-    try {
-      const account = await accountService.getAccountById(
-        Number(req.params.id)
-      );
-      res.status(200).json(account);
-    } catch (error) {
-      next(error);
-    }
-  }
+  static updateAccount = asyncHandler(async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+    const updatedAccount = await accountService.updateAccount(id, req.body);
+    res.status(200).json(updatedAccount);
+  });
 
-  static async updateAccount(req: Request, res: Response, next: NextFunction) {
-    try {
-      const id = Number(req.params.id);
-      const account = req.body as Account;
-
-      const updatedAccount = await accountService.updateAccount(id, account);
-
-      res.status(200).json(updatedAccount);
-    } catch (error) {
-      next(error);
-    }
-  }
+  static deleteAccount = asyncHandler(async (req: Request, res: Response) => {
+    await accountService.deleteAccount(Number(req.params.id));
+    res.status(204).send();
+  });
 }
