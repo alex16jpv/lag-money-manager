@@ -5,6 +5,10 @@ import logger from "./shared/logger";
 
 const port = ENVIRONMENT.PORT;
 
-app.listen(port, () => {
+app.listen(port, (error?: Error) => {
+  if (error) {
+    logger.error({ err: error }, "Failed to start server");
+    process.exit(1);
+  }
   logger.info(`App listening on port ${port}`);
 });
