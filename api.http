@@ -393,7 +393,193 @@ DELETE {{baseUrl}}/accounts/{{accountId}}
 Authorization: Bearer {{token}}
 
 ### ============================================================
-### 7. RUTAS INEXISTENTES
+### 7. TRANSACTIONS - CRUD
+### ============================================================
+
+### Crear transacción EXPENSE
+# @name createTransaction
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "EXPENSE",
+  "amount": 150.50,
+  "date": "2026-03-29T12:00:00.000Z",
+  "description": "Groceries",
+  "fromAccountId": {{accountId}},
+  "userId": {{userId}},
+  "categoryId": {{categoryId}},
+  "tags": "food,weekly",
+  "note": "Weekly grocery shopping"
+}
+
+### Crear transacción INCOME
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "INCOME",
+  "amount": 3000,
+  "date": "2026-03-29T09:00:00.000Z",
+  "description": "Salary",
+  "toAccountId": {{accountId}},
+  "userId": {{userId}},
+  "categoryId": {{categoryId}}
+}
+
+### Crear transacción TRANSFER
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "TRANSFER",
+  "amount": 500,
+  "date": "2026-03-29T15:00:00.000Z",
+  "description": "Move to savings",
+  "fromAccountId": {{accountId}},
+  "toAccountId": {{accountId}},
+  "userId": {{userId}}
+}
+
+### Obtener todas
+GET {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+
+### Obtener por ID
+@transactionId = {{createTransaction.response.body.id}}
+GET {{baseUrl}}/transactions/{{transactionId}}
+Authorization: Bearer {{token}}
+
+### Actualizar monto
+PUT {{baseUrl}}/transactions/{{transactionId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": 200
+}
+
+### Actualizar descripción y nota
+PUT {{baseUrl}}/transactions/{{transactionId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "description": "Updated groceries",
+  "note": "Changed store"
+}
+
+### Transacción inexistente (404)
+GET {{baseUrl}}/transactions/99999
+Authorization: Bearer {{token}}
+
+### ID no numérico (400)
+GET {{baseUrl}}/transactions/abc
+Authorization: Bearer {{token}}
+
+### Crear sin campos (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Crear con tipo inválido (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "INVALID",
+  "amount": 100,
+  "date": "2026-03-29T12:00:00.000Z",
+  "userId": {{userId}}
+}
+
+### Crear EXPENSE sin fromAccountId (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "EXPENSE",
+  "amount": 100,
+  "date": "2026-03-29T12:00:00.000Z",
+  "userId": {{userId}}
+}
+
+### Crear INCOME sin toAccountId (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "INCOME",
+  "amount": 100,
+  "date": "2026-03-29T12:00:00.000Z",
+  "userId": {{userId}}
+}
+
+### Crear TRANSFER con misma cuenta (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "TRANSFER",
+  "amount": 100,
+  "date": "2026-03-29T12:00:00.000Z",
+  "fromAccountId": {{accountId}},
+  "toAccountId": {{accountId}},
+  "userId": {{userId}}
+}
+
+### Crear con monto negativo (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "EXPENSE",
+  "amount": -50,
+  "date": "2026-03-29T12:00:00.000Z",
+  "fromAccountId": {{accountId}},
+  "userId": {{userId}}
+}
+
+### Crear con fecha inválida (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "EXPENSE",
+  "amount": 50,
+  "date": "not-a-date",
+  "fromAccountId": {{accountId}},
+  "userId": {{userId}}
+}
+
+### Actualizar con body vacío (400)
+PUT {{baseUrl}}/transactions/{{transactionId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Eliminar inexistente (404)
+DELETE {{baseUrl}}/transactions/99999
+Authorization: Bearer {{token}}
+
+### Eliminar transacción
+DELETE {{baseUrl}}/transactions/{{transactionId}}
+Authorization: Bearer {{token}}
+
+### ============================================================
+### 8. RUTAS INEXISTENTES
 ### ============================================================
 
 ### Ruta no existente (404)
