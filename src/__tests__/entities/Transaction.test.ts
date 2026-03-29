@@ -31,15 +31,15 @@ import { DomainValidationError } from "../../domain/errors";
 
 describe("Transaction Entity", () => {
   const validExpenseProps = {
-    id: 1,
+    id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
     type: "EXPENSE" as const,
     amount: 50,
     date: new Date("2026-03-28"),
-    categoryId: 1,
+    categoryId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
     description: "Groceries",
-    fromAccountId: 1,
+    fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
     toAccountId: null,
-    userId: 1,
+    userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac74",
     tags: "food",
     note: "Weekly shopping",
     createdAt: new Date(),
@@ -50,29 +50,29 @@ describe("Transaction Entity", () => {
     ...validExpenseProps,
     type: "INCOME" as const,
     fromAccountId: null,
-    toAccountId: 2,
+    toAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
   };
 
   const validTransferProps = {
     ...validExpenseProps,
     type: "TRANSFER" as const,
-    fromAccountId: 1,
-    toAccountId: 2,
+    fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+    toAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
   };
 
   describe("constructor", () => {
     it("should create a transaction with all properties", () => {
       const tx = new Transaction(validExpenseProps);
 
-      expect(tx.id).toBe(1);
+      expect(tx.id).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac70");
       expect(tx.type).toBe("EXPENSE");
       expect(tx.amount).toBe(50);
       expect(tx.date).toBeInstanceOf(Date);
-      expect(tx.categoryId).toBe(1);
+      expect(tx.categoryId).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac73");
       expect(tx.description).toBe("Groceries");
-      expect(tx.fromAccountId).toBe(1);
+      expect(tx.fromAccountId).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac71");
       expect(tx.toAccountId).toBeNull();
-      expect(tx.userId).toBe(1);
+      expect(tx.userId).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac74");
       expect(tx.tags).toBe("food");
       expect(tx.note).toBe("Weekly shopping");
     });
@@ -82,8 +82,8 @@ describe("Transaction Entity", () => {
         type: "EXPENSE",
         amount: 10,
         date: new Date(),
-        fromAccountId: 1,
-        userId: 1,
+        fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac74",
       });
 
       expect(tx.categoryId).toBeNull();
@@ -152,7 +152,7 @@ describe("Transaction Entity", () => {
     it("should throw when userId is missing", () => {
       const tx = new Transaction({
         ...validExpenseProps,
-        userId: 0 as number,
+        userId: "" as unknown as string,
       });
       expect(() => tx.validate()).toThrow(DomainValidationError);
       expect(() => tx.validate()).toThrow("'userId' is required");
@@ -205,8 +205,8 @@ describe("Transaction Entity", () => {
     it("should throw when transfer has same from and to account", () => {
       const tx = new Transaction({
         ...validTransferProps,
-        fromAccountId: 1,
-        toAccountId: 1,
+        fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        toAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
       });
       expect(() => tx.validate()).toThrow(DomainValidationError);
       expect(() => tx.validate()).toThrow(

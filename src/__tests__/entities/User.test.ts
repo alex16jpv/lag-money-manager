@@ -3,7 +3,7 @@ import { DomainValidationError } from "../../domain/errors";
 
 describe("User Entity", () => {
   const validProps = {
-    id: 1,
+    id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
     name: "John Doe",
     email: "john@example.com",
     password: "hashed_pw",

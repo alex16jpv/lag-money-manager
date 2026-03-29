@@ -1,7 +1,7 @@
 import { DomainValidationError } from "../errors";
 
 export interface UserProps {
-  id?: number;
+  id?: string;
   name: string;
   email: string;
   password?: string;
@@ -10,7 +10,7 @@ export interface UserProps {
 }
 
 export class User {
-  id: number;
+  id: string;
   name: string;
   email: string;
   password?: string;

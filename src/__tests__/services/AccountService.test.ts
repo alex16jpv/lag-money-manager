@@ -34,11 +34,11 @@ import { DomainValidationError } from "../../domain/errors";
 import { CreateAccountDTO } from "../../app/dtos/AccountDTO";
 
 const validAccountProps = {
-  id: 1,
+  id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
   name: "Savings",
   type: "SAVINGS" as const,
   balance: 500,
-  userId: 1,
+  userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
 };
 
 const mockAccount = new Account(validAccountProps);
@@ -84,19 +84,25 @@ describe("AccountService", () => {
     it("should return account when found", async () => {
       repo.getById.mockResolvedValue(mockAccount);
 
-      const result = await service.getAccountById(1);
+      const result = await service.getAccountById(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
 
-      expect(repo.getById).toHaveBeenCalledWith(1);
+      expect(repo.getById).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
       expect(result.name).toBe("Savings");
     });
 
     it("should throw NotFound when account does not exist", async () => {
       repo.getById.mockResolvedValue(null);
 
-      await expect(service.getAccountById(999)).rejects.toThrow(ApiError);
-      await expect(service.getAccountById(999)).rejects.toThrow(
-        "Account not found",
-      );
+      await expect(
+        service.getAccountById("019576a0-d7b6-7d6d-af6a-000000000000"),
+      ).rejects.toThrow(ApiError);
+      await expect(
+        service.getAccountById("019576a0-d7b6-7d6d-af6a-000000000000"),
+      ).rejects.toThrow("Account not found");
     });
   });
 
@@ -143,19 +149,29 @@ describe("AccountService", () => {
       const updated = new Account({ ...validAccountProps, name: "Updated" });
       repo.update.mockResolvedValue(updated);
 
-      const result = await service.updateAccount(1, { name: "Updated" });
+      const result = await service.updateAccount(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        { name: "Updated" },
+      );
 
-      expect(repo.update).toHaveBeenCalledWith(1, { name: "Updated" });
+      expect(repo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        { name: "Updated" },
+      );
       expect(result.name).toBe("Updated");
     });
 
     it("should throw when id in body does not match param id", async () => {
-      await expect(service.updateAccount(1, { id: 2 })).rejects.toThrow(
-        ApiError,
-      );
-      await expect(service.updateAccount(1, { id: 2 })).rejects.toThrow(
-        "Account id does not match",
-      );
+      await expect(
+        service.updateAccount("019576a0-d7b6-7d6d-af6a-2b7545f5ac70", {
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        }),
+      ).rejects.toThrow(ApiError);
+      await expect(
+        service.updateAccount("019576a0-d7b6-7d6d-af6a-2b7545f5ac70", {
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        }),
+      ).rejects.toThrow("Account id does not match");
     });
   });
 
@@ -163,9 +179,11 @@ describe("AccountService", () => {
     it("should delete an account", async () => {
       repo.delete.mockResolvedValue();
 
-      await service.deleteAccount(1);
+      await service.deleteAccount("019576a0-d7b6-7d6d-af6a-2b7545f5ac70");
 
-      expect(repo.delete).toHaveBeenCalledWith(1);
+      expect(repo.delete).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
     });
   });
 });

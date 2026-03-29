@@ -15,7 +15,7 @@ export class TransactionController {
 
   static getTransactionById = async (req: Request, res: Response) => {
     const transaction = await transactionService.getTransactionById(
-      Number(req.params.id),
+      req.params.id as string,
     );
     res.status(200).json(transaction);
   };
@@ -26,7 +26,7 @@ export class TransactionController {
   };
 
   static updateTransaction = async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
+    const id = req.params.id as string;
     const updatedTransaction = await transactionService.updateTransaction(
       id,
       req.body,
@@ -35,7 +35,7 @@ export class TransactionController {
   };
 
   static deleteTransaction = async (req: Request, res: Response) => {
-    await transactionService.deleteTransaction(Number(req.params.id));
+    await transactionService.deleteTransaction(req.params.id as string);
     res.status(204).send();
   };
 }

@@ -1,6 +1,6 @@
 import { ApiError } from "../../../shared/errors";
 import { Transaction } from "../../entities/Transaction";
-import { TransactionModel } from "../../models/TransactionModel";
+import { TransactionModel } from "../../models/sequelize/TransactionModel";
 import { ITransactionRepository } from "./ITransactionRepository";
 
 export class TransactionSeqRepository implements ITransactionRepository {
@@ -10,7 +10,7 @@ export class TransactionSeqRepository implements ITransactionRepository {
     this.model = TransactionModel;
   }
 
-  async getById(id: number): Promise<Transaction | null> {
+  async getById(id: string): Promise<Transaction | null> {
     const result = await this.model.findByPk(id);
     if (!result) {
       return null;
@@ -29,7 +29,7 @@ export class TransactionSeqRepository implements ITransactionRepository {
   }
 
   async update(
-    id: number,
+    id: string,
     transaction: Partial<Transaction>,
   ): Promise<Transaction> {
     const existing = await this.model.findByPk(id);
@@ -41,7 +41,7 @@ export class TransactionSeqRepository implements ITransactionRepository {
     return new Transaction(existing.toJSON());
   }
 
-  async delete(id: number): Promise<void> {
+  async delete(id: string): Promise<void> {
     const existing = await this.model.findByPk(id);
     if (!existing) {
       throw new ApiError("NotFound", "Transaction not found");

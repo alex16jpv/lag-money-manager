@@ -20,7 +20,7 @@ export const createUserSchema = z.object({
 
 export const updateUserSchema = z.object({
   params: z.object({
-    id: z.string().regex(/^\d+$/, "ID must be a numeric value"),
+    id: z.string().uuid("ID must be a valid UUID"),
   }),
   body: z
     .object({
@@ -50,13 +50,13 @@ export const createAccountSchema = z.object({
       error: `Invalid account type. Available: ${accountTypeValues.join(", ")}`,
     }),
     balance: z.number().finite("Balance must be a finite number").default(0),
-    userId: z.number().int().positive("userId must be a positive integer"),
+    userId: z.string().uuid("userId must be a valid UUID"),
   }),
 });
 
 export const updateAccountSchema = z.object({
   params: z.object({
-    id: z.string().regex(/^\d+$/, "ID must be a numeric value"),
+    id: z.string().uuid("ID must be a valid UUID"),
   }),
   body: z
     .object({
@@ -67,11 +67,7 @@ export const updateAccountSchema = z.object({
         })
         .optional(),
       balance: z.number().finite("Balance must be a finite number").optional(),
-      userId: z
-        .number()
-        .int()
-        .positive("userId must be a positive integer")
-        .optional(),
+      userId: z.string().uuid("userId must be a valid UUID").optional(),
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {
       message: "At least one field must be provided",
@@ -86,7 +82,7 @@ export const createCategorySchema = z.object({
 
 export const updateCategorySchema = z.object({
   params: z.object({
-    id: z.string().regex(/^\d+$/, "ID must be a numeric value"),
+    id: z.string().uuid("ID must be a valid UUID"),
   }),
   body: z
     .object({
@@ -99,7 +95,7 @@ export const updateCategorySchema = z.object({
 
 export const idParamSchema = z.object({
   params: z.object({
-    id: z.string().regex(/^\d+$/, "ID must be a numeric value"),
+    id: z.string().uuid("ID must be a valid UUID"),
   }),
 });
 
@@ -132,25 +128,22 @@ export const createTransactionSchema = z.object({
         .string()
         .datetime({ message: "Date must be a valid ISO 8601 date" }),
       categoryId: z
-        .number()
-        .int()
-        .positive("categoryId must be a positive integer")
+        .string()
+        .uuid("categoryId must be a valid UUID")
         .optional()
         .nullable(),
       description: z.string().max(255).optional().nullable(),
       fromAccountId: z
-        .number()
-        .int()
-        .positive("fromAccountId must be a positive integer")
+        .string()
+        .uuid("fromAccountId must be a valid UUID")
         .optional()
         .nullable(),
       toAccountId: z
-        .number()
-        .int()
-        .positive("toAccountId must be a positive integer")
+        .string()
+        .uuid("toAccountId must be a valid UUID")
         .optional()
         .nullable(),
-      userId: z.number().int().positive("userId must be a positive integer"),
+      userId: z.string().uuid("userId must be a valid UUID"),
       tags: z.string().max(500).optional().nullable(),
       note: z.string().max(1000).optional().nullable(),
     })
@@ -201,7 +194,7 @@ export const createTransactionSchema = z.object({
 
 export const updateTransactionSchema = z.object({
   params: z.object({
-    id: z.string().regex(/^\d+$/, "ID must be a numeric value"),
+    id: z.string().uuid("ID must be a valid UUID"),
   }),
   body: z
     .object({
@@ -216,29 +209,22 @@ export const updateTransactionSchema = z.object({
         .datetime({ message: "Date must be a valid ISO 8601 date" })
         .optional(),
       categoryId: z
-        .number()
-        .int()
-        .positive("categoryId must be a positive integer")
+        .string()
+        .uuid("categoryId must be a valid UUID")
         .optional()
         .nullable(),
       description: z.string().max(255).optional().nullable(),
       fromAccountId: z
-        .number()
-        .int()
-        .positive("fromAccountId must be a positive integer")
+        .string()
+        .uuid("fromAccountId must be a valid UUID")
         .optional()
         .nullable(),
       toAccountId: z
-        .number()
-        .int()
-        .positive("toAccountId must be a positive integer")
+        .string()
+        .uuid("toAccountId must be a valid UUID")
         .optional()
         .nullable(),
-      userId: z
-        .number()
-        .int()
-        .positive("userId must be a positive integer")
-        .optional(),
+      userId: z.string().uuid("userId must be a valid UUID").optional(),
       tags: z.string().max(500).optional().nullable(),
       note: z.string().max(1000).optional().nullable(),
     })

@@ -79,7 +79,8 @@ router.post(
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Transaction ID
  *     responses:
  *       200:
@@ -113,7 +114,8 @@ router.get(
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Transaction ID
  *     requestBody:
  *       required: true
@@ -153,7 +155,8 @@ router.put(
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Transaction ID
  *     responses:
  *       204:

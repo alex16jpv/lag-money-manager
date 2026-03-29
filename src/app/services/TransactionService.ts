@@ -17,7 +17,7 @@ export class TransactionService {
     return await this.transactionRepo.getAll();
   }
 
-  async getTransactionById(id: number): Promise<Transaction> {
+  async getTransactionById(id: string): Promise<Transaction> {
     const transaction = await this.transactionRepo.getById(id);
     if (!transaction) {
       throw new ApiError("NotFound", "Transaction not found");
@@ -40,7 +40,7 @@ export class TransactionService {
   }
 
   async updateTransaction(
-    id: number,
+    id: string,
     dto: UpdateTransactionDTO,
   ): Promise<Transaction> {
     if (dto.id && dto.id !== id) {
@@ -62,7 +62,7 @@ export class TransactionService {
     return await this.transactionRepo.update(id, dto);
   }
 
-  async deleteTransaction(id: number): Promise<void> {
+  async deleteTransaction(id: string): Promise<void> {
     const transaction = await this.transactionRepo.getById(id);
     if (!transaction) {
       throw new ApiError("NotFound", "Transaction not found");

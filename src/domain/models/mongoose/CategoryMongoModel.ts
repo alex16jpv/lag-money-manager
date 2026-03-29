@@ -1,0 +1,22 @@
+import mongoose, { Schema } from "mongoose";
+import { MODEL_NAMES } from "../../../shared/constants";
+
+export interface ICategoryDocument {
+  _id: string;
+  name: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const CategorySchema = new Schema<ICategoryDocument>(
+  {
+    _id: { type: String, required: true },
+    name: { type: String, required: true },
+  },
+  { timestamps: true },
+);
+
+export const CategoryMongoModel = mongoose.model<ICategoryDocument>(
+  MODEL_NAMES.CATEGORY,
+  CategorySchema,
+);

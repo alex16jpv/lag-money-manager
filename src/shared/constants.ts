@@ -38,15 +38,25 @@ export type TransactionType = keyof typeof TRANSACTION_TYPES;
 
 import { z } from "zod";
 
-const envSchema = z.object({
+const baseEnvSchema = z.object({
   PORT: z.coerce.number().default(3000),
   DB_TYPE: z.string().default(DB_TYPES.SEQ),
+  JWT_SECRET: z.string().min(1, "JWT_SECRET is required"),
+});
+
+const seqEnvSchema = baseEnvSchema.extend({
   SEQ_PORT: z.coerce.number().default(3306),
   SEQ_HOST: z.string().min(1, "SEQ_HOST is required"),
   SEQ_DATABASE: z.string().min(1, "SEQ_DATABASE is required"),
   SEQ_USERNAME: z.string().min(1, "SEQ_USERNAME is required"),
   SEQ_PASSWORD: z.string().min(1, "SEQ_PASSWORD is required"),
-  JWT_SECRET: z.string().min(1, "JWT_SECRET is required"),
 });
 
-export const ENVIRONMENT = envSchema.parse(process.env);
+const mongoEnvSchema = baseEnvSchema.extend({
+  MONGO_URI: z.string().min(1, "MONGO_URI is required"),
+});
+
+export const ENVIRONMENT =
+  process.env.DB_TYPE === DB_TYPES.MONGO
+    ? mongoEnvSchema.parse(process.env)
+    : seqEnvSchema.parse(process.env);

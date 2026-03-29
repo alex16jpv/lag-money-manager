@@ -1,6 +1,6 @@
 import { ApiError } from "../../../shared/errors";
 import { Category } from "../../entities/Category";
-import { CategoryModel } from "../../models/CategoryModel";
+import { CategoryModel } from "../../models/sequelize/CategoryModel";
 import { ICategoryRepository } from "./ICategoryRepository";
 
 export class CategorySeqRepository implements ICategoryRepository {
@@ -15,7 +15,7 @@ export class CategorySeqRepository implements ICategoryRepository {
     return results.map((result) => new Category(result.toJSON()));
   }
 
-  async getById(id: number): Promise<Category | null> {
+  async getById(id: string): Promise<Category | null> {
     const result = await this.model.findByPk(id);
     if (!result) {
       return null;
@@ -28,7 +28,7 @@ export class CategorySeqRepository implements ICategoryRepository {
     return new Category(result.toJSON());
   }
 
-  async update(id: number, category: Partial<Category>): Promise<Category> {
+  async update(id: string, category: Partial<Category>): Promise<Category> {
     const categoryToUpdate = await this.model.findByPk(id);
     if (!categoryToUpdate) {
       throw new ApiError("NotFound", "Category not found");
@@ -38,7 +38,7 @@ export class CategorySeqRepository implements ICategoryRepository {
     return new Category(categoryToUpdate.toJSON());
   }
 
-  async delete(id: number): Promise<void> {
+  async delete(id: string): Promise<void> {
     const category = await this.model.findByPk(id);
     if (!category) {
       throw new ApiError("NotFound", "Category not found");

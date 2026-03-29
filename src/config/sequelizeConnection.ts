@@ -1,12 +1,18 @@
 import { Sequelize } from "sequelize";
 import { ENVIRONMENT } from "../shared/constants";
-const { SEQ_HOST, SEQ_DATABASE, SEQ_USERNAME, SEQ_PASSWORD } = ENVIRONMENT;
+
+const env = ENVIRONMENT as {
+  SEQ_HOST: string;
+  SEQ_DATABASE: string;
+  SEQ_USERNAME: string;
+  SEQ_PASSWORD: string;
+};
 
 const sequelize = new Sequelize({
-  username: SEQ_USERNAME,
-  password: SEQ_PASSWORD,
-  database: SEQ_DATABASE,
-  host: SEQ_HOST,
+  username: env.SEQ_USERNAME,
+  password: env.SEQ_PASSWORD,
+  database: env.SEQ_DATABASE,
+  host: env.SEQ_HOST,
   dialect: "mysql",
   logging: false,
 });

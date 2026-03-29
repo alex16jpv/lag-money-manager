@@ -18,18 +18,20 @@ export class AccountController {
   };
 
   static getAccountById = async (req: Request, res: Response) => {
-    const account = await accountService.getAccountById(Number(req.params.id));
+    const account = await accountService.getAccountById(
+      req.params.id as string,
+    );
     res.status(200).json(account);
   };
 
   static updateAccount = async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
+    const id = req.params.id as string;
     const updatedAccount = await accountService.updateAccount(id, req.body);
     res.status(200).json(updatedAccount);
   };
 
   static deleteAccount = async (req: Request, res: Response) => {
-    await accountService.deleteAccount(Number(req.params.id));
+    await accountService.deleteAccount(req.params.id as string);
     res.status(204).send();
   };
 }

@@ -3,6 +3,6 @@ export interface CreateCategoryDTO {
 }
 
 export interface UpdateCategoryDTO {
-  id?: number;
+  id?: string;
   name?: string;
 }

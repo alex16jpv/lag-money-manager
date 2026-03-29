@@ -13,7 +13,7 @@ export class CategoryService {
     return categories?.map((category) => new Category(category));
   }
 
-  async getCategoryById(id: number): Promise<Category> {
+  async getCategoryById(id: string): Promise<Category> {
     const category = await this.repo.getById(id);
     if (!category) {
       throw new ApiError("NotFound", "Category not found");
@@ -27,14 +27,14 @@ export class CategoryService {
     return this.repo.create(category);
   }
 
-  async updateCategory(id: number, dto: UpdateCategoryDTO): Promise<Category> {
+  async updateCategory(id: string, dto: UpdateCategoryDTO): Promise<Category> {
     if (dto.id && dto.id !== id) {
       throw new ApiError("BadRequest", "Category id does not match");
     }
     return await this.repo.update(id, dto);
   }
 
-  async deleteCategory(id: number): Promise<void> {
+  async deleteCategory(id: string): Promise<void> {
     return await this.repo.delete(id);
   }
 }

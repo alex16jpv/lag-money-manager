@@ -11,7 +11,7 @@ export class AccountService {
     return accounts?.map((account) => new Account(account));
   }
 
-  async getAccountById(id: number): Promise<Account> {
+  async getAccountById(id: string): Promise<Account> {
     const account = await this.repo.getById(id);
 
     if (!account) {
@@ -26,7 +26,7 @@ export class AccountService {
     return new Account(await this.repo.create(account));
   }
 
-  async updateAccount(id: number, dto: UpdateAccountDTO): Promise<Account> {
+  async updateAccount(id: string, dto: UpdateAccountDTO): Promise<Account> {
     if (dto.id && dto.id !== id) {
       throw new ApiError("BadRequest", "Account id does not match");
     }
@@ -34,7 +34,7 @@ export class AccountService {
     return await this.repo.update(id, dto);
   }
 
-  async deleteAccount(id: number): Promise<void> {
+  async deleteAccount(id: string): Promise<void> {
     return await this.repo.delete(id);
   }
 }

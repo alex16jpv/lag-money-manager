@@ -11,7 +11,7 @@ export class UserService {
     return await this.repo.getAll();
   }
 
-  async getUserById(id: number): Promise<User> {
+  async getUserById(id: string): Promise<User> {
     const user = await this.repo.getById(id);
     if (!user) {
       throw new ApiError("NotFound", "User not found");
@@ -30,7 +30,7 @@ export class UserService {
     return await this.repo.create(user);
   }
 
-  async updateUser(id: number, dto: UpdateUserDTO): Promise<User> {
+  async updateUser(id: string, dto: UpdateUserDTO): Promise<User> {
     if (dto.id && id !== dto.id) {
       throw new ApiError("BadRequest", "User id does not match");
     }
@@ -42,7 +42,7 @@ export class UserService {
     return await this.repo.update(id, dto);
   }
 
-  async deleteUser(id: number): Promise<void> {
+  async deleteUser(id: string): Promise<void> {
     return await this.repo.delete(id);
   }
 }

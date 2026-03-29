@@ -1,6 +1,6 @@
 import { ApiError } from "../../../shared/errors";
 import { Account } from "../../entities/Account";
-import { AccountModel } from "../../models/AccountModel";
+import { AccountModel } from "../../models/sequelize/AccountModel";
 import { IAccountRepository } from "./IAccountRepository";
 
 export class AccountSeqRepository implements IAccountRepository {

@@ -2,19 +2,19 @@ import { DomainValidationError } from "../errors";
 import { ACCOUNT_TYPES, AccountType } from "../../shared/constants";
 
 export interface AccountProps {
-  id?: number;
+  id?: string;
   name: string;
   type: AccountType;
   balance?: number;
-  userId: number;
+  userId: string;
 }
 
 export class Account {
-  id: number;
+  id: string;
   name: string;
   type: AccountType;
   balance: number;
-  userId: number;
+  userId: string;
 
   constructor({ id, name, type, balance, userId }: AccountProps) {
     this.id = id!;

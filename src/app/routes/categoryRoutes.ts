@@ -74,7 +74,8 @@ router.post(
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Category ID
  *     responses:
  *       200:
@@ -103,7 +104,8 @@ router.get("/:id", validate(idParamSchema), CategoryController.getCategoryById);
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Category ID
  *     requestBody:
  *       required: true
@@ -142,7 +144,8 @@ router.put(
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Category ID
  *     responses:
  *       204:

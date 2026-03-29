@@ -13,8 +13,8 @@ export class CategoryController {
   };
 
   static getCategoryById = async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const category = await categoryService.getCategoryById(Number(id));
+    const id = req.params.id as string;
+    const category = await categoryService.getCategoryById(id);
     res.status(200).json(category);
   };
 
@@ -24,13 +24,13 @@ export class CategoryController {
   };
 
   static updateCategory = async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
+    const id = req.params.id as string;
     const updatedCategory = await categoryService.updateCategory(id, req.body);
     res.status(200).json(updatedCategory);
   };
 
   static deleteCategory = async (req: Request, res: Response) => {
-    await categoryService.deleteCategory(Number(req.params.id));
+    await categoryService.deleteCategory(req.params.id as string);
     res.status(204).send();
   };
 }

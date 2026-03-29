@@ -56,11 +56,11 @@ const createMockAccountRepo = (): jest.Mocked<IAccountRepository> => ({
 
 const makeAccount = (overrides: Partial<Account> = {}): Account =>
   new Account({
-    id: 1,
+    id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
     name: "Savings",
     type: "SAVINGS",
     balance: 1000,
-    userId: 1,
+    userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
     ...overrides,
   });
 
@@ -68,31 +68,40 @@ const validExpense: CreateTransactionDTO = {
   type: "EXPENSE",
   amount: 100,
   date: new Date("2026-03-28"),
-  fromAccountId: 1,
-  userId: 1,
+  fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+  userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
 };
 
 const validIncome: CreateTransactionDTO = {
   type: "INCOME",
   amount: 200,
   date: new Date("2026-03-28"),
-  toAccountId: 2,
-  userId: 1,
+  toAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+  userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
 };
 
 const validTransfer: CreateTransactionDTO = {
   type: "TRANSFER",
   amount: 150,
   date: new Date("2026-03-28"),
-  fromAccountId: 1,
-  toAccountId: 2,
-  userId: 1,
+  fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+  toAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+  userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
 };
 
 // Stored entities for mock repo returns
-const storedExpense = new Transaction({ id: 1, ...validExpense });
-const storedIncome = new Transaction({ id: 2, ...validIncome });
-const storedTransfer = new Transaction({ id: 3, ...validTransfer });
+const storedExpense = new Transaction({
+  id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+  ...validExpense,
+});
+const storedIncome = new Transaction({
+  id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac81",
+  ...validIncome,
+});
+const storedTransfer = new Transaction({
+  id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac82",
+  ...validTransfer,
+});
 
 describe("TransactionService", () => {
   let service: TransactionService;
@@ -128,51 +137,79 @@ describe("TransactionService", () => {
     it("should return transaction when found", async () => {
       txRepo.getById.mockResolvedValue(storedExpense);
 
-      const result = await service.getTransactionById(1);
+      const result = await service.getTransactionById(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+      );
 
-      expect(txRepo.getById).toHaveBeenCalledWith(1);
+      expect(txRepo.getById).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+      );
       expect(result.type).toBe("EXPENSE");
     });
 
     it("should throw NotFound when transaction does not exist", async () => {
       txRepo.getById.mockResolvedValue(null);
 
-      await expect(service.getTransactionById(999)).rejects.toThrow(ApiError);
-      await expect(service.getTransactionById(999)).rejects.toThrow(
-        "Transaction not found",
-      );
+      await expect(
+        service.getTransactionById("019576a0-d7b6-7d6d-af6a-000000000000"),
+      ).rejects.toThrow(ApiError);
+      await expect(
+        service.getTransactionById("019576a0-d7b6-7d6d-af6a-000000000000"),
+      ).rejects.toThrow("Transaction not found");
     });
   });
 
   describe("createTransaction", () => {
     it("should create an expense and subtract from source account", async () => {
-      const account = makeAccount({ id: 1, balance: 1000 });
+      const account = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        balance: 1000,
+      });
       acctRepo.getById.mockResolvedValue(account);
       txRepo.create.mockResolvedValue(storedExpense);
 
       const result = await service.createTransaction(validExpense);
 
-      expect(acctRepo.getById).toHaveBeenCalledWith(1);
-      expect(acctRepo.update).toHaveBeenCalledWith(1, { balance: 900 });
+      expect(acctRepo.getById).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+      );
+      expect(acctRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        { balance: 900 },
+      );
       expect(txRepo.create).toHaveBeenCalledTimes(1);
       expect(result.type).toBe("EXPENSE");
     });
 
     it("should create an income and add to destination account", async () => {
-      const account = makeAccount({ id: 2, balance: 500 });
+      const account = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        balance: 500,
+      });
       acctRepo.getById.mockResolvedValue(account);
       txRepo.create.mockResolvedValue(storedIncome);
 
       const result = await service.createTransaction(validIncome);
 
-      expect(acctRepo.getById).toHaveBeenCalledWith(2);
-      expect(acctRepo.update).toHaveBeenCalledWith(2, { balance: 700 });
+      expect(acctRepo.getById).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+      );
+      expect(acctRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        { balance: 700 },
+      );
       expect(result.type).toBe("INCOME");
     });
 
     it("should create a transfer and update both accounts", async () => {
-      const fromAccount = makeAccount({ id: 1, balance: 1000 });
-      const toAccount = makeAccount({ id: 2, balance: 500 });
+      const fromAccount = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        balance: 1000,
+      });
+      const toAccount = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        balance: 500,
+      });
       acctRepo.getById
         .mockResolvedValueOnce(fromAccount)
         .mockResolvedValueOnce(toAccount);
@@ -180,8 +217,14 @@ describe("TransactionService", () => {
 
       const result = await service.createTransaction(validTransfer);
 
-      expect(acctRepo.update).toHaveBeenCalledWith(1, { balance: 850 });
-      expect(acctRepo.update).toHaveBeenCalledWith(2, { balance: 650 });
+      expect(acctRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        { balance: 850 },
+      );
+      expect(acctRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        { balance: 650 },
+      );
       expect(result.type).toBe("TRANSFER");
     });
 
@@ -190,8 +233,8 @@ describe("TransactionService", () => {
         type: "EXPENSE",
         amount: -10,
         date: new Date(),
-        fromAccountId: 1,
-        userId: 1,
+        fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       };
 
       await expect(service.createTransaction(invalid)).rejects.toThrow(
@@ -220,21 +263,29 @@ describe("TransactionService", () => {
   describe("updateTransaction", () => {
     it("should reverse old balance and apply new balance on update", async () => {
       const existingTx = new Transaction({
-        id: 1,
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
         type: "EXPENSE",
         amount: 100,
         date: new Date(),
-        fromAccountId: 1,
-        userId: 1,
+        fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       });
       txRepo.getById.mockResolvedValue(existingTx);
 
-      const account = makeAccount({ id: 1, balance: 900 });
+      const account = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        balance: 900,
+      });
       // First call: reverseBalanceChanges (reads account at 900, restores to 1000)
       // Second call: applyBalanceChanges (reads account at 1000 from mock, subtracts 200)
       acctRepo.getById
         .mockResolvedValueOnce(account)
-        .mockResolvedValueOnce(makeAccount({ id: 1, balance: 1000 }));
+        .mockResolvedValueOnce(
+          makeAccount({
+            id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+            balance: 1000,
+          }),
+        );
 
       const updatedTx = new Transaction({
         ...existingTx,
@@ -242,21 +293,37 @@ describe("TransactionService", () => {
       });
       txRepo.update.mockResolvedValue(updatedTx);
 
-      const result = await service.updateTransaction(1, { amount: 200 });
+      const result = await service.updateTransaction(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+        { amount: 200 },
+      );
 
       // Reverse: 900 + 100 = 1000
-      expect(acctRepo.update).toHaveBeenCalledWith(1, { balance: 1000 });
+      expect(acctRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        { balance: 1000 },
+      );
       // Apply: 1000 - 200 = 800
-      expect(acctRepo.update).toHaveBeenCalledWith(1, { balance: 800 });
-      expect(txRepo.update).toHaveBeenCalledWith(1, { amount: 200 });
+      expect(acctRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        { balance: 800 },
+      );
+      expect(txRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+        { amount: 200 },
+      );
     });
 
     it("should throw when id in body does not match param id", async () => {
       await expect(
-        service.updateTransaction(1, { id: 2 } as UpdateTransactionDTO),
+        service.updateTransaction("019576a0-d7b6-7d6d-af6a-2b7545f5ac80", {
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac81",
+        } as UpdateTransactionDTO),
       ).rejects.toThrow(ApiError);
       await expect(
-        service.updateTransaction(1, { id: 2 } as UpdateTransactionDTO),
+        service.updateTransaction("019576a0-d7b6-7d6d-af6a-2b7545f5ac80", {
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac81",
+        } as UpdateTransactionDTO),
       ).rejects.toThrow("Transaction id does not match");
     });
 
@@ -264,7 +331,9 @@ describe("TransactionService", () => {
       txRepo.getById.mockResolvedValue(null);
 
       await expect(
-        service.updateTransaction(999, { amount: 50 }),
+        service.updateTransaction("019576a0-d7b6-7d6d-af6a-000000000000", {
+          amount: 50,
+        }),
       ).rejects.toThrow("Transaction not found");
     });
   });
@@ -272,55 +341,87 @@ describe("TransactionService", () => {
   describe("deleteTransaction", () => {
     it("should reverse balance and delete an expense", async () => {
       txRepo.getById.mockResolvedValue(storedExpense);
-      const account = makeAccount({ id: 1, balance: 900 });
+      const account = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        balance: 900,
+      });
       acctRepo.getById.mockResolvedValue(account);
       txRepo.delete.mockResolvedValue();
 
-      await service.deleteTransaction(1);
+      await service.deleteTransaction("019576a0-d7b6-7d6d-af6a-2b7545f5ac80");
 
       // Reverse: 900 + 100 = 1000
-      expect(acctRepo.update).toHaveBeenCalledWith(1, { balance: 1000 });
-      expect(txRepo.delete).toHaveBeenCalledWith(1);
+      expect(acctRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        { balance: 1000 },
+      );
+      expect(txRepo.delete).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+      );
     });
 
     it("should reverse balance and delete an income", async () => {
       txRepo.getById.mockResolvedValue(storedIncome);
-      const account = makeAccount({ id: 2, balance: 700 });
+      const account = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        balance: 700,
+      });
       acctRepo.getById.mockResolvedValue(account);
       txRepo.delete.mockResolvedValue();
 
-      await service.deleteTransaction(2);
+      await service.deleteTransaction("019576a0-d7b6-7d6d-af6a-2b7545f5ac81");
 
       // Reverse: 700 - 200 = 500
-      expect(acctRepo.update).toHaveBeenCalledWith(2, { balance: 500 });
-      expect(txRepo.delete).toHaveBeenCalledWith(2);
+      expect(acctRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        { balance: 500 },
+      );
+      expect(txRepo.delete).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac81",
+      );
     });
 
     it("should reverse balance on both accounts for transfer delete", async () => {
       txRepo.getById.mockResolvedValue(storedTransfer);
-      const fromAccount = makeAccount({ id: 1, balance: 850 });
-      const toAccount = makeAccount({ id: 2, balance: 650 });
+      const fromAccount = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        balance: 850,
+      });
+      const toAccount = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        balance: 650,
+      });
       acctRepo.getById
         .mockResolvedValueOnce(fromAccount)
         .mockResolvedValueOnce(toAccount);
       txRepo.delete.mockResolvedValue();
 
-      await service.deleteTransaction(3);
+      await service.deleteTransaction("019576a0-d7b6-7d6d-af6a-2b7545f5ac82");
 
       // Reverse from: 850 + 150 = 1000
-      expect(acctRepo.update).toHaveBeenCalledWith(1, { balance: 1000 });
+      expect(acctRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        { balance: 1000 },
+      );
       // Reverse to: 650 - 150 = 500
-      expect(acctRepo.update).toHaveBeenCalledWith(2, { balance: 500 });
-      expect(txRepo.delete).toHaveBeenCalledWith(3);
+      expect(acctRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        { balance: 500 },
+      );
+      expect(txRepo.delete).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac82",
+      );
     });
 
     it("should throw NotFound when transaction does not exist", async () => {
       txRepo.getById.mockResolvedValue(null);
 
-      await expect(service.deleteTransaction(999)).rejects.toThrow(ApiError);
-      await expect(service.deleteTransaction(999)).rejects.toThrow(
-        "Transaction not found",
-      );
+      await expect(
+        service.deleteTransaction("019576a0-d7b6-7d6d-af6a-000000000000"),
+      ).rejects.toThrow(ApiError);
+      await expect(
+        service.deleteTransaction("019576a0-d7b6-7d6d-af6a-000000000000"),
+      ).rejects.toThrow("Transaction not found");
     });
 
     it("should gracefully handle deleted account on reverse", async () => {
@@ -328,10 +429,12 @@ describe("TransactionService", () => {
       acctRepo.getById.mockResolvedValue(null);
       txRepo.delete.mockResolvedValue();
 
-      await service.deleteTransaction(1);
+      await service.deleteTransaction("019576a0-d7b6-7d6d-af6a-2b7545f5ac80");
 
       expect(acctRepo.update).not.toHaveBeenCalled();
-      expect(txRepo.delete).toHaveBeenCalledWith(1);
+      expect(txRepo.delete).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+      );
     });
   });
 });

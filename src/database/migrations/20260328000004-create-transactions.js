@@ -5,8 +5,7 @@ module.exports = {
   async up(queryInterface, Sequelize) {
     await queryInterface.createTable("Transactions", {
       id: {
-        type: Sequelize.INTEGER,
-        autoIncrement: true,
+        type: Sequelize.CHAR(36),
         primaryKey: true,
         allowNull: false,
       },
@@ -23,7 +22,7 @@ module.exports = {
         allowNull: false,
       },
       categoryId: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.CHAR(36),
         allowNull: true,
         references: {
           model: "Categories",
@@ -37,7 +36,7 @@ module.exports = {
         allowNull: true,
       },
       fromAccountId: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.CHAR(36),
         allowNull: true,
         references: {
           model: "Accounts",
@@ -47,7 +46,7 @@ module.exports = {
         onDelete: "SET NULL",
       },
       toAccountId: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.CHAR(36),
         allowNull: true,
         references: {
           model: "Accounts",
@@ -57,7 +56,7 @@ module.exports = {
         onDelete: "SET NULL",
       },
       userId: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.CHAR(36),
         allowNull: false,
         references: {
           model: "Users",

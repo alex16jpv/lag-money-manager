@@ -31,22 +31,22 @@ import { DomainValidationError } from "../../domain/errors";
 
 describe("Account Entity", () => {
   const validProps = {
-    id: 1,
+    id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
     name: "Savings Account",
     type: "SAVINGS" as const,
     balance: 1000,
-    userId: 1,
+    userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
   };
 
   describe("constructor", () => {
     it("should create an account with all properties", () => {
       const account = new Account(validProps);
 
-      expect(account.id).toBe(1);
+      expect(account.id).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac70");
       expect(account.name).toBe("Savings Account");
       expect(account.type).toBe("SAVINGS");
       expect(account.balance).toBe(1000);
-      expect(account.userId).toBe(1);
+      expect(account.userId).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac71");
     });
 
     it("should default balance to 0 when not provided", () => {
@@ -74,7 +74,7 @@ describe("Account Entity", () => {
     it("should throw DomainValidationError when userId is missing", () => {
       const account = new Account({
         ...validProps,
-        userId: 0 as unknown as number,
+        userId: "" as unknown as string,
       });
 
       expect(() => account.validate()).toThrow(DomainValidationError);

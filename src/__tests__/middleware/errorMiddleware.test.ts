@@ -91,9 +91,9 @@ describe("errorMiddleware", () => {
 
     errorMiddleware(error as Error, req, res, next);
 
-    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith({
-      error: "ValidationError",
+      error: "ConflictError",
       message: "email must be unique, name must be unique",
     });
   });
@@ -123,6 +123,36 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "InternalServerError",
       message: "An unexpected error occurred",
+    });
+  });
+
+  it("should handle MongoServerError duplicate key (code 11000)", () => {
+    const error = Object.assign(new Error("E11000 duplicate key"), {
+      name: "MongoServerError",
+      code: 11000,
+      keyValue: { email: "test@test.com" },
+    });
+
+    errorMiddleware(error as Error, req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "ConflictError",
+      message: "Duplicate value for: email",
+    });
+  });
+
+  it("should handle CastError from Mongoose", () => {
+    const error = Object.assign(new Error("Cast to ObjectId failed"), {
+      name: "CastError",
+    });
+
+    errorMiddleware(error as Error, req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "ValidationError",
+      message: "Invalid ID format",
     });
   });
 });

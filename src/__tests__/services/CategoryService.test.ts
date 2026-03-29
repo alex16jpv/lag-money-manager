@@ -5,7 +5,10 @@ import { ApiError } from "../../shared/errors";
 import { DomainValidationError } from "../../domain/errors";
 import { CreateCategoryDTO } from "../../app/dtos/CategoryDTO";
 
-const mockCategory = new Category({ id: 1, name: "Food" });
+const mockCategory = new Category({
+  id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+  name: "Food",
+});
 
 const createMockRepo = (): jest.Mocked<ICategoryRepository> => ({
   getAll: jest.fn(),
@@ -48,19 +51,25 @@ describe("CategoryService", () => {
     it("should return category when found", async () => {
       repo.getById.mockResolvedValue(mockCategory);
 
-      const result = await service.getCategoryById(1);
+      const result = await service.getCategoryById(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
 
-      expect(repo.getById).toHaveBeenCalledWith(1);
+      expect(repo.getById).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
       expect(result.name).toBe("Food");
     });
 
     it("should throw NotFound when category does not exist", async () => {
       repo.getById.mockResolvedValue(null);
 
-      await expect(service.getCategoryById(999)).rejects.toThrow(ApiError);
-      await expect(service.getCategoryById(999)).rejects.toThrow(
-        "Category not found",
-      );
+      await expect(
+        service.getCategoryById("019576a0-d7b6-7d6d-af6a-000000000000"),
+      ).rejects.toThrow(ApiError);
+      await expect(
+        service.getCategoryById("019576a0-d7b6-7d6d-af6a-000000000000"),
+      ).rejects.toThrow("Category not found");
     });
   });
 
@@ -91,22 +100,35 @@ describe("CategoryService", () => {
 
   describe("updateCategory", () => {
     it("should update a category", async () => {
-      const updated = new Category({ id: 1, name: "Transport" });
+      const updated = new Category({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        name: "Transport",
+      });
       repo.update.mockResolvedValue(updated);
 
-      const result = await service.updateCategory(1, { name: "Transport" });
+      const result = await service.updateCategory(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        { name: "Transport" },
+      );
 
-      expect(repo.update).toHaveBeenCalledWith(1, { name: "Transport" });
+      expect(repo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        { name: "Transport" },
+      );
       expect(result.name).toBe("Transport");
     });
 
     it("should throw when id in body does not match param id", async () => {
-      await expect(service.updateCategory(1, { id: 2 })).rejects.toThrow(
-        ApiError,
-      );
-      await expect(service.updateCategory(1, { id: 2 })).rejects.toThrow(
-        "Category id does not match",
-      );
+      await expect(
+        service.updateCategory("019576a0-d7b6-7d6d-af6a-2b7545f5ac70", {
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        }),
+      ).rejects.toThrow(ApiError);
+      await expect(
+        service.updateCategory("019576a0-d7b6-7d6d-af6a-2b7545f5ac70", {
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        }),
+      ).rejects.toThrow("Category id does not match");
     });
   });
 
@@ -114,9 +136,11 @@ describe("CategoryService", () => {
     it("should delete a category", async () => {
       repo.delete.mockResolvedValue();
 
-      await service.deleteCategory(1);
+      await service.deleteCategory("019576a0-d7b6-7d6d-af6a-2b7545f5ac70");
 
-      expect(repo.delete).toHaveBeenCalledWith(1);
+      expect(repo.delete).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
     });
   });
 });

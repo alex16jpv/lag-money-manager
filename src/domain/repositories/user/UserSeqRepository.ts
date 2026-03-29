@@ -1,6 +1,6 @@
 import { ApiError } from "../../../shared/errors";
 import { User } from "../../entities/User";
-import { UserModel } from "../../models/UserModel";
+import { UserModel } from "../../models/sequelize/UserModel";
 import { IUserRepository } from "./IUserRepository";
 
 export class UserSeqRepository implements IUserRepository {

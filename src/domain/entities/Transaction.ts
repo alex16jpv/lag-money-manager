@@ -2,15 +2,15 @@ import { DomainValidationError } from "../errors";
 import { TRANSACTION_TYPES, TransactionType } from "../../shared/constants";
 
 export interface TransactionProps {
-  id?: number;
+  id?: string;
   type: TransactionType;
   amount: number;
   date: Date | string;
-  categoryId?: number | null;
+  categoryId?: string | null;
   description?: string | null;
-  fromAccountId?: number | null;
-  toAccountId?: number | null;
-  userId: number;
+  fromAccountId?: string | null;
+  toAccountId?: string | null;
+  userId: string;
   tags?: string | null;
   note?: string | null;
   createdAt?: Date;
@@ -18,15 +18,15 @@ export interface TransactionProps {
 }
 
 export class Transaction {
-  id: number;
+  id: string;
   type: TransactionType;
   amount: number;
   date: Date;
-  categoryId: number | null;
+  categoryId: string | null;
   description: string | null;
-  fromAccountId: number | null;
-  toAccountId: number | null;
-  userId: number;
+  fromAccountId: string | null;
+  toAccountId: string | null;
+  userId: string;
   tags: string | null;
   note: string | null;
   createdAt: Date;

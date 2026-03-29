@@ -11,8 +11,8 @@ export class UserController {
   };
 
   static getUserById = async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const user = await userService.getUserById(Number(id));
+    const id = req.params.id as string;
+    const user = await userService.getUserById(id);
     res.status(200).json(user);
   };
 
@@ -22,14 +22,14 @@ export class UserController {
   };
 
   static updateUser = async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const updatedUser = await userService.updateUser(Number(id), req.body);
+    const id = req.params.id as string;
+    const updatedUser = await userService.updateUser(id, req.body);
     res.status(200).json(updatedUser);
   };
 
   static deleteUser = async (req: Request, res: Response) => {
-    const { id } = req.params;
-    await userService.deleteUser(Number(id));
+    const id = req.params.id as string;
+    await userService.deleteUser(id);
     res.status(204).send();
   };
 }

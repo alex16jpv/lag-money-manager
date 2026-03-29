@@ -1,13 +1,14 @@
 import { DataTypes, Model, Sequelize } from "sequelize";
-import { ACCOUNT_TYPES, MODEL_NAMES } from "../../shared/constants";
+import { ACCOUNT_TYPES, MODEL_NAMES } from "../../../shared/constants";
 import { UserModel } from "./UserModel";
+import { v7 as uuidv7 } from "uuid";
 
 export class AccountModel extends Model {
-  id!: number;
+  id!: string;
   name!: string;
   type!: keyof typeof ACCOUNT_TYPES;
   balance!: number;
-  userId!: number;
+  userId!: string;
 
   static associate() {
     AccountModel.belongsTo(UserModel, {
@@ -22,8 +23,8 @@ export default (sequelize: Sequelize) => {
   AccountModel.init(
     {
       id: {
-        type: DataTypes.INTEGER,
-        autoIncrement: true,
+        type: DataTypes.CHAR(36),
+        defaultValue: () => uuidv7(),
         primaryKey: true,
       },
       name: {
@@ -39,14 +40,14 @@ export default (sequelize: Sequelize) => {
         allowNull: false,
       },
       userId: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.CHAR(36),
         allowNull: false,
       },
     },
     {
       sequelize,
       modelName: MODEL_NAMES.ACCOUNT,
-    }
+    },
   );
 
   return AccountModel;

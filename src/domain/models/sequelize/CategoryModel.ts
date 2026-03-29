@@ -1,8 +1,9 @@
 import { DataTypes, Model, Sequelize } from "sequelize";
-import { MODEL_NAMES } from "../../shared/constants";
+import { MODEL_NAMES } from "../../../shared/constants";
+import { v7 as uuidv7 } from "uuid";
 
 export class CategoryModel extends Model {
-  id!: number;
+  id!: string;
   name!: string;
 
   static associate() {}
@@ -12,8 +13,8 @@ export default (sequelize: Sequelize) => {
   CategoryModel.init(
     {
       id: {
-        type: DataTypes.INTEGER,
-        autoIncrement: true,
+        type: DataTypes.CHAR(36),
+        defaultValue: () => uuidv7(),
         primaryKey: true,
       },
       name: {
@@ -24,7 +25,7 @@ export default (sequelize: Sequelize) => {
     {
       sequelize,
       modelName: MODEL_NAMES.CATEGORY,
-    }
+    },
   );
 
   return CategoryModel;

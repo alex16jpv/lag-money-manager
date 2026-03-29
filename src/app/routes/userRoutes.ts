@@ -74,7 +74,8 @@ router.post("/", validate(createUserSchema), UserController.createUser);
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: User ID
  *     responses:
  *       200:
@@ -103,7 +104,8 @@ router.get("/:id", validate(idParamSchema), UserController.getUserById);
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: User ID
  *     requestBody:
  *       required: true
@@ -138,7 +140,8 @@ router.put("/:id", validate(updateUserSchema), UserController.updateUser);
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: User ID
  *     responses:
  *       204:

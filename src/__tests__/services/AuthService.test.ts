@@ -40,7 +40,7 @@ describe("AuthService", () => {
         password: "password123",
       };
       const createdUser = new User({
-        id: 1,
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         name: "John",
         email: "john@example.com",
         password: "hashed",
@@ -78,7 +78,7 @@ describe("AuthService", () => {
   describe("login", () => {
     const hashedPassword = bcryptjs.hashSync("password123", 12);
     const existingUser = new User({
-      id: 1,
+      id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       name: "John",
       email: "john@example.com",
       password: hashedPassword,
@@ -96,10 +96,10 @@ describe("AuthService", () => {
       expect(typeof result.token).toBe("string");
 
       const decoded = jwt.verify(result.token, "test-secret-key") as {
-        userId: number;
+        userId: string;
         email: string;
       };
-      expect(decoded.userId).toBe(1);
+      expect(decoded.userId).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac70");
       expect(decoded.email).toBe("john@example.com");
       expect(result.user).not.toHaveProperty("password");
     });

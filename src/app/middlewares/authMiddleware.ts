@@ -4,7 +4,7 @@ import { ENVIRONMENT } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
 
 export interface AuthPayload {
-  userId: number;
+  userId: string;
   email: string;
 }
 

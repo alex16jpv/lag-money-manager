@@ -8,6 +8,11 @@ interface ValidationError extends Error {
   fields: string[];
 }
 
+interface MongoServerError extends Error {
+  code: number;
+  keyValue?: Record<string, unknown>;
+}
+
 export const errorMiddleware = (
   error: Error,
   _: Request,
@@ -32,12 +37,13 @@ export const errorMiddleware = (
     return;
   }
 
+  // Sequelize unique constraint
   if (
     error?.name === "SequelizeUniqueConstraintError" &&
     (error as ValidationError)?.errors?.length > 0
   ) {
-    res.status(400).json({
-      error: "ValidationError",
+    res.status(409).json({
+      error: "ConflictError",
       message: (error as ValidationError).errors
         ?.map((err: { message: string }) => err.message)
         ?.join(", "),
@@ -45,11 +51,35 @@ export const errorMiddleware = (
     return;
   }
 
+  // Sequelize foreign key constraint
   if (error?.name === "SequelizeForeignKeyConstraintError") {
     res.status(400).json({
       error: "ValidationError",
       message: "Foreign key constraint error",
       details: { fields: (error as ValidationError).fields?.join(", ") },
+    });
+    return;
+  }
+
+  // MongoDB duplicate key (code 11000)
+  if (
+    error?.name === "MongoServerError" &&
+    (error as MongoServerError).code === 11000
+  ) {
+    const keyValue = (error as MongoServerError).keyValue;
+    const fields = keyValue ? Object.keys(keyValue).join(", ") : "unknown";
+    res.status(409).json({
+      error: "ConflictError",
+      message: `Duplicate value for: ${fields}`,
+    });
+    return;
+  }
+
+  // Mongoose CastError (invalid ObjectId / type mismatch)
+  if (error?.name === "CastError") {
+    res.status(400).json({
+      error: "ValidationError",
+      message: "Invalid ID format",
     });
     return;
   }
