@@ -1,4 +1,4 @@
-import { ApiError } from "../../shared/errors";
+import { DomainValidationError } from "../errors";
 
 export interface UserProps {
   id?: number;
@@ -28,11 +28,11 @@ export class User {
 
   validate() {
     if (!this.email) {
-      throw new ApiError("BadRequest", "Email is required");
+      throw new DomainValidationError("Email is required", "email");
     }
 
     if (!this.name) {
-      throw new ApiError("BadRequest", "Name is required");
+      throw new DomainValidationError("Name is required", "name");
     }
   }
 }

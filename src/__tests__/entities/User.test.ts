@@ -1,5 +1,5 @@
 import { User } from "../../domain/entities/User";
-import { ApiError } from "../../shared/errors";
+import { DomainValidationError } from "../../domain/errors";
 
 describe("User Entity", () => {
   const validProps = {
@@ -38,17 +38,17 @@ describe("User Entity", () => {
       expect(() => user.validate()).not.toThrow();
     });
 
-    it("should throw ApiError when email is missing", () => {
+    it("should throw DomainValidationError when email is missing", () => {
       const user = new User({ ...validProps, email: "" });
 
-      expect(() => user.validate()).toThrow(ApiError);
+      expect(() => user.validate()).toThrow(DomainValidationError);
       expect(() => user.validate()).toThrow("Email is required");
     });
 
-    it("should throw ApiError when name is missing", () => {
+    it("should throw DomainValidationError when name is missing", () => {
       const user = new User({ ...validProps, name: "" });
 
-      expect(() => user.validate()).toThrow(ApiError);
+      expect(() => user.validate()).toThrow(DomainValidationError);
       expect(() => user.validate()).toThrow("Name is required");
     });
   });

@@ -2,6 +2,7 @@ import { UserService } from "../../app/services/UserService";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { User } from "../../domain/entities/User";
 import { ApiError } from "../../shared/errors";
+import { DomainValidationError } from "../../domain/errors";
 import bcryptjs from "bcryptjs";
 
 const mockUser: User = new User({
@@ -95,7 +96,9 @@ describe("UserService", () => {
         password: "password123",
       });
 
-      await expect(service.createUser(input)).rejects.toThrow(ApiError);
+      await expect(service.createUser(input)).rejects.toThrow(
+        DomainValidationError,
+      );
       await expect(service.createUser(input)).rejects.toThrow(
         "Email is required",
       );

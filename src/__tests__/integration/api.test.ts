@@ -76,6 +76,10 @@ jest.mock("../../domain/models/index", () => ({
   loadSequelizeModels: jest.fn(),
 }));
 
+jest.mock("../../config/swagger", () => ({
+  swaggerSpec: {},
+}));
+
 jest.mock("../../app/factories/RepositoryFactory", () => ({
   __esModule: true,
   default: {

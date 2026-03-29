@@ -1,4 +1,4 @@
-import { ApiError } from "../../shared/errors";
+import { DomainValidationError } from "../errors";
 import { ACCOUNT_TYPES } from "../../shared/constants";
 
 export interface AccountProps {
@@ -26,21 +26,22 @@ export class Account {
 
   validate() {
     if (!this.userId) {
-      throw new ApiError("BadRequest", "'userId' is required");
+      throw new DomainValidationError("'userId' is required", "userId");
     }
 
     if (!this.name) {
-      throw new ApiError("BadRequest", "'name' is required");
+      throw new DomainValidationError("'name' is required", "name");
     }
 
     if (!this.type) {
-      throw new ApiError("BadRequest", "'type' is required");
+      throw new DomainValidationError("'type' is required", "type");
     }
 
     if (!ACCOUNT_TYPES[this.type]) {
-      throw new ApiError("BadRequest", "Invalid account type", {
-        availableTypes: Object.values(ACCOUNT_TYPES),
-      });
+      throw new DomainValidationError(
+        `Invalid account type. Available: ${Object.values(ACCOUNT_TYPES).join(", ")}`,
+        "type",
+      );
     }
   }
 }

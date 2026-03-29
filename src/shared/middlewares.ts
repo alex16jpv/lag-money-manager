@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { ApiError } from "./errors";
+import { DomainValidationError } from "../domain/errors";
 import logger from "./logger";
 
 interface ValidationError extends Error {
@@ -18,6 +19,15 @@ export const errorMiddleware = (
       error: error.name,
       message: error.message,
       details: error?.details,
+    });
+    return;
+  }
+
+  if (error instanceof DomainValidationError) {
+    res.status(400).json({
+      error: "ValidationError",
+      message: error.message,
+      ...(error.field && { details: { field: error.field } }),
     });
     return;
   }

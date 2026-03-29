@@ -1,4 +1,4 @@
-import { ApiError } from "../../shared/errors";
+import { DomainValidationError } from "../errors";
 
 export interface CategoryProps {
   id: number;
@@ -16,7 +16,7 @@ export class Category {
 
   validate() {
     if (!this.name) {
-      throw new ApiError("BadRequest", "'name' is required");
+      throw new DomainValidationError("'name' is required", "name");
     }
   }
 }

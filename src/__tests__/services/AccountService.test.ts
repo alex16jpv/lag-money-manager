@@ -30,6 +30,7 @@ import { AccountService } from "../../app/services/AccountService";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { Account } from "../../domain/entities/Account";
 import { ApiError } from "../../shared/errors";
+import { DomainValidationError } from "../../domain/errors";
 
 const validAccountProps = {
   id: 1,
@@ -116,7 +117,9 @@ describe("AccountService", () => {
         name: "" as unknown as string,
       });
 
-      await expect(service.createAccount(invalid)).rejects.toThrow(ApiError);
+      await expect(service.createAccount(invalid)).rejects.toThrow(
+        DomainValidationError,
+      );
       await expect(service.createAccount(invalid)).rejects.toThrow(
         "'name' is required",
       );
@@ -129,7 +132,9 @@ describe("AccountService", () => {
         type: "INVALID" as unknown as typeof validAccountProps.type,
       });
 
-      await expect(service.createAccount(invalid)).rejects.toThrow(ApiError);
+      await expect(service.createAccount(invalid)).rejects.toThrow(
+        DomainValidationError,
+      );
       expect(repo.create).not.toHaveBeenCalled();
     });
   });

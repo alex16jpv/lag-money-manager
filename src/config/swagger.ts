@@ -1,0 +1,209 @@
+import swaggerJsdoc from "swagger-jsdoc";
+
+const options: swaggerJsdoc.Options = {
+  definition: {
+    openapi: "3.0.3",
+    info: {
+      title: "lag-money-manager API",
+      version: "1.0.0",
+      description: "REST API for personal money management",
+    },
+    servers: [
+      {
+        url: "/",
+        description: "Current server",
+      },
+    ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+        },
+      },
+      schemas: {
+        User: {
+          type: "object",
+          properties: {
+            id: { type: "integer", example: 1 },
+            name: { type: "string", example: "John Doe" },
+            email: {
+              type: "string",
+              format: "email",
+              example: "john@example.com",
+            },
+            createdAt: {
+              type: "string",
+              format: "date-time",
+              example: "2026-01-01T00:00:00.000Z",
+            },
+            updatedAt: {
+              type: "string",
+              format: "date-time",
+              example: "2026-01-01T00:00:00.000Z",
+            },
+          },
+        },
+        CreateUser: {
+          type: "object",
+          required: ["name", "email", "password"],
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 255 },
+            email: { type: "string", format: "email", maxLength: 255 },
+            password: { type: "string", minLength: 8, maxLength: 128 },
+          },
+        },
+        UpdateUser: {
+          type: "object",
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 255 },
+            email: { type: "string", format: "email", maxLength: 255 },
+            password: { type: "string", minLength: 8, maxLength: 128 },
+          },
+        },
+        Account: {
+          type: "object",
+          properties: {
+            id: { type: "integer", example: 1 },
+            name: { type: "string", example: "Savings" },
+            type: {
+              type: "string",
+              enum: [
+                "CASH",
+                "ACCOUNT",
+                "CARD",
+                "DEBIT_CARD",
+                "SAVINGS",
+                "INVESTMENT",
+                "OVERDRAFT",
+                "LOAN",
+                "OTHER",
+              ],
+              example: "SAVINGS",
+            },
+            balance: { type: "number", example: 1000 },
+            userId: { type: "integer", example: 1 },
+          },
+        },
+        CreateAccount: {
+          type: "object",
+          required: ["name", "type", "userId"],
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 255 },
+            type: {
+              type: "string",
+              enum: [
+                "CASH",
+                "ACCOUNT",
+                "CARD",
+                "DEBIT_CARD",
+                "SAVINGS",
+                "INVESTMENT",
+                "OVERDRAFT",
+                "LOAN",
+                "OTHER",
+              ],
+            },
+            balance: { type: "number", default: 0 },
+            userId: { type: "integer", minimum: 1 },
+          },
+        },
+        UpdateAccount: {
+          type: "object",
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 255 },
+            type: {
+              type: "string",
+              enum: [
+                "CASH",
+                "ACCOUNT",
+                "CARD",
+                "DEBIT_CARD",
+                "SAVINGS",
+                "INVESTMENT",
+                "OVERDRAFT",
+                "LOAN",
+                "OTHER",
+              ],
+            },
+            balance: { type: "number" },
+            userId: { type: "integer", minimum: 1 },
+          },
+        },
+        Category: {
+          type: "object",
+          properties: {
+            id: { type: "integer", example: 1 },
+            name: { type: "string", example: "Food" },
+          },
+        },
+        CreateCategory: {
+          type: "object",
+          required: ["name"],
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 255 },
+          },
+        },
+        UpdateCategory: {
+          type: "object",
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 255 },
+          },
+        },
+        RegisterRequest: {
+          type: "object",
+          required: ["name", "email", "password"],
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 255 },
+            email: { type: "string", format: "email", maxLength: 255 },
+            password: { type: "string", minLength: 8, maxLength: 128 },
+          },
+        },
+        LoginRequest: {
+          type: "object",
+          required: ["email", "password"],
+          properties: {
+            email: { type: "string", format: "email" },
+            password: { type: "string", minLength: 1 },
+          },
+        },
+        LoginResponse: {
+          type: "object",
+          properties: {
+            token: { type: "string" },
+            user: { $ref: "#/components/schemas/User" },
+          },
+        },
+        ValidationError: {
+          type: "object",
+          properties: {
+            error: { type: "string", example: "ValidationError" },
+            message: { type: "string", example: "Invalid request data" },
+            details: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  field: { type: "string" },
+                  message: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        Error: {
+          type: "object",
+          properties: {
+            error: { type: "string" },
+            message: { type: "string" },
+          },
+        },
+      },
+    },
+    security: [{ bearerAuth: [] }],
+  },
+  apis: ["./src/app/routes/*.ts"],
+};
+
+export const swaggerSpec = swaggerJsdoc(options);

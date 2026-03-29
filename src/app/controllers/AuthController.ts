@@ -1,26 +1,19 @@
-import { NextFunction, Request, Response } from "express";
+import { Request, Response } from "express";
 import { AuthService } from "../services/AuthService";
 import repositoryFactory from "../factories/RepositoryFactory";
+import { asyncHandler } from "../../shared/asyncHandler";
 
 const authService = new AuthService(repositoryFactory.getUserRepository());
 
 export class AuthController {
-  static async register(req: Request, res: Response, next: NextFunction) {
-    try {
-      const user = await authService.register(req.body);
-      res.status(201).json(user);
-    } catch (error) {
-      next(error);
-    }
-  }
+  static register = asyncHandler(async (req: Request, res: Response) => {
+    const user = await authService.register(req.body);
+    res.status(201).json(user);
+  });
 
-  static async login(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { email, password } = req.body;
-      const result = await authService.login(email, password);
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
+  static login = asyncHandler(async (req: Request, res: Response) => {
+    const { email, password } = req.body;
+    const result = await authService.login(email, password);
+    res.status(200).json(result);
+  });
 }

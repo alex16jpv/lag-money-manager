@@ -2,6 +2,7 @@ import { AuthService } from "../../app/services/AuthService";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { User } from "../../domain/entities/User";
 import { ApiError } from "../../shared/errors";
+import { DomainValidationError } from "../../domain/errors";
 import bcryptjs from "bcryptjs";
 import jwt from "jsonwebtoken";
 
@@ -67,7 +68,9 @@ describe("AuthService", () => {
         password: "password123",
       };
 
-      await expect(service.register(input)).rejects.toThrow(ApiError);
+      await expect(service.register(input)).rejects.toThrow(
+        DomainValidationError,
+      );
       expect(repo.create).not.toHaveBeenCalled();
     });
   });

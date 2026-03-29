@@ -27,7 +27,7 @@ jest.mock("../../shared/constants", () => ({
 }));
 
 import { Account } from "../../domain/entities/Account";
-import { ApiError } from "../../shared/errors";
+import { DomainValidationError } from "../../domain/errors";
 
 describe("Account Entity", () => {
   const validProps = {
@@ -71,43 +71,43 @@ describe("Account Entity", () => {
       expect(() => account.validate()).not.toThrow();
     });
 
-    it("should throw ApiError when userId is missing", () => {
+    it("should throw DomainValidationError when userId is missing", () => {
       const account = new Account({
         ...validProps,
         userId: 0 as unknown as number,
       });
 
-      expect(() => account.validate()).toThrow(ApiError);
+      expect(() => account.validate()).toThrow(DomainValidationError);
       expect(() => account.validate()).toThrow("'userId' is required");
     });
 
-    it("should throw ApiError when name is missing", () => {
+    it("should throw DomainValidationError when name is missing", () => {
       const account = new Account({
         ...validProps,
         name: "" as unknown as string,
       });
 
-      expect(() => account.validate()).toThrow(ApiError);
+      expect(() => account.validate()).toThrow(DomainValidationError);
       expect(() => account.validate()).toThrow("'name' is required");
     });
 
-    it("should throw ApiError when type is missing", () => {
+    it("should throw DomainValidationError when type is missing", () => {
       const account = new Account({
         ...validProps,
         type: "" as unknown as typeof validProps.type,
       });
 
-      expect(() => account.validate()).toThrow(ApiError);
+      expect(() => account.validate()).toThrow(DomainValidationError);
       expect(() => account.validate()).toThrow("'type' is required");
     });
 
-    it("should throw ApiError for invalid account type", () => {
+    it("should throw DomainValidationError for invalid account type", () => {
       const account = new Account({
         ...validProps,
         type: "INVALID" as unknown as typeof validProps.type,
       });
 
-      expect(() => account.validate()).toThrow(ApiError);
+      expect(() => account.validate()).toThrow(DomainValidationError);
       expect(() => account.validate()).toThrow("Invalid account type");
     });
   });

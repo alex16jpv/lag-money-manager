@@ -1,5 +1,5 @@
 import { Category } from "../../domain/entities/Category";
-import { ApiError } from "../../shared/errors";
+import { DomainValidationError } from "../../domain/errors";
 
 describe("Category Entity", () => {
   describe("constructor", () => {
@@ -17,13 +17,13 @@ describe("Category Entity", () => {
       expect(() => category.validate()).not.toThrow();
     });
 
-    it("should throw ApiError when name is missing", () => {
+    it("should throw DomainValidationError when name is missing", () => {
       const category = new Category({
         id: 1,
         name: "" as unknown as string,
       });
 
-      expect(() => category.validate()).toThrow(ApiError);
+      expect(() => category.validate()).toThrow(DomainValidationError);
       expect(() => category.validate()).toThrow("'name' is required");
     });
   });

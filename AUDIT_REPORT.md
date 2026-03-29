@@ -8,15 +8,15 @@
 
 ## Executive Summary
 
-The project implements a layered architecture with controllers, services, and repositories — a good foundation. After the Phase 1, Phase 2, and Phase 3 fix sessions, the API now has **JWT authentication/authorization**, **zod-based input validation**, **security middleware** (CORS, Helmet, rate limiting), **structured logging** with pino, **environment variable validation at startup**, and a **comprehensive test suite** (90 tests across 9 suites covering entities, services, middleware, and full HTTP integration). Entity constructors use proper TypeScript interfaces, all repository methods are implemented, and dead code has been removed. The remaining gaps are in **API documentation** (no Swagger/OpenAPI) and **architecture refinements** (DTOs, migration strategy, linting/formatting).
+The project implements a layered architecture with controllers, services, and repositories — a good foundation. After the Phase 1, Phase 2, Phase 3, and Phase 4 fix sessions, the API now has **JWT authentication/authorization**, **zod-based input validation**, **security middleware** (CORS, Helmet, rate limiting), **structured logging** with pino, **environment variable validation at startup**, a **comprehensive test suite** (92 tests across 9 suites covering entities, services, middleware, and full HTTP integration), **OpenAPI 3.0 documentation** served at `/api-docs`, **ESLint + Prettier** for code quality enforcement, an **`asyncHandler` utility** eliminating controller try/catch boilerplate, **domain-specific validation errors** separated from HTTP-level errors, and a **Sequelize CLI migration strategy** with initial migrations for all tables. The remaining gaps are in **architecture refinements** (DTOs, Transaction feature completion, RepositoryFactory registry pattern).
 
 ---
 
 ## Critical Issues ⛔
 
-1. ~~**No Tests**~~ — ✅ Fixed: Jest + ts-jest configured. 90 tests across 9 suites (entity validation, service logic, error middleware, full HTTP integration with supertest).
+1. ~~**No Tests**~~ — ✅ Fixed: Jest + ts-jest configured. 92 tests across 9 suites (entity validation, service logic, error middleware, full HTTP integration with supertest).
 
-2. **No API Documentation (Swagger/OpenAPI)** — No swagger-jsdoc, swagger-ui-express, or any OpenAPI tooling is present. There is no machine-readable or human-readable API contract.
+2. ~~**No API Documentation (Swagger/OpenAPI)**~~ — ✅ Fixed: OpenAPI 3.0 spec with `swagger-jsdoc` + `swagger-ui-express` served at `/api-docs`. All endpoints documented with request/response schemas, status codes, and auth requirements.
 
 ## High Priority 🔴
 
@@ -28,10 +28,9 @@ _(No remaining high-priority issues.)_
 
 6. **No `updateCategory` or `deleteCategory` Endpoints** — ~~Fixed: `updateCategory`, `deleteCategory` methods and PUT/DELETE routes added.~~
 
-7. **`sequelize.sync()` is Commented Out** — The model loading function in `index.ts` has `sequelize.sync()` commented out. Without migrations or sync, schema changes won't be applied.
-   - [src/domain/models/index.ts](src/domain/models/index.ts#L22)
+7. ~~**`sequelize.sync()` is Commented Out**~~ — Mitigated: Sequelize CLI migrations now provide proper schema management. The commented-out `sync()` is intentionally disabled in favor of migrations.
 
-8. **No Database Migration Strategy** — There are no Sequelize migration files or CLI configuration. Schema management is entirely manual or relies on the commented-out `sync()`.
+8. ~~**No Database Migration Strategy**~~ — ✅ Fixed: Sequelize CLI configured with `.sequelizerc`, `database.js` config, and initial migrations for all tables (Users, Categories, Accounts, Transactions).
 
 ## Low Priority 🟢
 
@@ -69,14 +68,11 @@ routes → controllers → services → repositories → models/DB
 
 **Issues:**
 
-- **Domain entities live in `domain/entities/` but also depend on `shared/errors.ts`** — entities should be pure domain objects. Validation could throw domain-specific errors rather than API-level errors (`ApiError` with HTTP status codes).
-  - [src/domain/entities/User.ts](src/domain/entities/User.ts#L1) imports `ApiError`
-  - [src/domain/entities/Account.ts](src/domain/entities/Account.ts#L1) imports `ApiError`
-  - [src/domain/entities/Category.ts](src/domain/entities/Category.ts#L1) imports `ApiError`
+- ~~**Domain entities live in `domain/entities/` but also depend on `shared/errors.ts`**~~ — ✅ Fixed: Entities now throw `DomainValidationError` from `domain/errors.ts` instead of `ApiError`. The error middleware maps `DomainValidationError` to HTTP 400 responses.
 - **No Transaction entity, controller, service, or routes** — `TransactionModel` exists but has no corresponding business layer. This is either incomplete work or dead code.
-- **`src/index.ts` is a scratch/test file** that shouldn't exist in a production codebase.
+- ~~**`src/index.ts` is a scratch/test file**~~ — ✅ Removed.
 - **No DTOs (Data Transfer Objects)** — Controllers cast `req.body` directly to domain entities. A DTO layer would decouple HTTP request shapes from domain objects.
-- **No middleware layer for cross-cutting concerns** (auth, logging, request ID tracking).
+- ~~**No middleware layer for cross-cutting concerns**~~ — ✅ Fixed: auth middleware, validation middleware, error middleware, `asyncHandler` utility.
 
 ### 2. Database Abstraction
 
@@ -106,27 +102,9 @@ routes → controllers → services → repositories → models/DB
 
 ### 3. Swagger / API Documentation
 
-**Status: Not Present ❌**
+**Status: Implemented ✅**
 
-There is **no Swagger/OpenAPI configuration** anywhere in the project. No `swagger-jsdoc`, `swagger-ui-express`, or equivalent library is installed or configured.
-
-**Impact:**
-
-- No machine-readable API contract for frontend developers, QA, or external consumers
-- No interactive documentation for testing endpoints
-- Increases onboarding time and likelihood of integration bugs
-
-**Recommendation:**
-Install and configure `swagger-jsdoc` + `swagger-ui-express`:
-
-```
-npm install swagger-jsdoc swagger-ui-express
-npm install -D @types/swagger-jsdoc @types/swagger-ui-express
-```
-
-- Define an OpenAPI 3.0 spec using JSDoc annotations on each route or a centralized YAML/JSON file
-- Mount `swagger-ui-express` at `/api-docs` in `server.ts`
-- Document all endpoints with request bodies, response schemas, status codes, and authentication requirements
+OpenAPI 3.0 documentation is generated with `swagger-jsdoc` and served via `swagger-ui-express` at `/api-docs`. All endpoints are documented with JSDoc annotations on route files, including request/response schemas, status codes, and authentication requirements (Bearer JWT). Component schemas are centralized in `src/config/swagger.ts`.
 
 ### 4. Error Handling
 
@@ -138,15 +116,16 @@ npm install -D @types/swagger-jsdoc @types/swagger-ui-express
   - [src/shared/errors.ts](src/shared/errors.ts)
 - Global `errorMiddleware` is registered as the last middleware in `server.ts` — correctly catches forwarded errors.
   - [src/shared/middlewares.ts](src/shared/middlewares.ts)
-- Controllers consistently use `try/catch` with `next(error)` — no unhandled promise rejections in route handlers.
+- Controllers use an `asyncHandler` wrapper — no more `try/catch` boilerplate in route handlers.
 - Sequelize-specific errors (`SequelizeUniqueConstraintError`, `SequelizeForeignKeyConstraintError`) are handled in the error middleware.
+- Domain-level `DomainValidationError` is handled by the error middleware with a proper 400 response.
 - 500 errors no longer leak internal `error.message` — a generic "An unexpected error occurred" is returned.
 - Unhandled errors are logged via pino before sending generic response.
 - Dead `CustomError` class has been removed.
 
 **Remaining Issues:**
 
-- Each controller method has the same `try { ... } catch(error) { next(error) }` boilerplate. This could be extracted into an `asyncHandler` wrapper.
+- _(None.)_
 
 ### 5. Input Validation
 
@@ -168,17 +147,17 @@ Input validation is now handled by `zod` schemas applied via middleware on all r
 
 **SOLID Analysis:**
 
-| Principle                     | Status | Notes                                                                                                           |
-| ----------------------------- | ------ | --------------------------------------------------------------------------------------------------------------- |
-| **S** - Single Responsibility | 🟡     | Entities handle both data holding and validation. Domain entities throw HTTP-level errors (`ApiError`).         |
-| **O** - Open/Closed           | 🟡     | `RepositoryFactory` requires modification to add new DB types (switch statement). Could use a registry pattern. |
-| **L** - Liskov Substitution   | ✅     | All repository implementations fully implement their interfaces.                                                |
-| **I** - Interface Segregation | ✅     | Repository interfaces are focused per entity.                                                                   |
-| **D** - Dependency Inversion  | ✅     | Services depend on repository interfaces, not implementations.                                                  |
+| Principle                     | Status | Notes                                                                                                                         |
+| ----------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| **S** - Single Responsibility | ✅     | Entities handle data holding and validation with domain-specific errors. Controllers delegate to services via `asyncHandler`. |
+| **O** - Open/Closed           | 🟡     | `RepositoryFactory` requires modification to add new DB types (switch statement). Could use a registry pattern.               |
+| **L** - Liskov Substitution   | ✅     | All repository implementations fully implement their interfaces.                                                              |
+| **I** - Interface Segregation | ✅     | Repository interfaces are focused per entity.                                                                                 |
+| **D** - Dependency Inversion  | ✅     | Services depend on repository interfaces, not implementations.                                                                |
 
 **DRY Violations:**
 
-- Each controller method has the same `try { ... } catch(error) { next(error) }` boilerplate. This could be extracted into an `asyncHandler` wrapper.
+- ~~Each controller method has the same `try { ... } catch(error) { next(error) }` boilerplate.~~ ✅ Fixed: Extracted into `asyncHandler` utility.
 - Repository Factory methods (`getUserRepository`, `getAccountRepository`, `getCategoryRepository`) follow identical logic with only the type/class differing. Could be generalized.
 
 **Anti-patterns:**
@@ -259,20 +238,20 @@ Input validation is now handled by `zod` schemas applied via middleware on all r
 
 #### To Add:
 
-| Package                                              | Reason                                    |
-| ---------------------------------------------------- | ----------------------------------------- |
-| ~~`cors` + `@types/cors`~~                           | ✅ Added                                  |
-| ~~`helmet`~~                                         | ✅ Added                                  |
-| ~~`express-rate-limit`~~                             | ✅ Added                                  |
-| ~~`zod`~~                                            | ✅ Added                                  |
-| `swagger-jsdoc` + `swagger-ui-express`               | API documentation — completely absent     |
-| `@types/swagger-jsdoc` + `@types/swagger-ui-express` | Type definitions for Swagger packages     |
-| ~~`pino`~~                                           | ✅ Added                                  |
-| `@types/node` (devDep)                               | Node.js type definitions — not listed     |
-| `eslint` + `@typescript-eslint/*` (devDep)           | Linting — no linter configured            |
-| `prettier` (devDep)                                  | Code formatting — no formatter configured |
-| ~~`jest` + `ts-jest` + `@types/jest` (devDep)~~      | ✅ Added                                  |
-| ~~`supertest` + `@types/supertest` (devDep)~~        | ✅ Added                                  |
+| Package                                                  | Reason                                |
+| -------------------------------------------------------- | ------------------------------------- |
+| ~~`cors` + `@types/cors`~~                               | ✅ Added                              |
+| ~~`helmet`~~                                             | ✅ Added                              |
+| ~~`express-rate-limit`~~                                 | ✅ Added                              |
+| ~~`zod`~~                                                | ✅ Added                              |
+| ~~`swagger-jsdoc` + `swagger-ui-express`~~               | ✅ Added                              |
+| ~~`@types/swagger-jsdoc` + `@types/swagger-ui-express`~~ | ✅ Added                              |
+| ~~`pino`~~                                               | ✅ Added                              |
+| `@types/node` (devDep)                                   | Node.js type definitions — not listed |
+| ~~`eslint` + `@typescript-eslint/*` (devDep)~~           | ✅ Added                              |
+| ~~`prettier` (devDep)~~                                  | ✅ Added                              |
+| ~~`jest` + `ts-jest` + `@types/jest` (devDep)~~          | ✅ Added                              |
+| ~~`supertest` + `@types/supertest` (devDep)~~            | ✅ Added                              |
 
 #### Security Concerns:
 
@@ -332,14 +311,14 @@ export const ENVIRONMENT = envSchema.parse(process.env);
 
 **Code Style:**
 
-- No ESLint configuration — no automated style enforcement
-- No Prettier configuration — no automated formatting
+- ~~No ESLint configuration~~ — ✅ Fixed: ESLint 10 with flat config (`eslint.config.mjs`), `typescript-eslint`, and `eslint-config-prettier`.
+- ~~No Prettier configuration~~ — ✅ Fixed: `.prettierrc` configured with consistent formatting rules. Scripts: `npm run lint`, `npm run format`.
 
 ### 12. Testing
 
 **Status: Comprehensive test suite ✅**
 
-Jest with ts-jest is configured. 90 tests across 9 suites all pass. Coverage includes entity validation, all service methods, error middleware, and full HTTP request→response integration tests with supertest.
+Jest with ts-jest is configured. 92 tests across 9 suites all pass. Coverage includes entity validation, all service methods, error middleware (including `DomainValidationError` handling), and full HTTP request→response integration tests with supertest.
 
 **Highest-risk areas to test first (ordered by priority):**
 
@@ -388,18 +367,18 @@ npm install -D jest ts-jest @types/jest supertest @types/supertest
 ~~18. Write integration tests for all API endpoints using `supertest`~~
 ~~19. Add test scripts to `package.json` and CI pipeline~~
 
-### Phase 4: Documentation & DX (Medium Priority)
+### ~~Phase 4: Documentation & DX (Medium Priority)~~ ✅ COMPLETED
 
-20. Add Swagger/OpenAPI documentation with `swagger-jsdoc` + `swagger-ui-express`
-21. Configure ESLint + Prettier
-22. Extract `try/catch` boilerplate in controllers into an `asyncHandler` utility
-23. Create domain-specific validation errors (separate from HTTP `ApiError`)
-24. Add database migration strategy (Sequelize CLI migrations)
+~~20. Add Swagger/OpenAPI documentation with `swagger-jsdoc` + `swagger-ui-express`~~
+~~21. Configure ESLint + Prettier~~
+~~22. Extract `try/catch` boilerplate in controllers into an `asyncHandler` utility~~
+~~23. Create domain-specific validation errors (separate from HTTP `ApiError`)~~
+~~24. Add database migration strategy (Sequelize CLI migrations)~~
 
 ### Phase 5: Architecture Refinement (Low Priority)
 
 25. Add DTO layer between controllers and services
-26. Decouple entity validation from `ApiError` (use domain-specific errors)
+26. ~~Decouple entity validation from `ApiError` (use domain-specific errors)~~ — ✅ Fixed in Phase 4
 27. Consider converting `ACCOUNT_TYPES` / `TRANSACTION_TYPES` to `as const` objects with derived types
 28. Complete the Transaction feature (entity, repository, service, controller, routes) or remove the model
 29. Refactor `RepositoryFactory` to use a registry pattern for extensibility
@@ -548,3 +527,69 @@ npm install -D jest ts-jest @types/jest supertest @types/supertest
 - `@types/jest@^29.5.14`: Jest type definitions
 - `supertest@^7.1.0`: HTTP assertion library for integration tests
 - `@types/supertest@^6.0.2`: Supertest type definitions
+
+### March 28, 2026 - Phase 4 Fix Session
+
+**Fixed points:**
+
+- **Swagger/OpenAPI Documentation (#20):** Added `swagger-jsdoc` + `swagger-ui-express` with OpenAPI 3.0 spec. All endpoints documented with JSDoc annotations on route files. Swagger UI mounted at `/api-docs`. Component schemas for all request/response types. Auth endpoints marked as public (no security), resource endpoints require Bearer JWT.
+- **ESLint + Prettier (#21):** Configured ESLint 10 with flat config (`eslint.config.mjs`), `typescript-eslint`, and `eslint-config-prettier`. Added `.prettierrc` with project formatting rules. Added `lint`, `lint:fix`, `format`, and `format:check` scripts to `package.json`.
+- **asyncHandler Utility (#22):** Created `src/shared/asyncHandler.ts` with a typed `asyncHandler` wrapper. Refactored all 4 controllers (`AuthController`, `UserController`, `AccountController`, `CategoryController`) to use it — eliminated all `try/catch` + `next(error)` boilerplate.
+- **Domain-specific Validation Errors (#23):** Created `src/domain/errors.ts` with `DomainValidationError` class (includes optional `field` property). Refactored all entity `validate()` methods (`User`, `Account`, `Category`) to throw `DomainValidationError` instead of `ApiError`. Updated error middleware to handle `DomainValidationError` with a 400 response. Updated all entity, service, and middleware tests to match new error types.
+- **Database Migration Strategy (#24):** Configured Sequelize CLI with `.sequelizerc` and `src/config/database.js`. Created initial migrations for all 4 tables (Users, Categories, Accounts, Transactions) with proper column types, constraints, and foreign keys. Added `db:migrate`, `db:migrate:undo`, and `db:migration:generate` scripts to `package.json`. Created `src/database/migrations/` and `src/database/seeders/` directories.
+
+**Files created:**
+
+- `src/config/swagger.ts`: Swagger/OpenAPI spec definition with all component schemas
+- `eslint.config.mjs`: ESLint 10 flat config with typescript-eslint and prettier integration
+- `.prettierrc`: Prettier formatting configuration
+- `src/shared/asyncHandler.ts`: Typed async route handler wrapper
+- `src/domain/errors.ts`: `DomainValidationError` class for domain-level validation
+- `.sequelizerc`: Sequelize CLI path configuration
+- `src/config/database.js`: Sequelize CLI database configuration (reads from `.env`)
+- `src/database/migrations/20260328000001-create-users.js`: Users table migration
+- `src/database/migrations/20260328000002-create-categories.js`: Categories table migration
+- `src/database/migrations/20260328000003-create-accounts.js`: Accounts table migration
+- `src/database/migrations/20260328000004-create-transactions.js`: Transactions table migration
+- `src/database/seeders/.gitkeep`: Placeholder for seeders directory
+
+**Files modified:**
+
+- `src/app.ts`: Added `swagger-ui-express` import and mounted Swagger UI at `/api-docs`
+- `src/app/routes/authRoutes.ts`: Added OpenAPI JSDoc annotations for `/auth/register` and `/auth/login`
+- `src/app/routes/userRoutes.ts`: Added OpenAPI JSDoc annotations for all `/users` endpoints
+- `src/app/routes/accountRoutes.ts`: Added OpenAPI JSDoc annotations for all `/accounts` endpoints
+- `src/app/routes/categoryRoutes.ts`: Added OpenAPI JSDoc annotations for all `/categories` endpoints
+- `src/app/controllers/AuthController.ts`: Refactored to use `asyncHandler`, removed try/catch
+- `src/app/controllers/UserController.ts`: Refactored to use `asyncHandler`, removed try/catch
+- `src/app/controllers/AccountController.ts`: Refactored to use `asyncHandler`, removed try/catch
+- `src/app/controllers/CategoryController.ts`: Refactored to use `asyncHandler`, removed try/catch
+- `src/domain/entities/User.ts`: Changed `validate()` to throw `DomainValidationError` instead of `ApiError`
+- `src/domain/entities/Account.ts`: Changed `validate()` to throw `DomainValidationError` instead of `ApiError`
+- `src/domain/entities/Category.ts`: Changed `validate()` to throw `DomainValidationError` instead of `ApiError`
+- `src/shared/middlewares.ts`: Added `DomainValidationError` handler (400 response with field details)
+- `package.json`: Added dependencies (swagger-jsdoc, swagger-ui-express), devDependencies (eslint, prettier, typescript-eslint, @eslint/js, eslint-config-prettier, @types/swagger-jsdoc, @types/swagger-ui-express, sequelize-cli), and new scripts (lint, format, db:migrate)
+- `src/__tests__/entities/User.test.ts`: Updated to expect `DomainValidationError` instead of `ApiError`
+- `src/__tests__/entities/Account.test.ts`: Updated to expect `DomainValidationError` instead of `ApiError`
+- `src/__tests__/entities/Category.test.ts`: Updated to expect `DomainValidationError` instead of `ApiError`
+- `src/__tests__/services/UserService.test.ts`: Updated entity validation assertion to `DomainValidationError`
+- `src/__tests__/services/AccountService.test.ts`: Updated entity validation assertions to `DomainValidationError`
+- `src/__tests__/services/CategoryService.test.ts`: Updated entity validation assertion to `DomainValidationError`
+- `src/__tests__/services/AuthService.test.ts`: Updated entity validation assertion to `DomainValidationError`
+- `src/__tests__/middleware/errorMiddleware.test.ts`: Added 2 new tests for `DomainValidationError` handling
+- `src/__tests__/integration/api.test.ts`: Added swagger mock for test compatibility
+
+**Dependencies added:**
+
+- `swagger-jsdoc@^6.2.8`: OpenAPI spec generation from JSDoc annotations
+- `swagger-ui-express@^5.0.1`: Swagger UI middleware for Express
+- `@types/swagger-jsdoc@^6.0.4` (dev): Type definitions for swagger-jsdoc
+- `@types/swagger-ui-express@^4.1.8` (dev): Type definitions for swagger-ui-express
+- `eslint@^10.1.0` (dev): JavaScript/TypeScript linter
+- `@eslint/js@^10.1.0` (dev): ESLint recommended rules for flat config
+- `typescript-eslint@^8.33.1` (dev): TypeScript ESLint integration
+- `@typescript-eslint/parser@^8.57.2` (dev): TypeScript parser for ESLint
+- `@typescript-eslint/eslint-plugin@^8.57.2` (dev): TypeScript ESLint rules
+- `eslint-config-prettier@^10.1.8` (dev): Disables ESLint rules that conflict with Prettier
+- `prettier@^3.8.1` (dev): Code formatter
+- `sequelize-cli@^6.6.5` (dev): Sequelize migration CLI

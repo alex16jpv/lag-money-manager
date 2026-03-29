@@ -2,6 +2,7 @@ import { CategoryService } from "../../app/services/CategoryService";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { Category } from "../../domain/entities/Category";
 import { ApiError } from "../../shared/errors";
+import { DomainValidationError } from "../../domain/errors";
 
 const mockCategory = new Category({ id: 1, name: "Food" });
 
@@ -80,7 +81,9 @@ describe("CategoryService", () => {
         name: "" as unknown as string,
       });
 
-      await expect(service.createCategory(invalid)).rejects.toThrow(ApiError);
+      await expect(service.createCategory(invalid)).rejects.toThrow(
+        DomainValidationError,
+      );
       await expect(service.createCategory(invalid)).rejects.toThrow(
         "'name' is required",
       );

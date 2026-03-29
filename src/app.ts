@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import swaggerUi from "swagger-ui-express";
+import { swaggerSpec } from "./config/swagger";
 import authRoutes from "./app/routes/authRoutes";
 import userRoutes from "./app/routes/userRoutes";
 import accountRoutes from "./app/routes/accountRoutes";
@@ -30,6 +32,8 @@ app.use(express.json());
 app.get("/", (req, res) => {
   res.status(200).send({ hello: "world!" });
 });
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/auth", authRoutes);
 

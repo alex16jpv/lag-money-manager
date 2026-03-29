@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { errorMiddleware } from "../../shared/middlewares";
 import { ApiError } from "../../shared/errors";
+import { DomainValidationError } from "../../domain/errors";
 
 jest.mock("../../shared/logger", () => ({
   error: jest.fn(),
@@ -51,6 +52,31 @@ describe("errorMiddleware", () => {
       error: "BadRequestError",
       message: "Validation failed",
       details: { field: "email" },
+    });
+  });
+
+  it("should handle DomainValidationError with field", () => {
+    const error = new DomainValidationError("'name' is required", "name");
+
+    errorMiddleware(error, req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "ValidationError",
+      message: "'name' is required",
+      details: { field: "name" },
+    });
+  });
+
+  it("should handle DomainValidationError without field", () => {
+    const error = new DomainValidationError("Invalid data");
+
+    errorMiddleware(error, req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "ValidationError",
+      message: "Invalid data",
     });
   });
 
