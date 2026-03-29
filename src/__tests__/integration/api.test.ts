@@ -1,9 +1,11 @@
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { User } from "../../domain/entities/User";
 import { Account } from "../../domain/entities/Account";
 import { Category } from "../../domain/entities/Category";
+import { Transaction } from "../../domain/entities/Transaction";
 import bcryptjs from "bcryptjs";
 
 // --- Mock repositories ---
@@ -25,6 +27,14 @@ const mockAccountRepo: jest.Mocked<IAccountRepository> = {
 };
 
 const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
+  getAll: jest.fn(),
+  getById: jest.fn(),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+};
+
+const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   getAll: jest.fn(),
   getById: jest.fn(),
   create: jest.fn(),
@@ -86,6 +96,7 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getUserRepository: () => mockUserRepo,
     getAccountRepository: () => mockAccountRepo,
     getCategoryRepository: () => mockCategoryRepo,
+    getTransactionRepository: () => mockTransactionRepo,
   },
   RepositoryFactory: jest.fn(),
 }));
@@ -118,6 +129,19 @@ const testAccount = new Account({
 });
 
 const testCategory = new Category({ id: 1, name: "Food" });
+
+const testTransaction = new Transaction({
+  id: 1,
+  type: "EXPENSE",
+  amount: 50,
+  date: new Date("2026-03-28"),
+  fromAccountId: 1,
+  userId: 1,
+  categoryId: 1,
+  description: "Groceries",
+  createdAt: new Date("2026-01-01"),
+  updatedAt: new Date("2026-01-01"),
+});
 
 describe("Integration Tests", () => {
   let token: string;
@@ -536,6 +560,148 @@ describe("Integration Tests", () => {
 
       expect(res.status).toBe(204);
       expect(mockCategoryRepo.delete).toHaveBeenCalledWith(1);
+    });
+  });
+
+  // ==================== Transaction Routes ====================
+  describe("GET /transactions", () => {
+    it("should return all transactions", async () => {
+      mockTransactionRepo.getAll.mockResolvedValue([testTransaction]);
+
+      const res = await request(app)
+        .get("/transactions")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+    });
+  });
+
+  describe("POST /transactions", () => {
+    it("should create an expense transaction", async () => {
+      mockAccountRepo.getById.mockResolvedValue(testAccount);
+      mockTransactionRepo.create.mockResolvedValue(testTransaction);
+
+      const res = await request(app)
+        .post("/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          type: "EXPENSE",
+          amount: 50,
+          date: "2026-03-28T00:00:00.000Z",
+          fromAccountId: 1,
+          userId: 1,
+        });
+
+      expect(res.status).toBe(201);
+    });
+
+    it("should return 400 for invalid transaction type", async () => {
+      const res = await request(app)
+        .post("/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          type: "INVALID",
+          amount: 50,
+          date: "2026-03-28T00:00:00.000Z",
+          fromAccountId: 1,
+          userId: 1,
+        });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("should return 400 for missing required fields", async () => {
+      const res = await request(app)
+        .post("/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ type: "EXPENSE" });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("should return 400 for expense without fromAccountId", async () => {
+      const res = await request(app)
+        .post("/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          type: "EXPENSE",
+          amount: 50,
+          date: "2026-03-28T00:00:00.000Z",
+          userId: 1,
+        });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("should return 400 for transfer with same from and to account", async () => {
+      const res = await request(app)
+        .post("/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          type: "TRANSFER",
+          amount: 50,
+          date: "2026-03-28T00:00:00.000Z",
+          fromAccountId: 1,
+          toAccountId: 1,
+          userId: 1,
+        });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("GET /transactions/:id", () => {
+    it("should return a transaction by id", async () => {
+      mockTransactionRepo.getById.mockResolvedValue(testTransaction);
+
+      const res = await request(app)
+        .get("/transactions/1")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.type).toBe("EXPENSE");
+    });
+
+    it("should return 404 for non-existent transaction", async () => {
+      mockTransactionRepo.getById.mockResolvedValue(null);
+
+      const res = await request(app)
+        .get("/transactions/999")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("PUT /transactions/:id", () => {
+    it("should update a transaction", async () => {
+      mockTransactionRepo.getById.mockResolvedValue(testTransaction);
+      mockAccountRepo.getById.mockResolvedValue(testAccount);
+      const updated = new Transaction({ ...testTransaction, amount: 75 });
+      mockTransactionRepo.update.mockResolvedValue(updated);
+
+      const res = await request(app)
+        .put("/transactions/1")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ amount: 75 });
+
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe("DELETE /transactions/:id", () => {
+    it("should delete a transaction", async () => {
+      mockTransactionRepo.getById.mockResolvedValue(testTransaction);
+      mockAccountRepo.getById.mockResolvedValue(testAccount);
+      mockTransactionRepo.delete.mockResolvedValue();
+
+      const res = await request(app)
+        .delete("/transactions/1")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(204);
+      expect(mockTransactionRepo.delete).toHaveBeenCalledWith(1);
     });
   });
 });

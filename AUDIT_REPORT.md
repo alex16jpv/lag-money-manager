@@ -8,13 +8,13 @@
 
 ## Executive Summary
 
-The project implements a layered architecture with controllers, services, and repositories — a good foundation. After the Phase 1, Phase 2, Phase 3, and Phase 4 fix sessions, the API now has **JWT authentication/authorization**, **zod-based input validation**, **security middleware** (CORS, Helmet, rate limiting), **structured logging** with pino, **environment variable validation at startup**, a **comprehensive test suite** (92 tests across 9 suites covering entities, services, middleware, and full HTTP integration), **OpenAPI 3.0 documentation** served at `/api-docs`, **ESLint + Prettier** for code quality enforcement, an **`asyncHandler` utility** eliminating controller try/catch boilerplate, **domain-specific validation errors** separated from HTTP-level errors, and a **Sequelize CLI migration strategy** with initial migrations for all tables. The remaining gaps are in **architecture refinements** (DTOs, Transaction feature completion, RepositoryFactory registry pattern).
+The project implements a layered architecture with controllers, services, and repositories — a good foundation. After the Phase 1, Phase 2, Phase 3, Phase 4, and Phase 5 fix sessions, the API now has **JWT authentication/authorization**, **zod-based input validation**, **security middleware** (CORS, Helmet, rate limiting), **structured logging** with pino, **environment variable validation at startup**, a **comprehensive test suite** (136 tests across 11 suites covering entities, services, middleware, and full HTTP integration), **OpenAPI 3.0 documentation** served at `/api-docs`, **ESLint + Prettier** for code quality enforcement, an **`asyncHandler` utility** eliminating controller try/catch boilerplate, **domain-specific validation errors** separated from HTTP-level errors, a **Sequelize CLI migration strategy** with initial migrations for all tables, and a **complete Transaction feature** (entity, repository, service, controller, routes with balance management for income/expense/transfer flows). The remaining gaps are in **architecture refinements** (DTOs, RepositoryFactory registry pattern).
 
 ---
 
 ## Critical Issues ⛔
 
-1. ~~**No Tests**~~ — ✅ Fixed: Jest + ts-jest configured. 92 tests across 9 suites (entity validation, service logic, error middleware, full HTTP integration with supertest).
+1. ~~**No Tests**~~ — ✅ Fixed: Jest + ts-jest configured. 136 tests across 11 suites (entity validation, service logic, error middleware, full HTTP integration with supertest).
 
 2. ~~**No API Documentation (Swagger/OpenAPI)**~~ — ✅ Fixed: OpenAPI 3.0 spec with `swagger-jsdoc` + `swagger-ui-express` served at `/api-docs`. All endpoints documented with request/response schemas, status codes, and auth requirements.
 
@@ -62,14 +62,14 @@ routes → controllers → services → repositories → models/DB
 **Positives:**
 
 - Clear separation between controllers, services, and repositories
-- Repository pattern with interfaces (`IUserRepository`, `IAccountRepository`, `ICategoryRepository`)
+- Repository pattern with interfaces (`IUserRepository`, `IAccountRepository`, `ICategoryRepository`, `ITransactionRepository`)
 - `RepositoryFactory` centralizes repository instantiation with DB-type switching
 - Domain entities are separate from Sequelize models
 
 **Issues:**
 
 - ~~**Domain entities live in `domain/entities/` but also depend on `shared/errors.ts`**~~ — ✅ Fixed: Entities now throw `DomainValidationError` from `domain/errors.ts` instead of `ApiError`. The error middleware maps `DomainValidationError` to HTTP 400 responses.
-- **No Transaction entity, controller, service, or routes** — `TransactionModel` exists but has no corresponding business layer. This is either incomplete work or dead code.
+- ~~**No Transaction entity, controller, service, or routes**~~ — ✅ Fixed: Complete Transaction feature implemented with entity, repository (interface + Sequelize), service (with account balance management for income/expense/transfer), controller, routes, Zod validation schemas, and OpenAPI documentation.
 - ~~**`src/index.ts` is a scratch/test file**~~ — ✅ Removed.
 - **No DTOs (Data Transfer Objects)** — Controllers cast `req.body` directly to domain entities. A DTO layer would decouple HTTP request shapes from domain objects.
 - ~~**No middleware layer for cross-cutting concerns**~~ — ✅ Fixed: auth middleware, validation middleware, error middleware, `asyncHandler` utility.
@@ -80,7 +80,7 @@ routes → controllers → services → repositories → models/DB
 
 **Positives:**
 
-- Repository interfaces (`IUserRepository`, `IAccountRepository`, `ICategoryRepository`) abstract the data layer correctly
+- Repository interfaces (`IUserRepository`, `IAccountRepository`, `ICategoryRepository`, `ITransactionRepository`) abstract the data layer correctly
 - `RepositoryFactory` supports swapping DB implementations via `DB_TYPE` env var
 - Services depend on interfaces, not concrete implementations — good for testability and future DB swaps
 - Sequelize models are separate from domain entities
@@ -297,13 +297,12 @@ export const ENVIRONMENT = envSchema.parse(process.env);
 - ~~[src/shared/types.ts](src/shared/types.ts)~~ — ✅ Removed
 - ~~[src/shared/utils.ts](src/shared/utils.ts)~~ — ✅ Removed
 - ~~`CustomError` class~~ — ✅ Removed from `errors.ts`
-- `Transaction` model is defined but has no controller, service, routes, or repository
+- ~~`Transaction` model is defined but has no controller, service, routes, or repository~~ — ✅ Fixed: Complete Transaction feature implemented
 
 **Naming:**
 
 - ~~Model files inconsistency~~ — ✅ Fixed: `Category.ts` → `CategoryModel.ts`, `Transaction.ts` → `TransactionModel.ts`
-- `idCategory` in `TransactionModel` (line 10) vs `userId`, `fromAccountId`, `toAccountId` — inconsistent foreign key naming convention
-  - [src/domain/models/TransactionModel.ts](src/domain/models/TransactionModel.ts#L10)
+- ~~`idCategory` in `TransactionModel` vs `userId`, `fromAccountId`, `toAccountId` — inconsistent foreign key naming convention~~ — ✅ Fixed: Renamed `idCategory` to `categoryId`
 
 **Console Logging:**
 
@@ -318,7 +317,7 @@ export const ENVIRONMENT = envSchema.parse(process.env);
 
 **Status: Comprehensive test suite ✅**
 
-Jest with ts-jest is configured. 92 tests across 9 suites all pass. Coverage includes entity validation, all service methods, error middleware (including `DomainValidationError` handling), and full HTTP request→response integration tests with supertest.
+Jest with ts-jest is configured. 136 tests across 11 suites all pass. Coverage includes entity validation (including Transaction), all service methods (including TransactionService with balance management), error middleware (including `DomainValidationError` handling), and full HTTP request→response integration tests with supertest for all endpoints including transactions.
 
 **Highest-risk areas to test first (ordered by priority):**
 
@@ -380,7 +379,7 @@ npm install -D jest ts-jest @types/jest supertest @types/supertest
 25. Add DTO layer between controllers and services
 26. ~~Decouple entity validation from `ApiError` (use domain-specific errors)~~ — ✅ Fixed in Phase 4
 27. Consider converting `ACCOUNT_TYPES` / `TRANSACTION_TYPES` to `as const` objects with derived types
-28. Complete the Transaction feature (entity, repository, service, controller, routes) or remove the model
+28. ~~Complete the Transaction feature (entity, repository, service, controller, routes) or remove the model~~ — ✅ Fixed in Phase 5
 29. Refactor `RepositoryFactory` to use a registry pattern for extensibility
 
 ---
@@ -593,3 +592,35 @@ npm install -D jest ts-jest @types/jest supertest @types/supertest
 - `eslint-config-prettier@^10.1.8` (dev): Disables ESLint rules that conflict with Prettier
 - `prettier@^3.8.1` (dev): Code formatter
 - `sequelize-cli@^6.6.5` (dev): Sequelize migration CLI
+
+### March 28, 2026 - Phase 5 Transaction Feature Fix Session
+
+**Fixed points:**
+
+- **Transaction Feature (#28):** Implemented the complete Transaction feature with entity, repository (interface + Sequelize implementation), service (with account balance management for income/expense/transfer flows), controller (using asyncHandler), routes (with Zod validation and OpenAPI documentation), and comprehensive tests. The TransactionModel was updated to rename `idCategory` to `categoryId` for naming consistency, and `tags` + `note` fields were added. The migration was updated to match.
+
+**Files created:**
+
+- `src/domain/entities/Transaction.ts`: Transaction domain entity with type-specific validation (EXPENSE requires fromAccountId, INCOME requires toAccountId, TRANSFER requires both and they must differ)
+- `src/domain/repositories/transaction/ITransactionRepository.ts`: Transaction repository interface (CRUD)
+- `src/domain/repositories/transaction/TransactionSeqRepository.ts`: Sequelize implementation of ITransactionRepository
+- `src/app/services/TransactionService.ts`: Transaction service with account balance management — applies/reverses balance changes on create/update/delete. Includes TODO placeholder for future budget feature integration.
+- `src/app/controllers/TransactionController.ts`: Transaction controller using asyncHandler pattern
+- `src/app/routes/transactionRoutes.ts`: CRUD routes with Zod validation and OpenAPI JSDoc annotations
+- `src/__tests__/entities/Transaction.test.ts`: Transaction entity constructor and validation tests (15 tests)
+- `src/__tests__/services/TransactionService.test.ts`: TransactionService tests with mocked repos — covers all CRUD operations, balance updates for all transaction types, error cases (15 tests)
+
+**Files modified:**
+
+- `src/app.ts`: Added transaction routes (`/transactions`)
+- `src/app/validation/schemas.ts`: Added `createTransactionSchema` and `updateTransactionSchema` with type-specific superRefine validation
+- `src/app/factories/RepositoryFactory.ts`: Added `getTransactionRepository()` method
+- `src/domain/models/TransactionModel.ts`: Renamed `idCategory` to `categoryId`, added `tags` and `note` fields, added UserModel association
+- `src/database/migrations/20260328000004-create-transactions.js`: Renamed `idCategory` to `categoryId`, added `tags` and `note` columns
+- `src/config/swagger.ts`: Added Transaction, CreateTransaction, UpdateTransaction component schemas
+- `src/__tests__/integration/api.test.ts`: Added mockTransactionRepo, testTransaction data, and 14 transaction route integration tests (CRUD + validation errors)
+- `AUDIT_REPORT.md`: Updated executive summary, section 1, section 11, section 12, phase 5 status, and added this changelog entry
+
+**Dependencies added:**
+
+- _(None — all required dependencies were already installed from previous phases)_

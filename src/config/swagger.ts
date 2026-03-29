@@ -1,3 +1,4 @@
+import { format } from "sequelize/types/utils";
 import swaggerJsdoc from "swagger-jsdoc";
 
 const options: swaggerJsdoc.Options = {
@@ -165,7 +166,7 @@ const options: swaggerJsdoc.Options = {
           required: ["email", "password"],
           properties: {
             email: { type: "string", format: "email" },
-            password: { type: "string", minLength: 1 },
+            password: { type: "string", minLength: 8, maxLength: 128 },
           },
         },
         LoginResponse: {
@@ -197,6 +198,89 @@ const options: swaggerJsdoc.Options = {
           properties: {
             error: { type: "string" },
             message: { type: "string" },
+          },
+        },
+        Transaction: {
+          type: "object",
+          properties: {
+            id: { type: "integer", example: 1 },
+            type: {
+              type: "string",
+              enum: ["INCOME", "EXPENSE", "TRANSFER"],
+              example: "EXPENSE",
+            },
+            amount: { type: "number", example: 50.0 },
+            date: {
+              type: "string",
+              format: "date-time",
+              example: "2026-03-28T12:00:00.000Z",
+            },
+            categoryId: { type: "integer", nullable: true, example: 1 },
+            description: {
+              type: "string",
+              nullable: true,
+              example: "Grocery shopping",
+            },
+            fromAccountId: { type: "integer", nullable: true, example: 1 },
+            toAccountId: { type: "integer", nullable: true, example: null },
+            userId: { type: "integer", example: 1 },
+            tags: {
+              type: "string",
+              nullable: true,
+              example: "groceries,food",
+            },
+            note: {
+              type: "string",
+              nullable: true,
+              example: "Weekly grocery run",
+            },
+            createdAt: {
+              type: "string",
+              format: "date-time",
+              example: "2026-03-28T12:00:00.000Z",
+            },
+            updatedAt: {
+              type: "string",
+              format: "date-time",
+              example: "2026-03-28T12:00:00.000Z",
+            },
+          },
+        },
+        CreateTransaction: {
+          type: "object",
+          required: ["type", "amount", "date", "userId"],
+          properties: {
+            type: {
+              type: "string",
+              enum: ["INCOME", "EXPENSE", "TRANSFER"],
+            },
+            amount: { type: "number", minimum: 0, exclusiveMinimum: true },
+            date: { type: "string", format: "date-time" },
+            categoryId: { type: "integer", nullable: true },
+            description: { type: "string", maxLength: 255, nullable: true },
+            fromAccountId: { type: "integer", nullable: true },
+            toAccountId: { type: "integer", nullable: true },
+            userId: { type: "integer", minimum: 1 },
+            tags: { type: "string", maxLength: 500, nullable: true },
+            note: { type: "string", maxLength: 1000, nullable: true },
+          },
+        },
+        UpdateTransaction: {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              enum: ["INCOME", "EXPENSE", "TRANSFER"],
+            },
+            amount: { type: "number", minimum: 0, exclusiveMinimum: true },
+            date: { type: "string", format: "date-time" },
+            categoryId: { type: "integer", nullable: true },
+            description: { type: "string", maxLength: 255, nullable: true },
+            fromAccountId: { type: "integer", nullable: true },
+            toAccountId: { type: "integer", nullable: true },
+            userId: { type: "integer", minimum: 1 },
+            tags: { type: "string", maxLength: 500, nullable: true },
+            note: { type: "string", maxLength: 1000, nullable: true },
           },
         },
       },

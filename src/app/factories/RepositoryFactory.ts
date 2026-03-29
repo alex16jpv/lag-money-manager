@@ -7,6 +7,8 @@ import { ENVIRONMENT } from "../../shared/constants";
 import { loadSequelizeModels } from "../../domain/models/index";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { CategorySeqRepository } from "../../domain/repositories/category/CategorySeqRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
+import { TransactionSeqRepository } from "../../domain/repositories/transaction/TransactionSeqRepository";
 import logger from "../../shared/logger";
 
 const dbType = ENVIRONMENT.DB_TYPE;
@@ -15,6 +17,7 @@ export class RepositoryFactory {
   userRepository: IUserRepository | null = null;
   accountRepository: IAccountRepository | null = null;
   categoryRepository: ICategoryRepository | null = null;
+  transactionRepository: ITransactionRepository | null = null;
 
   constructor() {
     if (dbType === DB_TYPES.SEQ) {
@@ -65,6 +68,22 @@ export class RepositoryFactory {
       return this.categoryRepository;
     } else if (dbType === DB_TYPES.MONGO) {
       // add mongo category repository...
+    }
+
+    throw new Error("Invalid database type");
+  }
+
+  getTransactionRepository(): ITransactionRepository {
+    if (this.transactionRepository) {
+      return this.transactionRepository;
+    }
+
+    logger.debug("Initializing transaction repository");
+    if (dbType === DB_TYPES.SEQ) {
+      this.transactionRepository = new TransactionSeqRepository();
+      return this.transactionRepository;
+    } else if (dbType === DB_TYPES.MONGO) {
+      // add mongo transaction repository...
     }
 
     throw new Error("Invalid database type");

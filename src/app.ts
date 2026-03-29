@@ -8,6 +8,7 @@ import authRoutes from "./app/routes/authRoutes";
 import userRoutes from "./app/routes/userRoutes";
 import accountRoutes from "./app/routes/accountRoutes";
 import categoryRoutes from "./app/routes/categoryRoutes";
+import transactionRoutes from "./app/routes/transactionRoutes";
 import { errorMiddleware } from "./shared/middlewares";
 import { authMiddleware } from "./app/middlewares/authMiddleware";
 
@@ -42,6 +43,7 @@ app.use(authMiddleware);
 app.use("/users", userRoutes);
 app.use("/accounts", accountRoutes);
 app.use("/categories", categoryRoutes);
+app.use("/transactions", transactionRoutes);
 
 app.use(errorMiddleware);
 

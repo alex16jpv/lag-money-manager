@@ -1,7 +1,11 @@
 import { z } from "zod";
-import { ACCOUNT_TYPES } from "../../shared/constants";
+import { ACCOUNT_TYPES, TRANSACTION_TYPES } from "../../shared/constants";
 
 const accountTypeValues = Object.keys(ACCOUNT_TYPES) as [string, ...string[]];
+const transactionTypeValues = Object.keys(TRANSACTION_TYPES) as [
+  string,
+  ...string[],
+];
 
 export const createUserSchema = z.object({
   body: z.object({
@@ -115,4 +119,130 @@ export const registerSchema = z.object({
       .min(8, "Password must be at least 8 characters")
       .max(128),
   }),
+});
+
+export const createTransactionSchema = z.object({
+  body: z
+    .object({
+      type: z.enum(transactionTypeValues, {
+        error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
+      }),
+      amount: z.number().positive("Amount must be greater than 0"),
+      date: z
+        .string()
+        .datetime({ message: "Date must be a valid ISO 8601 date" }),
+      categoryId: z
+        .number()
+        .int()
+        .positive("categoryId must be a positive integer")
+        .optional()
+        .nullable(),
+      description: z.string().max(255).optional().nullable(),
+      fromAccountId: z
+        .number()
+        .int()
+        .positive("fromAccountId must be a positive integer")
+        .optional()
+        .nullable(),
+      toAccountId: z
+        .number()
+        .int()
+        .positive("toAccountId must be a positive integer")
+        .optional()
+        .nullable(),
+      userId: z.number().int().positive("userId must be a positive integer"),
+      tags: z.string().max(500).optional().nullable(),
+      note: z.string().max(1000).optional().nullable(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.type === "EXPENSE" && !data.fromAccountId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "fromAccountId is required for expense transactions",
+          path: ["fromAccountId"],
+        });
+      }
+      if (data.type === "INCOME" && !data.toAccountId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "toAccountId is required for income transactions",
+          path: ["toAccountId"],
+        });
+      }
+      if (data.type === "TRANSFER") {
+        if (!data.fromAccountId) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "fromAccountId is required for transfer transactions",
+            path: ["fromAccountId"],
+          });
+        }
+        if (!data.toAccountId) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "toAccountId is required for transfer transactions",
+            path: ["toAccountId"],
+          });
+        }
+        if (
+          data.fromAccountId &&
+          data.toAccountId &&
+          data.fromAccountId === data.toAccountId
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "fromAccountId and toAccountId must be different",
+            path: ["toAccountId"],
+          });
+        }
+      }
+    }),
+});
+
+export const updateTransactionSchema = z.object({
+  params: z.object({
+    id: z.string().regex(/^\d+$/, "ID must be a numeric value"),
+  }),
+  body: z
+    .object({
+      type: z
+        .enum(transactionTypeValues, {
+          error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
+        })
+        .optional(),
+      amount: z.number().positive("Amount must be greater than 0").optional(),
+      date: z
+        .string()
+        .datetime({ message: "Date must be a valid ISO 8601 date" })
+        .optional(),
+      categoryId: z
+        .number()
+        .int()
+        .positive("categoryId must be a positive integer")
+        .optional()
+        .nullable(),
+      description: z.string().max(255).optional().nullable(),
+      fromAccountId: z
+        .number()
+        .int()
+        .positive("fromAccountId must be a positive integer")
+        .optional()
+        .nullable(),
+      toAccountId: z
+        .number()
+        .int()
+        .positive("toAccountId must be a positive integer")
+        .optional()
+        .nullable(),
+      userId: z
+        .number()
+        .int()
+        .positive("userId must be a positive integer")
+        .optional(),
+      tags: z.string().max(500).optional().nullable(),
+      note: z.string().max(1000).optional().nullable(),
+    })
+    .refine((data) => Object.values(data).some((v) => v !== undefined), {
+      message: "At least one field must be provided",
+    }),
 });

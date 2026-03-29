@@ -22,7 +22,7 @@ module.exports = {
         type: Sequelize.DATE,
         allowNull: false,
       },
-      idCategory: {
+      categoryId: {
         type: Sequelize.INTEGER,
         allowNull: true,
         references: {
@@ -65,6 +65,14 @@ module.exports = {
         },
         onUpdate: "CASCADE",
         onDelete: "CASCADE",
+      },
+      tags: {
+        type: Sequelize.STRING(500),
+        allowNull: true,
+      },
+      note: {
+        type: Sequelize.STRING(1000),
+        allowNull: true,
       },
       createdAt: {
         type: Sequelize.DATE,
