@@ -16,7 +16,8 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "db:migrate": "npx sequelize-cli db:migrate",
     "db:migrate:undo": "npx sequelize-cli db:migrate:undo",
-    "db:migration:generate": "npx sequelize-cli migration:generate --name"
+    "db:migration:generate": "npx sequelize-cli migration:generate --name",
+    "docs": "npx --yes vitepress dev docs --host"
   },
   "keywords": [],
   "author": "",
