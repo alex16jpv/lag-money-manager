@@ -10,7 +10,7 @@ import { CategoryModel } from "../../models/sequelize/CategoryModel";
 import { ICategoryRepository } from "./ICategoryRepository";
 
 export class CategorySeqRepository implements ICategoryRepository {
-  model: typeof CategoryModel;
+  private readonly model: typeof CategoryModel;
 
   constructor() {
     this.model = CategoryModel;

@@ -11,5 +11,4 @@ export interface UpdateAccountDTO {
   id?: string;
   name?: string;
   type?: AccountType;
-  balance?: number;
 }

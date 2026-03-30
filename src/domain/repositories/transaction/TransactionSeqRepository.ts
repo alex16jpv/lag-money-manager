@@ -10,7 +10,7 @@ import { TransactionModel } from "../../models/sequelize/TransactionModel";
 import { ITransactionRepository } from "./ITransactionRepository";
 
 export class TransactionSeqRepository implements ITransactionRepository {
-  model: typeof TransactionModel;
+  private readonly model: typeof TransactionModel;
 
   constructor() {
     this.model = TransactionModel;

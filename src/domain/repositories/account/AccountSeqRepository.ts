@@ -10,7 +10,7 @@ import { AccountModel } from "../../models/sequelize/AccountModel";
 import { IAccountRepository } from "./IAccountRepository";
 
 export class AccountSeqRepository implements IAccountRepository {
-  model: typeof AccountModel;
+  private readonly model: typeof AccountModel;
 
   constructor() {
     this.model = AccountModel;

@@ -10,7 +10,7 @@ import { UserModel } from "../../models/sequelize/UserModel";
 import { IUserRepository } from "./IUserRepository";
 
 export class UserSeqRepository implements IUserRepository {
-  model: typeof UserModel;
+  private readonly model: typeof UserModel;
 
   constructor() {
     this.model = UserModel;
@@ -46,7 +46,7 @@ export class UserSeqRepository implements IUserRepository {
       this.model.count(),
     ]);
 
-    const data = rows.map((user) => new User(user));
+    const data = rows.map((user) => new User(user.toJSON()));
     return buildPaginatedResult(data, total, pagination);
   }
 

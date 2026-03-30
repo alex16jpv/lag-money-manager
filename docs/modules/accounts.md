@@ -36,7 +36,7 @@ Get a single account by ID. Ownership enforced.
 
 ### `PUT /accounts/:id`
 
-Update an account. Partial updates supported (name, type, balance).
+Update an account. Partial updates supported (name, type). Balance cannot be modified directly — it is adjusted automatically through transactions.
 
 ### `DELETE /accounts/:id`
 

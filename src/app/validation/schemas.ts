@@ -72,7 +72,6 @@ export const updateAccountSchema = z.object({
           error: `Invalid account type. Available: ${accountTypeValues.join(", ")}`,
         })
         .optional(),
-      balance: z.number().finite("Balance must be a finite number").optional(),
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {
       message: "At least one field must be provided",
