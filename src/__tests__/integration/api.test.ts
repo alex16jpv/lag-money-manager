@@ -275,16 +275,26 @@ describe("Integration Tests", () => {
 
   // ==================== User Routes ====================
   describe("GET /users", () => {
-    it("should return the authenticated user", async () => {
-      mockUserRepo.getById.mockResolvedValue(testUser);
+    it("should return paginated users", async () => {
+      mockUserRepo.getAll.mockResolvedValue({
+        data: [testUser],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
 
       const res = await request(app)
         .get("/users")
         .set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(1);
-      expect(res.body[0].password).toBeUndefined();
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].password).toBeUndefined();
+      expect(res.body.pagination).toBeDefined();
     });
   });
 
@@ -313,33 +323,6 @@ describe("Integration Tests", () => {
       const res = await request(app)
         .get("/users/abc")
         .set("Authorization", `Bearer ${token}`);
-
-      expect(res.status).toBe(400);
-    });
-  });
-
-  describe("POST /users", () => {
-    it("should create a user and not expose password", async () => {
-      mockUserRepo.create.mockResolvedValue(testUser);
-
-      const res = await request(app)
-        .post("/users")
-        .set("Authorization", `Bearer ${token}`)
-        .send({
-          name: "John Doe",
-          email: "john@example.com",
-          password: "password123",
-        });
-
-      expect(res.status).toBe(201);
-      expect(res.body.password).toBeUndefined();
-    });
-
-    it("should return 400 for invalid body", async () => {
-      const res = await request(app)
-        .post("/users")
-        .set("Authorization", `Bearer ${token}`)
-        .send({ name: "" });
 
       expect(res.status).toBe(400);
     });

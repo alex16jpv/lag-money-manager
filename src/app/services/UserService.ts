@@ -1,8 +1,9 @@
 import bcryptjs from "bcryptjs";
 import { User } from "../../domain/entities/User";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
-import { CreateUserDTO, UpdateUserDTO, UserResponseDTO } from "../dtos/UserDTO";
+import { UpdateUserDTO, UserResponseDTO } from "../dtos/UserDTO";
 
 export class UserService {
   constructor(private repo: IUserRepository) {}
@@ -17,12 +18,14 @@ export class UserService {
     };
   }
 
-  async getAllUsers(userId: string): Promise<UserResponseDTO[]> {
-    const user = await this.repo.getById(userId);
-    if (!user) {
-      throw new ApiError("NotFound", "User not found");
-    }
-    return [this.toResponseDTO(user)];
+  async getAllUsers(
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<UserResponseDTO>> {
+    const result = await this.repo.getAll(pagination);
+    return {
+      data: result.data.map((user) => this.toResponseDTO(user)),
+      pagination: result.pagination,
+    };
   }
 
   async getUserById(id: string, userId: string): Promise<UserResponseDTO> {
@@ -34,18 +37,6 @@ export class UserService {
       throw new ApiError("NotFound", "User not found");
     }
     return this.toResponseDTO(user);
-  }
-
-  async createUser(dto: CreateUserDTO): Promise<UserResponseDTO> {
-    const user = new User(dto);
-    user.validate();
-
-    if (user.password) {
-      user.password = await bcryptjs.hash(user.password, 12);
-    }
-
-    const created = await this.repo.create(user);
-    return this.toResponseDTO(created);
   }
 
   async updateUser(

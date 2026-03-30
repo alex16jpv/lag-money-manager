@@ -1,14 +1,14 @@
 import { Request, Response } from "express";
 import { UserService } from "../services/UserService";
 import repositoryFactory from "../factories/RepositoryFactory";
+import { extractPagination } from "../../shared/pagination";
 
 const userService = new UserService(repositoryFactory.getUserRepository());
 
 export class UserController {
   static getAllUsers = async (req: Request, res: Response) => {
-    const userId = req.user!.userId;
-    const users = await userService.getAllUsers(userId);
-    res.status(200).json(users);
+    const result = await userService.getAllUsers(extractPagination(req));
+    res.status(200).json(result);
   };
 
   static getUserById = async (req: Request, res: Response) => {
@@ -16,11 +16,6 @@ export class UserController {
     const id = req.params.id as string;
     const user = await userService.getUserById(id, userId);
     res.status(200).json(user);
-  };
-
-  static createUser = async (req: Request, res: Response) => {
-    const newUser = await userService.createUser(req.body);
-    res.status(201).json(newUser);
   };
 
   static updateUser = async (req: Request, res: Response) => {

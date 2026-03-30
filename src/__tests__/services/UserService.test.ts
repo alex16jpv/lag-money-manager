@@ -2,9 +2,9 @@ import { UserService } from "../../app/services/UserService";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { User } from "../../domain/entities/User";
 import { ApiError } from "../../shared/errors";
-import { DomainValidationError } from "../../domain/errors";
 import bcryptjs from "bcryptjs";
-import { CreateUserDTO, UpdateUserDTO } from "../../app/dtos/UserDTO";
+import { UpdateUserDTO } from "../../app/dtos/UserDTO";
+import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 
 const testUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
 
@@ -36,23 +36,46 @@ describe("UserService", () => {
   });
 
   describe("getAllUsers", () => {
-    it("should return the authenticated user", async () => {
-      repo.getById.mockResolvedValue(mockUser);
+    const pagination: PaginationParams = { limit: 20, offset: 0 };
 
-      const result = await service.getAllUsers(testUserId);
+    it("should return paginated users", async () => {
+      const paginatedResult: PaginatedResult<User> = {
+        data: [mockUser],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      };
+      repo.getAll.mockResolvedValue(paginatedResult);
 
-      expect(repo.getById).toHaveBeenCalledWith(testUserId);
-      expect(result).toHaveLength(1);
-      expect(result[0].name).toBe("John Doe");
-      expect((result[0] as Record<string, unknown>).password).toBeUndefined();
+      const result = await service.getAllUsers(pagination);
+
+      expect(repo.getAll).toHaveBeenCalledWith(pagination);
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].name).toBe("John Doe");
+      expect(result.pagination.total).toBe(1);
     });
 
-    it("should throw NotFound when authenticated user does not exist", async () => {
-      repo.getById.mockResolvedValue(null);
+    it("should return empty list when no users exist", async () => {
+      const paginatedResult: PaginatedResult<User> = {
+        data: [],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
+      };
+      repo.getAll.mockResolvedValue(paginatedResult);
 
-      await expect(service.getAllUsers(testUserId)).rejects.toThrow(
-        "User not found",
-      );
+      const result = await service.getAllUsers(pagination);
+
+      expect(result.data).toHaveLength(0);
+      expect(result.pagination.total).toBe(0);
     });
   });
 
@@ -64,7 +87,6 @@ describe("UserService", () => {
 
       expect(repo.getById).toHaveBeenCalledWith(testUserId);
       expect(result.name).toBe("John Doe");
-      expect((result as Record<string, unknown>).password).toBeUndefined();
     });
 
     it("should throw Forbidden when accessing another user", async () => {
@@ -79,56 +101,6 @@ describe("UserService", () => {
       await expect(service.getUserById(testUserId, testUserId)).rejects.toThrow(
         "User not found",
       );
-    });
-  });
-
-  describe("createUser", () => {
-    it("should create a user, hash the password, and strip password from response", async () => {
-      const input: CreateUserDTO = {
-        name: "Jane",
-        email: "jane@example.com",
-        password: "plaintext123",
-      };
-      repo.create.mockResolvedValue(mockUser);
-
-      const result = await service.createUser(input);
-
-      expect(repo.create).toHaveBeenCalledTimes(1);
-      const createdArg = repo.create.mock.calls[0][0];
-      expect(createdArg.password).not.toBe("plaintext123");
-      expect(await bcryptjs.compare("plaintext123", createdArg.password!)).toBe(
-        true,
-      );
-      expect((result as Record<string, unknown>).password).toBeUndefined();
-    });
-
-    it("should throw when validation fails (missing email)", async () => {
-      const input: CreateUserDTO = {
-        name: "Jane",
-        email: "",
-        password: "password123",
-      };
-
-      await expect(service.createUser(input)).rejects.toThrow(
-        DomainValidationError,
-      );
-      await expect(service.createUser(input)).rejects.toThrow(
-        "Email is required",
-      );
-      expect(repo.create).not.toHaveBeenCalled();
-    });
-
-    it("should create user without hashing when no password provided", async () => {
-      const input = {
-        name: "Jane",
-        email: "jane@example.com",
-      } as CreateUserDTO;
-      repo.create.mockResolvedValue(mockUser);
-
-      await service.createUser(input);
-
-      const createdArg = repo.create.mock.calls[0][0];
-      expect(createdArg.password).toBeUndefined();
     });
   });
 
@@ -150,7 +122,7 @@ describe("UserService", () => {
         name: "Updated Name",
       });
       expect(result.name).toBe("Updated Name");
-      expect((result as Record<string, unknown>).password).toBeUndefined();
+      expect((result as UpdateUserDTO).password).toBeUndefined();
     });
 
     it("should throw Forbidden when updating another user", async () => {

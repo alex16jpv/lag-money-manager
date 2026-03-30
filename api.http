@@ -117,18 +117,6 @@ Authorization: Token {{token}}
 ### 4. USERS - CRUD (self-scoped: only own data accessible)
 ### ============================================================
 
-### Crear usuario
-# @name createUser
-POST {{baseUrl}}/users
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "name": "CRUD User",
-  "email": "cruduser@test.com",
-  "password": "TestP@ss123"
-}
-
 ### Obtener todos los usuarios (returns only the authenticated user)
 GET {{baseUrl}}/users
 Authorization: Bearer {{token}}

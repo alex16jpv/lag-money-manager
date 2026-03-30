@@ -25,17 +25,6 @@ export const paginationQuerySchema = z.object({
   }),
 });
 
-export const createUserSchema = z.object({
-  body: z.object({
-    name: z.string().min(1, "Name is required").max(255),
-    email: z.string().email("Invalid email format").max(255),
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters")
-      .max(128),
-  }),
-});
-
 export const updateUserSchema = z.object({
   params: z.object({
     id: z.string().uuid("ID must be a valid UUID"),
