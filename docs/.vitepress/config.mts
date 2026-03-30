@@ -1,4 +1,6 @@
-export default {
+import { withMermaid } from "vitepress-plugin-mermaid";
+
+export default withMermaid({
   title: "lag-money-manager",
   description: "REST API for personal money management",
 
@@ -133,4 +135,4 @@ export default {
       ],
     },
   },
-};
+});

@@ -17,7 +17,7 @@
     "db:migrate": "npx sequelize-cli db:migrate",
     "db:migrate:undo": "npx sequelize-cli db:migrate:undo",
     "db:migration:generate": "npx sequelize-cli migration:generate --name",
-    "docs": "npx --yes vitepress dev docs --host"
+    "docs": "vitepress dev docs --host"
   },
   "keywords": [],
   "author": "",
@@ -60,6 +60,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "jest": "^30.3.0",
+    "mermaid": "^11.13.0",
     "nodemon": "^3.1.14",
     "pino-pretty": "^13.1.3",
     "prettier": "^3.8.1",
@@ -68,6 +69,8 @@
     "ts-jest": "^29.4.6",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
-    "typescript-eslint": "^8.57.2"
+    "typescript-eslint": "^8.57.2",
+    "vitepress": "^1.6.4",
+    "vitepress-plugin-mermaid": "^2.0.17"
   }
 }
