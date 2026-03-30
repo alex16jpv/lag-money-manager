@@ -640,4 +640,94 @@ describe("TransactionService", () => {
       ).rejects.toThrow("DB delete failed");
     });
   });
+
+  describe("balance adjustment edge cases", () => {
+    it("should handle floating-point amounts correctly", async () => {
+      const dto: CreateTransactionDTO = {
+        type: "EXPENSE",
+        amount: 0.1,
+        date: new Date("2026-03-28"),
+        fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      };
+      const account = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        balance: 0.2,
+      });
+      acctRepo.getById.mockResolvedValue(account);
+      txRepo.create.mockResolvedValue(new Transaction({ id: "tx-id", ...dto }));
+
+      await service.createTransaction(dto);
+
+      const updateCall = acctRepo.update.mock.calls[0][1];
+      expect(typeof updateCall.balance).toBe("number");
+      expect(updateCall.balance).toBeCloseTo(0.1, 10);
+    });
+
+    it("should allow balance to go negative", async () => {
+      const dto: CreateTransactionDTO = {
+        type: "EXPENSE",
+        amount: 500,
+        date: new Date("2026-03-28"),
+        fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      };
+      const account = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        balance: 100,
+      });
+      acctRepo.getById.mockResolvedValue(account);
+      txRepo.create.mockResolvedValue(new Transaction({ id: "tx-id", ...dto }));
+
+      await service.createTransaction(dto);
+
+      expect(acctRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        { balance: -400 },
+      );
+    });
+
+    it("should skip account not found during reversal (direction === -1)", async () => {
+      const expense = new Transaction({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+        type: "EXPENSE",
+        amount: 100,
+        date: new Date(),
+        fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      });
+      txRepo.getById.mockResolvedValue(expense);
+      // Account deleted — getById returns null for both reversal and new balance
+      acctRepo.getById.mockResolvedValue(null);
+
+      const newFromAccount = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac99",
+        balance: 2000,
+      });
+      // Second adjustBalances call (direction=1) for new account
+      acctRepo.getById
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(newFromAccount);
+      txRepo.update.mockResolvedValue(
+        new Transaction({
+          ...expense,
+          fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac99",
+          amount: 100,
+        }),
+      );
+
+      await service.updateTransaction(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+        { fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac99" },
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
+
+      // The first adjustBalances (reversal) should not update since account not found
+      // The second adjustBalances (apply) should update the new account
+      expect(acctRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac99",
+        { balance: 1900 },
+      );
+    });
+  });
 });
