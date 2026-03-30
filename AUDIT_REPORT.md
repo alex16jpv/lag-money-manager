@@ -38,52 +38,7 @@
 
 ---
 
-## 2. Design & Architecture Violations
-
-### 2.1 `UserSeqRepository.getAll()` does not call `.toJSON()` before constructing entity
-
-- **File:** `src/domain/repositories/user/UserSeqRepository.ts` (line 49)
-- **Rule violated:** "Repository implementations must map DB records to domain entities (never return raw ORM objects)" — design-patterns.md
-- **Description:** Line 49: `rows.map((user) => new User(user))` passes a Sequelize Model instance directly to the `User` constructor instead of `user.toJSON()`. All other Sequelize repositories correctly call `.toJSON()`. This feeds ORM internal properties into the entity.
-- **Recommended fix:** Change to `rows.map((user) => new User(user.toJSON()))`.
-
-### 2.2 Sequelize repositories expose `model` as public property
-
-- **Files:** `src/domain/repositories/account/AccountSeqRepository.ts` (line 13), `src/domain/repositories/category/CategorySeqRepository.ts` (line 13), `src/domain/repositories/user/UserSeqRepository.ts` (line 13), `src/domain/repositories/transaction/TransactionSeqRepository.ts` (line 13)
-- **Rule violated:** Repository interfaces are the contract layer — no implementation details should leak.
-- **Description:** The `model` property on all Sequelize repositories is declared as `model: typeof *Model` (public). Consumers could access the raw Sequelize model, bypassing the repository abstraction.
-- **Recommended fix:** Change `model` to `private model` or `private readonly model` in all four repositories.
-
-### 2.3 `IRepository.create()` interface signature accepts `T` but implementations accept `Partial<T>`
-
-- **File:** `src/domain/repositories/IRepository.ts` (line 6) vs all implementations
-- **Rule violated:** Repository implementations must match interface contracts — design-patterns.md
-- **Description:** The interface declares `create(entity: T): Promise<T>`, but every implementation signature uses `create(entity: Partial<T>)`. This is a type-safety gap — TypeScript allows it only because `Partial<T>` is a wider type accepted at call sites, but the contract is misleading.
-- **Recommended fix:** Align the interface to `create(entity: Partial<T>): Promise<T>` or tighten implementations to require full `T` (validated upstream).
-
-### 2.4 `CategoryService.createCategory()` returns raw repository object without entity wrapping
-
-- **File:** `src/app/services/CategoryService.ts` (lines 32–35)
-- **Rule violated:** "Return domain entities from services, not raw database objects" — agent-context Section 4
-- **Description:** `createCategory` returns `this.repo.create(category)` directly, while `getAllCategories` wraps results in `new Category()`. This is inconsistent with other services (`AccountService.createAccount` wraps in `new Account()`).
-- **Recommended fix:** Wrap the return: `return new Category(await this.repo.create(category))`.
-
-### 2.5 `UpdateAccountDTO.balance` allows direct balance manipulation
-
-- **File:** `src/app/dtos/AccountDTO.ts` (line 14), `src/app/validation/schemas.ts` (line 80)
-- **Rule violated:** "Transaction creation/update/deletion must adjust account balances accordingly" — agent-context key constraint
-- **Description:** The update account DTO and validation schema allow a user to directly set `balance` via `PUT /accounts/:id`. This bypasses the transaction-based balance adjustment mechanism entirely, allowing users to arbitrarily modify their account balance without any transaction record.
-- **Recommended fix:** Remove `balance` from `UpdateAccountDTO` and `updateAccountSchema`, or add business logic in `AccountService.updateAccount()` that prevents direct balance changes (only name/type should be mutable via this endpoint).
-
----
-
 ## 3. Performance Concerns
-
-### 3.1 `findAndCountAll` + separate `count` = double full-table scan
-
-- **Files:** All Sequelize repositories: `AccountSeqRepository.ts` (lines 28–36), `CategorySeqRepository.ts` (lines 28–36), `TransactionSeqRepository.ts` (lines 28–36), `UserSeqRepository.ts` (lines 39–47)
-- **Problem:** `paginatedFindAll` calls `this.model.findAndCountAll(...)` (which itself returns a count) **and** a separate `this.model.count({ where: baseWhere })` in `Promise.all`. Sequelize's `findAndCountAll` already provides the total count, making the second query redundant. This doubles the read cost for every paginated list request.
-- **Suggested fix:** Use the `count` from `findAndCountAll` directly: `const { rows, count: total } = await this.model.findAndCountAll(...)`. Remove the separate `count` call.
 
 ### 3.2 MongoDB repositories also perform redundant `countDocuments`
 
@@ -96,12 +51,6 @@
 - **Files:** `src/database/migrations/20260328000003-create-accounts.js`, `src/database/migrations/20260328000004-create-transactions.js`, `src/database/migrations/20260329000001-add-userId-to-categories.js`
 - **Problem:** Every list query filters by `userId` (e.g., `getAllByUserId`), but there are no explicit composite indexes. While MySQL creates an index for foreign key constraints automatically, the composite query `WHERE userId = ? ORDER BY id ASC LIMIT ?` would benefit from a composite index `(userId, id)`.
 - **Suggested fix:** Add composite indexes `(userId, id)` on `accounts`, `categories`, and `transactions` tables via a new migration.
-
-### 3.4 No connection pool configuration for Sequelize
-
-- **File:** `src/config/sequelizeConnection.ts` (lines 11–18)
-- **Problem:** Sequelize is instantiated with default pool settings (max 5 connections). For production workloads, this may be insufficient and cause connection queuing.
-- **Suggested fix:** Add `pool: { max: 20, min: 5, acquire: 30000, idle: 10000 }` configuration, ideally from environment variables.
 
 ### 3.5 Rate limiter applied globally including health check and static docs
 

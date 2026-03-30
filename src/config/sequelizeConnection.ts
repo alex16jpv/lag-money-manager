@@ -6,6 +6,10 @@ const env = ENVIRONMENT as {
   SEQ_DATABASE: string;
   SEQ_USERNAME: string;
   SEQ_PASSWORD: string;
+  SEQ_POOL_MAX: number;
+  SEQ_POOL_MIN: number;
+  SEQ_POOL_ACQUIRE: number;
+  SEQ_POOL_IDLE: number;
 };
 
 const sequelize = new Sequelize({
@@ -15,6 +19,12 @@ const sequelize = new Sequelize({
   host: env.SEQ_HOST,
   dialect: "mysql",
   logging: false,
+  pool: {
+    max: env.SEQ_POOL_MAX,
+    min: env.SEQ_POOL_MIN,
+    acquire: env.SEQ_POOL_ACQUIRE,
+    idle: env.SEQ_POOL_IDLE,
+  },
 });
 
 export default sequelize;

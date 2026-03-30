@@ -59,6 +59,10 @@ const seqEnvSchema = baseEnvSchema.extend({
   SEQ_DATABASE: z.string().min(1, "SEQ_DATABASE is required"),
   SEQ_USERNAME: z.string().min(1, "SEQ_USERNAME is required"),
   SEQ_PASSWORD: z.string().min(1, "SEQ_PASSWORD is required"),
+  SEQ_POOL_MAX: z.coerce.number().int().min(1).default(20),
+  SEQ_POOL_MIN: z.coerce.number().int().min(0).default(5),
+  SEQ_POOL_ACQUIRE: z.coerce.number().int().min(1000).default(30000),
+  SEQ_POOL_IDLE: z.coerce.number().int().min(1000).default(10000),
 });
 
 const mongoEnvSchema = baseEnvSchema.extend({

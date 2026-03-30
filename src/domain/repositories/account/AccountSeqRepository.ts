@@ -25,15 +25,13 @@ export class AccountSeqRepository implements IAccountRepository {
       ? { ...baseWhere, id: { [Op.gt]: cursor } }
       : baseWhere;
 
-    const [{ rows }, total] = await Promise.all([
-      this.model.findAndCountAll({
-        where,
-        order: [["id", "ASC"]],
-        limit,
-        offset: cursor ? 0 : offset,
-      }),
-      this.model.count({ where: baseWhere }),
-    ]);
+    const { rows, count } = await this.model.findAndCountAll({
+      where,
+      order: [["id", "ASC"]],
+      limit,
+      offset: cursor ? 0 : offset,
+    });
+    const total = cursor ? await this.model.count({ where: baseWhere }) : count;
 
     const data = rows.map((result) => new Account(result.toJSON()));
     return buildPaginatedResult(data, total, pagination);

@@ -35,6 +35,15 @@ All environment variables are validated at startup using Zod schemas in `src/sha
 | `SEQ_USERNAME` | Yes      | —       | MySQL username        | Set in `docker-compose.yml` or your DB admin |
 | `SEQ_PASSWORD` | Yes      | —       | MySQL password        | Set in `docker-compose.yml` or your DB admin |
 
+### Sequelize Connection Pool
+
+| Variable           | Required | Default | Description                                           | How to obtain                  |
+| ------------------ | -------- | ------- | ----------------------------------------------------- | ------------------------------ |
+| `SEQ_POOL_MAX`     | No       | `20`    | Maximum number of connections in pool                 | Tune based on workload         |
+| `SEQ_POOL_MIN`     | No       | `5`     | Minimum number of connections in pool                 | Tune based on workload         |
+| `SEQ_POOL_ACQUIRE` | No       | `30000` | Max time (ms) to acquire a connection before error    | Increase for slow DB           |
+| `SEQ_POOL_IDLE`    | No       | `10000` | Max time (ms) a connection can be idle before release | Lower to free resources faster |
+
 ## MongoDB / Mongoose (required when `DB_TYPE=MONGO`)
 
 | Variable    | Required | Default | Description                 | How to obtain                                               |

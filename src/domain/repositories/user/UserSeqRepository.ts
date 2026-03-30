@@ -36,15 +36,13 @@ export class UserSeqRepository implements IUserRepository {
     const { limit, offset, cursor } = pagination;
     const where: WhereOptions = cursor ? { id: { [Op.gt]: cursor } } : {};
 
-    const [{ rows }, total] = await Promise.all([
-      this.model.findAndCountAll({
-        where,
-        order: [["id", "ASC"]],
-        limit,
-        offset: cursor ? 0 : offset,
-      }),
-      this.model.count(),
-    ]);
+    const { rows, count } = await this.model.findAndCountAll({
+      where,
+      order: [["id", "ASC"]],
+      limit,
+      offset: cursor ? 0 : offset,
+    });
+    const total = cursor ? await this.model.count() : count;
 
     const data = rows.map((user) => new User(user.toJSON()));
     return buildPaginatedResult(data, total, pagination);
