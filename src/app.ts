@@ -37,18 +37,16 @@ app.use(
     origin: ENVIRONMENT.CORS_ORIGIN.split(","),
   }),
 );
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: {
-      error: "TooManyRequests",
-      message: "Too many requests, please try again later",
-    },
-  }),
-);
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "TooManyRequests",
+    message: "Too many requests, please try again later",
+  },
+});
 app.use(express.json({ limit: "10kb" }));
 
 app.get("/", (_req, res) => {
@@ -57,14 +55,14 @@ app.get("/", (_req, res) => {
 
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-app.use("/auth", authRoutes);
+app.use("/auth", apiLimiter, authRoutes);
 
 app.use(authMiddleware);
 
-app.use("/users", userRoutes);
-app.use("/accounts", accountRoutes);
-app.use("/categories", categoryRoutes);
-app.use("/transactions", transactionRoutes);
+app.use("/users", apiLimiter, userRoutes);
+app.use("/accounts", apiLimiter, accountRoutes);
+app.use("/categories", apiLimiter, categoryRoutes);
+app.use("/transactions", apiLimiter, transactionRoutes);
 
 app.use(errorMiddleware);
 
