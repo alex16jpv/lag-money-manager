@@ -30,6 +30,8 @@ const AccountSchema = new Schema<IAccountDocument>(
   { timestamps: true },
 );
 
+AccountSchema.index({ userId: 1, _id: 1 });
+
 export const AccountMongoModel = mongoose.model<IAccountDocument>(
   MODEL_NAMES.ACCOUNT,
   AccountSchema,

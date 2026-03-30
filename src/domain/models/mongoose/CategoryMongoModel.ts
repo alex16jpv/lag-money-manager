@@ -18,6 +18,8 @@ const CategorySchema = new Schema<ICategoryDocument>(
   { timestamps: true },
 );
 
+CategorySchema.index({ userId: 1, _id: 1 });
+
 export const CategoryMongoModel = mongoose.model<ICategoryDocument>(
   MODEL_NAMES.CATEGORY,
   CategorySchema,

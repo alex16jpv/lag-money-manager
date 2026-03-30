@@ -38,16 +38,6 @@
 
 ---
 
-## 3. Performance Concerns
-
-### 3.3 Missing database indexes on `userId` for user-scoped queries
-
-- **Files:** `src/database/migrations/20260328000003-create-accounts.js`, `src/database/migrations/20260328000004-create-transactions.js`, `src/database/migrations/20260329000001-add-userId-to-categories.js`
-- **Problem:** Every list query filters by `userId` (e.g., `getAllByUserId`), but there are no explicit composite indexes. While MySQL creates an index for foreign key constraints automatically, the composite query `WHERE userId = ? ORDER BY id ASC LIMIT ?` would benefit from a composite index `(userId, id)`.
-- **Suggested fix:** Add composite indexes `(userId, id)` on `accounts`, `categories`, and `transactions` tables via a new migration.
-
----
-
 ## 4. Code Quality Issues
 
 ### 4.1 Non-null assertions in entity constructors without runtime safety
