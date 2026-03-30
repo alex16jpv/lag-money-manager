@@ -52,7 +52,7 @@ export class AccountService {
       throw new ApiError("Forbidden", "Access denied");
     }
 
-    return await this.repo.update(id, dto);
+    return new Account(await this.repo.update(id, dto));
   }
 
   async deleteAccount(id: string, userId: string): Promise<void> {

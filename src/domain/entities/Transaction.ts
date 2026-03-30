@@ -1,3 +1,4 @@
+import { v7 as uuidv7 } from "uuid";
 import { TransactionType } from "../../shared/constants";
 
 export interface TransactionProps {
@@ -32,7 +33,7 @@ export class Transaction {
   updatedAt: Date;
 
   constructor(props: TransactionProps) {
-    this.id = props.id!;
+    this.id = props.id ?? uuidv7();
     this.type = props.type;
     this.amount = props.amount;
     this.date = props.date instanceof Date ? props.date : new Date(props.date);
@@ -43,7 +44,7 @@ export class Transaction {
     this.userId = props.userId;
     this.tags = props.tags ?? null;
     this.note = props.note ?? null;
-    this.createdAt = props.createdAt!;
-    this.updatedAt = props.updatedAt!;
+    this.createdAt = props.createdAt ?? new Date();
+    this.updatedAt = props.updatedAt ?? new Date();
   }
 }

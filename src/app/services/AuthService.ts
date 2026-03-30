@@ -17,9 +17,7 @@ export class AuthService {
     const user = new User({ ...dto, password: hashedPassword });
 
     const created = await this.repo.create(user);
-    const { password: _, ...userWithoutPassword } = created as User & {
-      password?: string;
-    };
+    const { password: _, ...userWithoutPassword } = created;
     return userWithoutPassword as UserResponseDTO;
   }
 
@@ -32,10 +30,11 @@ export class AuthService {
       throw new ApiError("Unauthorized", "Invalid email or password");
     }
 
-    const isValidPassword = await bcryptjs.compare(
-      password,
-      (user as User & { password: string }).password,
-    );
+    if (!user.password) {
+      throw new ApiError("Unauthorized", "Invalid email or password");
+    }
+
+    const isValidPassword = await bcryptjs.compare(password, user.password);
     if (!isValidPassword) {
       throw new ApiError("Unauthorized", "Invalid email or password");
     }
@@ -46,9 +45,7 @@ export class AuthService {
       { expiresIn: ENVIRONMENT.JWT_EXPIRATION as jwt.SignOptions["expiresIn"] },
     );
 
-    const { password: _, ...userWithoutPassword } = user as User & {
-      password?: string;
-    };
+    const { password: _, ...userWithoutPassword } = user;
     return { token, user: userWithoutPassword as UserResponseDTO };
   }
 }

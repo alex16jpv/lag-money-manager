@@ -51,7 +51,7 @@ export class CategoryService {
       throw new ApiError("Forbidden", "Access denied");
     }
 
-    return await this.repo.update(id, dto);
+    return new Category(await this.repo.update(id, dto));
   }
 
   async deleteCategory(id: string, userId: string): Promise<void> {

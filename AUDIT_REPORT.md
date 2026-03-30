@@ -38,52 +38,6 @@
 
 ---
 
-## 4. Code Quality Issues
-
-### 4.1 Non-null assertions in entity constructors without runtime safety
-
-- **Files:** `src/domain/entities/Account.ts` (line 19), `src/domain/entities/Category.ts` (line 13), `src/domain/entities/Transaction.ts` (lines 35, 46–47), `src/domain/entities/User.ts` (lines 19, 23–24)
-- **Issue:** All entity constructors use `this.id = props.id!` (non-null assertion) where `id` is typed as `string | undefined`. If an entity is ever constructed without an `id` (e.g., from malformed data), this silently assigns `undefined` as `string`, causing downstream failures.
-- **Recommendation:** Either make `id` required in `Props` interfaces (since repositories always provide it), or add a runtime guard: `this.id = props.id ?? uuidv7()`.
-
-### 4.2 Type assertion hack in `AuthService` for password access
-
-- **File:** `src/app/services/AuthService.ts` (lines 20–23, 36–38, 49–51)
-- **Issue:** Multiple `as User & { password: string }` and `as User & { password?: string }` casts are used because the `User` entity has `password` as optional. This is fragile and error-prone.
-- **Recommendation:** Define a separate `UserWithPassword` type or make the `password` field required in the entity but explicitly excluded in DTOs/responses.
-
-### 4.3 CORS origin split without trimming
-
-- **File:** `src/app.ts` (line 39)
-- **Issue:** `ENVIRONMENT.CORS_ORIGIN.split(",")` does not trim whitespace. If the env var is set as `"http://localhost:3000, http://example.com"`, the space will become part of the origin string, causing CORS failures.
-- **Recommendation:** Change to `ENVIRONMENT.CORS_ORIGIN.split(",").map(s => s.trim())`.
-
-### 4.4 Inconsistent entity wrapping in service return values
-
-- **Files:** `src/app/services/AccountService.ts` (line 55 vs line 35), `src/app/services/CategoryService.ts` (line 34 vs line 54)
-- **Issue:** In `AccountService`, `updateAccount` returns `this.repo.update(id, dto)` directly (no `new Account()` wrapping), while `createAccount` wraps with `new Account()`. Same inconsistency in `CategoryService`. Services should consistently return domain entities or consistently delegate to the repository.
-- **Recommendation:** Either wrap all returns consistently with `new Entity()`, or trust the repository to always return proper entities and remove the wrapping everywhere.
-
-### 4.5 `validate()` typing is too narrow
-
-- **File:** `src/app/validation/validate.ts` (line 5)
-- **Issue:** The parameter type `z.ZodObject<z.ZodRawShape>` doesn't accommodate schemas that use `.refine()` or `.superRefine()` at the top level (which return `ZodEffects`, not `ZodObject`). Currently works because top-level schemas are `ZodObject`, but this will break if a top-level `.refine()` is introduced.
-- **Recommendation:** Widen the type to `z.ZodType<unknown>` or `z.ZodSchema` for maximum compatibility.
-
-### 4.6 `deleteUser` in `UserService` does not check existence before delete
-
-- **File:** `src/app/services/UserService.ts` (lines 71–76)
-- **Issue:** `deleteUser` calls `this.repo.delete(id)` directly without first calling `getById` to check existence. The repository throws `ApiError("NotFound")` if the user doesn't exist, but other delete methods (accounts, categories, transactions) perform an explicit existence + ownership check at the service level first. This inconsistency means the error path and authorization check are different.
-- **Recommendation:** Add explicit `getById` + ownership check before delete, matching the pattern in other services.
-
-### 4.7 No Pino log redaction for sensitive fields
-
-- **File:** `src/shared/logger.ts` (lines 4–13)
-- **Issue:** Pino is configured without any redaction paths. If error objects or request data containing `authorization`, `password`, or `cookie` headers are logged, sensitive data ends up in log storage.
-- **Recommendation:** Add `redact: ['req.headers.authorization', '*.password', '*.token']` to the Pino config.
-
----
-
 ## 5. Missing Tests
 
 ### 5.1 Repository implementations — **No tests at all**

@@ -1,3 +1,4 @@
+import { v7 as uuidv7 } from "uuid";
 import { AccountType } from "../../shared/constants";
 
 export interface AccountProps {
@@ -16,7 +17,7 @@ export class Account {
   userId: string;
 
   constructor({ id, name, type, balance, userId }: AccountProps) {
-    this.id = id!;
+    this.id = id ?? uuidv7();
     this.name = name;
     this.type = type;
     this.balance = balance ?? 0;

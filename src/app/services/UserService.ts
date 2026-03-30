@@ -72,6 +72,10 @@ export class UserService {
     if (id !== userId) {
       throw new ApiError("Forbidden", "Access denied");
     }
+    const existing = await this.repo.getById(id);
+    if (!existing) {
+      throw new ApiError("NotFound", "User not found");
+    }
     return await this.repo.delete(id);
   }
 }

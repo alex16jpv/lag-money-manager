@@ -193,10 +193,12 @@ describe("UserService", () => {
 
   describe("deleteUser", () => {
     it("should delete the authenticated user", async () => {
+      repo.getById.mockResolvedValue(mockUser);
       repo.delete.mockResolvedValue();
 
       await service.deleteUser(testUserId, testUserId);
 
+      expect(repo.getById).toHaveBeenCalledWith(testUserId);
       expect(repo.delete).toHaveBeenCalledWith(testUserId);
     });
 
@@ -204,6 +206,14 @@ describe("UserService", () => {
       await expect(
         service.deleteUser("019576a0-d7b6-7d6d-af6a-000000000000", testUserId),
       ).rejects.toThrow("Access denied");
+    });
+
+    it("should throw NotFound when user does not exist", async () => {
+      repo.getById.mockResolvedValue(null);
+
+      await expect(service.deleteUser(testUserId, testUserId)).rejects.toThrow(
+        "User not found",
+      );
     });
   });
 
@@ -225,6 +235,7 @@ describe("UserService", () => {
     });
 
     it("should propagate repository error on delete failure", async () => {
+      repo.getById.mockResolvedValue(mockUser);
       repo.delete.mockRejectedValue(new Error("DB delete failed"));
 
       await expect(service.deleteUser(testUserId, testUserId)).rejects.toThrow(

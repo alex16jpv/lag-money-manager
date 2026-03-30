@@ -34,7 +34,7 @@ app.use(helmet());
 app.use(compression());
 app.use(
   cors({
-    origin: ENVIRONMENT.CORS_ORIGIN.split(","),
+    origin: ENVIRONMENT.CORS_ORIGIN.split(",").map((s) => s.trim()),
   }),
 );
 const apiLimiter = rateLimit({

@@ -1,3 +1,5 @@
+import { v7 as uuidv7 } from "uuid";
+
 export interface CategoryProps {
   id?: string;
   name: string;
@@ -10,7 +12,7 @@ export class Category {
   userId: string;
 
   constructor({ id, name, userId }: CategoryProps) {
-    this.id = id!;
+    this.id = id ?? uuidv7();
     this.name = name;
     this.userId = userId;
   }
