@@ -40,23 +40,11 @@
 
 ## 3. Performance Concerns
 
-### 3.2 MongoDB repositories also perform redundant `countDocuments`
-
-- **Files:** All Mongo repositories: `AccountMongoRepository.ts` (lines 36–43), `CategoryMongoRepository.ts` (lines 31–38), `TransactionMongoRepository.ts` (lines 44–51), `UserMongoRepository.ts` (lines 50–57)
-- **Problem:** The `find()` + `countDocuments()` calls are parallelized, which is reasonable for Mongo, but `countDocuments` with no filter index can be slow on large collections. There is no caching or estimated count optimization.
-- **Suggested fix:** For collections over ~10k documents, consider using `estimatedDocumentCount()` for unfiltered counts, or caching total counts with short TTL.
-
 ### 3.3 Missing database indexes on `userId` for user-scoped queries
 
 - **Files:** `src/database/migrations/20260328000003-create-accounts.js`, `src/database/migrations/20260328000004-create-transactions.js`, `src/database/migrations/20260329000001-add-userId-to-categories.js`
 - **Problem:** Every list query filters by `userId` (e.g., `getAllByUserId`), but there are no explicit composite indexes. While MySQL creates an index for foreign key constraints automatically, the composite query `WHERE userId = ? ORDER BY id ASC LIMIT ?` would benefit from a composite index `(userId, id)`.
 - **Suggested fix:** Add composite indexes `(userId, id)` on `accounts`, `categories`, and `transactions` tables via a new migration.
-
-### 3.5 Rate limiter applied globally including health check and static docs
-
-- **File:** `src/app.ts` (lines 42–52)
-- **Problem:** The 100 req/15min rate limiter is applied to all routes, including `GET /`, `/api-docs`, and Swagger UI assets. Legitimate API consumers may exhaust their limit loading docs.
-- **Suggested fix:** Apply rate limiting only to API routes (`/auth`, `/users`, `/accounts`, etc.) or use a more generous limit for docs routes.
 
 ---
 

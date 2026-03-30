@@ -28,13 +28,16 @@ export class CategoryMongoRepository implements ICategoryRepository {
       filter._id = { $gt: cursor };
     }
 
+    const hasFilter = Object.keys(baseFilter).length > 0;
     const [docs, total] = await Promise.all([
       CategoryMongoModel.find(filter)
         .sort({ _id: 1 })
         .skip(cursor ? 0 : offset)
         .limit(limit)
         .lean(),
-      CategoryMongoModel.countDocuments(baseFilter),
+      hasFilter
+        ? CategoryMongoModel.countDocuments(baseFilter)
+        : CategoryMongoModel.estimatedDocumentCount(),
     ]);
 
     return buildPaginatedResult(

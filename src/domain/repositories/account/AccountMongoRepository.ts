@@ -33,13 +33,16 @@ export class AccountMongoRepository implements IAccountRepository {
       filter._id = { $gt: cursor };
     }
 
+    const hasFilter = Object.keys(baseFilter).length > 0;
     const [docs, total] = await Promise.all([
       AccountMongoModel.find(filter)
         .sort({ _id: 1 })
         .skip(cursor ? 0 : offset)
         .limit(limit)
         .lean(),
-      AccountMongoModel.countDocuments(baseFilter),
+      hasFilter
+        ? AccountMongoModel.countDocuments(baseFilter)
+        : AccountMongoModel.estimatedDocumentCount(),
     ]);
 
     return buildPaginatedResult(

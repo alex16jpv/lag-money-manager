@@ -41,13 +41,16 @@ export class TransactionMongoRepository implements ITransactionRepository {
       filter._id = { $gt: cursor };
     }
 
+    const hasFilter = Object.keys(baseFilter).length > 0;
     const [docs, total] = await Promise.all([
       TransactionMongoModel.find(filter)
         .sort({ _id: 1 })
         .skip(cursor ? 0 : offset)
         .limit(limit)
         .lean(),
-      TransactionMongoModel.countDocuments(baseFilter),
+      hasFilter
+        ? TransactionMongoModel.countDocuments(baseFilter)
+        : TransactionMongoModel.estimatedDocumentCount(),
     ]);
 
     return buildPaginatedResult(

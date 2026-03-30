@@ -53,7 +53,7 @@ export class UserMongoRepository implements IUserRepository {
         .skip(cursor ? 0 : offset)
         .limit(limit)
         .lean(),
-      UserMongoModel.countDocuments(),
+      UserMongoModel.estimatedDocumentCount(),
     ]);
 
     return buildPaginatedResult(
