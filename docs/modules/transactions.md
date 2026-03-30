@@ -166,6 +166,8 @@ None specific to this module.
 | `NotFoundError`   | 404    | Source account not found (on create/update)      |
 | `NotFoundError`   | 404    | Destination account not found (on create/update) |
 | `ForbiddenError`  | 403    | Transaction belongs to another user              |
+| `ForbiddenError`  | 403    | Source account does not belong to the user       |
+| `ForbiddenError`  | 403    | Destination account does not belong to the user  |
 | `BadRequestError` | 400    | Transaction ID mismatch (body vs URL param)      |
 | `ValidationError` | 400    | Missing required account for transaction type    |
 | `ValidationError` | 400    | Same fromAccountId and toAccountId on TRANSFER   |

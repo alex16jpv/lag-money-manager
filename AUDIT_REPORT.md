@@ -17,16 +17,10 @@
   1. Reverses old transaction balances (`adjustBalances(existing, -1)`)
   2. Applies new transaction balances (`adjustBalances(updated, 1)`)
   3. Persists the transaction update (`transactionRepo.update(id, dto)`)
-  
+
   A failure at step 3 leaves balances reflecting the new transaction while the DB still holds the old transaction data.
+
 - **Recommended fix:** Introduce a Unit of Work or database transaction wrapper. For Sequelize, use `sequelize.transaction()` and pass the transaction object through repository calls. For Mongoose, use sessions with `startSession()`/`withTransaction()`. Add a `withTransaction(callback)` method to the repository interface.
-
-### 1.2 No ownership verification of referenced accounts during transaction create/update
-
-- **File:** `src/app/services/TransactionService.ts` (lines 35–46)
-- **Severity:** Critical
-- **Description:** When creating or updating a transaction, the service validates that the transaction belongs to the user, but does **not** verify that the referenced `fromAccountId` and `toAccountId` belong to the same user. An authenticated user could reference another user's account ID to manipulate balances on accounts they don't own.
-- **Recommended fix:** In `adjustBalances()` (lines 88–131), after fetching the account, verify `account.userId === transaction.userId`. Throw `ApiError("Forbidden")` on mismatch.
 
 ### 1.3 `GET /users` exposes all user data without authorization
 
@@ -41,20 +35,6 @@
 - **Severity:** High (violates agent-context Section 6: "Do NOT leave dead code, commented-out blocks, or TODO comments in production code")
 - **Description:** Lines 40–43 contain a TODO block and commented-out budget logic. Per project conventions this is forbidden.
 - **Recommended fix:** Remove the TODO and commented-out block. Track budget feature separately in issue tracker.
-
-### 1.5 No graceful shutdown — database connections not closed on SIGTERM/SIGINT
-
-- **File:** `src/server.ts` (lines 8–13)
-- **Severity:** High
-- **Description:** The server starts with `app.listen()` but registers no signal handlers for `SIGTERM` or `SIGINT`. On container stop or process termination, database connections (Sequelize pool, Mongoose connection) are not cleanly closed. This can cause connection leaks in pooled/managed database environments and data corruption if writes are in progress.
-- **Recommended fix:** Add signal handlers that call `server.close()`, `sequelize.close()` / `mongoose.disconnect()`, then `process.exit(0)`.
-
-### 1.6 Client-supplied `x-request-id` accepted without validation
-
-- **File:** `src/shared/requestId.ts` (lines 5–12)
-- **Severity:** High
-- **Description:** The request ID middleware trusts an arbitrary client-provided `x-request-id` header without format, length, or character validation. An attacker could inject very long strings or malicious content into logs, enabling targeted log injection or log storage DoS.
-- **Recommended fix:** Validate that `x-request-id` is a UUID or alphanumeric string of max 64 characters. Fall back to `randomUUID()` otherwise.
 
 ---
 
@@ -235,16 +215,16 @@
 
 ## 6. Documentation Gaps
 
-| # | Gap | Suggested update |
-|---|-----|-----------------|
-| 6.1 | No ADR (Architecture Decision Record) documents exist — the `decisions/` folder only contains `_template.md` | Create ADRs for key decisions: dual-DB support, UUIDv7, Express 5, Zod choice |
-| 6.2 | `docs/modules/users.md` does not document that `GET /users` returns all users (security concern) | Update `docs/modules/users.md` with endpoint authorization matrix |
-| 6.3 | No documentation on transaction balance adjustment logic and failure modes | Add "Balance Adjustment" section to `docs/modules/transactions.md` |
-| 6.4 | `docs/guides/environment-vars.md` may not document `LOG_LEVEL` or `NODE_ENV` | Update `docs/guides/environment-vars.md` with full `ENVIRONMENT` schema |
-| 6.5 | No production deployment guide (HTTPS, pool config, signal handling, container health checks) | Create `docs/guides/deployment.md` and add to `docs/_index.json` |
+| #   | Gap                                                                                                                             | Suggested update                                                                    |
+| --- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 6.1 | No ADR (Architecture Decision Record) documents exist — the `decisions/` folder only contains `_template.md`                    | Create ADRs for key decisions: dual-DB support, UUIDv7, Express 5, Zod choice       |
+| 6.2 | `docs/modules/users.md` does not document that `GET /users` returns all users (security concern)                                | Update `docs/modules/users.md` with endpoint authorization matrix                   |
+| 6.3 | No documentation on transaction balance adjustment logic and failure modes                                                      | Add "Balance Adjustment" section to `docs/modules/transactions.md`                  |
+| 6.4 | `docs/guides/environment-vars.md` may not document `LOG_LEVEL` or `NODE_ENV`                                                    | Update `docs/guides/environment-vars.md` with full `ENVIRONMENT` schema             |
+| 6.5 | No production deployment guide (HTTPS, pool config, signal handling, container health checks)                                   | Create `docs/guides/deployment.md` and add to `docs/_index.json`                    |
 | 6.6 | `docs/reference/error-handling.md` does not document all error middleware branches (MongoServerError, CastError, FK constraint) | Update `docs/reference/error-handling.md` with complete error → HTTP status mapping |
-| 6.7 | `docs/guides/testing.md` exists but no mention of coverage thresholds or expected coverage targets | Update `docs/guides/testing.md` with coverage requirements |
-| 6.8 | OpenAPI spec in `swagger.ts` is manually maintained — no docs on keeping it in sync with Zod schemas | Add sync process notes to `docs/guides/contributing.md` |
+| 6.7 | `docs/guides/testing.md` exists but no mention of coverage thresholds or expected coverage targets                              | Update `docs/guides/testing.md` with coverage requirements                          |
+| 6.8 | OpenAPI spec in `swagger.ts` is manually maintained — no docs on keeping it in sync with Zod schemas                            | Add sync process notes to `docs/guides/contributing.md`                             |
 
 ---
 
@@ -252,37 +232,38 @@
 
 Sorted by effort (ascending):
 
-| # | Change | Effort | Impact | File(s) |
-|---|--------|--------|--------|---------|
-| 7.1 | Fix `UserSeqRepository.getAll()` — add `.toJSON()` call | 1 min | Prevents ORM object leaking into entity | `src/domain/repositories/user/UserSeqRepository.ts` (line 49) |
-| 7.2 | Trim CORS origins: `.split(",").map(s => s.trim())` | 1 min | Prevents CORS failures from env var whitespace | `src/app.ts` (line 39) |
-| 7.3 | Remove TODO comment and dead code block | 1 min | Enforces project conventions | `src/app/services/TransactionService.ts` (lines 40–43) |
-| 7.4 | Make `model` private in all Sequelize repositories | 2 min | Enforces encapsulation | 4 `*SeqRepository.ts` files (line 13 each) |
-| 7.5 | Validate `x-request-id` format (UUID or alphanumeric, max 64 chars) | 5 min | Prevents log injection | `src/shared/requestId.ts` |
-| 7.6 | Remove redundant `count()` call in Sequelize pagination — use `findAndCountAll` count | 10 min | ~50% reduction in DB reads for list endpoints | 4 `*SeqRepository.ts` files |
-| 7.7 | Remove `balance` from `UpdateAccountDTO` and `updateAccountSchema` | 5 min | Prevents balance manipulation bypassing transactions | `src/app/dtos/AccountDTO.ts`, `src/app/validation/schemas.ts` |
-| 7.8 | Add graceful shutdown handlers in `server.ts` | 10 min | Prevents connection leaks on termination | `src/server.ts` |
-| 7.9 | Add composite `(userId, id)` indexes via migration | 15 min | Faster user-scoped paginated queries | New migration file |
-| 7.10 | Add ownership check for `fromAccountId`/`toAccountId` in `TransactionService` | 15 min | Fixes critical IDOR vulnerability | `src/app/services/TransactionService.ts` |
-| 7.11 | Restrict or remove `GET /users` endpoint | 10 min | Fixes user enumeration vulnerability | `src/app/routes/userRoutes.ts`, `src/app/controllers/UserController.ts` |
-| 7.12 | Add Pino redaction for sensitive fields | 5 min | Prevents secrets in logs | `src/shared/logger.ts` |
+| #    | Change                                                                                | Effort | Impact                                               | File(s)                                                                 |
+| ---- | ------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------- | ----------------------------------------------------------------------- |
+| 7.1  | Fix `UserSeqRepository.getAll()` — add `.toJSON()` call                               | 1 min  | Prevents ORM object leaking into entity              | `src/domain/repositories/user/UserSeqRepository.ts` (line 49)           |
+| 7.2  | Trim CORS origins: `.split(",").map(s => s.trim())`                                   | 1 min  | Prevents CORS failures from env var whitespace       | `src/app.ts` (line 39)                                                  |
+| 7.3  | Remove TODO comment and dead code block                                               | 1 min  | Enforces project conventions                         | `src/app/services/TransactionService.ts` (lines 40–43)                  |
+| 7.4  | Make `model` private in all Sequelize repositories                                    | 2 min  | Enforces encapsulation                               | 4 `*SeqRepository.ts` files (line 13 each)                              |
+| 7.5  | Validate `x-request-id` format (UUID or alphanumeric, max 64 chars)                   | 5 min  | Prevents log injection                               | `src/shared/requestId.ts`                                               |
+| 7.6  | Remove redundant `count()` call in Sequelize pagination — use `findAndCountAll` count | 10 min | ~50% reduction in DB reads for list endpoints        | 4 `*SeqRepository.ts` files                                             |
+| 7.7  | Remove `balance` from `UpdateAccountDTO` and `updateAccountSchema`                    | 5 min  | Prevents balance manipulation bypassing transactions | `src/app/dtos/AccountDTO.ts`, `src/app/validation/schemas.ts`           |
+| 7.8  | Add graceful shutdown handlers in `server.ts`                                         | 10 min | Prevents connection leaks on termination             | `src/server.ts`                                                         |
+| 7.9  | Add composite `(userId, id)` indexes via migration                                    | 15 min | Faster user-scoped paginated queries                 | New migration file                                                      |
+| 7.10 | Add ownership check for `fromAccountId`/`toAccountId` in `TransactionService`         | 15 min | Fixes critical IDOR vulnerability                    | `src/app/services/TransactionService.ts`                                |
+| 7.11 | Restrict or remove `GET /users` endpoint                                              | 10 min | Fixes user enumeration vulnerability                 | `src/app/routes/userRoutes.ts`, `src/app/controllers/UserController.ts` |
+| 7.12 | Add Pino redaction for sensitive fields                                               | 5 min  | Prevents secrets in logs                             | `src/shared/logger.ts`                                                  |
 
 ---
 
 ## Summary
 
-| Severity | Count |
-|----------|-------|
-| Critical | 2 |
-| High | 4 |
-| Architecture Violations | 5 |
-| Performance Concerns | 5 |
-| Code Quality Issues | 7 |
-| Missing Test Areas | 8 |
-| Documentation Gaps | 8 |
-| Quick Wins | 12 |
+| Severity                | Count |
+| ----------------------- | ----- |
+| Critical                | 2     |
+| High                    | 4     |
+| Architecture Violations | 5     |
+| Performance Concerns    | 5     |
+| Code Quality Issues     | 7     |
+| Missing Test Areas      | 8     |
+| Documentation Gaps      | 8     |
+| Quick Wins              | 12    |
 
 **Top 3 priorities:**
+
 1. **Fix non-atomic balance adjustments** (Critical — data integrity risk)
 2. **Add account ownership verification in transactions** (Critical — IDOR vulnerability)
 3. **Restrict `GET /users` endpoint** (High — user data exposure)

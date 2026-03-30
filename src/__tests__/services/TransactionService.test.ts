@@ -288,6 +288,71 @@ describe("TransactionService", () => {
         "Destination account not found",
       );
     });
+
+    it("should throw Forbidden when expense fromAccountId belongs to another user", async () => {
+      const otherUserAccount = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        balance: 1000,
+        userId: "019576a0-d7b6-7d6d-af6a-other-user-00",
+      });
+      acctRepo.getById.mockResolvedValue(otherUserAccount);
+
+      await expect(service.createTransaction(validExpense)).rejects.toThrow(
+        "Source account does not belong to the user",
+      );
+      await expect(service.createTransaction(validExpense)).rejects.toThrow(
+        ApiError,
+      );
+    });
+
+    it("should throw Forbidden when income toAccountId belongs to another user", async () => {
+      const otherUserAccount = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        balance: 500,
+        userId: "019576a0-d7b6-7d6d-af6a-other-user-00",
+      });
+      acctRepo.getById.mockResolvedValue(otherUserAccount);
+
+      await expect(service.createTransaction(validIncome)).rejects.toThrow(
+        "Destination account does not belong to the user",
+      );
+      await expect(service.createTransaction(validIncome)).rejects.toThrow(
+        ApiError,
+      );
+    });
+
+    it("should throw Forbidden when transfer fromAccountId belongs to another user", async () => {
+      const otherUserFromAccount = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        balance: 1000,
+        userId: "019576a0-d7b6-7d6d-af6a-other-user-00",
+      });
+      acctRepo.getById.mockResolvedValueOnce(otherUserFromAccount);
+
+      await expect(service.createTransaction(validTransfer)).rejects.toThrow(
+        "Source account does not belong to the user",
+      );
+    });
+
+    it("should throw Forbidden when transfer toAccountId belongs to another user", async () => {
+      const ownFromAccount = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        balance: 1000,
+        userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      });
+      const otherUserToAccount = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
+        balance: 500,
+        userId: "019576a0-d7b6-7d6d-af6a-other-user-00",
+      });
+      acctRepo.getById
+        .mockResolvedValueOnce(ownFromAccount)
+        .mockResolvedValueOnce(otherUserToAccount);
+
+      await expect(service.createTransaction(validTransfer)).rejects.toThrow(
+        "Destination account does not belong to the user",
+      );
+    });
   });
 
   describe("updateTransaction", () => {
@@ -376,6 +441,42 @@ describe("TransactionService", () => {
           "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         ),
       ).rejects.toThrow("Transaction not found");
+    });
+
+    it("should throw Forbidden when updated fromAccountId belongs to another user", async () => {
+      const existingTx = new Transaction({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+        type: "EXPENSE",
+        amount: 100,
+        date: new Date(),
+        fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      });
+      txRepo.getById.mockResolvedValue(existingTx);
+
+      const ownAccount = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        balance: 900,
+        userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      });
+      const otherUserAccount = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac99",
+        balance: 500,
+        userId: "019576a0-d7b6-7d6d-af6a-other-user-00",
+      });
+      // First call: reversing old balances (direction=-1, no ownership check)
+      // Second call: applying new balances (direction=+1, ownership check triggers)
+      acctRepo.getById
+        .mockResolvedValueOnce(ownAccount)
+        .mockResolvedValueOnce(otherUserAccount);
+
+      await expect(
+        service.updateTransaction(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+          { fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac99" },
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        ),
+      ).rejects.toThrow("Source account does not belong to the user");
     });
   });
 

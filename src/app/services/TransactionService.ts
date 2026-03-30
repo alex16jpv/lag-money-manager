@@ -107,6 +107,14 @@ export class TransactionService {
         }
         return;
       }
+      if (direction === 1 && account.userId !== transaction.userId) {
+        throw new ApiError(
+          "Forbidden",
+          sign < 0
+            ? "Source account does not belong to the user"
+            : "Destination account does not belong to the user",
+        );
+      }
       await this.accountRepo.update(accountId, {
         balance: Number(account.balance) + Number(amount) * sign * direction,
       });
