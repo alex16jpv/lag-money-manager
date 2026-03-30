@@ -19,6 +19,4 @@ export const loadSequelizeModels = () => {
       model.associate();
     }
   }
-
-  // sequelize.sync();
 };

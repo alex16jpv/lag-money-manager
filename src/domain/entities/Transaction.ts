@@ -1,5 +1,4 @@
-import { DomainValidationError } from "../errors";
-import { TRANSACTION_TYPES, TransactionType } from "../../shared/constants";
+import { TransactionType } from "../../shared/constants";
 
 export interface TransactionProps {
   id?: string;
@@ -46,72 +45,5 @@ export class Transaction {
     this.note = props.note ?? null;
     this.createdAt = props.createdAt!;
     this.updatedAt = props.updatedAt!;
-  }
-
-  validate() {
-    if (!this.type) {
-      throw new DomainValidationError("'type' is required", "type");
-    }
-
-    if (!TRANSACTION_TYPES[this.type]) {
-      throw new DomainValidationError(
-        `Invalid transaction type. Available: ${Object.values(TRANSACTION_TYPES).join(", ")}`,
-        "type",
-      );
-    }
-
-    if (this.amount === undefined || this.amount === null) {
-      throw new DomainValidationError("'amount' is required", "amount");
-    }
-
-    if (this.amount <= 0) {
-      throw new DomainValidationError(
-        "'amount' must be greater than 0",
-        "amount",
-      );
-    }
-
-    if (!this.date) {
-      throw new DomainValidationError("'date' is required", "date");
-    }
-
-    if (!this.userId) {
-      throw new DomainValidationError("'userId' is required", "userId");
-    }
-
-    if (this.type === "EXPENSE" && !this.fromAccountId) {
-      throw new DomainValidationError(
-        "'fromAccountId' is required for expense transactions",
-        "fromAccountId",
-      );
-    }
-
-    if (this.type === "INCOME" && !this.toAccountId) {
-      throw new DomainValidationError(
-        "'toAccountId' is required for income transactions",
-        "toAccountId",
-      );
-    }
-
-    if (this.type === "TRANSFER") {
-      if (!this.fromAccountId) {
-        throw new DomainValidationError(
-          "'fromAccountId' is required for transfer transactions",
-          "fromAccountId",
-        );
-      }
-      if (!this.toAccountId) {
-        throw new DomainValidationError(
-          "'toAccountId' is required for transfer transactions",
-          "toAccountId",
-        );
-      }
-      if (this.fromAccountId === this.toAccountId) {
-        throw new DomainValidationError(
-          "'fromAccountId' and 'toAccountId' must be different",
-          "toAccountId",
-        );
-      }
-    }
   }
 }

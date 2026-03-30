@@ -1,5 +1,13 @@
 jest.mock("../../shared/constants", () => ({
-  ENVIRONMENT: { PORT: 3000, DB_TYPE: "SEQ", JWT_SECRET: "test" },
+  ENVIRONMENT: {
+    PORT: 3000,
+    DB_TYPE: "SEQ",
+    JWT_SECRET: "test",
+    BCRYPT_SALT_ROUNDS: 12,
+    JWT_EXPIRATION: "24h",
+    LOG_LEVEL: "info",
+    NODE_ENV: "test",
+  },
   ACCOUNT_TYPES: {
     CASH: "CASH",
     ACCOUNT: "ACCOUNT",
@@ -32,7 +40,6 @@ import { IAccountRepository } from "../../domain/repositories/account/IAccountRe
 import { Transaction } from "../../domain/entities/Transaction";
 import { Account } from "../../domain/entities/Account";
 import { ApiError } from "../../shared/errors";
-import { DomainValidationError } from "../../domain/errors";
 import {
   CreateTransactionDTO,
   UpdateTransactionDTO,
@@ -266,21 +273,6 @@ describe("TransactionService", () => {
       expect(result.type).toBe("TRANSFER");
     });
 
-    it("should throw when validation fails", async () => {
-      const invalid: CreateTransactionDTO = {
-        type: "EXPENSE",
-        amount: -10,
-        date: new Date(),
-        fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
-        userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-      };
-
-      await expect(service.createTransaction(invalid)).rejects.toThrow(
-        DomainValidationError,
-      );
-      expect(txRepo.create).not.toHaveBeenCalled();
-    });
-
     it("should throw when source account not found for expense", async () => {
       acctRepo.getById.mockResolvedValue(null);
 
@@ -502,6 +494,49 @@ describe("TransactionService", () => {
       expect(txRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
       );
+    });
+  });
+
+  describe("error propagation", () => {
+    it("should propagate repository error on getAllByUserId failure", async () => {
+      txRepo.getAllByUserId.mockRejectedValue(new Error("DB connection lost"));
+
+      await expect(
+        service.getAllTransactions("019576a0-d7b6-7d6d-af6a-2b7545f5ac70", {
+          limit: 20,
+          offset: 0,
+        }),
+      ).rejects.toThrow("DB connection lost");
+    });
+
+    it("should propagate repository error on create failure", async () => {
+      const account = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        balance: 1000,
+      });
+      acctRepo.getById.mockResolvedValue(account);
+      txRepo.create.mockRejectedValue(new Error("DB write failed"));
+
+      await expect(service.createTransaction(validExpense)).rejects.toThrow(
+        "DB write failed",
+      );
+    });
+
+    it("should propagate repository error on delete failure", async () => {
+      txRepo.getById.mockResolvedValue(storedExpense);
+      const account = makeAccount({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        balance: 900,
+      });
+      acctRepo.getById.mockResolvedValue(account);
+      txRepo.delete.mockRejectedValue(new Error("DB delete failed"));
+
+      await expect(
+        service.deleteTransaction(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        ),
+      ).rejects.toThrow("DB delete failed");
     });
   });
 });

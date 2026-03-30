@@ -2,13 +2,14 @@ import { AuthService } from "../../app/services/AuthService";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { User } from "../../domain/entities/User";
 import { ApiError } from "../../shared/errors";
-import { DomainValidationError } from "../../domain/errors";
 import bcryptjs from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
     JWT_SECRET: "test-secret-key",
+    JWT_EXPIRATION: "24h",
+    BCRYPT_SALT_ROUNDS: 12,
   },
   DB_TYPES: { SEQ: "SEQ" },
   ACCOUNT_TYPES: {},
@@ -59,19 +60,6 @@ describe("AuthService", () => {
       );
       expect(result).not.toHaveProperty("password");
       expect(result.name).toBe("John");
-    });
-
-    it("should throw when validation fails (missing name)", async () => {
-      const input = {
-        name: "",
-        email: "john@example.com",
-        password: "password123",
-      };
-
-      await expect(service.register(input)).rejects.toThrow(
-        DomainValidationError,
-      );
-      expect(repo.create).not.toHaveBeenCalled();
     });
   });
 

@@ -1,3 +1,15 @@
+jest.mock("../../shared/constants", () => ({
+  ENVIRONMENT: {
+    PORT: 3000,
+    DB_TYPE: "SEQ",
+    JWT_SECRET: "test",
+    BCRYPT_SALT_ROUNDS: 12,
+    JWT_EXPIRATION: "24h",
+    LOG_LEVEL: "info",
+    NODE_ENV: "test",
+  },
+}));
+
 import { UserService } from "../../app/services/UserService";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { User } from "../../domain/entities/User";
@@ -192,6 +204,32 @@ describe("UserService", () => {
       await expect(
         service.deleteUser("019576a0-d7b6-7d6d-af6a-000000000000", testUserId),
       ).rejects.toThrow("Access denied");
+    });
+  });
+
+  describe("error propagation", () => {
+    it("should propagate repository error on getAll failure", async () => {
+      repo.getAll.mockRejectedValue(new Error("DB connection lost"));
+
+      await expect(
+        service.getAllUsers({ limit: 20, offset: 0 }),
+      ).rejects.toThrow("DB connection lost");
+    });
+
+    it("should propagate repository error on create (update) failure", async () => {
+      repo.update.mockRejectedValue(new Error("DB write failed"));
+
+      await expect(
+        service.updateUser(testUserId, { name: "New" }, testUserId),
+      ).rejects.toThrow("DB write failed");
+    });
+
+    it("should propagate repository error on delete failure", async () => {
+      repo.delete.mockRejectedValue(new Error("DB delete failed"));
+
+      await expect(service.deleteUser(testUserId, testUserId)).rejects.toThrow(
+        "DB delete failed",
+      );
     });
   });
 });

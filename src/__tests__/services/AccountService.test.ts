@@ -1,5 +1,13 @@
 jest.mock("../../shared/constants", () => ({
-  ENVIRONMENT: { PORT: 3000, DB_TYPE: "SEQ", JWT_SECRET: "test" },
+  ENVIRONMENT: {
+    PORT: 3000,
+    DB_TYPE: "SEQ",
+    JWT_SECRET: "test",
+    BCRYPT_SALT_ROUNDS: 12,
+    JWT_EXPIRATION: "24h",
+    LOG_LEVEL: "info",
+    NODE_ENV: "test",
+  },
   ACCOUNT_TYPES: {
     CASH: "CASH",
     ACCOUNT: "ACCOUNT",
@@ -30,7 +38,6 @@ import { AccountService } from "../../app/services/AccountService";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { Account } from "../../domain/entities/Account";
 import { ApiError } from "../../shared/errors";
-import { DomainValidationError } from "../../domain/errors";
 import { CreateAccountDTO } from "../../app/dtos/AccountDTO";
 
 const validAccountProps = {
@@ -152,33 +159,6 @@ describe("AccountService", () => {
       expect(repo.create).toHaveBeenCalledTimes(1);
       expect(result.name).toBe("Savings");
     });
-
-    it("should throw when validation fails (missing name)", async () => {
-      const invalid: CreateAccountDTO = {
-        ...validAccountProps,
-        name: "" as unknown as string,
-      };
-
-      await expect(service.createAccount(invalid)).rejects.toThrow(
-        DomainValidationError,
-      );
-      await expect(service.createAccount(invalid)).rejects.toThrow(
-        "'name' is required",
-      );
-      expect(repo.create).not.toHaveBeenCalled();
-    });
-
-    it("should throw when validation fails (invalid type)", async () => {
-      const invalid = {
-        ...validAccountProps,
-        type: "INVALID" as unknown as typeof validAccountProps.type,
-      };
-
-      await expect(service.createAccount(invalid)).rejects.toThrow(
-        DomainValidationError,
-      );
-      expect(repo.create).not.toHaveBeenCalled();
-    });
   });
 
   describe("updateAccount", () => {
@@ -235,6 +215,50 @@ describe("AccountService", () => {
       expect(repo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       );
+    });
+
+    it("should throw NotFound when deleting non-existent account", async () => {
+      repo.getById.mockResolvedValue(null);
+
+      await expect(
+        service.deleteAccount(
+          "019576a0-d7b6-7d6d-af6a-000000000000",
+          validAccountProps.userId,
+        ),
+      ).rejects.toThrow("Account not found");
+    });
+  });
+
+  describe("error propagation", () => {
+    it("should propagate repository error on getAll failure", async () => {
+      repo.getAllByUserId.mockRejectedValue(new Error("DB connection lost"));
+
+      await expect(
+        service.getAllAccounts(validAccountProps.userId, {
+          limit: 20,
+          offset: 0,
+        }),
+      ).rejects.toThrow("DB connection lost");
+    });
+
+    it("should propagate repository error on create failure", async () => {
+      repo.create.mockRejectedValue(new Error("DB write failed"));
+
+      await expect(service.createAccount(validAccountProps)).rejects.toThrow(
+        "DB write failed",
+      );
+    });
+
+    it("should throw NotFound on update when account does not exist", async () => {
+      repo.getById.mockResolvedValue(null);
+
+      await expect(
+        service.updateAccount(
+          "019576a0-d7b6-7d6d-af6a-000000000000",
+          { name: "Updated" },
+          validAccountProps.userId,
+        ),
+      ).rejects.toThrow("Account not found");
     });
   });
 });

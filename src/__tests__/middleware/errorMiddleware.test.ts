@@ -7,6 +7,7 @@ jest.mock("../../shared/logger", () => ({
   error: jest.fn(),
   info: jest.fn(),
   debug: jest.fn(),
+  warn: jest.fn(),
 }));
 
 const createMockRes = (): jest.Mocked<Response> => {
@@ -22,7 +23,7 @@ describe("errorMiddleware", () => {
   let next: NextFunction;
 
   beforeEach(() => {
-    req = {} as Request;
+    req = { headers: {} } as Request;
     res = createMockRes();
     next = jest.fn();
   });

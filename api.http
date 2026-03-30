@@ -156,23 +156,6 @@ Authorization: Bearer {{token}}
 GET {{baseUrl}}/users/abc
 Authorization: Bearer {{token}}
 
-### Crear sin campos (400)
-POST {{baseUrl}}/users
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{}
-
-### Crear con email inválido (400)
-POST {{baseUrl}}/users
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "name": "Test",
-  "email": "bad"
-}
-
 ### Actualizar con body vacío (400)
 PUT {{baseUrl}}/users/{{userId}}
 Authorization: Bearer {{token}}

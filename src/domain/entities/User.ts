@@ -1,5 +1,3 @@
-import { DomainValidationError } from "../errors";
-
 export interface UserProps {
   id?: string;
   name: string;
@@ -24,15 +22,5 @@ export class User {
     this.password = password;
     this.createdAt = createdAt!;
     this.updatedAt = updatedAt!;
-  }
-
-  validate() {
-    if (!this.email) {
-      throw new DomainValidationError("Email is required", "email");
-    }
-
-    if (!this.name) {
-      throw new DomainValidationError("Name is required", "name");
-    }
   }
 }

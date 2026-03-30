@@ -3,6 +3,7 @@ import { User } from "../../domain/entities/User";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
+import { ENVIRONMENT } from "../../shared/constants";
 import { UpdateUserDTO, UserResponseDTO } from "../dtos/UserDTO";
 
 export class UserService {
@@ -54,7 +55,10 @@ export class UserService {
     if (dto.password) {
       const hashedDto = {
         ...dto,
-        password: await bcryptjs.hash(dto.password, 12),
+        password: await bcryptjs.hash(
+          dto.password,
+          ENVIRONMENT.BCRYPT_SALT_ROUNDS,
+        ),
       };
       const updated = await this.repo.update(id, hashedDto);
       return this.toResponseDTO(updated);

@@ -15,7 +15,7 @@ interface MongoServerError extends Error {
 
 export const errorMiddleware = (
   error: Error,
-  _: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ): void => {
@@ -84,7 +84,10 @@ export const errorMiddleware = (
     return;
   }
 
-  logger.error({ err: error }, "Unhandled error");
+  logger.error(
+    { err: error, requestId: req.headers["x-request-id"] },
+    "Unhandled error",
+  );
 
   res.status(500).json({
     error: "InternalServerError",

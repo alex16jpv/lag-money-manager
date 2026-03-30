@@ -10,9 +10,11 @@ export class AuthService {
   constructor(private repo: IUserRepository) {}
 
   async register(dto: CreateUserDTO): Promise<UserResponseDTO> {
-    const hashedPassword = await bcryptjs.hash(dto.password, 12);
+    const hashedPassword = await bcryptjs.hash(
+      dto.password,
+      ENVIRONMENT.BCRYPT_SALT_ROUNDS,
+    );
     const user = new User({ ...dto, password: hashedPassword });
-    user.validate();
 
     const created = await this.repo.create(user);
     const { password: _, ...userWithoutPassword } = created as User & {
@@ -41,7 +43,7 @@ export class AuthService {
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       ENVIRONMENT.JWT_SECRET,
-      { expiresIn: "24h" },
+      { expiresIn: ENVIRONMENT.JWT_EXPIRATION as jwt.SignOptions["expiresIn"] },
     );
 
     const { password: _, ...userWithoutPassword } = user as User & {

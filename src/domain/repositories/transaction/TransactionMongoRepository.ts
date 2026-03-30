@@ -6,25 +6,28 @@ import {
 } from "../../../shared/pagination";
 import { ApiError } from "../../../shared/errors";
 import { Transaction } from "../../entities/Transaction";
-import { TransactionMongoModel } from "../../models/mongoose/TransactionMongoModel";
+import {
+  ITransactionDocument,
+  TransactionMongoModel,
+} from "../../models/mongoose/TransactionMongoModel";
 import { ITransactionRepository } from "./ITransactionRepository";
 
 export class TransactionMongoRepository implements ITransactionRepository {
-  private toEntity(doc: Record<string, unknown>): Transaction {
+  private toEntity(doc: ITransactionDocument): Transaction {
     return new Transaction({
-      id: doc._id as string,
-      type: doc.type as Transaction["type"],
-      amount: doc.amount as number,
-      date: doc.date as Date,
-      categoryId: (doc.categoryId as string) ?? null,
-      description: (doc.description as string) ?? null,
-      fromAccountId: (doc.fromAccountId as string) ?? null,
-      toAccountId: (doc.toAccountId as string) ?? null,
-      userId: doc.userId as string,
-      tags: (doc.tags as string) ?? null,
-      note: (doc.note as string) ?? null,
-      createdAt: doc.createdAt as Date,
-      updatedAt: doc.updatedAt as Date,
+      id: doc._id,
+      type: doc.type,
+      amount: doc.amount,
+      date: doc.date,
+      categoryId: doc.categoryId ?? null,
+      description: doc.description ?? null,
+      fromAccountId: doc.fromAccountId ?? null,
+      toAccountId: doc.toAccountId ?? null,
+      userId: doc.userId,
+      tags: doc.tags ?? null,
+      note: doc.note ?? null,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
     });
   }
 
@@ -48,9 +51,7 @@ export class TransactionMongoRepository implements ITransactionRepository {
     ]);
 
     return buildPaginatedResult(
-      docs.map((doc) =>
-        this.toEntity(doc as unknown as Record<string, unknown>),
-      ),
+      docs.map((doc) => this.toEntity(doc)),
       total,
       pagination,
     );
@@ -59,7 +60,7 @@ export class TransactionMongoRepository implements ITransactionRepository {
   async getById(id: string): Promise<Transaction | null> {
     const doc = await TransactionMongoModel.findById(id).lean();
     if (!doc) return null;
-    return this.toEntity(doc as unknown as Record<string, unknown>);
+    return this.toEntity(doc);
   }
 
   async getAll(
@@ -78,7 +79,7 @@ export class TransactionMongoRepository implements ITransactionRepository {
   async create(transaction: Partial<Transaction>): Promise<Transaction> {
     const id = uuidv7();
     const doc = await TransactionMongoModel.create({ _id: id, ...transaction });
-    return this.toEntity(doc.toObject() as unknown as Record<string, unknown>);
+    return this.toEntity(doc.toObject());
   }
 
   async update(
@@ -91,7 +92,7 @@ export class TransactionMongoRepository implements ITransactionRepository {
     if (!doc) {
       throw new ApiError("NotFound", "Transaction not found");
     }
-    return this.toEntity(doc as unknown as Record<string, unknown>);
+    return this.toEntity(doc);
   }
 
   async delete(id: string): Promise<void> {

@@ -2,7 +2,6 @@ import { CategoryService } from "../../app/services/CategoryService";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { Category } from "../../domain/entities/Category";
 import { ApiError } from "../../shared/errors";
-import { DomainValidationError } from "../../domain/errors";
 import { CreateCategoryDTO } from "../../app/dtos/CategoryDTO";
 
 const testUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac71";
@@ -116,21 +115,6 @@ describe("CategoryService", () => {
       expect(repo.create).toHaveBeenCalledTimes(1);
       expect(result.name).toBe("Food");
     });
-
-    it("should throw when validation fails (missing name)", async () => {
-      const invalid: CreateCategoryDTO = {
-        name: "" as unknown as string,
-        userId: testUserId,
-      };
-
-      await expect(service.createCategory(invalid)).rejects.toThrow(
-        DomainValidationError,
-      );
-      await expect(service.createCategory(invalid)).rejects.toThrow(
-        "'name' is required",
-      );
-      expect(repo.create).not.toHaveBeenCalled();
-    });
   });
 
   describe("updateCategory", () => {
@@ -191,6 +175,47 @@ describe("CategoryService", () => {
       expect(repo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       );
+    });
+
+    it("should throw NotFound when deleting non-existent category", async () => {
+      repo.getById.mockResolvedValue(null);
+
+      await expect(
+        service.deleteCategory(
+          "019576a0-d7b6-7d6d-af6a-000000000000",
+          testUserId,
+        ),
+      ).rejects.toThrow("Category not found");
+    });
+  });
+
+  describe("error propagation", () => {
+    it("should propagate repository error on getAll failure", async () => {
+      repo.getAllByUserId.mockRejectedValue(new Error("DB connection lost"));
+
+      await expect(
+        service.getAllCategories(testUserId, { limit: 20, offset: 0 }),
+      ).rejects.toThrow("DB connection lost");
+    });
+
+    it("should propagate repository error on create failure", async () => {
+      repo.create.mockRejectedValue(new Error("DB write failed"));
+
+      await expect(
+        service.createCategory({ name: "Food", userId: testUserId }),
+      ).rejects.toThrow("DB write failed");
+    });
+
+    it("should throw NotFound on update when category does not exist", async () => {
+      repo.getById.mockResolvedValue(null);
+
+      await expect(
+        service.updateCategory(
+          "019576a0-d7b6-7d6d-af6a-000000000000",
+          { name: "Updated" },
+          testUserId,
+        ),
+      ).rejects.toThrow("Category not found");
     });
   });
 });

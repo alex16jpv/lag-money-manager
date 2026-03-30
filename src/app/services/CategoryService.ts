@@ -31,7 +31,6 @@ export class CategoryService {
 
   async createCategory(dto: CreateCategoryDTO): Promise<Category> {
     const category = new Category(dto);
-    category.validate();
     return this.repo.create(category);
   }
 

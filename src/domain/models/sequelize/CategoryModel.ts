@@ -6,8 +6,6 @@ export class CategoryModel extends Model {
   id!: string;
   name!: string;
   userId!: string;
-
-  static associate() {}
 }
 
 export default (sequelize: Sequelize) => {

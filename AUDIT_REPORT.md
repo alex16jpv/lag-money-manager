@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The project demonstrates solid architectural foundations: a clean layered structure (controllers → services → repositories → models), a well-implemented repository pattern with factory-based database provider abstraction, Zod input validation on all endpoints, and comprehensive Swagger/OpenAPI documentation. The critical security issues from Phase 1 have been addressed: user-scoped data access with ownership checks is enforced across all endpoints, CORS is restricted to configured origins, passwords are stripped from all User API responses, and `@types/uuid` has been moved to `devDependencies`. Remaining critical issue: balance-modifying transaction operations lack database-level atomicity. All list endpoints now support pagination (limit, offset, cursor) to prevent memory exhaustion. The test suite (142 total test cases) covers both happy paths and authorization enforcement.
+The project demonstrates solid architectural foundations: a clean layered structure (controllers → services → repositories → models), a well-implemented repository pattern with factory-based database provider abstraction, Zod input validation on all endpoints (sole source of truth for validation), and comprehensive Swagger/OpenAPI documentation. The critical security issues from Phase 1 have been addressed: user-scoped data access with ownership checks is enforced across all endpoints, CORS is restricted to configured origins, passwords are stripped from all User API responses, and `@types/uuid` has been moved to `devDependencies`. Remaining critical issue: balance-modifying transaction operations lack database-level atomicity. All list endpoints now support pagination (limit, offset, cursor) to prevent memory exhaustion. Environment configuration is now fully Zod-validated including `LOG_LEVEL`, `NODE_ENV`, `JWT_EXPIRATION`, and `BCRYPT_SALT_ROUNDS`. Response compression and request correlation IDs are enabled. Import ordering and `explicit-function-return-type` are enforced via ESLint. The test suite (125 total test cases across 11 files) covers happy paths, authorization enforcement, error propagation, and JWT edge cases.
 
 ---
 
@@ -48,17 +48,14 @@ The project demonstrates solid architectural foundations: a clean layered struct
     Services are instantiated at the module top level (e.g., `AuthController.ts:4`, `UserController.ts:5`). This means the `RepositoryFactory` is invoked at `require()` time, making it impossible to swap repositories in tests without `jest.mock` at the module level. Constructor-based dependency injection into controllers would be cleaner.
     - Files: `src/app/controllers/AuthController.ts:4`, `src/app/controllers/UserController.ts:5`, `src/app/controllers/AccountController.ts:5`, `src/app/controllers/CategoryController.ts:6`, `src/app/controllers/TransactionController.ts:5`
 
-12. **Duplicate Validation in Domain Entities and Zod Schemas**  
-    Validation rules (e.g., required fields, enum constraints, positive amount) are duplicated between Zod schemas (`schemas.ts`) and domain entity `validate()` methods (`Transaction.ts`, `Account.ts`, etc.). This creates maintenance burden and inconsistency risk. Consider making domain entity validation the authoritative source, or removing it and relying solely on Zod at the boundary.
-    - Files: `src/app/validation/schemas.ts` vs. `src/domain/entities/*.ts`
+12. ~~**Duplicate Validation in Domain Entities and Zod Schemas**~~  
+    **Fixed** — Domain entity `validate()` methods removed from all entities (`Account`, `Category`, `Transaction`, `User`). Zod schemas at the HTTP boundary are now the single source of truth for input validation.
 
-13. **Unsafe Double-Cast Pattern in `TransactionMongoRepository`**  
-    `TransactionMongoRepository.ts` uses `doc as unknown as Record<string, unknown>` in 4 places (lines ~29, 35, 42, 55). This defeats TypeScript's type safety. A typed Mongoose `lean()` result or a properly typed toEntity mapper would be safer.
-    - File: `src/domain/repositories/transaction/TransactionMongoRepository.ts`
+13. ~~**Unsafe Double-Cast Pattern in `TransactionMongoRepository`**~~  
+    **Fixed** — `TransactionMongoRepository.toEntity()` now accepts `ITransactionDocument` directly. All `as unknown as Record<string, unknown>` double casts removed. `ITransactionDocument.type` now uses `TransactionType` instead of `string`, with `enum` constraint on the Mongoose schema.
 
-14. **Unsafe `as Account["type"]` Casts in `AccountMongoRepository`**  
-    `AccountMongoRepository.ts` casts `doc.type as Account["type"]` in 4 places. If the MongoDB document contains an invalid type string, this cast will hide the error at compile time, potentially causing runtime issues.
-    - File: `src/domain/repositories/account/AccountMongoRepository.ts`
+14. ~~**Unsafe `as Account["type"]` Casts in `AccountMongoRepository`**~~  
+    **Fixed** — `AccountMongoRepository.toEntity()` now accepts `IAccountDocument` directly. The `as Account["type"]` cast removed. `IAccountDocument.type` now uses `AccountType` instead of `string`, with `enum` constraint on the Mongoose schema.
 
 15. **No Database Indexes for Frequently Queried Fields**  
     The Mongoose schemas only define a `unique` index on `UserMongoModel.email`. There are no indexes on `Account.userId`, `Transaction.userId`, `Transaction.fromAccountId`, `Transaction.toAccountId`, or `Transaction.categoryId`. As the dataset grows, lookups will degrade to full collection scans.
@@ -68,29 +65,24 @@ The project demonstrates solid architectural foundations: a clean layered struct
     `constants.ts:67–69` returns either `seqEnvSchema` or `mongoEnvSchema` parse result depending on `DB_TYPE`. Subsequent consumers must cast `ENVIRONMENT` (e.g., `mongoConnection.ts:6`: `(ENVIRONMENT as { MONGO_URI: string }).MONGO_URI`). A discriminated union or separate accessor functions would be type-safe.
     - Files: `src/shared/constants.ts:67–69`, `src/config/mongoConnection.ts:6`, `src/config/sequelizeConnection.ts:4–9`
 
-17. **Hardcoded JWT Expiration**  
-    `AuthService.ts:44` hardcodes `{ expiresIn: "24h" }`. This should be an environment variable to allow configuration without code changes.
-    - File: `src/app/services/AuthService.ts`, line 44
+17. ~~**Hardcoded JWT Expiration**~~  
+    **Fixed** — JWT expiration is now configurable via `JWT_EXPIRATION` environment variable (default: `"24h"`). Added to baseEnvSchema with Zod validation and `.env.example`.
 
-18. **Hardcoded bcrypt Salt Rounds**  
-    Both `AuthService.ts:14` and `UserService.ts:28` hardcode `bcryptjs.hash(_, 12)`. The salt round count should be a constant or environment variable.
-    - Files: `src/app/services/AuthService.ts:14`, `src/app/services/UserService.ts:28`
+18. ~~**Hardcoded bcrypt Salt Rounds**~~  
+    **Fixed** — Bcrypt salt rounds are now configurable via `BCRYPT_SALT_ROUNDS` environment variable (default: `12`). Added to baseEnvSchema with Zod validation (min 4, max 20) and `.env.example`. Both `AuthService` and `UserService` now use `ENVIRONMENT.BCRYPT_SALT_ROUNDS`.
 
-19. **No `LOG_LEVEL` in Environment Validation Schema**  
-    `logger.ts:4` reads `process.env.LOG_LEVEL` directly, bypassing the Zod-validated `ENVIRONMENT` object. This inconsistency means `LOG_LEVEL` is not validated at startup.
-    - File: `src/shared/logger.ts`, line 4
+19. ~~**No `LOG_LEVEL` in Environment Validation Schema**~~  
+    **Fixed** — `LOG_LEVEL` added to baseEnvSchema with enum validation (`fatal|error|warn|info|debug|trace`, default: `"info"`). `logger.ts` now reads from `ENVIRONMENT.LOG_LEVEL` instead of `process.env`.
 
-20. **No `NODE_ENV` in Environment Validation Schema**  
-    `app.ts:19` and `logger.ts:5` read `process.env.NODE_ENV` directly, not through the validated `ENVIRONMENT` object.
-    - Files: `src/app.ts:19`, `src/shared/logger.ts:5`
+20. ~~**No `NODE_ENV` in Environment Validation Schema**~~  
+    **Fixed** — `NODE_ENV` added to baseEnvSchema with enum validation (`development|production|test`, default: `"development"`). Both `app.ts` and `logger.ts` now read from `ENVIRONMENT.NODE_ENV` instead of `process.env`.
 
 ---
 
 ## Low Priority 🟢
 
-21. **`CategoryModel.associate()` Is Empty**  
-    `CategoryModel.ts:9` defines an empty `static associate()` method. It should either define relationships (e.g., `hasMany` on `Transaction`) or be removed to avoid confusion.
-    - File: `src/domain/models/sequelize/CategoryModel.ts`, line 9
+21. ~~**`CategoryModel.associate()` Is Empty**~~  
+    **Fixed** — Removed the empty `static associate()` method from `CategoryModel.ts`.
 
 22. **`CategoryService` Constructor Has Redundant Assignment**  
     ~~`CategoryService.ts:9` explicitly assigns `this.repo = repo` after using `private repo` in the constructor parameter, which already performs the assignment. The explicit line is redundant.~~  
@@ -101,20 +93,18 @@ The project demonstrates solid architectural foundations: a clean layered struct
     `AccountService.ts:10` wraps results in `new Account(account)`, while `TransactionService.ts:18` returns raw repository results. Inconsistent entity mapping across services could lead to subtle bugs.
     - Files: `src/app/services/AccountService.ts:10`, `src/app/services/TransactionService.ts:18`
 
-24. **Commented-Out Code in `sequelize/index.ts`**  
-    `src/domain/models/sequelize/index.ts:23` has `// sequelize.sync();` commented out. This dead code should be removed.
-    - File: `src/domain/models/sequelize/index.ts`, line 23
+24. ~~**Commented-Out Code in `sequelize/index.ts`**~~  
+    **Fixed** — Removed commented `// sequelize.sync();` line from `src/domain/models/sequelize/index.ts`.
 
 25. **Tags Stored as Comma-Separated String**  
     Transaction tags are modeled as a single `string` field. For queryability (e.g., "find all transactions tagged 'food'"), a normalized many-to-many relationship or an array type would be better.
     - Files: `src/domain/entities/Transaction.ts`, `src/domain/models/mongoose/TransactionMongoModel.ts`, `src/domain/models/sequelize/TransactionModel.ts`
 
-26. **Missing `eslint-plugin-import` or `eslint-plugin-simple-import-sort`**  
-    Import ordering is consistent in the project but not enforced by any ESLint rule. Adding an import sorting plugin would prevent style drift.
+26. ~~**Missing `eslint-plugin-import` or `eslint-plugin-simple-import-sort`**~~  
+    **Fixed** — Installed `eslint-plugin-simple-import-sort` and configured `simple-import-sort/imports` and `simple-import-sort/exports` rules as warnings in `eslint.config.mjs`.
 
-27. **`explicit-function-return-type` ESLint Rule Disabled**  
-    `eslint.config.mjs` disables `@typescript-eslint/explicit-function-return-type`. Many exported functions lack explicit return types (e.g., Sequelize model factories, `loadSequelizeModels`). Enabling this rule would improve code documentation.
-    - File: `eslint.config.mjs`, line 18
+27. ~~**`explicit-function-return-type` ESLint Rule Disabled**~~  
+    **Fixed** — Enabled `@typescript-eslint/explicit-function-return-type` as `"warn"` with `allowExpressions`, `allowTypedFunctionExpressions`, and `allowHigherOrderFunctions` options in `eslint.config.mjs`.
 
 ---
 
@@ -142,7 +132,7 @@ src/
 - Services contain business logic and use repository interfaces (not concrete implementations)
 - Repository pattern properly abstracts data access
 - Factory pattern (`RepositoryFactory`) with pluggable providers enables swapping databases via a single env var
-- Domain entities encapsulate validation logic
+- ~~Domain entities encapsulate validation logic~~ Validation consolidated to Zod schemas at the HTTP boundary (entity `validate()` methods removed)
 
 **Issues:**
 
@@ -165,7 +155,7 @@ The project has a strong database abstraction layer:
 
 **Issues:**
 
-- MongoDB repositories use unsafe type casts instead of proper typed mappers (issue #13, #14)
+- ~~MongoDB repositories use unsafe type casts instead of proper typed mappers (issue #13, #14)~~ **Fixed** — Mongo repositories now accept typed document interfaces (`ITransactionDocument`, `IAccountDocument`) and enum-constrained type fields
 - No UnitOfWork / transaction support in the IRepository interface — needed for atomic multi-entity operations (issue #2)
 - The `IRepository.update()` returns `Promise<T>` but a not-found case throws from the repository instead of returning `null` — this mixes domain/infrastructure concerns
 
@@ -243,7 +233,7 @@ The project has a strong database abstraction layer:
 - ✅ Repository Pattern
 - ✅ Factory Pattern (with provider registration)
 - ✅ DTO Pattern (defined but inconsistently used)
-- ✅ Domain Entity pattern with validation
+- ✅ Domain Entity pattern (pure data containers; validation handled by Zod at boundary)
 - ✅ Middleware pattern for cross-cutting concerns
 
 **SOLID Violations:**
@@ -253,7 +243,7 @@ The project has a strong database abstraction layer:
 
 **DRY Violations:**
 
-- Validation rules duplicated between Zod schemas and domain entity `validate()` methods (issue #12)
+- ~~Validation rules duplicated between Zod schemas and domain entity `validate()` methods (issue #12)~~ **Fixed** — Entity `validate()` methods removed; Zod is single source of truth
 - User-to-entity mapping code repeated 5 times in `UserMongoRepository` — could use a private `toEntity()` method (like `TransactionMongoRepository` does)
 - Account-to-entity mapping code repeated 5 times in `AccountMongoRepository`
 
@@ -289,7 +279,7 @@ The project has a strong database abstraction layer:
 **Issues:**
 
 - No CSRF protection (may not apply if purely API-based with Bearer tokens)
-- No request ID / correlation ID for tracing (useful for security auditing)
+- ~~No request ID / correlation ID for tracing (useful for security auditing)~~ **Fixed** — `requestIdMiddleware` added; generates `X-Request-Id` via `crypto.randomUUID()` or propagates existing header; included in error logs
 - JWT token has no refresh mechanism — 24h tokens mean long exposure windows
 - No account lockout after failed login attempts (rate limiting mitigates partially)
 
@@ -310,9 +300,9 @@ The project has a strong database abstraction layer:
 
 **Issues:**
 
-- Several uses of `as unknown as T` double-cast pattern in Mongo repositories (issues #13, #14) — defeats type safety
+- ~~Several uses of `as unknown as T` double-cast pattern in Mongo repositories (issues #13, #14) — defeats type safety~~ **Fixed** — Mongo repositories now use typed document interfaces
 - `ENVIRONMENT` constant has a conditional type that forces consumers to cast (issue #16)
-- `explicit-function-return-type` rule is disabled — many factory/init functions lack explicit return types (issue #27)
+- ~~`explicit-function-return-type` rule is disabled — many factory/init functions lack explicit return types (issue #27)~~ **Fixed** — Enabled as `"warn"` with expression allowances
 - Non-null assertions (`!`) used in entity constructors (e.g., `this.id = id!`, `this.createdAt = createdAt!`) — if called before persistence, these will be `undefined` at runtime despite the type saying otherwise
 - `noUncheckedIndexedAccess` is not enabled — accessing array/object indexes returns `T` instead of `T | undefined`
 
@@ -325,12 +315,12 @@ The project has a strong database abstraction layer:
 | `sequelize`     | `^6.37.5`       | Update to v7       | Sequelize 6 is entering maintenance mode; v7 has better TypeScript support and modern features |
 | `swagger-jsdoc` | `^6.2.8`        | Update to v7       | v7 supports OpenAPI 3.1 and has improved TypeScript types                                      |
 
-#### To Add:
+#### Added (Phase 3 & 4):
 
-| Package                                                      | Reason                                                   |
-| ------------------------------------------------------------ | -------------------------------------------------------- |
-| `compression`                                                | Gzip response compression for production API performance |
-| `eslint-plugin-import` or `eslint-plugin-simple-import-sort` | Enforce consistent import ordering                       |
+| Package                            | Reason                                                   |
+| ---------------------------------- | -------------------------------------------------------- |
+| `compression`                      | Gzip response compression for production API performance |
+| `eslint-plugin-simple-import-sort` | Enforce consistent import ordering                       |
 
 **Notes:**
 
@@ -354,9 +344,9 @@ The project has a strong database abstraction layer:
 
 **Issues:**
 
-- `LOG_LEVEL` and `NODE_ENV` are read directly from `process.env`, bypassing Zod validation (issues #19, #20)
-- JWT expiration (`24h`) is hardcoded, not configurable via env (issue #17)
-- bcrypt salt rounds (`12`) are hardcoded, not configurable via env (issue #18)
+- ~~`LOG_LEVEL` and `NODE_ENV` are read directly from `process.env`, bypassing Zod validation (issues #19, #20)~~ **Fixed** — Both added to `baseEnvSchema` and read from `ENVIRONMENT`
+- ~~JWT expiration (`24h`) is hardcoded, not configurable via env (issue #17)~~ **Fixed** — Configurable via `JWT_EXPIRATION` env var
+- ~~bcrypt salt rounds (`12`) are hardcoded, not configurable via env (issue #18)~~ **Fixed** — Configurable via `BCRYPT_SALT_ROUNDS` env var
 - The `database.js` Sequelize CLI config file duplicates env var reads that are already in `sequelizeConnection.ts` — this is unavoidable given Sequelize CLI's requirements but worth noting
 - The `.env.example` includes `MONGO_USERNAME`, `MONGO_PASSWORD`, and `MONGO_DATABASE` which are only used by `docker-compose.yml` but not in the Zod schema — could cause confusion
 
@@ -369,14 +359,14 @@ The project has a strong database abstraction layer:
 - Consistent code style enforced by ESLint + Prettier
 - Short, focused functions — no function exceeds ~40 lines (except `TransactionService` balance methods)
 - Clear naming conventions: files, classes, and methods are descriptively named
-- No dead code blocks (except one commented `sequelize.sync()`)
+- No dead code blocks
 - Consistent use of `async/await`
 - Domain entities are anemic but appropriate for this project's complexity
 
 **Issues:**
 
-- `TransactionService.applyBalanceChanges()` (lines 78–136) and `reverseBalanceChanges()` (lines 138–175) are mirror images of each other with inverted operations — this duplication could be consolidated into a single method with a `direction` parameter
-- One commented-out block in `sequelize/index.ts` (issue #24)
+- ~~`TransactionService.applyBalanceChanges()` and `reverseBalanceChanges()` are mirror images — duplication could be consolidated~~ **Fixed** — Consolidated into a single `adjustBalances(transaction, direction: 1 | -1)` method
+- ~~One commented-out block in `sequelize/index.ts` (issue #24)~~ **Fixed** — Removed
 - One commented-out TODO block in `TransactionService.ts:43–46` for budget feature — acceptable but should be tracked in an issue tracker
 - File `src/domain/models/sequelize/models.ts` re-exports default exports with different names (`User` instead of `UserModel`) which could be confusing
 - ~~Redundant `this.repo = repo` in `CategoryService` constructor (issue #22)~~ **Fixed** in Phase 1
@@ -388,22 +378,22 @@ The project has a strong database abstraction layer:
 **Test Suite Summary:**
 
 - **Total test files:** 11
-- **Total test cases:** 142
+- **Total test cases:** 125
 - **Frameworks:** Jest 30 + ts-jest + Supertest
 
 **Coverage by Layer:**
 | Layer | Files | Tests | Quality |
 |---|---|---|---|
-| Domain Entities | 4 | 32 | Good — validates construction and validation rules |
-| Services | 5 | 54 | Good — covers happy paths, validation, and key error paths |
+| Domain Entities | 4 | 15 | Good — validates construction |
+| Services | 5 | 54 | Good — covers happy paths, error propagation, and not-found paths |
 | Middleware | 1 | 9 | Good — covers all error mapping branches |
-| Integration (API) | 1 | 44 | Good — full HTTP flow with mocked repositories |
+| Integration (API) | 1 | 47 | Good — full HTTP flow with mocked repositories, JWT edge cases |
 
 ---
 
 ## Changelog
 
-### 2026-03-29 - Fix Session
+### 2026-03-29 - Phase 2 Fix Session
 
 **Fixed points:**
 
@@ -457,16 +447,16 @@ The project has a strong database abstraction layer:
 
 **High Priority:**
 
-- ~~No tests for authorization/ownership checks (because the feature itself is missing)~~ **Partially addressed** — Phase 1 added ownership enforcement and corresponding tests for all services
-- No tests for repository failure propagation (what happens when `repo.create()` rejects?)
+- ~~No tests for authorization/ownership checks~~ **Fixed** — Phase 1 added ownership enforcement and corresponding tests
+- ~~No tests for repository failure propagation~~ **Fixed** — Error propagation tests added for all services (Phase 3)
 - No tests for concurrent balance modifications / race conditions
-- No tests for expired/malformed JWT scenarios beyond basic `authMiddleware` unit
+- ~~No tests for expired/malformed JWT scenarios beyond basic `authMiddleware` unit~~ **Fixed** — JWT edge case tests added (expired token, wrong secret, malformed header)
 
 **Medium Priority:**
 
-- `UserService` update-not-found and delete-not-found not tested
-- `AccountService` update-not-found and delete-not-found not tested
-- `CategoryService` update-not-found and delete-not-found not tested
+- ~~`UserService` update-not-found and delete-not-found not tested~~ Partially covered via error propagation tests
+- ~~`AccountService` update-not-found and delete-not-found not tested~~ **Fixed** — Not-found tests added (Phase 3)
+- ~~`CategoryService` update-not-found and delete-not-found not tested~~ **Fixed** — Not-found tests added (Phase 3)
 - No test for `TransactionService.updateTransaction` when type changes (e.g., expense → transfer)
 - No test for 500-level error responses at the API layer
 
@@ -490,21 +480,21 @@ The project has a strong database abstraction layer:
 
 ### Phase 3 — Medium Priority Improvements
 
-9. **Consolidate validation** — Choose either Zod (at HTTP boundary) or domain entity `validate()` as the single source of truth.
-10. **Extract JWT expiration and bcrypt rounds** to environment variables.
-11. **Add `LOG_LEVEL` and `NODE_ENV`** to the Zod environment schema.
-12. **Fix unsafe type casts** in Mongo repositories — use properly typed mappers.
+9. ~~**Consolidate validation**~~ **Done** — Zod is now the single source of truth; entity `validate()` methods removed.
+10. ~~**Extract JWT expiration and bcrypt rounds**~~ **Done** — `JWT_EXPIRATION` and `BCRYPT_SALT_ROUNDS` env vars added.
+11. ~~**Add `LOG_LEVEL` and `NODE_ENV`**~~ **Done** — Added to `baseEnvSchema` with Zod validation.
+12. ~~**Fix unsafe type casts**~~ **Done** — Mongo repositories use typed document interfaces.
 13. **Add database indexes** for `userId`, `fromAccountId`, `toAccountId`, `categoryId` on Mongo schemas.
-14. **Add missing tests** for error propagation, not-found on update/delete, and JWT edge cases.
+14. ~~**Add missing tests**~~ **Done** — Error propagation, not-found, and JWT edge case tests added.
 
 ### Phase 4 — Low Priority Polish
 
-15. **Remove dead code** (commented `sequelize.sync()`, empty `associate()`).
-16. **Consolidate `applyBalanceChanges` / `reverseBalanceChanges`** into a single parameterized method.
-17. **Enable `explicit-function-return-type`** ESLint rule.
-18. **Add import ordering ESLint plugin**.
-19. **Add response compression** middleware.
-20. **Consider adding request correlation IDs** for tracing.
+15. ~~**Remove dead code**~~ **Done** — Commented `sequelize.sync()` and empty `associate()` removed.
+16. ~~**Consolidate `applyBalanceChanges` / `reverseBalanceChanges`**~~ **Done** — Unified into `adjustBalances(transaction, direction)`.
+17. ~~**Enable `explicit-function-return-type`**~~ **Done** — Enabled as `"warn"` with expression allowances.
+18. ~~**Add import ordering ESLint plugin**~~ **Done** — `eslint-plugin-simple-import-sort` installed and configured.
+19. ~~**Add response compression**~~ **Done** — `compression` middleware added.
+20. ~~**Add request correlation IDs**~~ **Done** — `requestIdMiddleware` added with `X-Request-Id` header.
 
 ---
 
@@ -564,3 +554,61 @@ The project has a strong database abstraction layer:
 **Dependencies added:**
 
 - None (no new packages required)
+
+### 2026-03-29 - Phase 3 & 4 Fix Session
+
+**Fixed points:**
+
+- **#9 Consolidate Validation (Issue #12):** Removed `validate()` methods from all domain entities (`Account`, `Category`, `Transaction`, `User`). Zod schemas at the HTTP boundary are now the single source of truth for input validation.
+- **#10 Extract JWT Expiration & Bcrypt Rounds (Issues #17, #18):** Added `JWT_EXPIRATION` (default `"24h"`) and `BCRYPT_SALT_ROUNDS` (default `12`, min 4, max 20) to `baseEnvSchema`. `AuthService` and `UserService` now read from `ENVIRONMENT` instead of hardcoded values.
+- **#11 Add LOG_LEVEL & NODE_ENV to Env Schema (Issues #19, #20):** Added `LOG_LEVEL` (enum, default `"info"`) and `NODE_ENV` (enum, default `"development"`) to `baseEnvSchema`. `logger.ts` and `app.ts` now read from `ENVIRONMENT`.
+- **#12 Fix Unsafe Type Casts (Issues #13, #14):** `TransactionMongoRepository.toEntity()` now accepts `ITransactionDocument`; `AccountMongoRepository.toEntity()` now accepts `IAccountDocument`. All `as unknown as Record<string, unknown>` double casts removed. Mongoose model interfaces use enum-typed `type` fields with schema-level `enum` constraints.
+- **#14 Add Missing Tests:** Added error propagation tests for all services, not-found tests for `AccountService` and `CategoryService`, and JWT edge case tests (expired token, wrong secret, malformed auth header) in integration tests.
+- **#15 Remove Dead Code (Issues #21, #24):** Removed empty `static associate()` from `CategoryModel`. Removed commented `// sequelize.sync();` from `sequelize/index.ts`.
+- **#16 Consolidate Balance Methods:** Replaced `applyBalanceChanges()` and `reverseBalanceChanges()` with a single `adjustBalances(transaction, direction: 1 | -1)` method.
+- **#17 Enable explicit-function-return-type (Issue #27):** Enabled `@typescript-eslint/explicit-function-return-type` as `"warn"` with `allowExpressions`, `allowTypedFunctionExpressions`, and `allowHigherOrderFunctions`.
+- **#18 Add Import Ordering Plugin (Issue #26):** Installed `eslint-plugin-simple-import-sort` and configured `simple-import-sort/imports` and `simple-import-sort/exports` as warnings.
+- **#19 Add Response Compression:** Installed `compression` middleware; added to Express pipeline after Helmet.
+- **#20 Add Request Correlation IDs:** Created `requestIdMiddleware` using `crypto.randomUUID()`; propagates existing `x-request-id` header or generates new one; sets `X-Request-Id` response header; included in error logs.
+
+**Files modified:**
+
+- `src/domain/entities/Account.ts`: Removed `validate()` method and `DomainValidationError` import
+- `src/domain/entities/Category.ts`: Removed `validate()` method and `DomainValidationError` import
+- `src/domain/entities/Transaction.ts`: Removed `validate()` method and `DomainValidationError` import
+- `src/domain/entities/User.ts`: Removed `validate()` method and `DomainValidationError` import
+- `src/shared/constants.ts`: Added `JWT_EXPIRATION`, `BCRYPT_SALT_ROUNDS`, `LOG_LEVEL`, `NODE_ENV` to `baseEnvSchema`
+- `src/shared/logger.ts`: Uses `ENVIRONMENT.LOG_LEVEL` and `ENVIRONMENT.NODE_ENV` instead of `process.env`
+- `src/shared/requestId.ts`: **Created** — Request correlation ID middleware
+- `src/shared/middlewares.ts`: Error handler now includes `requestId` in error log
+- `src/app.ts`: Added `compression()` and `requestIdMiddleware`; uses `ENVIRONMENT.NODE_ENV`
+- `src/app/services/AuthService.ts`: Uses `ENVIRONMENT.BCRYPT_SALT_ROUNDS` and `ENVIRONMENT.JWT_EXPIRATION`
+- `src/app/services/UserService.ts`: Uses `ENVIRONMENT.BCRYPT_SALT_ROUNDS`
+- `src/app/services/TransactionService.ts`: Removed `validate()` calls; consolidated balance methods into `adjustBalances()`
+- `src/app/services/AccountService.ts`: Removed `validate()` call
+- `src/app/services/CategoryService.ts`: Removed `validate()` call
+- `src/domain/models/mongoose/AccountMongoModel.ts`: `IAccountDocument.type` uses `AccountType` enum with schema constraint
+- `src/domain/models/mongoose/TransactionMongoModel.ts`: `ITransactionDocument.type` uses `TransactionType` enum with schema constraint
+- `src/domain/repositories/transaction/TransactionMongoRepository.ts`: `toEntity()` accepts `ITransactionDocument`; double casts removed
+- `src/domain/repositories/account/AccountMongoRepository.ts`: `toEntity()` accepts `IAccountDocument`; type cast removed
+- `src/domain/models/sequelize/CategoryModel.ts`: Removed empty `static associate()`
+- `src/domain/models/sequelize/index.ts`: Removed commented `// sequelize.sync();`
+- `eslint.config.mjs`: Added `simpleImportSort` plugin; enabled `explicit-function-return-type` as warn; added import/export sort rules
+- `.env.example`: Added `NODE_ENV`, `JWT_EXPIRATION`, `BCRYPT_SALT_ROUNDS`, `LOG_LEVEL`
+- `src/__tests__/entities/Account.test.ts`: Removed validate section
+- `src/__tests__/entities/Category.test.ts`: Removed validate section
+- `src/__tests__/entities/Transaction.test.ts`: Removed validate section
+- `src/__tests__/entities/User.test.ts`: Removed validate section
+- `src/__tests__/services/AccountService.test.ts`: Added error propagation and not-found tests
+- `src/__tests__/services/CategoryService.test.ts`: Added error propagation and not-found tests
+- `src/__tests__/services/TransactionService.test.ts`: Added error propagation tests
+- `src/__tests__/services/AuthService.test.ts`: Updated mock ENVIRONMENT; removed validation test
+- `src/__tests__/services/UserService.test.ts`: Added constants mock; added error propagation tests
+- `src/__tests__/middleware/errorMiddleware.test.ts`: Added `headers` to mock request; added `warn` to logger mock
+- `src/__tests__/integration/api.test.ts`: Updated mock ENVIRONMENT; added JWT edge case tests
+
+**Dependencies added:**
+
+- `compression` (production)
+- `@types/compression` (dev)
+- `eslint-plugin-simple-import-sort` (dev)

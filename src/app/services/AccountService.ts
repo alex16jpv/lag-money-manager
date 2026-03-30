@@ -32,7 +32,6 @@ export class AccountService {
 
   async createAccount(dto: CreateAccountDTO): Promise<Account> {
     const account = new Account(dto);
-    account.validate();
     return new Account(await this.repo.create(account));
   }
 

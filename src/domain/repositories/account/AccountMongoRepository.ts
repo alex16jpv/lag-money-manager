@@ -6,21 +6,18 @@ import {
 } from "../../../shared/pagination";
 import { ApiError } from "../../../shared/errors";
 import { Account } from "../../entities/Account";
-import { AccountMongoModel } from "../../models/mongoose/AccountMongoModel";
+import {
+  AccountMongoModel,
+  IAccountDocument,
+} from "../../models/mongoose/AccountMongoModel";
 import { IAccountRepository } from "./IAccountRepository";
 
 export class AccountMongoRepository implements IAccountRepository {
-  private toEntity(doc: {
-    _id: string;
-    name: string;
-    type: string;
-    balance: number;
-    userId: string;
-  }): Account {
+  private toEntity(doc: IAccountDocument): Account {
     return new Account({
       id: doc._id,
       name: doc.name,
-      type: doc.type as Account["type"],
+      type: doc.type,
       balance: doc.balance,
       userId: doc.userId,
     });

@@ -1,9 +1,13 @@
 import mongoose, { Schema } from "mongoose";
-import { MODEL_NAMES } from "../../../shared/constants";
+import {
+  MODEL_NAMES,
+  TRANSACTION_TYPES,
+  TransactionType,
+} from "../../../shared/constants";
 
 export interface ITransactionDocument {
   _id: string;
-  type: string;
+  type: TransactionType;
   amount: number;
   date: Date;
   categoryId: string | null;
@@ -20,7 +24,11 @@ export interface ITransactionDocument {
 const TransactionSchema = new Schema<ITransactionDocument>(
   {
     _id: { type: String, required: true },
-    type: { type: String, required: true },
+    type: {
+      type: String,
+      required: true,
+      enum: Object.keys(TRANSACTION_TYPES),
+    },
     amount: { type: Number, required: true },
     date: { type: Date, required: true },
     categoryId: { type: String, default: null },

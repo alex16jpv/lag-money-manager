@@ -51,7 +51,11 @@ jest.mock("../../shared/constants", () => ({
     PORT: 3000,
     DB_TYPE: "SEQ",
     JWT_SECRET: "test-secret-for-integration",
+    JWT_EXPIRATION: "1h",
+    BCRYPT_SALT_ROUNDS: 12,
     CORS_ORIGIN: "http://localhost:5173",
+    LOG_LEVEL: "info",
+    NODE_ENV: "test",
   },
   DB_TYPES: { SEQ: "SEQ", MONGO: "MONGO", LOCAL_STORAGE: "LOCAL_STORAGE" },
   ACCOUNT_TYPES: {
@@ -268,6 +272,48 @@ describe("Integration Tests", () => {
       const res = await request(app)
         .get("/users")
         .set("Authorization", "Bearer invalid-token");
+
+      expect(res.status).toBe(401);
+    });
+
+    it("should return 401 for expired token", async () => {
+      const expiredToken = jwt.sign(
+        {
+          userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          email: "test@test.com",
+        },
+        "test-secret-for-integration",
+        { expiresIn: "0s" },
+      );
+
+      const res = await request(app)
+        .get("/users")
+        .set("Authorization", `Bearer ${expiredToken}`);
+
+      expect(res.status).toBe(401);
+    });
+
+    it("should return 401 for token signed with wrong secret", async () => {
+      const wrongSecretToken = jwt.sign(
+        {
+          userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          email: "test@test.com",
+        },
+        "wrong-secret",
+        { expiresIn: "1h" },
+      );
+
+      const res = await request(app)
+        .get("/users")
+        .set("Authorization", `Bearer ${wrongSecretToken}`);
+
+      expect(res.status).toBe(401);
+    });
+
+    it("should return 401 for malformed authorization header", async () => {
+      const res = await request(app)
+        .get("/users")
+        .set("Authorization", "NotBearer some-token");
 
       expect(res.status).toBe(401);
     });

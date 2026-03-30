@@ -1,5 +1,4 @@
-import { DomainValidationError } from "../errors";
-import { ACCOUNT_TYPES, AccountType } from "../../shared/constants";
+import { AccountType } from "../../shared/constants";
 
 export interface AccountProps {
   id?: string;
@@ -22,26 +21,5 @@ export class Account {
     this.type = type;
     this.balance = balance ?? 0;
     this.userId = userId;
-  }
-
-  validate() {
-    if (!this.userId) {
-      throw new DomainValidationError("'userId' is required", "userId");
-    }
-
-    if (!this.name) {
-      throw new DomainValidationError("'name' is required", "name");
-    }
-
-    if (!this.type) {
-      throw new DomainValidationError("'type' is required", "type");
-    }
-
-    if (!ACCOUNT_TYPES[this.type]) {
-      throw new DomainValidationError(
-        `Invalid account type. Available: ${Object.values(ACCOUNT_TYPES).join(", ")}`,
-        "type",
-      );
-    }
   }
 }

@@ -1,4 +1,5 @@
 import express from "express";
+import compression from "compression";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -10,13 +11,14 @@ import accountRoutes from "./app/routes/accountRoutes";
 import categoryRoutes from "./app/routes/categoryRoutes";
 import transactionRoutes from "./app/routes/transactionRoutes";
 import { errorMiddleware } from "./shared/middlewares";
+import { requestIdMiddleware } from "./shared/requestId";
 import { authMiddleware } from "./app/middlewares/authMiddleware";
 import { ENVIRONMENT } from "./shared/constants";
 
 const app = express();
 
 // In production, enforce HTTPS via redirect
-if (process.env.NODE_ENV === "production") {
+if (ENVIRONMENT.NODE_ENV === "production") {
   app.set("trust proxy", 1);
   app.use((req, res, next) => {
     if (req.secure || req.headers["x-forwarded-proto"] === "https") {
@@ -27,7 +29,9 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
+app.use(requestIdMiddleware);
 app.use(helmet());
+app.use(compression());
 app.use(
   cors({
     origin: ENVIRONMENT.CORS_ORIGIN.split(","),

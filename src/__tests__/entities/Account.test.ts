@@ -1,5 +1,11 @@
 jest.mock("../../shared/constants", () => ({
-  ENVIRONMENT: { PORT: 3000, DB_TYPE: "SEQ", JWT_SECRET: "test" },
+  ENVIRONMENT: {
+    PORT: 3000,
+    DB_TYPE: "SEQ",
+    JWT_SECRET: "test",
+    LOG_LEVEL: "info",
+    NODE_ENV: "test",
+  },
   ACCOUNT_TYPES: {
     CASH: "CASH",
     ACCOUNT: "ACCOUNT",
@@ -27,7 +33,6 @@ jest.mock("../../shared/constants", () => ({
 }));
 
 import { Account } from "../../domain/entities/Account";
-import { DomainValidationError } from "../../domain/errors";
 
 describe("Account Entity", () => {
   const validProps = {
@@ -62,53 +67,6 @@ describe("Account Entity", () => {
       const account = new Account({ ...validProps, balance: 0 });
 
       expect(account.balance).toBe(0);
-    });
-  });
-
-  describe("validate", () => {
-    it("should not throw for a valid account", () => {
-      const account = new Account(validProps);
-      expect(() => account.validate()).not.toThrow();
-    });
-
-    it("should throw DomainValidationError when userId is missing", () => {
-      const account = new Account({
-        ...validProps,
-        userId: "" as unknown as string,
-      });
-
-      expect(() => account.validate()).toThrow(DomainValidationError);
-      expect(() => account.validate()).toThrow("'userId' is required");
-    });
-
-    it("should throw DomainValidationError when name is missing", () => {
-      const account = new Account({
-        ...validProps,
-        name: "" as unknown as string,
-      });
-
-      expect(() => account.validate()).toThrow(DomainValidationError);
-      expect(() => account.validate()).toThrow("'name' is required");
-    });
-
-    it("should throw DomainValidationError when type is missing", () => {
-      const account = new Account({
-        ...validProps,
-        type: "" as unknown as typeof validProps.type,
-      });
-
-      expect(() => account.validate()).toThrow(DomainValidationError);
-      expect(() => account.validate()).toThrow("'type' is required");
-    });
-
-    it("should throw DomainValidationError for invalid account type", () => {
-      const account = new Account({
-        ...validProps,
-        type: "INVALID" as unknown as typeof validProps.type,
-      });
-
-      expect(() => account.validate()).toThrow(DomainValidationError);
-      expect(() => account.validate()).toThrow("Invalid account type");
     });
   });
 });
