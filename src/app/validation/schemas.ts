@@ -1,11 +1,29 @@
 import { z } from "zod";
 import { ACCOUNT_TYPES, TRANSACTION_TYPES } from "../../shared/constants";
+import { MAX_LIMIT } from "../../shared/pagination";
 
 const accountTypeValues = Object.keys(ACCOUNT_TYPES) as [string, ...string[]];
 const transactionTypeValues = Object.keys(TRANSACTION_TYPES) as [
   string,
   ...string[],
 ];
+
+export const paginationQuerySchema = z.object({
+  query: z.object({
+    limit: z.coerce
+      .number()
+      .int("Limit must be an integer")
+      .min(1, "Limit must be at least 1")
+      .max(MAX_LIMIT, `Limit must be at most ${MAX_LIMIT}`)
+      .optional(),
+    offset: z.coerce
+      .number()
+      .int("Offset must be an integer")
+      .min(0, "Offset must be non-negative")
+      .optional(),
+    cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
+  }),
+});
 
 export const createUserSchema = z.object({
   body: z.object({

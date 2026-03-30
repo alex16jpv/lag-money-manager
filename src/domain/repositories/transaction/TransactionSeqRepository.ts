@@ -1,3 +1,9 @@
+import { Op, WhereOptions } from "sequelize";
+import {
+  buildPaginatedResult,
+  PaginatedResult,
+  PaginationParams,
+} from "../../../shared/pagination";
 import { ApiError } from "../../../shared/errors";
 import { Transaction } from "../../entities/Transaction";
 import { TransactionModel } from "../../models/sequelize/TransactionModel";
@@ -10,6 +16,29 @@ export class TransactionSeqRepository implements ITransactionRepository {
     this.model = TransactionModel;
   }
 
+  private async paginatedFindAll(
+    baseWhere: WhereOptions,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Transaction>> {
+    const { limit, offset, cursor } = pagination;
+    const where: WhereOptions = cursor
+      ? { ...baseWhere, id: { [Op.gt]: cursor } }
+      : baseWhere;
+
+    const [{ rows }, total] = await Promise.all([
+      this.model.findAndCountAll({
+        where,
+        order: [["id", "ASC"]],
+        limit,
+        offset: cursor ? 0 : offset,
+      }),
+      this.model.count({ where: baseWhere }),
+    ]);
+
+    const data = rows.map((result) => new Transaction(result.toJSON()));
+    return buildPaginatedResult(data, total, pagination);
+  }
+
   async getById(id: string): Promise<Transaction | null> {
     const result = await this.model.findByPk(id);
     if (!result) {
@@ -18,14 +47,17 @@ export class TransactionSeqRepository implements ITransactionRepository {
     return new Transaction(result.toJSON());
   }
 
-  async getAll(): Promise<Transaction[]> {
-    const results = await this.model.findAll();
-    return results.map((result) => new Transaction(result.toJSON()));
+  async getAll(
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Transaction>> {
+    return this.paginatedFindAll({}, pagination);
   }
 
-  async getAllByUserId(userId: string): Promise<Transaction[]> {
-    const results = await this.model.findAll({ where: { userId } });
-    return results.map((result) => new Transaction(result.toJSON()));
+  async getAllByUserId(
+    userId: string,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Transaction>> {
+    return this.paginatedFindAll({ userId }, pagination);
   }
 
   async create(transaction: Partial<Transaction>): Promise<Transaction> {

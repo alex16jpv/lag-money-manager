@@ -388,14 +388,24 @@ describe("Integration Tests", () => {
   // ==================== Account Routes ====================
   describe("GET /accounts", () => {
     it("should return accounts for the authenticated user", async () => {
-      mockAccountRepo.getAllByUserId.mockResolvedValue([testAccount]);
+      mockAccountRepo.getAllByUserId.mockResolvedValue({
+        data: [testAccount],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
 
       const res = await request(app)
         .get("/accounts")
         .set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(1);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.pagination).toBeDefined();
     });
   });
 
@@ -496,14 +506,24 @@ describe("Integration Tests", () => {
   // ==================== Category Routes ====================
   describe("GET /categories", () => {
     it("should return categories for the authenticated user", async () => {
-      mockCategoryRepo.getAllByUserId.mockResolvedValue([testCategory]);
+      mockCategoryRepo.getAllByUserId.mockResolvedValue({
+        data: [testCategory],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
 
       const res = await request(app)
         .get("/categories")
         .set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(1);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.pagination).toBeDefined();
     });
   });
 
@@ -591,14 +611,24 @@ describe("Integration Tests", () => {
   // ==================== Transaction Routes ====================
   describe("GET /transactions", () => {
     it("should return transactions for the authenticated user", async () => {
-      mockTransactionRepo.getAllByUserId.mockResolvedValue([testTransaction]);
+      mockTransactionRepo.getAllByUserId.mockResolvedValue({
+        data: [testTransaction],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
 
       const res = await request(app)
         .get("/transactions")
         .set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(1);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.pagination).toBeDefined();
     });
   });
 

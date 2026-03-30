@@ -1,3 +1,9 @@
+import { Op, WhereOptions } from "sequelize";
+import {
+  buildPaginatedResult,
+  PaginatedResult,
+  PaginationParams,
+} from "../../../shared/pagination";
 import { ApiError } from "../../../shared/errors";
 import { User } from "../../entities/User";
 import { UserModel } from "../../models/sequelize/UserModel";
@@ -26,11 +32,22 @@ export class UserSeqRepository implements IUserRepository {
     return new User(user);
   }
 
-  async getAll(): Promise<User[]> {
-    const users = await this.model.findAll();
-    return users?.map((user) => {
-      return new User(user);
-    });
+  async getAll(pagination: PaginationParams): Promise<PaginatedResult<User>> {
+    const { limit, offset, cursor } = pagination;
+    const where: WhereOptions = cursor ? { id: { [Op.gt]: cursor } } : {};
+
+    const [{ rows }, total] = await Promise.all([
+      this.model.findAndCountAll({
+        where,
+        order: [["id", "ASC"]],
+        limit,
+        offset: cursor ? 0 : offset,
+      }),
+      this.model.count(),
+    ]);
+
+    const data = rows.map((user) => new User(user));
+    return buildPaginatedResult(data, total, pagination);
   }
 
   async create(user: Partial<User>): Promise<User> {

@@ -1,3 +1,9 @@
+import { Op, WhereOptions } from "sequelize";
+import {
+  buildPaginatedResult,
+  PaginatedResult,
+  PaginationParams,
+} from "../../../shared/pagination";
 import { ApiError } from "../../../shared/errors";
 import { Account } from "../../entities/Account";
 import { AccountModel } from "../../models/sequelize/AccountModel";
@@ -10,6 +16,29 @@ export class AccountSeqRepository implements IAccountRepository {
     this.model = AccountModel;
   }
 
+  private async paginatedFindAll(
+    baseWhere: WhereOptions,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Account>> {
+    const { limit, offset, cursor } = pagination;
+    const where: WhereOptions = cursor
+      ? { ...baseWhere, id: { [Op.gt]: cursor } }
+      : baseWhere;
+
+    const [{ rows }, total] = await Promise.all([
+      this.model.findAndCountAll({
+        where,
+        order: [["id", "ASC"]],
+        limit,
+        offset: cursor ? 0 : offset,
+      }),
+      this.model.count({ where: baseWhere }),
+    ]);
+
+    const data = rows.map((result) => new Account(result.toJSON()));
+    return buildPaginatedResult(data, total, pagination);
+  }
+
   async getById(id: Account["id"]): Promise<Account | null> {
     const result = await this.model.findByPk(id);
     if (!result) {
@@ -18,14 +47,17 @@ export class AccountSeqRepository implements IAccountRepository {
     return new Account(result.toJSON());
   }
 
-  async getAll(): Promise<Account[]> {
-    const results = await this.model.findAll();
-    return results.map((result) => new Account(result.toJSON()));
+  async getAll(
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Account>> {
+    return this.paginatedFindAll({}, pagination);
   }
 
-  async getAllByUserId(userId: string): Promise<Account[]> {
-    const results = await this.model.findAll({ where: { userId } });
-    return results.map((result) => new Account(result.toJSON()));
+  async getAllByUserId(
+    userId: string,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Account>> {
+    return this.paginatedFindAll({ userId }, pagination);
   }
 
   async create(account: Partial<Account>): Promise<Account> {

@@ -1,14 +1,21 @@
 import { Account } from "../../domain/entities/Account";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
 import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
 
 export class AccountService {
   constructor(private repo: IAccountRepository) {}
 
-  async getAllAccounts(userId: string): Promise<Account[]> {
-    const accounts = await this.repo.getAllByUserId(userId);
-    return accounts?.map((account) => new Account(account));
+  async getAllAccounts(
+    userId: string,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Account>> {
+    const result = await this.repo.getAllByUserId(userId, pagination);
+    return {
+      data: result.data.map((account) => new Account(account)),
+      pagination: result.pagination,
+    };
   }
 
   async getAccountById(id: string, userId: string): Promise<Account> {

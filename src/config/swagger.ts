@@ -218,6 +218,51 @@ const options: swaggerJsdoc.Options = {
             message: { type: "string" },
           },
         },
+        Pagination: {
+          type: "object",
+          properties: {
+            limit: { type: "integer", example: 20 },
+            offset: { type: "integer", example: 0 },
+            total: { type: "integer", example: 100 },
+            hasMore: { type: "boolean", example: true },
+            nextCursor: {
+              type: "string",
+              format: "uuid",
+              nullable: true,
+              example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            },
+          },
+        },
+        PaginatedAccounts: {
+          type: "object",
+          properties: {
+            data: {
+              type: "array",
+              items: { $ref: "#/components/schemas/Account" },
+            },
+            pagination: { $ref: "#/components/schemas/Pagination" },
+          },
+        },
+        PaginatedCategories: {
+          type: "object",
+          properties: {
+            data: {
+              type: "array",
+              items: { $ref: "#/components/schemas/Category" },
+            },
+            pagination: { $ref: "#/components/schemas/Pagination" },
+          },
+        },
+        PaginatedTransactions: {
+          type: "object",
+          properties: {
+            data: {
+              type: "array",
+              items: { $ref: "#/components/schemas/Transaction" },
+            },
+            pagination: { $ref: "#/components/schemas/Pagination" },
+          },
+        },
         Transaction: {
           type: "object",
           properties: {

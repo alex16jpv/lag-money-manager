@@ -1,6 +1,7 @@
 import { Transaction } from "../../domain/entities/Transaction";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
 import {
   CreateTransactionDTO,
@@ -13,8 +14,11 @@ export class TransactionService {
     private accountRepo: IAccountRepository,
   ) {}
 
-  async getAllTransactions(userId: string): Promise<Transaction[]> {
-    return await this.transactionRepo.getAllByUserId(userId);
+  async getAllTransactions(
+    userId: string,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Transaction>> {
+    return await this.transactionRepo.getAllByUserId(userId, pagination);
   }
 
   async getTransactionById(id: string, userId: string): Promise<Transaction> {

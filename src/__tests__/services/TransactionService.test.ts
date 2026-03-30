@@ -117,27 +117,50 @@ describe("TransactionService", () => {
   });
 
   describe("getAllTransactions", () => {
+    const pagination = { limit: 20, offset: 0 };
+
     it("should return all transactions for the user", async () => {
-      txRepo.getAllByUserId.mockResolvedValue([storedExpense]);
+      txRepo.getAllByUserId.mockResolvedValue({
+        data: [storedExpense],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
 
       const result = await service.getAllTransactions(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        pagination,
       );
 
       expect(txRepo.getAllByUserId).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        pagination,
       );
-      expect(result).toHaveLength(1);
+      expect(result.data).toHaveLength(1);
     });
 
     it("should return empty array when none exist", async () => {
-      txRepo.getAllByUserId.mockResolvedValue([]);
+      txRepo.getAllByUserId.mockResolvedValue({
+        data: [],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
 
       const result = await service.getAllTransactions(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        pagination,
       );
 
-      expect(result).toEqual([]);
+      expect(result.data).toEqual([]);
     });
   });
 

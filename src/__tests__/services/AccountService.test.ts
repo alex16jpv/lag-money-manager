@@ -62,24 +62,51 @@ describe("AccountService", () => {
   });
 
   describe("getAllAccounts", () => {
-    it("should return all accounts for the user", async () => {
-      repo.getAllByUserId.mockResolvedValue([mockAccount]);
+    const pagination = { limit: 20, offset: 0 };
 
-      const result = await service.getAllAccounts(validAccountProps.userId);
+    it("should return all accounts for the user", async () => {
+      repo.getAllByUserId.mockResolvedValue({
+        data: [mockAccount],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+
+      const result = await service.getAllAccounts(
+        validAccountProps.userId,
+        pagination,
+      );
 
       expect(repo.getAllByUserId).toHaveBeenCalledWith(
         validAccountProps.userId,
+        pagination,
       );
-      expect(result).toHaveLength(1);
-      expect(result[0].name).toBe("Savings");
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].name).toBe("Savings");
     });
 
     it("should return empty array when no accounts exist", async () => {
-      repo.getAllByUserId.mockResolvedValue([]);
+      repo.getAllByUserId.mockResolvedValue({
+        data: [],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
 
-      const result = await service.getAllAccounts(validAccountProps.userId);
+      const result = await service.getAllAccounts(
+        validAccountProps.userId,
+        pagination,
+      );
 
-      expect(result).toEqual([]);
+      expect(result.data).toEqual([]);
     });
   });
 

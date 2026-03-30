@@ -1,14 +1,21 @@
 import { Category } from "../../domain/entities/Category";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
 import { CreateCategoryDTO, UpdateCategoryDTO } from "../dtos/CategoryDTO";
 
 export class CategoryService {
   constructor(private repo: ICategoryRepository) {}
 
-  async getAllCategories(userId: string): Promise<Category[]> {
-    const categories = await this.repo.getAllByUserId(userId);
-    return categories?.map((category) => new Category(category));
+  async getAllCategories(
+    userId: string,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Category>> {
+    const result = await this.repo.getAllByUserId(userId, pagination);
+    return {
+      data: result.data.map((category) => new Category(category)),
+      pagination: result.pagination,
+    };
   }
 
   async getCategoryById(id: string, userId: string): Promise<Category> {

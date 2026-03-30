@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { TransactionService } from "../services/TransactionService";
 import repositoryFactory from "../factories/RepositoryFactory";
+import { extractPagination } from "../../shared/pagination";
 
 const transactionService = new TransactionService(
   repositoryFactory.getTransactionRepository(),
@@ -10,8 +11,11 @@ const transactionService = new TransactionService(
 export class TransactionController {
   static getAllTransactions = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    const transactions = await transactionService.getAllTransactions(userId);
-    res.status(200).json(transactions);
+    const result = await transactionService.getAllTransactions(
+      userId,
+      extractPagination(req),
+    );
+    res.status(200).json(result);
   };
 
   static getTransactionById = async (req: Request, res: Response) => {

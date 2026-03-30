@@ -1,3 +1,9 @@
+import { Op, WhereOptions } from "sequelize";
+import {
+  buildPaginatedResult,
+  PaginatedResult,
+  PaginationParams,
+} from "../../../shared/pagination";
 import { ApiError } from "../../../shared/errors";
 import { Category } from "../../entities/Category";
 import { CategoryModel } from "../../models/sequelize/CategoryModel";
@@ -10,14 +16,40 @@ export class CategorySeqRepository implements ICategoryRepository {
     this.model = CategoryModel;
   }
 
-  async getAll(): Promise<Category[]> {
-    const results = await this.model.findAll();
-    return results.map((result) => new Category(result.toJSON()));
+  private async paginatedFindAll(
+    baseWhere: WhereOptions,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Category>> {
+    const { limit, offset, cursor } = pagination;
+    const where: WhereOptions = cursor
+      ? { ...baseWhere, id: { [Op.gt]: cursor } }
+      : baseWhere;
+
+    const [{ rows }, total] = await Promise.all([
+      this.model.findAndCountAll({
+        where,
+        order: [["id", "ASC"]],
+        limit,
+        offset: cursor ? 0 : offset,
+      }),
+      this.model.count({ where: baseWhere }),
+    ]);
+
+    const data = rows.map((result) => new Category(result.toJSON()));
+    return buildPaginatedResult(data, total, pagination);
   }
 
-  async getAllByUserId(userId: string): Promise<Category[]> {
-    const results = await this.model.findAll({ where: { userId } });
-    return results.map((result) => new Category(result.toJSON()));
+  async getAll(
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Category>> {
+    return this.paginatedFindAll({}, pagination);
+  }
+
+  async getAllByUserId(
+    userId: string,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Category>> {
+    return this.paginatedFindAll({ userId }, pagination);
   }
 
   async getById(id: string): Promise<Category | null> {

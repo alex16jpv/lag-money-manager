@@ -32,22 +32,42 @@ describe("CategoryService", () => {
   });
 
   describe("getAllCategories", () => {
+    const pagination = { limit: 20, offset: 0 };
+
     it("should return all categories for the user", async () => {
-      repo.getAllByUserId.mockResolvedValue([mockCategory]);
+      repo.getAllByUserId.mockResolvedValue({
+        data: [mockCategory],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
 
-      const result = await service.getAllCategories(testUserId);
+      const result = await service.getAllCategories(testUserId, pagination);
 
-      expect(repo.getAllByUserId).toHaveBeenCalledWith(testUserId);
-      expect(result).toHaveLength(1);
-      expect(result[0].name).toBe("Food");
+      expect(repo.getAllByUserId).toHaveBeenCalledWith(testUserId, pagination);
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].name).toBe("Food");
     });
 
     it("should return empty array when no categories exist", async () => {
-      repo.getAllByUserId.mockResolvedValue([]);
+      repo.getAllByUserId.mockResolvedValue({
+        data: [],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
 
-      const result = await service.getAllCategories(testUserId);
+      const result = await service.getAllCategories(testUserId, pagination);
 
-      expect(result).toEqual([]);
+      expect(result.data).toEqual([]);
     });
   });
 

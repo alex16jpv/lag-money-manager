@@ -1,4 +1,9 @@
 import { v7 as uuidv7 } from "uuid";
+import {
+  buildPaginatedResult,
+  PaginatedResult,
+  PaginationParams,
+} from "../../../shared/pagination";
 import { ApiError } from "../../../shared/errors";
 import { Transaction } from "../../entities/Transaction";
 import { TransactionMongoModel } from "../../models/mongoose/TransactionMongoModel";
@@ -23,24 +28,51 @@ export class TransactionMongoRepository implements ITransactionRepository {
     });
   }
 
+  private async paginatedFind(
+    baseFilter: Record<string, unknown>,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Transaction>> {
+    const { limit, offset, cursor } = pagination;
+    const filter = { ...baseFilter };
+    if (cursor) {
+      filter._id = { $gt: cursor };
+    }
+
+    const [docs, total] = await Promise.all([
+      TransactionMongoModel.find(filter)
+        .sort({ _id: 1 })
+        .skip(cursor ? 0 : offset)
+        .limit(limit)
+        .lean(),
+      TransactionMongoModel.countDocuments(baseFilter),
+    ]);
+
+    return buildPaginatedResult(
+      docs.map((doc) =>
+        this.toEntity(doc as unknown as Record<string, unknown>),
+      ),
+      total,
+      pagination,
+    );
+  }
+
   async getById(id: string): Promise<Transaction | null> {
     const doc = await TransactionMongoModel.findById(id).lean();
     if (!doc) return null;
     return this.toEntity(doc as unknown as Record<string, unknown>);
   }
 
-  async getAll(): Promise<Transaction[]> {
-    const docs = await TransactionMongoModel.find().lean();
-    return docs.map((doc) =>
-      this.toEntity(doc as unknown as Record<string, unknown>),
-    );
+  async getAll(
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Transaction>> {
+    return this.paginatedFind({}, pagination);
   }
 
-  async getAllByUserId(userId: string): Promise<Transaction[]> {
-    const docs = await TransactionMongoModel.find({ userId }).lean();
-    return docs.map((doc) =>
-      this.toEntity(doc as unknown as Record<string, unknown>),
-    );
+  async getAllByUserId(
+    userId: string,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Transaction>> {
+    return this.paginatedFind({ userId }, pagination);
   }
 
   async create(transaction: Partial<Transaction>): Promise<Transaction> {

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { AccountService } from "../services/AccountService";
 import repositoryFactory from "../factories/RepositoryFactory";
+import { extractPagination } from "../../shared/pagination";
 
 const accountService = new AccountService(
   repositoryFactory.getAccountRepository(),
@@ -9,8 +10,11 @@ const accountService = new AccountService(
 export class AccountController {
   static getAllAccounts = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    const accounts = await accountService.getAllAccounts(userId);
-    res.status(200).json(accounts);
+    const result = await accountService.getAllAccounts(
+      userId,
+      extractPagination(req),
+    );
+    res.status(200).json(result);
   };
 
   static createAccount = async (req: Request, res: Response) => {

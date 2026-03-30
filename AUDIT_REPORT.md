@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The project demonstrates solid architectural foundations: a clean layered structure (controllers → services → repositories → models), a well-implemented repository pattern with factory-based database provider abstraction, Zod input validation on all endpoints, and comprehensive Swagger/OpenAPI documentation. The critical security issues from Phase 1 have been addressed: user-scoped data access with ownership checks is enforced across all endpoints, CORS is restricted to configured origins, passwords are stripped from all User API responses, and `@types/uuid` has been moved to `devDependencies`. Remaining critical issue: balance-modifying transaction operations lack database-level atomicity. The test suite (142 total test cases) covers both happy paths and authorization enforcement.
+The project demonstrates solid architectural foundations: a clean layered structure (controllers → services → repositories → models), a well-implemented repository pattern with factory-based database provider abstraction, Zod input validation on all endpoints, and comprehensive Swagger/OpenAPI documentation. The critical security issues from Phase 1 have been addressed: user-scoped data access with ownership checks is enforced across all endpoints, CORS is restricted to configured origins, passwords are stripped from all User API responses, and `@types/uuid` has been moved to `devDependencies`. Remaining critical issue: balance-modifying transaction operations lack database-level atomicity. All list endpoints now support pagination (limit, offset, cursor) to prevent memory exhaustion. The test suite (142 total test cases) covers both happy paths and authorization enforcement.
 
 ---
 
@@ -35,9 +35,10 @@ The project demonstrates solid architectural foundations: a clean layered struct
    In `mongoProvider.ts:16`, `connectMongo()` is called without `await`. The MongoDB connection races with the first request. If the connection fails, `process.exit(1)` is called, but if a request arrives before the connection is established, it will fail unpredictably.
    - File: `src/app/factories/providers/mongoProvider.ts`, line 16
 
-8. **No Pagination on List Endpoints**  
-   All `getAll()` methods return every record in the database with no pagination, limit, or cursor. As data grows, these endpoints will cause memory exhaustion and slow responses.
-   - Files: all repositories' `getAll()` methods, all `*Service.getAll*()` methods
+8. ~~**No Pagination on List Endpoints**~~
+   ~~All `getAll()` methods return every record in the database with no pagination, limit, or cursor. As data grows, these endpoints will cause memory exhaustion and slow responses.~~
+   **Fixed** — All list endpoints (`GET /accounts`, `GET /categories`, `GET /transactions`) now support `limit`, `offset`, and `cursor` query parameters with paginated responses (`{ data, pagination }`).
+   - Files: all repositories' `getAll()` / `getAllByUserId()` methods, all `*Service.getAll*()` methods, all `*Controller` getAll handlers
 
 ---
 
@@ -233,7 +234,7 @@ The project has a strong database abstraction layer:
 
 - The `validate` function types its parameter as `z.ZodObject<z.ZodRawShape>`, which is more restrictive than needed — some schemas use `.refine()` / `.superRefine()` which return `ZodEffects`, not `ZodObject`. This may cause type mismatches.
 - `loginSchema` allows `password.min(1)` while `registerSchema` requires `password.min(8)` — intentionally different but worth a comment for clarity
-- No query parameter validation for potential future filtering/pagination
+- No query parameter validation for potential future filtering ~~/ pagination~~ (pagination query params are now validated via Zod)
 
 ### 6. Design Patterns & Best Practices
 
@@ -397,6 +398,51 @@ The project has a strong database abstraction layer:
 | Services | 5 | 54 | Good — covers happy paths, validation, and key error paths |
 | Middleware | 1 | 9 | Good — covers all error mapping branches |
 | Integration (API) | 1 | 44 | Good — full HTTP flow with mocked repositories |
+
+---
+
+## Changelog
+
+### 2026-03-29 - Fix Session
+
+**Fixed points:**
+
+- **#8 No Pagination on List Endpoints**: Added `limit`, `offset`, and `cursor` query parameter support to all `getAll` / list endpoints (`GET /accounts`, `GET /categories`, `GET /transactions`). Responses now return `{ data, pagination }` with `total`, `hasMore`, and `nextCursor` fields. Cursor-based pagination uses UUIDv7 ordering. Zod validation schema added for pagination query params. Swagger docs updated with pagination parameters and paginated response schemas.
+
+**Files modified:**
+
+- `src/shared/pagination.ts`: **Created** — shared `PaginationParams`, `PaginatedResult<T>`, `DEFAULT_LIMIT`, `MAX_LIMIT`
+- `src/domain/repositories/IRepository.ts`: `getAll()` now accepts `PaginationParams` and returns `PaginatedResult<T>`
+- `src/domain/repositories/account/IAccountRepository.ts`: `getAllByUserId()` updated with pagination
+- `src/domain/repositories/category/ICategoryRepository.ts`: `getAllByUserId()` updated with pagination
+- `src/domain/repositories/transaction/ITransactionRepository.ts`: `getAllByUserId()` updated with pagination
+- `src/domain/repositories/account/AccountMongoRepository.ts`: Paginated `getAll()` and `getAllByUserId()` with cursor/offset support
+- `src/domain/repositories/account/AccountSeqRepository.ts`: Paginated `getAll()` and `getAllByUserId()` with cursor/offset support
+- `src/domain/repositories/category/CategoryMongoRepository.ts`: Paginated `getAll()` and `getAllByUserId()`
+- `src/domain/repositories/category/CategorySeqRepository.ts`: Paginated `getAll()` and `getAllByUserId()`
+- `src/domain/repositories/transaction/TransactionMongoRepository.ts`: Paginated `getAll()` and `getAllByUserId()`
+- `src/domain/repositories/transaction/TransactionSeqRepository.ts`: Paginated `getAll()` and `getAllByUserId()`
+- `src/domain/repositories/user/UserMongoRepository.ts`: Paginated `getAll()` for interface compliance
+- `src/domain/repositories/user/UserSeqRepository.ts`: Paginated `getAll()` for interface compliance
+- `src/app/services/AccountService.ts`: `getAllAccounts()` accepts `PaginationParams`, returns `PaginatedResult`
+- `src/app/services/CategoryService.ts`: `getAllCategories()` accepts `PaginationParams`, returns `PaginatedResult`
+- `src/app/services/TransactionService.ts`: `getAllTransactions()` accepts `PaginationParams`, returns `PaginatedResult`
+- `src/app/controllers/AccountController.ts`: Extracts pagination from query params
+- `src/app/controllers/CategoryController.ts`: Extracts pagination from query params
+- `src/app/controllers/TransactionController.ts`: Extracts pagination from query params
+- `src/app/validation/schemas.ts`: Added `paginationQuerySchema` with `limit`, `offset`, `cursor` validation
+- `src/app/routes/accountRoutes.ts`: Added pagination validation middleware and Swagger query param docs
+- `src/app/routes/categoryRoutes.ts`: Added pagination validation middleware and Swagger query param docs
+- `src/app/routes/transactionRoutes.ts`: Added pagination validation middleware and Swagger query param docs
+- `src/config/swagger.ts`: Added `Pagination`, `PaginatedAccounts`, `PaginatedCategories`, `PaginatedTransactions` schemas
+- `src/__tests__/services/AccountService.test.ts`: Updated for paginated responses
+- `src/__tests__/services/CategoryService.test.ts`: Updated for paginated responses
+- `src/__tests__/services/TransactionService.test.ts`: Updated for paginated responses
+- `src/__tests__/integration/api.test.ts`: Updated for paginated responses
+
+**Dependencies added:**
+
+- None
 
 **Strengths:**
 

@@ -5,6 +5,7 @@ import {
   createCategorySchema,
   updateCategorySchema,
   idParamSchema,
+  paginationQuerySchema,
 } from "../validation/schemas";
 
 const router = Router();
@@ -15,19 +16,43 @@ const router = Router();
  *   get:
  *     tags: [Categories]
  *     summary: Get all categories
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Maximum number of items to return
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: Number of items to skip (offset-based pagination)
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Cursor ID for cursor-based pagination (overrides offset)
  *     responses:
  *       200:
- *         description: List of categories
+ *         description: Paginated list of categories
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Category'
+ *               $ref: '#/components/schemas/PaginatedCategories'
  *       401:
  *         description: Unauthorized
  */
-router.get("/", CategoryController.getAllCategories);
+router.get(
+  "/",
+  validate(paginationQuerySchema),
+  CategoryController.getAllCategories,
+);
 
 /**
  * @openapi
