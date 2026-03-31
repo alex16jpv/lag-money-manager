@@ -82,3 +82,52 @@ Common types:
 2. Prefer well-maintained packages with minimal sub-dependencies
 3. Update `docs/guides/getting-started.md` with the new dependency
 4. Update `docs/architecture/overview.md` if it's a significant addition
+
+## Keeping OpenAPI Specs in Sync with Zod Schemas
+
+The OpenAPI specification is maintained **manually** via `swagger-jsdoc` annotations in route files and component schemas in `src/config/swagger.ts`. Zod validation schemas live separately in `src/app/validation/schemas.ts`. These two are **not automatically synchronized**.
+
+### When to Update
+
+Any change to request/response shapes requires updating **both** locations:
+
+| Change                        | Update Zod schema (`schemas.ts`) | Update OpenAPI (`swagger.ts` + route JSDoc) |
+| ----------------------------- | -------------------------------- | ------------------------------------------- |
+| Add/remove a request field    | Yes                              | Yes                                         |
+| Change field type/constraints | Yes                              | Yes                                         |
+| Add a new endpoint            | Yes (if validated)               | Yes                                         |
+| Change response shape         | No (DTOs handle this)            | Yes                                         |
+
+### Sync Process
+
+1. **Modify the Zod schema** in `src/app/validation/schemas.ts` (source of truth for validation)
+2. **Update the OpenAPI component schema** in `src/config/swagger.ts` to match
+3. **Update the route JSDoc annotations** in `src/app/routes/<module>Routes.ts` if request/response examples changed
+4. **Verify** by starting the dev server and checking `/api-docs` in the browser
+
+### Example
+
+If adding a `tags` field to the create-account request:
+
+```typescript
+// 1. Zod schema (schemas.ts)
+export const createAccountSchema = z.object({
+  body: z.object({
+    name: z.string().min(1),
+    type: z.enum([...]),
+    tags: z.string().optional(),  // <-- add here
+  }),
+});
+
+// 2. OpenAPI component (swagger.ts)
+CreateAccount: {
+  type: "object",
+  properties: {
+    name: { type: "string" },
+    type: { type: "string", enum: [...] },
+    tags: { type: "string" },  // <-- add here too
+  },
+}
+```
+
+> **Note:** There is no automated tool to generate OpenAPI from Zod or vice versa. Manual synchronization is required. Consider adding a PR checklist item: _"If request/response schemas changed, did you update both Zod and OpenAPI?"_

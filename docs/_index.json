@@ -66,6 +66,38 @@
       "mustReadFirst": false
     },
     {
+      "path": "docs/architecture/decisions/001-dual-database-support.md",
+      "title": "ADR-001: Dual Database Support",
+      "description": "Decision to support both MySQL (Sequelize) and MongoDB (Mongoose) via repository pattern and factory provider.",
+      "tags": ["architecture", "decisions", "database", "repository"],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
+      "path": "docs/architecture/decisions/002-uuid-v7-for-identifiers.md",
+      "title": "ADR-002: UUID v7 for Identifiers",
+      "description": "Decision to use UUID v7 for all entity IDs — time-ordered, globally unique, database-agnostic.",
+      "tags": ["architecture", "decisions", "uuid", "identifiers"],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
+      "path": "docs/architecture/decisions/003-express-5.md",
+      "title": "ADR-003: Express 5",
+      "description": "Decision to use Express 5 for native async error handling and latest framework improvements.",
+      "tags": ["architecture", "decisions", "express", "framework"],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
+      "path": "docs/architecture/decisions/004-zod-for-validation.md",
+      "title": "ADR-004: Zod for Validation",
+      "description": "Decision to use Zod 4 for TypeScript-first request validation with superRefine for complex rules.",
+      "tags": ["architecture", "decisions", "zod", "validation"],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
       "path": "docs/guides/getting-started.md",
       "title": "Getting Started",
       "description": "Step-by-step guide from zero to running: prerequisites, install, env setup, database, run, verify.",
@@ -102,6 +134,14 @@
       "title": "Testing Guide",
       "description": "How to run tests, write new tests, mock dependencies, and testing conventions.",
       "tags": ["guide", "testing", "jest", "mocking"],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
+      "path": "docs/guides/deployment.md",
+      "title": "Production Deployment Guide",
+      "description": "HTTPS configuration, database pool tuning, graceful shutdown, container health checks, and production checklist.",
+      "tags": ["guide", "deployment", "production", "docker", "security"],
       "audience": "both",
       "mustReadFirst": false
     },

@@ -180,6 +180,49 @@ None specific to this module.
 | `EXPENSE`  | `fromAccountId`                | `fromAccount.balance -= amount`                                |
 | `TRANSFER` | `fromAccountId`, `toAccountId` | `fromAccount.balance -= amount`, `toAccount.balance += amount` |
 
+## Balance Adjustment Logic
+
+The `adjustBalances()` private method in `TransactionService` is responsible for modifying account balances whenever a transaction is created, updated, or deleted.
+
+### Direction Parameter
+
+The method accepts a `direction` parameter of `1` or `-1`:
+
+| Operation              | Direction      | Effect                                                     |
+| ---------------------- | -------------- | ---------------------------------------------------------- |
+| **Create** transaction | `+1`           | Apply balance changes (e.g., expense decreases balance)    |
+| **Delete** transaction | `-1`           | Reverse balance changes (restore previous balance)         |
+| **Update** transaction | `-1` then `+1` | Reverse old transaction's adjustments, then apply new ones |
+
+The balance formula is: `newBalance = currentBalance + (amount × sign × direction)`
+
+Where `sign` is `-1` for the source account (`fromAccountId`) and `+1` for the destination account (`toAccountId`).
+
+### Account Validation
+
+On **forward adjustments** (`direction = +1`, i.e., create/update-apply):
+
+- If the account is not found → throws `NotFoundError` (404) with "Source account not found" or "Destination account not found"
+- If the account does not belong to the user → throws `ForbiddenError` (403) with "Source/Destination account does not belong to the user"
+
+On **reversal adjustments** (`direction = -1`, i.e., delete/update-reverse):
+
+- If the account is not found → **silently skips** (the account may have been deleted since the transaction was created)
+- Ownership is **not** re-checked during reversal
+
+### Failure Modes
+
+| Scenario                                    | Direction | Behavior                                  |
+| ------------------------------------------- | --------- | ----------------------------------------- |
+| Source account not found                    | `+1`      | Throws `NotFoundError` (404)              |
+| Destination account not found               | `+1`      | Throws `NotFoundError` (404)              |
+| Source account belongs to another user      | `+1`      | Throws `ForbiddenError` (403)             |
+| Destination account belongs to another user | `+1`      | Throws `ForbiddenError` (403)             |
+| Account not found during reversal           | `-1`      | Silently skipped (no error)               |
+| Database error during balance update        | any       | Propagates as `InternalServerError` (500) |
+
+> **Important:** Balance adjustments are **not wrapped in a database transaction**. If the application crashes between adjusting the source and destination accounts in a TRANSFER, balances may become inconsistent. This is a known limitation for a personal finance app and is acceptable at the current scale.
+
 ## How to Extend
 
 - To add recurring transactions: add `recurrence` field to entity/model, create a scheduler service

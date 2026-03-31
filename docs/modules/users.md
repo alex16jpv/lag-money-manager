@@ -22,9 +22,20 @@ Manages user profiles after registration. Provides CRUD operations for the authe
 
 ## Public API
 
+### Endpoint Authorization Matrix
+
+| Endpoint            | Auth Required | Self-Access Enforced | Notes                                                                                                  |
+| ------------------- | ------------- | -------------------- | ------------------------------------------------------------------------------------------------------ |
+| `GET /users`        | Yes (JWT)     | **No**               | Returns **all** users (paginated). No ownership filter — any authenticated user can list every user.   |
+| `GET /users/:id`    | Yes (JWT)     | Yes                  | `id` must match the authenticated user's ID, otherwise 403 Forbidden.                                  |
+| `PUT /users/:id`    | Yes (JWT)     | Yes                  | `id` must match the authenticated user's ID. Supports partial updates.                                 |
+| `DELETE /users/:id` | Yes (JWT)     | Yes                  | `id` must match the authenticated user's ID. Deletes the user if they exist (idempotent, returns 204). |
+
+> **Security note:** `GET /users` does not enforce self-access. It returns all registered users (with passwords stripped). This is by design for now but should be restricted or removed if the API is exposed publicly. Consider adding role-based access control (RBAC) or removing this endpoint entirely in production.
+
 ### `GET /users`
 
-Get all users (paginated). Returns `UserResponseDTO` (no passwords).
+Get all users (paginated). Returns `UserResponseDTO` (no passwords). **Does not enforce ownership** — all authenticated users see all user profiles.
 
 ### `GET /users/:id`
 

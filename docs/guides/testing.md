@@ -252,7 +252,41 @@ Run coverage with:
 npm run test:coverage
 ```
 
-<!-- TODO: requires human input — No minimum coverage threshold is currently configured in jest.config.js -->
+### Coverage Targets
+
+No minimum coverage threshold is currently enforced in `jest.config.js`. The following targets serve as guidelines for the project:
+
+| Layer          | Target | Rationale                                                      |
+| -------------- | ------ | -------------------------------------------------------------- |
+| **Entities**   | 100%   | Pure constructors with simple logic — easy to cover completely |
+| **Services**   | ≥ 90%  | Core business logic; high coverage ensures correctness         |
+| **Middleware** | ≥ 85%  | Error handling and auth — critical paths must be verified      |
+| **Validation** | ≥ 80%  | Schema validation and `validate()` middleware                  |
+| **Overall**    | ≥ 80%  | Aggregate project target                                       |
+
+### What Is NOT Covered (by design)
+
+The following are intentionally excluded from coverage targets (see "What Is NOT Tested" section above):
+
+- **Repository implementations** — thin ORM/ODM wrappers tested via integration tests
+- **Route definitions** — declarative wiring tested through integration tests
+- **Controllers** — thin HTTP handlers covered by service + integration tests
+- **Config files** — static configuration, not behavioral code
+
+### Enforcing Coverage
+
+To enforce coverage thresholds, add the following to `jest.config.js`:
+
+```javascript
+coverageThreshold: {
+  global: {
+    branches: 80,
+    functions: 80,
+    lines: 80,
+    statements: 80,
+  },
+},
+```
 
 ## Jest Configuration
 

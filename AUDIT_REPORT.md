@@ -38,21 +38,6 @@
 
 ---
 
-## 6. Documentation Gaps
-
-| #   | Gap                                                                                                                             | Suggested update                                                                    |
-| --- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| 6.1 | No ADR (Architecture Decision Record) documents exist — the `decisions/` folder only contains `_template.md`                    | Create ADRs for key decisions: dual-DB support, UUIDv7, Express 5, Zod choice       |
-| 6.2 | `docs/modules/users.md` does not document that `GET /users` returns all users (security concern)                                | Update `docs/modules/users.md` with endpoint authorization matrix                   |
-| 6.3 | No documentation on transaction balance adjustment logic and failure modes                                                      | Add "Balance Adjustment" section to `docs/modules/transactions.md`                  |
-| 6.4 | `docs/guides/environment-vars.md` may not document `LOG_LEVEL` or `NODE_ENV`                                                    | Update `docs/guides/environment-vars.md` with full `ENVIRONMENT` schema             |
-| 6.5 | No production deployment guide (HTTPS, pool config, signal handling, container health checks)                                   | Create `docs/guides/deployment.md` and add to `docs/_index.json`                    |
-| 6.6 | `docs/reference/error-handling.md` does not document all error middleware branches (MongoServerError, CastError, FK constraint) | Update `docs/reference/error-handling.md` with complete error → HTTP status mapping |
-| 6.7 | `docs/guides/testing.md` exists but no mention of coverage thresholds or expected coverage targets                              | Update `docs/guides/testing.md` with coverage requirements                          |
-| 6.8 | OpenAPI spec in `swagger.ts` is manually maintained — no docs on keeping it in sync with Zod schemas                            | Add sync process notes to `docs/guides/contributing.md`                             |
-
----
-
 ## 7. Quick Wins
 
 Sorted by effort (ascending):

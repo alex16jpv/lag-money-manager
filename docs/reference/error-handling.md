@@ -181,6 +181,20 @@ export class DomainValidationError extends Error {
 | 429    | Too Many Requests     | Rate limit exceeded                             |
 | 500    | Internal Server Error | Unexpected/unhandled error                      |
 
+## Error Middleware Branch Mapping
+
+The global error middleware in `src/shared/middlewares.ts` handles errors in the following order. The **first matching branch** wins.
+
+| #   | Error Type / Condition                                                | HTTP Status                                  | Response `error` field              | Response `message`                                                 |
+| --- | --------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------ |
+| 1   | `ApiError` (instance check)                                           | `error.statusCode` (400/401/403/404/422/500) | `error.name` (e.g. `NotFoundError`) | `error.message`                                                    |
+| 2   | `DomainValidationError` (instance check)                              | 400                                          | `ValidationError`                   | `error.message` + optional `details.field`                         |
+| 3   | `SequelizeUniqueConstraintError` (`error.name` + `errors.length > 0`) | 409                                          | `ConflictError`                     | Joined constraint violation messages (e.g. "email must be unique") |
+| 4   | `SequelizeForeignKeyConstraintError` (`error.name`)                   | 400                                          | `ValidationError`                   | `"Foreign key constraint error"` + `details.fields`                |
+| 5   | `MongoServerError` with `code === 11000` (`error.name` + code)        | 409                                          | `ConflictError`                     | `"Duplicate value for: <fields>"`                                  |
+| 6   | `CastError` (`error.name`, typically Mongoose invalid ObjectId)       | 400                                          | `ValidationError`                   | `"Invalid ID format"`                                              |
+| 7   | Any other error (fallback)                                            | 500                                          | `InternalServerError`               | `"An unexpected error occurred"` (logged with request ID)          |
+
 ## How to Add a New Error Type
 
 1. If it maps to an existing HTTP status code already in `ApiError.errors`, just use `ApiError`:
