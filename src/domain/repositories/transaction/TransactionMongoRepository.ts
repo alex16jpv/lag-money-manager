@@ -10,7 +10,10 @@ import {
   ITransactionDocument,
   TransactionMongoModel,
 } from "../../models/mongoose/TransactionMongoModel";
-import { ITransactionRepository } from "./ITransactionRepository";
+import {
+  ITransactionRepository,
+  TransactionFilters,
+} from "./ITransactionRepository";
 
 export class TransactionMongoRepository implements ITransactionRepository {
   private toEntity(doc: ITransactionDocument): Transaction {
@@ -75,8 +78,19 @@ export class TransactionMongoRepository implements ITransactionRepository {
   async getAllByUserId(
     userId: string,
     pagination: PaginationParams,
+    filters?: TransactionFilters,
   ): Promise<PaginatedResult<Transaction>> {
-    return this.paginatedFind({ userId }, pagination);
+    const filter: Record<string, unknown> = { userId };
+    if (filters?.accountId) {
+      filter.$or = [
+        { fromAccountId: filters.accountId },
+        { toAccountId: filters.accountId },
+      ];
+    }
+    if (filters?.type) {
+      filter.type = filters.type;
+    }
+    return this.paginatedFind(filter, pagination);
   }
 
   async create(transaction: Partial<Transaction>): Promise<Transaction> {

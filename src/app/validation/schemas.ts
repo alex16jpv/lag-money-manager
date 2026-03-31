@@ -25,6 +25,29 @@ export const paginationQuerySchema = z.object({
   }),
 });
 
+export const getTransactionsSchema = z.object({
+  query: z.object({
+    limit: z.coerce
+      .number()
+      .int("Limit must be an integer")
+      .min(1, "Limit must be at least 1")
+      .max(MAX_LIMIT, `Limit must be at most ${MAX_LIMIT}`)
+      .optional(),
+    offset: z.coerce
+      .number()
+      .int("Offset must be an integer")
+      .min(0, "Offset must be non-negative")
+      .optional(),
+    cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
+    accountId: z.string().uuid("accountId must be a valid UUID").optional(),
+    type: z
+      .enum(transactionTypeValues, {
+        error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
+      })
+      .optional(),
+  }),
+});
+
 export const updateUserSchema = z.object({
   params: z.object({
     id: z.string().uuid("ID must be a valid UUID"),

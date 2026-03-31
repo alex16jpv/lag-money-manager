@@ -146,6 +146,7 @@ describe("TransactionService", () => {
       expect(txRepo.getAllByUserId).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         pagination,
+        undefined,
       );
       expect(result.data).toHaveLength(1);
     });
@@ -168,6 +169,87 @@ describe("TransactionService", () => {
       );
 
       expect(result.data).toEqual([]);
+    });
+
+    it("should pass accountId filter to repository", async () => {
+      txRepo.getAllByUserId.mockResolvedValue({
+        data: [storedExpense],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+
+      const filters = { accountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71" };
+      await service.getAllTransactions(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        pagination,
+        filters,
+      );
+
+      expect(txRepo.getAllByUserId).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        pagination,
+        filters,
+      );
+    });
+
+    it("should pass type filter to repository", async () => {
+      txRepo.getAllByUserId.mockResolvedValue({
+        data: [storedIncome],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+
+      const filters = { type: "INCOME" as const };
+      await service.getAllTransactions(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        pagination,
+        filters,
+      );
+
+      expect(txRepo.getAllByUserId).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        pagination,
+        filters,
+      );
+    });
+
+    it("should pass combined filters to repository", async () => {
+      txRepo.getAllByUserId.mockResolvedValue({
+        data: [],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+
+      const filters = {
+        accountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        type: "EXPENSE" as const,
+      };
+      await service.getAllTransactions(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        pagination,
+        filters,
+      );
+
+      expect(txRepo.getAllByUserId).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        pagination,
+        filters,
+      );
     });
   });
 

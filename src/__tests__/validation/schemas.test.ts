@@ -46,6 +46,7 @@ import {
   idParamSchema,
   createTransactionSchema,
   updateTransactionSchema,
+  getTransactionsSchema,
 } from "../../app/validation/schemas";
 
 const validUUID = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
@@ -720,6 +721,83 @@ describe("Validation Schemas", () => {
       const result = updateTransactionSchema.safeParse({
         params: { id: validUUID },
         body: { amount: -10 },
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("getTransactionsSchema", () => {
+    it("should accept empty query (all optional)", () => {
+      const result = getTransactionsSchema.safeParse({ query: {} });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept valid pagination params only", () => {
+      const result = getTransactionsSchema.safeParse({
+        query: { limit: "10", offset: "0" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept valid accountId filter", () => {
+      const result = getTransactionsSchema.safeParse({
+        query: { accountId: validUUID },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept valid type filter", () => {
+      const result = getTransactionsSchema.safeParse({
+        query: { type: "EXPENSE" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept all valid transaction types as filter", () => {
+      for (const type of ["INCOME", "EXPENSE", "TRANSFER"]) {
+        const result = getTransactionsSchema.safeParse({
+          query: { type },
+        });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("should accept both filters combined with pagination", () => {
+      const result = getTransactionsSchema.safeParse({
+        query: {
+          limit: "10",
+          offset: "0",
+          accountId: validUUID,
+          type: "INCOME",
+        },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject invalid accountId UUID", () => {
+      const result = getTransactionsSchema.safeParse({
+        query: { accountId: "not-a-uuid" },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject invalid transaction type", () => {
+      const result = getTransactionsSchema.safeParse({
+        query: { type: "INVALID" },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject limit below 1", () => {
+      const result = getTransactionsSchema.safeParse({
+        query: { limit: "0" },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject limit above MAX_LIMIT", () => {
+      const result = getTransactionsSchema.safeParse({
+        query: { limit: "101" },
       });
       expect(result.success).toBe(false);
     });

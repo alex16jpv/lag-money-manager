@@ -32,6 +32,18 @@ On update or delete, the original balance adjustments are reversed before applyi
 
 Get all transactions for the authenticated user (paginated, offset + cursor support).
 
+**Query parameters:**
+
+| Parameter   | Type   | Required | Description                                                     |
+| ----------- | ------ | -------- | --------------------------------------------------------------- |
+| `limit`     | number | No       | Maximum items to return (1–100, default 20)                     |
+| `offset`    | number | No       | Number of items to skip (offset-based pagination)               |
+| `cursor`    | string | No       | Cursor ID for cursor-based pagination (overrides offset)        |
+| `accountId` | string | No       | Filter by account ID (matches `fromAccountId` or `toAccountId`) |
+| `type`      | string | No       | Filter by transaction type (`INCOME`, `EXPENSE`, or `TRANSFER`) |
+
+Filters can be combined. Both `accountId` and `type` are validated (UUID format and enum value respectively).
+
 ### `POST /transactions`
 
 Create a new transaction. Adjusts affected account balances.

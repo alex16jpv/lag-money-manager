@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import { TransactionService } from "../services/TransactionService";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { extractPagination } from "../../shared/pagination";
+import { TransactionFilters } from "../../domain/repositories/transaction/ITransactionRepository";
+import { TransactionType } from "../../shared/constants";
 
 const transactionService = new TransactionService(
   repositoryFactory.getTransactionRepository(),
@@ -11,9 +13,17 @@ const transactionService = new TransactionService(
 export class TransactionController {
   static getAllTransactions = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
+    const filters: TransactionFilters = {};
+    if (req.query.accountId) {
+      filters.accountId = req.query.accountId as string;
+    }
+    if (req.query.type) {
+      filters.type = req.query.type as TransactionType;
+    }
     const result = await transactionService.getAllTransactions(
       userId,
       extractPagination(req),
+      filters,
     );
     res.status(200).json(result);
   };

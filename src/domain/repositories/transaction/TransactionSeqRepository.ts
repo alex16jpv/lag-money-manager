@@ -7,7 +7,10 @@ import {
 import { ApiError } from "../../../shared/errors";
 import { Transaction } from "../../entities/Transaction";
 import { TransactionModel } from "../../models/sequelize/TransactionModel";
-import { ITransactionRepository } from "./ITransactionRepository";
+import {
+  ITransactionRepository,
+  TransactionFilters,
+} from "./ITransactionRepository";
 
 export class TransactionSeqRepository implements ITransactionRepository {
   private readonly model: typeof TransactionModel;
@@ -54,8 +57,19 @@ export class TransactionSeqRepository implements ITransactionRepository {
   async getAllByUserId(
     userId: string,
     pagination: PaginationParams,
+    filters?: TransactionFilters,
   ): Promise<PaginatedResult<Transaction>> {
-    return this.paginatedFindAll({ userId }, pagination);
+    const where: WhereOptions = { userId };
+    if (filters?.accountId) {
+      where[Op.or] = [
+        { fromAccountId: filters.accountId },
+        { toAccountId: filters.accountId },
+      ];
+    }
+    if (filters?.type) {
+      where.type = filters.type;
+    }
+    return this.paginatedFindAll(where, pagination);
   }
 
   async create(transaction: Partial<Transaction>): Promise<Transaction> {

@@ -5,7 +5,7 @@ import {
   createTransactionSchema,
   updateTransactionSchema,
   idParamSchema,
-  paginationQuerySchema,
+  getTransactionsSchema,
 } from "../validation/schemas";
 
 const router = Router();
@@ -38,6 +38,18 @@ const router = Router();
  *           type: string
  *           format: uuid
  *         description: Cursor ID for cursor-based pagination (overrides offset)
+ *       - in: query
+ *         name: accountId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Filter transactions by account ID (matches fromAccountId or toAccountId)
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [INCOME, EXPENSE, TRANSFER]
+ *         description: Filter transactions by type
  *     responses:
  *       200:
  *         description: Paginated list of transactions
@@ -50,7 +62,7 @@ const router = Router();
  */
 router.get(
   "/",
-  validate(paginationQuerySchema),
+  validate(getTransactionsSchema),
   TransactionController.getAllTransactions,
 );
 

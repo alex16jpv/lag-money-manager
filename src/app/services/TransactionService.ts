@@ -1,5 +1,8 @@
 import { Transaction } from "../../domain/entities/Transaction";
-import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
+import {
+  ITransactionRepository,
+  TransactionFilters,
+} from "../../domain/repositories/transaction/ITransactionRepository";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
@@ -17,8 +20,13 @@ export class TransactionService {
   async getAllTransactions(
     userId: string,
     pagination: PaginationParams,
+    filters?: TransactionFilters,
   ): Promise<PaginatedResult<Transaction>> {
-    return await this.transactionRepo.getAllByUserId(userId, pagination);
+    return await this.transactionRepo.getAllByUserId(
+      userId,
+      pagination,
+      filters,
+    );
   }
 
   async getTransactionById(id: string, userId: string): Promise<Transaction> {
