@@ -38,6 +38,11 @@ const router = Router();
  *           type: string
  *           format: uuid
  *         description: Cursor ID for cursor-based pagination (overrides offset)
+ *       - in: query
+ *         name: ids
+ *         schema:
+ *           type: string
+ *         description: Comma-separated list of UUIDs to filter by ID
  *     responses:
  *       200:
  *         description: Paginated list of accounts

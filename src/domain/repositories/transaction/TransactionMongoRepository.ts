@@ -81,6 +81,9 @@ export class TransactionMongoRepository implements ITransactionRepository {
     filters?: TransactionFilters,
   ): Promise<PaginatedResult<Transaction>> {
     const filter: Record<string, unknown> = { userId };
+    if (filters?.ids?.length) {
+      filter._id = { $in: filters.ids };
+    }
     if (filters?.accountId) {
       filter.$or = [
         { fromAccountId: filters.accountId },

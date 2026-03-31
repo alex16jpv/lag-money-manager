@@ -1,5 +1,5 @@
 import { Account } from "../../domain/entities/Account";
-import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { AccountFilters, IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
 import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
@@ -10,8 +10,9 @@ export class AccountService {
   async getAllAccounts(
     userId: string,
     pagination: PaginationParams,
+    filters?: AccountFilters,
   ): Promise<PaginatedResult<Account>> {
-    const result = await this.repo.getAllByUserId(userId, pagination);
+    const result = await this.repo.getAllByUserId(userId, pagination, filters);
     return {
       data: result.data.map((account) => new Account(account)),
       pagination: result.pagination,

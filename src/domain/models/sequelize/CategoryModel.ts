@@ -5,6 +5,7 @@ import { v7 as uuidv7 } from "uuid";
 export class CategoryModel extends Model {
   id!: string;
   name!: string;
+  emoji?: string;
   userId!: string;
 }
 
@@ -19,6 +20,10 @@ export default (sequelize: Sequelize) => {
       name: {
         type: DataTypes.STRING,
         allowNull: false,
+      },
+      emoji: {
+        type: DataTypes.STRING(8),
+        allowNull: true,
       },
       userId: {
         type: DataTypes.CHAR(36),

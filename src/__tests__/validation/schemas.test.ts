@@ -107,6 +107,33 @@ describe("Validation Schemas", () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it("should accept valid comma-separated ids", () => {
+      const result = paginationQuerySchema.safeParse({
+        query: { ids: `${validUUID},${validUUID2}` },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.query.ids).toEqual([validUUID, validUUID2]);
+      }
+    });
+
+    it("should accept a single id", () => {
+      const result = paginationQuerySchema.safeParse({
+        query: { ids: validUUID },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.query.ids).toEqual([validUUID]);
+      }
+    });
+
+    it("should reject invalid UUID in ids", () => {
+      const result = paginationQuerySchema.safeParse({
+        query: { ids: `${validUUID},not-a-uuid` },
+      });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe("registerSchema", () => {
@@ -375,6 +402,20 @@ describe("Validation Schemas", () => {
       expect(result.success).toBe(true);
     });
 
+    it("should accept valid category with emoji", () => {
+      const result = createCategorySchema.safeParse({
+        body: { name: "Food", emoji: "🍔" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject emoji exceeding 8 characters", () => {
+      const result = createCategorySchema.safeParse({
+        body: { name: "Food", emoji: "a".repeat(9) },
+      });
+      expect(result.success).toBe(false);
+    });
+
     it("should reject empty name", () => {
       const result = createCategorySchema.safeParse({ body: { name: "" } });
       expect(result.success).toBe(false);
@@ -397,7 +438,15 @@ describe("Validation Schemas", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should reject empty body (no name)", () => {
+    it("should accept update with only emoji", () => {
+      const result = updateCategorySchema.safeParse({
+        params: { id: validUUID },
+        body: { emoji: "🚗" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject empty body (no name or emoji)", () => {
       const result = updateCategorySchema.safeParse({
         params: { id: validUUID },
         body: {},

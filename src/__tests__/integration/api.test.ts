@@ -142,6 +142,7 @@ const testAccount = new Account({
 const testCategory = new Category({
   id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
   name: "Food",
+  emoji: "🍔",
   userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
 });
 
@@ -563,7 +564,7 @@ describe("Integration Tests", () => {
       const res = await request(app)
         .post("/categories")
         .set("Authorization", `Bearer ${token}`)
-        .send({ name: "Food" });
+        .send({ name: "Food", emoji: "🍔" });
 
       expect(res.status).toBe(201);
     });
@@ -606,6 +607,7 @@ describe("Integration Tests", () => {
       const updated = new Category({
         id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
         name: "Transport",
+        emoji: "🚌",
         userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       });
       mockCategoryRepo.getById.mockResolvedValue(testCategory);
@@ -614,10 +616,11 @@ describe("Integration Tests", () => {
       const res = await request(app)
         .put("/categories/019576a0-d7b6-7d6d-af6a-2b7545f5ac73")
         .set("Authorization", `Bearer ${token}`)
-        .send({ name: "Transport" });
+        .send({ name: "Transport", emoji: "🚌" });
 
       expect(res.status).toBe(200);
       expect(res.body.name).toBe("Transport");
+      expect(res.body.emoji).toBe("🚌");
     });
   });
 

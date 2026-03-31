@@ -1,5 +1,5 @@
 import { Category } from "../../domain/entities/Category";
-import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { CategoryFilters, ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
 import { CreateCategoryDTO, UpdateCategoryDTO } from "../dtos/CategoryDTO";
@@ -10,8 +10,9 @@ export class CategoryService {
   async getAllCategories(
     userId: string,
     pagination: PaginationParams,
+    filters?: CategoryFilters,
   ): Promise<PaginatedResult<Category>> {
-    const result = await this.repo.getAllByUserId(userId, pagination);
+    const result = await this.repo.getAllByUserId(userId, pagination, filters);
     return {
       data: result.data.map((category) => new Category(category)),
       pagination: result.pagination,

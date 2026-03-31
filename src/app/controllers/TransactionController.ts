@@ -14,6 +14,9 @@ export class TransactionController {
   static getAllTransactions = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     const filters: TransactionFilters = {};
+    if (req.query.ids) {
+      filters.ids = req.query.ids as string[];
+    }
     if (req.query.accountId) {
       filters.accountId = req.query.accountId as string;
     }

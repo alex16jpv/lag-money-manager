@@ -4,6 +4,7 @@ import { Transaction } from "../../entities/Transaction";
 import { IRepository } from "../IRepository";
 
 export interface TransactionFilters {
+  ids?: string[];
   accountId?: string;
   type?: TransactionType;
 }

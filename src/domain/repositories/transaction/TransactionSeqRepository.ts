@@ -60,6 +60,9 @@ export class TransactionSeqRepository implements ITransactionRepository {
     filters?: TransactionFilters,
   ): Promise<PaginatedResult<Transaction>> {
     const where: WhereOptions = { userId };
+    if (filters?.ids?.length) {
+      where.id = { [Op.in]: filters.ids };
+    }
     if (filters?.accountId) {
       where[Op.or] = [
         { fromAccountId: filters.accountId },

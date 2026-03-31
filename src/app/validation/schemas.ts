@@ -22,6 +22,13 @@ export const paginationQuerySchema = z.object({
       .min(0, "Offset must be non-negative")
       .optional(),
     cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
+    ids: z
+      .string()
+      .transform((val) => val.split(",").map((s) => s.trim()))
+      .pipe(
+        z.array(z.string().uuid("Each ID must be a valid UUID")).min(1).max(100),
+      )
+      .optional(),
   }),
 });
 
@@ -39,6 +46,13 @@ export const getTransactionsSchema = z.object({
       .min(0, "Offset must be non-negative")
       .optional(),
     cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
+    ids: z
+      .string()
+      .transform((val) => val.split(",").map((s) => s.trim()))
+      .pipe(
+        z.array(z.string().uuid("Each ID must be a valid UUID")).min(1).max(100),
+      )
+      .optional(),
     accountId: z.string().uuid("accountId must be a valid UUID").optional(),
     type: z
       .enum(transactionTypeValues, {
@@ -104,6 +118,7 @@ export const updateAccountSchema = z.object({
 export const createCategorySchema = z.object({
   body: z.object({
     name: z.string().min(1, "Name is required").max(255),
+    emoji: z.string().max(8, "Emoji must be at most 8 characters").optional(),
   }),
 });
 
@@ -114,9 +129,10 @@ export const updateCategorySchema = z.object({
   body: z
     .object({
       name: z.string().min(1).max(255).optional(),
+      emoji: z.string().max(8, "Emoji must be at most 8 characters").optional(),
     })
-    .refine((data) => data.name !== undefined, {
-      message: "At least one field (name) must be provided",
+    .refine((data) => data.name !== undefined || data.emoji !== undefined, {
+      message: "At least one field (name, emoji) must be provided",
     }),
 });
 

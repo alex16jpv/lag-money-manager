@@ -7,7 +7,7 @@ import {
 import { ApiError } from "../../../shared/errors";
 import { Account } from "../../entities/Account";
 import { AccountModel } from "../../models/sequelize/AccountModel";
-import { IAccountRepository } from "./IAccountRepository";
+import { AccountFilters, IAccountRepository } from "./IAccountRepository";
 
 export class AccountSeqRepository implements IAccountRepository {
   private readonly model: typeof AccountModel;
@@ -54,8 +54,13 @@ export class AccountSeqRepository implements IAccountRepository {
   async getAllByUserId(
     userId: string,
     pagination: PaginationParams,
+    filters?: AccountFilters,
   ): Promise<PaginatedResult<Account>> {
-    return this.paginatedFindAll({ userId }, pagination);
+    const where: WhereOptions = { userId };
+    if (filters?.ids?.length) {
+      where.id = { [Op.in]: filters.ids };
+    }
+    return this.paginatedFindAll(where, pagination);
   }
 
   async create(account: Partial<Account>): Promise<Account> {

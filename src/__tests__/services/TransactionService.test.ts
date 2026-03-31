@@ -251,6 +251,32 @@ describe("TransactionService", () => {
         filters,
       );
     });
+
+    it("should pass ids filter to repository", async () => {
+      txRepo.getAllByUserId.mockResolvedValue({
+        data: [storedExpense],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+
+      const filters = { ids: ["019576a0-d7b6-7d6d-af6a-2b7545f5ac70"] };
+      await service.getAllTransactions(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        pagination,
+        filters,
+      );
+
+      expect(txRepo.getAllByUserId).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        pagination,
+        filters,
+      );
+    });
   });
 
   describe("getTransactionById", () => {

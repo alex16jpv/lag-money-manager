@@ -7,15 +7,16 @@ import {
 import { ApiError } from "../../../shared/errors";
 import { Category } from "../../entities/Category";
 import { CategoryMongoModel } from "../../models/mongoose/CategoryMongoModel";
-import { ICategoryRepository } from "./ICategoryRepository";
+import { CategoryFilters, ICategoryRepository } from "./ICategoryRepository";
 
 export class CategoryMongoRepository implements ICategoryRepository {
   private toEntity(doc: {
     _id: string;
     name: string;
+    emoji?: string;
     userId: string;
   }): Category {
-    return new Category({ id: doc._id, name: doc.name, userId: doc.userId });
+    return new Category({ id: doc._id, name: doc.name, emoji: doc.emoji, userId: doc.userId });
   }
 
   private async paginatedFind(
@@ -62,8 +63,13 @@ export class CategoryMongoRepository implements ICategoryRepository {
   async getAllByUserId(
     userId: string,
     pagination: PaginationParams,
+    filters?: CategoryFilters,
   ): Promise<PaginatedResult<Category>> {
-    return this.paginatedFind({ userId }, pagination);
+    const filter: Record<string, unknown> = { userId };
+    if (filters?.ids?.length) {
+      filter._id = { $in: filters.ids };
+    }
+    return this.paginatedFind(filter, pagination);
   }
 
   async create(category: Partial<Category>): Promise<Category> {

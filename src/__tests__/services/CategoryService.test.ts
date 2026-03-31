@@ -47,7 +47,7 @@ describe("CategoryService", () => {
 
       const result = await service.getAllCategories(testUserId, pagination);
 
-      expect(repo.getAllByUserId).toHaveBeenCalledWith(testUserId, pagination);
+      expect(repo.getAllByUserId).toHaveBeenCalledWith(testUserId, pagination, undefined);
       expect(result.data).toHaveLength(1);
       expect(result.data[0].name).toBe("Food");
     });
@@ -67,6 +67,28 @@ describe("CategoryService", () => {
       const result = await service.getAllCategories(testUserId, pagination);
 
       expect(result.data).toEqual([]);
+    });
+
+    it("should pass ids filter to repository", async () => {
+      repo.getAllByUserId.mockResolvedValue({
+        data: [mockCategory],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+
+      const filters = { ids: ["019576a0-d7b6-7d6d-af6a-2b7545f5ac70"] };
+      await service.getAllCategories(testUserId, pagination, filters);
+
+      expect(repo.getAllByUserId).toHaveBeenCalledWith(
+        testUserId,
+        pagination,
+        filters,
+      );
     });
   });
 

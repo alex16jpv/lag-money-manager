@@ -141,6 +141,7 @@ const options: swaggerJsdoc.Options = {
               example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
             },
             name: { type: "string", example: "Food" },
+            emoji: { type: "string", maxLength: 8, example: "🍔" },
             userId: {
               type: "string",
               format: "uuid",
@@ -153,12 +154,14 @@ const options: swaggerJsdoc.Options = {
           required: ["name"],
           properties: {
             name: { type: "string", minLength: 1, maxLength: 255 },
+            emoji: { type: "string", maxLength: 8 },
           },
         },
         UpdateCategory: {
           type: "object",
           properties: {
             name: { type: "string", minLength: 1, maxLength: 255 },
+            emoji: { type: "string", maxLength: 8 },
           },
         },
         RegisterRequest: {

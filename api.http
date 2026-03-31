@@ -186,7 +186,8 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "name": "Test Category"
+  "name": "Test Category",
+  "emoji": "💰"
 }
 
 ### Obtener todas (only own categories)
@@ -204,7 +205,8 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "name": "Updated Category"
+  "name": "Updated Category",
+  "emoji": "🎯"
 }
 
 ### Categoría inexistente (404)

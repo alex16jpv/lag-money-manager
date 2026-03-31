@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { CategoryService } from "../services/CategoryService";
 import { extractPagination } from "../../shared/pagination";
+import { CategoryFilters } from "../../domain/repositories/category/ICategoryRepository";
 
 const categoryService = new CategoryService(
   repositoryFactory.getCategoryRepository(),
@@ -10,9 +11,14 @@ const categoryService = new CategoryService(
 export class CategoryController {
   static getAllCategories = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
+    const filters: CategoryFilters = {};
+    if (req.query.ids) {
+      filters.ids = req.query.ids as string[];
+    }
     const result = await categoryService.getAllCategories(
       userId,
       extractPagination(req),
+      filters,
     );
     res.status(200).json(result);
   };

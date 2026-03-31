@@ -7,7 +7,7 @@ import {
 import { ApiError } from "../../../shared/errors";
 import { Category } from "../../entities/Category";
 import { CategoryModel } from "../../models/sequelize/CategoryModel";
-import { ICategoryRepository } from "./ICategoryRepository";
+import { CategoryFilters, ICategoryRepository } from "./ICategoryRepository";
 
 export class CategorySeqRepository implements ICategoryRepository {
   private readonly model: typeof CategoryModel;
@@ -46,8 +46,13 @@ export class CategorySeqRepository implements ICategoryRepository {
   async getAllByUserId(
     userId: string,
     pagination: PaginationParams,
+    filters?: CategoryFilters,
   ): Promise<PaginatedResult<Category>> {
-    return this.paginatedFindAll({ userId }, pagination);
+    const where: WhereOptions = { userId };
+    if (filters?.ids?.length) {
+      where.id = { [Op.in]: filters.ids };
+    }
+    return this.paginatedFindAll(where, pagination);
   }
 
   async getById(id: string): Promise<Category | null> {

@@ -10,7 +10,7 @@ import {
   AccountMongoModel,
   IAccountDocument,
 } from "../../models/mongoose/AccountMongoModel";
-import { IAccountRepository } from "./IAccountRepository";
+import { AccountFilters, IAccountRepository } from "./IAccountRepository";
 
 export class AccountMongoRepository implements IAccountRepository {
   private toEntity(doc: IAccountDocument): Account {
@@ -67,8 +67,13 @@ export class AccountMongoRepository implements IAccountRepository {
   async getAllByUserId(
     userId: string,
     pagination: PaginationParams,
+    filters?: AccountFilters,
   ): Promise<PaginatedResult<Account>> {
-    return this.paginatedFind({ userId }, pagination);
+    const filter: Record<string, unknown> = { userId };
+    if (filters?.ids?.length) {
+      filter._id = { $in: filters.ids };
+    }
+    return this.paginatedFind(filter, pagination);
   }
 
   async create(account: Partial<Account>): Promise<Account> {
