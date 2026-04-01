@@ -42,7 +42,10 @@ export class AuthService {
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       ENVIRONMENT.JWT_SECRET,
-      { expiresIn: ENVIRONMENT.JWT_EXPIRATION as jwt.SignOptions["expiresIn"] },
+      {
+        algorithm: "HS256",
+        expiresIn: ENVIRONMENT.JWT_EXPIRATION as jwt.SignOptions["expiresIn"],
+      },
     );
 
     const { password: _, ...userWithoutPassword } = user;

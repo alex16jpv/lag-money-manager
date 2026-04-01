@@ -123,5 +123,68 @@ describe("authMiddleware", () => {
         "Invalid or expired token",
       );
     });
+
+    it("should throw Unauthorized for token with empty signature", () => {
+      const header = Buffer.from(
+        JSON.stringify({ alg: "HS256", typ: "JWT" }),
+      ).toString("base64url");
+      const payload = Buffer.from(
+        JSON.stringify({
+          userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          email: "john@example.com",
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      ).toString("base64url");
+      const tokenWithoutSignature = `${header}.${payload}.`;
+
+      const { req, res, next } = createMockReqResNext(
+        `Bearer ${tokenWithoutSignature}`,
+      );
+
+      expect(() => authMiddleware(req, res, next)).toThrow(ApiError);
+      expect(() => authMiddleware(req, res, next)).toThrow(
+        "Invalid or expired token",
+      );
+    });
+
+    it("should throw Unauthorized for token using 'none' algorithm", () => {
+      const header = Buffer.from(
+        JSON.stringify({ alg: "none", typ: "JWT" }),
+      ).toString("base64url");
+      const payload = Buffer.from(
+        JSON.stringify({
+          userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          email: "john@example.com",
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      ).toString("base64url");
+      const noneAlgToken = `${header}.${payload}.`;
+
+      const { req, res, next } = createMockReqResNext(
+        `Bearer ${noneAlgToken}`,
+      );
+
+      expect(() => authMiddleware(req, res, next)).toThrow(ApiError);
+      expect(() => authMiddleware(req, res, next)).toThrow(
+        "Invalid or expired token",
+      );
+    });
+
+    it("should throw Unauthorized for token with valid signature but invalid payload shape", () => {
+      const token = jwt.sign(
+        { foo: "bar", baz: 123 },
+        "test-secret-key",
+        { algorithm: "HS256", expiresIn: "1h" },
+      );
+
+      const { req, res, next } = createMockReqResNext(`Bearer ${token}`);
+
+      expect(() => authMiddleware(req, res, next)).toThrow(ApiError);
+      expect(() => authMiddleware(req, res, next)).toThrow(
+        "Invalid token payload",
+      );
+    });
   });
 });

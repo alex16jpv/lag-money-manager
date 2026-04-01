@@ -16,6 +16,12 @@ declare global {
   }
 }
 
+const isAuthPayload = (payload: unknown): payload is AuthPayload =>
+  typeof payload === "object" &&
+  payload !== null &&
+  typeof (payload as AuthPayload).userId === "string" &&
+  typeof (payload as AuthPayload).email === "string";
+
 export const authMiddleware = (
   req: Request,
   _res: Response,
@@ -33,10 +39,18 @@ export const authMiddleware = (
   const token = authHeader.split(" ")[1];
 
   try {
-    const decoded = jwt.verify(token, ENVIRONMENT.JWT_SECRET) as AuthPayload;
+    const decoded = jwt.verify(token, ENVIRONMENT.JWT_SECRET, {
+      algorithms: ["HS256"],
+    });
+
+    if (!isAuthPayload(decoded)) {
+      throw new ApiError("Unauthorized", "Invalid token payload");
+    }
+
     req.user = decoded;
     next();
-  } catch {
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
     throw new ApiError("Unauthorized", "Invalid or expired token");
   }
 };
