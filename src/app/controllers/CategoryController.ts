@@ -14,7 +14,7 @@ export class CategoryController {
     const userId = req.user!.userId;
     const filters: CategoryFilters = {};
     if (req.query.ids) {
-      filters.ids = req.query.ids as string[];
+      filters.ids = (req.query.ids as string).split(",").map((s) => s.trim());
     }
     const result = await categoryService.getAllCategories(
       userId,

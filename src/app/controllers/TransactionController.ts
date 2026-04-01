@@ -15,7 +15,7 @@ export class TransactionController {
     const userId = req.user!.userId;
     const filters: TransactionFilters = {};
     if (req.query.ids) {
-      filters.ids = req.query.ids as string[];
+      filters.ids = (req.query.ids as string).split(",").map((s) => s.trim());
     }
     if (req.query.accountId) {
       filters.accountId = req.query.accountId as string;

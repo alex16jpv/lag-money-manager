@@ -14,7 +14,7 @@ export class AccountController {
     const userId = req.user!.userId;
     const filters: AccountFilters = {};
     if (req.query.ids) {
-      filters.ids = req.query.ids as string[];
+      filters.ids = (req.query.ids as string).split(",").map((s) => s.trim());
     }
     const result = await accountService.getAllAccounts(
       userId,
