@@ -4,6 +4,7 @@ import { ITransactionRepository } from "../../domain/repositories/transaction/IT
 import { Category } from "../../domain/entities/Category";
 import { ApiError } from "../../shared/errors";
 import { CreateCategoryDTO } from "../../app/dtos/CategoryDTO";
+import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
 
 const testUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac71";
 
@@ -18,6 +19,7 @@ const createMockRepo = (): jest.Mocked<ICategoryRepository> => ({
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   create: jest.fn(),
+  createMany: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
 });
@@ -293,6 +295,54 @@ describe("CategoryService", () => {
           testUserId,
         ),
       ).rejects.toThrow("Category not found");
+    });
+  });
+
+  describe("seedDefaultCategories", () => {
+    it("should create all default categories for the user", async () => {
+      repo.createMany.mockResolvedValue(
+        DEFAULT_CATEGORIES.map(
+          (cat) => new Category({ ...cat, userId: testUserId }),
+        ),
+      );
+
+      const result = await service.seedDefaultCategories(testUserId);
+
+      expect(repo.createMany).toHaveBeenCalledTimes(1);
+      const createArg = repo.createMany.mock.calls[0][0];
+      expect(createArg).toHaveLength(DEFAULT_CATEGORIES.length);
+      expect(result).toHaveLength(DEFAULT_CATEGORIES.length);
+
+      createArg.forEach((cat: Category) => {
+        expect(cat.userId).toBe(testUserId);
+        expect(cat.id).toBeDefined();
+      });
+    });
+
+    it("should create categories with correct types", async () => {
+      repo.createMany.mockResolvedValue(
+        DEFAULT_CATEGORIES.map(
+          (cat) => new Category({ ...cat, userId: testUserId }),
+        ),
+      );
+
+      const result = await service.seedDefaultCategories(testUserId);
+
+      const incomeCategories = result.filter((c) => c.type === "INCOME");
+      const expenseCategories = result.filter((c) => c.type === "EXPENSE");
+      const transferCategories = result.filter((c) => c.type === "TRANSFER");
+
+      expect(incomeCategories.length).toBe(11);
+      expect(expenseCategories.length).toBe(21);
+      expect(transferCategories.length).toBe(5);
+    });
+
+    it("should propagate error when createMany fails", async () => {
+      repo.createMany.mockRejectedValue(new Error("DB write failed"));
+
+      await expect(
+        service.seedDefaultCategories(testUserId),
+      ).rejects.toThrow("DB write failed");
     });
   });
 });

@@ -1,4 +1,5 @@
 import { AuthService } from "../../app/services/AuthService";
+import { CategoryService } from "../../app/services/CategoryService";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { User } from "../../domain/entities/User";
 import { ApiError } from "../../shared/errors";
@@ -10,6 +11,8 @@ jest.mock("../../shared/constants", () => ({
     JWT_SECRET: "test-secret-key",
     JWT_EXPIRATION: "24h",
     BCRYPT_SALT_ROUNDS: 12,
+    LOG_LEVEL: "info",
+    NODE_ENV: "test",
   },
   DB_TYPES: { SEQ: "SEQ" },
   ACCOUNT_TYPES: {},
@@ -24,13 +27,19 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   delete: jest.fn(),
 });
 
+const createMockCategoryService = (): jest.Mocked<Pick<CategoryService, "seedDefaultCategories">> => ({
+  seedDefaultCategories: jest.fn().mockResolvedValue([]),
+});
+
 describe("AuthService", () => {
   let service: AuthService;
   let repo: jest.Mocked<IUserRepository>;
+  let categoryService: jest.Mocked<Pick<CategoryService, "seedDefaultCategories">>;
 
   beforeEach(() => {
     repo = createMockRepo();
-    service = new AuthService(repo);
+    categoryService = createMockCategoryService();
+    service = new AuthService(repo, categoryService as unknown as CategoryService);
   });
 
   describe("register", () => {
@@ -60,6 +69,54 @@ describe("AuthService", () => {
       );
       expect(result).not.toHaveProperty("password");
       expect(result.name).toBe("John");
+    });
+
+    it("should seed default categories for the new user", async () => {
+      const input = {
+        name: "John",
+        email: "john@example.com",
+        password: "password123",
+      };
+      const createdUser = new User({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        name: "John",
+        email: "john@example.com",
+        password: "hashed",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      repo.create.mockResolvedValue(createdUser);
+
+      await service.register(input);
+
+      expect(categoryService.seedDefaultCategories).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      );
+    });
+
+    it("should still register user when category seeding fails", async () => {
+      const input = {
+        name: "John",
+        email: "john@example.com",
+        password: "password123",
+      };
+      const createdUser = new User({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        name: "John",
+        email: "john@example.com",
+        password: "hashed",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      repo.create.mockResolvedValue(createdUser);
+      categoryService.seedDefaultCategories.mockRejectedValue(
+        new Error("DB write failed"),
+      );
+
+      const result = await service.register(input);
+
+      expect(result.name).toBe("John");
+      expect(result).not.toHaveProperty("password");
     });
   });
 

@@ -1,8 +1,16 @@
 import { Request, Response } from "express";
 import { AuthService } from "../services/AuthService";
+import { CategoryService } from "../services/CategoryService";
 import repositoryFactory from "../factories/RepositoryFactory";
 
-const authService = new AuthService(repositoryFactory.getUserRepository());
+const categoryService = new CategoryService(
+  repositoryFactory.getCategoryRepository(),
+  repositoryFactory.getTransactionRepository(),
+);
+const authService = new AuthService(
+  repositoryFactory.getUserRepository(),
+  categoryService,
+);
 
 export class AuthController {
   static register = async (req: Request, res: Response) => {

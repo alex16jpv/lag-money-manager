@@ -4,6 +4,7 @@ import { ITransactionRepository } from "../../domain/repositories/transaction/IT
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
 import { CreateCategoryDTO, UpdateCategoryDTO } from "../dtos/CategoryDTO";
+import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
 
 export class CategoryService {
   constructor(
@@ -74,5 +75,13 @@ export class CategoryService {
     }
 
     return await this.repo.delete(id);
+  }
+
+  async seedDefaultCategories(userId: string): Promise<Category[]> {
+    const categories = DEFAULT_CATEGORIES.map(
+      (cat) => new Category({ ...cat, userId }),
+    );
+    const created = await this.repo.createMany(categories);
+    return created.map((c) => new Category(c));
   }
 }

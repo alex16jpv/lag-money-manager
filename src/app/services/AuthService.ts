@@ -5,9 +5,14 @@ import { IUserRepository } from "../../domain/repositories/user/IUserRepository"
 import { User } from "../../domain/entities/User";
 import { ApiError } from "../../shared/errors";
 import { CreateUserDTO, UserResponseDTO } from "../dtos/UserDTO";
+import { CategoryService } from "./CategoryService";
+import logger from "../../shared/logger";
 
 export class AuthService {
-  constructor(private repo: IUserRepository) {}
+  constructor(
+    private repo: IUserRepository,
+    private categoryService: CategoryService,
+  ) {}
 
   async register(dto: CreateUserDTO): Promise<UserResponseDTO> {
     const hashedPassword = await bcryptjs.hash(
@@ -17,6 +22,13 @@ export class AuthService {
     const user = new User({ ...dto, password: hashedPassword });
 
     const created = await this.repo.create(user);
+
+    try {
+      await this.categoryService.seedDefaultCategories(created.id);
+    } catch (error) {
+      logger.error({ error, userId: created.id }, "Failed to seed default categories");
+    }
+
     const { password: _, ...userWithoutPassword } = created;
     return userWithoutPassword as UserResponseDTO;
   }

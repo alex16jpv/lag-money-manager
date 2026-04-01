@@ -13,4 +13,5 @@ export interface ICategoryRepository extends IRepository<Category> {
     pagination: PaginationParams,
     filters?: CategoryFilters,
   ): Promise<PaginatedResult<Category>>;
+  createMany(entities: Partial<Category>[]): Promise<Category[]>;
 }

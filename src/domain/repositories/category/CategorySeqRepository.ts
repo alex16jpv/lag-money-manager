@@ -71,6 +71,11 @@ export class CategorySeqRepository implements ICategoryRepository {
     return new Category(result.toJSON());
   }
 
+  async createMany(categories: Partial<Category>[]): Promise<Category[]> {
+    const results = await this.model.bulkCreate(categories);
+    return results.map((result) => new Category(result.toJSON()));
+  }
+
   async update(id: string, category: Partial<Category>): Promise<Category> {
     const categoryToUpdate = await this.model.findByPk(id);
     if (!categoryToUpdate) {
