@@ -5,14 +5,14 @@ export interface CreateUserDTO {
 }
 
 export interface UpdateUserDTO {
-  id?: number;
+  id?: string;
   name?: string;
   email?: string;
   password?: string;
 }
 
 export interface UserResponseDTO {
-  id: number;
+  id: string;
   name: string;
   email: string;
   createdAt: Date;

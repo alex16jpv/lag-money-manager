@@ -1,5 +1,5 @@
 import { DB_TYPES } from "../../../shared/constants";
-import { loadSequelizeModels } from "../../../domain/models/index";
+import { loadSequelizeModels } from "../../../domain/models/sequelize/index";
 import { UserSeqRepository } from "../../../domain/repositories/user/UserSeqRepository";
 import { AccountSeqRepository } from "../../../domain/repositories/account/AccountSeqRepository";
 import { CategorySeqRepository } from "../../../domain/repositories/category/CategorySeqRepository";

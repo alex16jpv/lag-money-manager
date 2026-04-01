@@ -1,9 +1,10 @@
 import { DataTypes, Model, Sequelize } from "sequelize";
-import { MODEL_NAMES } from "../../shared/constants";
+import { MODEL_NAMES } from "../../../shared/constants";
 import { AccountModel } from "./AccountModel";
+import { v7 as uuidv7 } from "uuid";
 
 export class UserModel extends Model {
-  id!: number;
+  id!: string;
   name!: string;
   email!: string;
   password!: string;
@@ -22,8 +23,8 @@ export default (sequelize: Sequelize) => {
   UserModel.init(
     {
       id: {
-        type: DataTypes.INTEGER,
-        autoIncrement: true,
+        type: DataTypes.CHAR(36),
+        defaultValue: () => uuidv7(),
         primaryKey: true,
       },
       name: {

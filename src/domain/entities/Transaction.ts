@@ -1,16 +1,16 @@
-import { DomainValidationError } from "../errors";
-import { TRANSACTION_TYPES, TransactionType } from "../../shared/constants";
+import { v7 as uuidv7 } from "uuid";
+import { TransactionType } from "../../shared/constants";
 
 export interface TransactionProps {
-  id?: number;
+  id?: string;
   type: TransactionType;
   amount: number;
   date: Date | string;
-  categoryId?: number | null;
+  categoryId?: string | null;
   description?: string | null;
-  fromAccountId?: number | null;
-  toAccountId?: number | null;
-  userId: number;
+  fromAccountId?: string | null;
+  toAccountId?: string | null;
+  userId: string;
   tags?: string | null;
   note?: string | null;
   createdAt?: Date;
@@ -18,22 +18,22 @@ export interface TransactionProps {
 }
 
 export class Transaction {
-  id: number;
+  id: string;
   type: TransactionType;
   amount: number;
   date: Date;
-  categoryId: number | null;
+  categoryId: string | null;
   description: string | null;
-  fromAccountId: number | null;
-  toAccountId: number | null;
-  userId: number;
+  fromAccountId: string | null;
+  toAccountId: string | null;
+  userId: string;
   tags: string | null;
   note: string | null;
   createdAt: Date;
   updatedAt: Date;
 
   constructor(props: TransactionProps) {
-    this.id = props.id!;
+    this.id = props.id ?? uuidv7();
     this.type = props.type;
     this.amount = props.amount;
     this.date = props.date instanceof Date ? props.date : new Date(props.date);
@@ -44,74 +44,7 @@ export class Transaction {
     this.userId = props.userId;
     this.tags = props.tags ?? null;
     this.note = props.note ?? null;
-    this.createdAt = props.createdAt!;
-    this.updatedAt = props.updatedAt!;
-  }
-
-  validate() {
-    if (!this.type) {
-      throw new DomainValidationError("'type' is required", "type");
-    }
-
-    if (!TRANSACTION_TYPES[this.type]) {
-      throw new DomainValidationError(
-        `Invalid transaction type. Available: ${Object.values(TRANSACTION_TYPES).join(", ")}`,
-        "type",
-      );
-    }
-
-    if (this.amount === undefined || this.amount === null) {
-      throw new DomainValidationError("'amount' is required", "amount");
-    }
-
-    if (this.amount <= 0) {
-      throw new DomainValidationError(
-        "'amount' must be greater than 0",
-        "amount",
-      );
-    }
-
-    if (!this.date) {
-      throw new DomainValidationError("'date' is required", "date");
-    }
-
-    if (!this.userId) {
-      throw new DomainValidationError("'userId' is required", "userId");
-    }
-
-    if (this.type === "EXPENSE" && !this.fromAccountId) {
-      throw new DomainValidationError(
-        "'fromAccountId' is required for expense transactions",
-        "fromAccountId",
-      );
-    }
-
-    if (this.type === "INCOME" && !this.toAccountId) {
-      throw new DomainValidationError(
-        "'toAccountId' is required for income transactions",
-        "toAccountId",
-      );
-    }
-
-    if (this.type === "TRANSFER") {
-      if (!this.fromAccountId) {
-        throw new DomainValidationError(
-          "'fromAccountId' is required for transfer transactions",
-          "fromAccountId",
-        );
-      }
-      if (!this.toAccountId) {
-        throw new DomainValidationError(
-          "'toAccountId' is required for transfer transactions",
-          "toAccountId",
-        );
-      }
-      if (this.fromAccountId === this.toAccountId) {
-        throw new DomainValidationError(
-          "'fromAccountId' and 'toAccountId' must be different",
-          "toAccountId",
-        );
-      }
-    }
+    this.createdAt = props.createdAt ?? new Date();
+    this.updatedAt = props.updatedAt ?? new Date();
   }
 }

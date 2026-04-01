@@ -5,6 +5,7 @@ import {
   createAccountSchema,
   updateAccountSchema,
   idParamSchema,
+  paginationQuerySchema,
 } from "../validation/schemas";
 
 const router = Router();
@@ -15,19 +16,48 @@ const router = Router();
  *   get:
  *     tags: [Accounts]
  *     summary: Get all accounts
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Maximum number of items to return
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: Number of items to skip (offset-based pagination)
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Cursor ID for cursor-based pagination (overrides offset)
+ *       - in: query
+ *         name: ids
+ *         schema:
+ *           type: string
+ *         description: Comma-separated list of UUIDs to filter by ID
  *     responses:
  *       200:
- *         description: List of accounts
+ *         description: Paginated list of accounts
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Account'
+ *               $ref: '#/components/schemas/PaginatedAccounts'
  *       401:
  *         description: Unauthorized
  */
-router.get("/", AccountController.getAllAccounts);
+router.get(
+  "/",
+  validate(paginationQuerySchema),
+  AccountController.getAllAccounts,
+);
 
 /**
  * @openapi
@@ -74,7 +104,8 @@ router.post(
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Account ID
  *     responses:
  *       200:
@@ -103,7 +134,8 @@ router.get("/:id", validate(idParamSchema), AccountController.getAccountById);
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Account ID
  *     requestBody:
  *       required: true
@@ -142,7 +174,8 @@ router.put(
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Account ID
  *     responses:
  *       204:

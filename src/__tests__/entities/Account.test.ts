@@ -1,5 +1,11 @@
 jest.mock("../../shared/constants", () => ({
-  ENVIRONMENT: { PORT: 3000, DB_TYPE: "SEQ", JWT_SECRET: "test" },
+  ENVIRONMENT: {
+    PORT: 3000,
+    DB_TYPE: "SEQ",
+    JWT_SECRET: "test",
+    LOG_LEVEL: "info",
+    NODE_ENV: "test",
+  },
   ACCOUNT_TYPES: {
     CASH: "CASH",
     ACCOUNT: "ACCOUNT",
@@ -11,11 +17,33 @@ jest.mock("../../shared/constants", () => ({
     LOAN: "LOAN",
     OTHER: "OTHER",
   },
+  COLORS: {
+    RED: "RED",
+    ORANGE: "ORANGE",
+    AMBER: "AMBER",
+    YELLOW: "YELLOW",
+    LIME: "LIME",
+    GREEN: "GREEN",
+    TEAL: "TEAL",
+    CYAN: "CYAN",
+    BLUE: "BLUE",
+    INDIGO: "INDIGO",
+    PURPLE: "PURPLE",
+    PINK: "PINK",
+    ROSE: "ROSE",
+    GRAY: "GRAY",
+    BROWN: "BROWN",
+    BLACK: "BLACK",
+  },
   DB_TYPES: { SEQ: "SEQ", MONGO: "MONGO", LOCAL_STORAGE: "LOCAL_STORAGE" },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
+  },
+  CATEGORY_TYPES: {
+    INCOME: "INCOME",
+    EXPENSE: "EXPENSE",
   },
   MODEL_NAMES: {
     USER: "User",
@@ -27,26 +55,25 @@ jest.mock("../../shared/constants", () => ({
 }));
 
 import { Account } from "../../domain/entities/Account";
-import { DomainValidationError } from "../../domain/errors";
 
 describe("Account Entity", () => {
   const validProps = {
-    id: 1,
+    id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
     name: "Savings Account",
     type: "SAVINGS" as const,
     balance: 1000,
-    userId: 1,
+    userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
   };
 
   describe("constructor", () => {
     it("should create an account with all properties", () => {
       const account = new Account(validProps);
 
-      expect(account.id).toBe(1);
+      expect(account.id).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac70");
       expect(account.name).toBe("Savings Account");
       expect(account.type).toBe("SAVINGS");
       expect(account.balance).toBe(1000);
-      expect(account.userId).toBe(1);
+      expect(account.userId).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac71");
     });
 
     it("should default balance to 0 when not provided", () => {
@@ -63,52 +90,17 @@ describe("Account Entity", () => {
 
       expect(account.balance).toBe(0);
     });
-  });
 
-  describe("validate", () => {
-    it("should not throw for a valid account", () => {
+    it("should create an account with color", () => {
+      const account = new Account({ ...validProps, color: "BLUE" });
+
+      expect(account.color).toBe("BLUE");
+    });
+
+    it("should create an account without color", () => {
       const account = new Account(validProps);
-      expect(() => account.validate()).not.toThrow();
-    });
 
-    it("should throw DomainValidationError when userId is missing", () => {
-      const account = new Account({
-        ...validProps,
-        userId: 0 as unknown as number,
-      });
-
-      expect(() => account.validate()).toThrow(DomainValidationError);
-      expect(() => account.validate()).toThrow("'userId' is required");
-    });
-
-    it("should throw DomainValidationError when name is missing", () => {
-      const account = new Account({
-        ...validProps,
-        name: "" as unknown as string,
-      });
-
-      expect(() => account.validate()).toThrow(DomainValidationError);
-      expect(() => account.validate()).toThrow("'name' is required");
-    });
-
-    it("should throw DomainValidationError when type is missing", () => {
-      const account = new Account({
-        ...validProps,
-        type: "" as unknown as typeof validProps.type,
-      });
-
-      expect(() => account.validate()).toThrow(DomainValidationError);
-      expect(() => account.validate()).toThrow("'type' is required");
-    });
-
-    it("should throw DomainValidationError for invalid account type", () => {
-      const account = new Account({
-        ...validProps,
-        type: "INVALID" as unknown as typeof validProps.type,
-      });
-
-      expect(() => account.validate()).toThrow(DomainValidationError);
-      expect(() => account.validate()).toThrow("Invalid account type");
+      expect(account.color).toBeUndefined();
     });
   });
 });

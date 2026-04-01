@@ -1,22 +1,29 @@
-import { DomainValidationError } from "../errors";
+import { v7 as uuidv7 } from "uuid";
+import { CategoryType, Color } from "../../shared/constants";
 
 export interface CategoryProps {
-  id?: number;
+  id?: string;
   name: string;
+  emoji?: string;
+  color?: Color;
+  type?: CategoryType;
+  userId: string;
 }
 
 export class Category {
-  id: number;
+  id: string;
   name: string;
+  emoji?: string;
+  color?: Color;
+  type?: CategoryType;
+  userId: string;
 
-  constructor({ id, name }: CategoryProps) {
-    this.id = id!;
+  constructor({ id, name, emoji, color, type, userId }: CategoryProps) {
+    this.id = id ?? uuidv7();
     this.name = name;
-  }
-
-  validate() {
-    if (!this.name) {
-      throw new DomainValidationError("'name' is required", "name");
-    }
+    this.emoji = emoji;
+    this.color = color;
+    this.type = type;
+    this.userId = userId;
   }
 }

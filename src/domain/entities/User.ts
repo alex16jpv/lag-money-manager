@@ -1,7 +1,7 @@
-import { DomainValidationError } from "../errors";
+import { v7 as uuidv7 } from "uuid";
 
 export interface UserProps {
-  id?: number;
+  id?: string;
   name: string;
   email: string;
   password?: string;
@@ -10,7 +10,7 @@ export interface UserProps {
 }
 
 export class User {
-  id: number;
+  id: string;
   name: string;
   email: string;
   password?: string;
@@ -18,21 +18,11 @@ export class User {
   updatedAt: Date;
 
   constructor({ id, name, email, password, createdAt, updatedAt }: UserProps) {
-    this.id = id!;
+    this.id = id ?? uuidv7();
     this.name = name;
     this.email = email;
     this.password = password;
-    this.createdAt = createdAt!;
-    this.updatedAt = updatedAt!;
-  }
-
-  validate() {
-    if (!this.email) {
-      throw new DomainValidationError("Email is required", "email");
-    }
-
-    if (!this.name) {
-      throw new DomainValidationError("Name is required", "name");
-    }
+    this.createdAt = createdAt ?? new Date();
+    this.updatedAt = updatedAt ?? new Date();
   }
 }

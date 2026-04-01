@@ -8,6 +8,10 @@ import {
   dbType as seqDbType,
   registerRepositories as registerSeqRepositories,
 } from "./providers/sequelizeProvider";
+import {
+  dbType as mongoDbType,
+  registerRepositories as registerMongoRepositories,
+} from "./providers/mongoProvider";
 
 const dbType = ENVIRONMENT.DB_TYPE;
 
@@ -76,6 +80,7 @@ export class RepositoryFactory {
 
 // Register providers
 RepositoryFactory.registerProvider(seqDbType, registerSeqRepositories);
+RepositoryFactory.registerProvider(mongoDbType, registerMongoRepositories);
 
 const repositoryFactory = new RepositoryFactory();
 export default repositoryFactory;

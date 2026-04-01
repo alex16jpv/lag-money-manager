@@ -1,36 +1,61 @@
 import { Request, Response } from "express";
 import { AccountService } from "../services/AccountService";
 import repositoryFactory from "../factories/RepositoryFactory";
-import { asyncHandler } from "../../shared/asyncHandler";
+import { extractPagination } from "../../shared/pagination";
+import { AccountFilters } from "../../domain/repositories/account/IAccountRepository";
 
 const accountService = new AccountService(
   repositoryFactory.getAccountRepository(),
+  repositoryFactory.getTransactionRepository(),
 );
 
 export class AccountController {
-  static getAllAccounts = asyncHandler(async (_req: Request, res: Response) => {
-    const accounts = await accountService.getAllAccounts();
-    res.status(200).json(accounts);
-  });
+  static getAllAccounts = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const filters: AccountFilters = {};
+    if (req.query.ids) {
+      filters.ids = (req.query.ids as string).split(",").map((s) => s.trim());
+    }
+    const result = await accountService.getAllAccounts(
+      userId,
+      extractPagination(req),
+      filters,
+    );
+    res.status(200).json(result);
+  };
 
-  static createAccount = asyncHandler(async (req: Request, res: Response) => {
-    const newAccount = await accountService.createAccount(req.body);
+  static createAccount = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const newAccount = await accountService.createAccount({
+      ...req.body,
+      userId,
+    });
     res.status(201).json(newAccount);
-  });
+  };
 
-  static getAccountById = asyncHandler(async (req: Request, res: Response) => {
-    const account = await accountService.getAccountById(Number(req.params.id));
+  static getAccountById = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const account = await accountService.getAccountById(
+      req.params.id as string,
+      userId,
+    );
     res.status(200).json(account);
-  });
+  };
 
-  static updateAccount = asyncHandler(async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
-    const updatedAccount = await accountService.updateAccount(id, req.body);
+  static updateAccount = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const id = req.params.id as string;
+    const updatedAccount = await accountService.updateAccount(
+      id,
+      req.body,
+      userId,
+    );
     res.status(200).json(updatedAccount);
-  });
+  };
 
-  static deleteAccount = asyncHandler(async (req: Request, res: Response) => {
-    await accountService.deleteAccount(Number(req.params.id));
+  static deleteAccount = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    await accountService.deleteAccount(req.params.id as string, userId);
     res.status(204).send();
-  });
+  };
 }

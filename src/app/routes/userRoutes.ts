@@ -2,7 +2,7 @@ import { Router } from "express";
 import { UserController } from "../controllers/UserController";
 import { validate } from "../validation/validate";
 import {
-  createUserSchema,
+  paginationQuerySchema,
   updateUserSchema,
   idParamSchema,
 } from "../validation/schemas";
@@ -31,37 +31,7 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get("/", UserController.getAllUsers);
-
-/**
- * @openapi
- * /users:
- *   post:
- *     tags: [Users]
- *     summary: Create a new user
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/CreateUser'
- *     responses:
- *       201:
- *         description: User created
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/User'
- *       400:
- *         description: Validation error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ValidationError'
- *       401:
- *         description: Unauthorized
- */
-router.post("/", validate(createUserSchema), UserController.createUser);
+router.get("/", validate(paginationQuerySchema), UserController.getAllUsers);
 
 /**
  * @openapi
@@ -74,7 +44,8 @@ router.post("/", validate(createUserSchema), UserController.createUser);
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: User ID
  *     responses:
  *       200:
@@ -103,7 +74,8 @@ router.get("/:id", validate(idParamSchema), UserController.getUserById);
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: User ID
  *     requestBody:
  *       required: true
@@ -138,7 +110,8 @@ router.put("/:id", validate(updateUserSchema), UserController.updateUser);
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: User ID
  *     responses:
  *       204:

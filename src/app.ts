@@ -1,4 +1,5 @@
 import express from "express";
+import compression from "compression";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -10,12 +11,14 @@ import accountRoutes from "./app/routes/accountRoutes";
 import categoryRoutes from "./app/routes/categoryRoutes";
 import transactionRoutes from "./app/routes/transactionRoutes";
 import { errorMiddleware } from "./shared/middlewares";
+import { requestIdMiddleware } from "./shared/requestId";
 import { authMiddleware } from "./app/middlewares/authMiddleware";
+import { ENVIRONMENT } from "./shared/constants";
 
 const app = express();
 
 // In production, enforce HTTPS via redirect
-if (process.env.NODE_ENV === "production") {
+if (ENVIRONMENT.NODE_ENV === "production") {
   app.set("trust proxy", 1);
   app.use((req, res, next) => {
     if (req.secure || req.headers["x-forwarded-proto"] === "https") {
@@ -26,20 +29,24 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
+app.use(requestIdMiddleware);
 app.use(helmet());
-app.use(cors());
+app.use(compression());
 app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: {
-      error: "TooManyRequests",
-      message: "Too many requests, please try again later",
-    },
+  cors({
+    origin: ENVIRONMENT.CORS_ORIGIN.split(",").map((s) => s.trim()),
   }),
 );
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "TooManyRequests",
+    message: "Too many requests, please try again later",
+  },
+});
 app.use(express.json({ limit: "10kb" }));
 
 app.get("/", (_req, res) => {
@@ -48,14 +55,14 @@ app.get("/", (_req, res) => {
 
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-app.use("/auth", authRoutes);
+app.use("/auth", apiLimiter, authRoutes);
 
 app.use(authMiddleware);
 
-app.use("/users", userRoutes);
-app.use("/accounts", accountRoutes);
-app.use("/categories", categoryRoutes);
-app.use("/transactions", transactionRoutes);
+app.use("/users", apiLimiter, userRoutes);
+app.use("/accounts", apiLimiter, accountRoutes);
+app.use("/categories", apiLimiter, categoryRoutes);
+app.use("/transactions", apiLimiter, transactionRoutes);
 
 app.use(errorMiddleware);
 

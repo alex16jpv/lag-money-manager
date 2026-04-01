@@ -1,36 +1,34 @@
 import { Request, Response } from "express";
 import { UserService } from "../services/UserService";
 import repositoryFactory from "../factories/RepositoryFactory";
-import { asyncHandler } from "../../shared/asyncHandler";
+import { extractPagination } from "../../shared/pagination";
 
 const userService = new UserService(repositoryFactory.getUserRepository());
 
 export class UserController {
-  static getAllUsers = asyncHandler(async (_req: Request, res: Response) => {
-    const users = await userService.getAllUsers();
-    res.status(200).json(users);
-  });
+  static getAllUsers = async (req: Request, res: Response) => {
+    const result = await userService.getAllUsers(extractPagination(req));
+    res.status(200).json(result);
+  };
 
-  static getUserById = asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const user = await userService.getUserById(Number(id));
+  static getUserById = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const id = req.params.id as string;
+    const user = await userService.getUserById(id, userId);
     res.status(200).json(user);
-  });
+  };
 
-  static createUser = asyncHandler(async (req: Request, res: Response) => {
-    const newUser = await userService.createUser(req.body);
-    res.status(201).json(newUser);
-  });
-
-  static updateUser = asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const updatedUser = await userService.updateUser(Number(id), req.body);
+  static updateUser = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const id = req.params.id as string;
+    const updatedUser = await userService.updateUser(id, req.body, userId);
     res.status(200).json(updatedUser);
-  });
+  };
 
-  static deleteUser = asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    await userService.deleteUser(Number(id));
+  static deleteUser = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const id = req.params.id as string;
+    await userService.deleteUser(id, userId);
     res.status(204).send();
-  });
+  };
 }

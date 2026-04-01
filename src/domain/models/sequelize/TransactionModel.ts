@@ -1,19 +1,20 @@
 import { DataTypes, Model, Sequelize } from "sequelize";
-import { MODEL_NAMES, TRANSACTION_TYPES } from "../../shared/constants";
+import { MODEL_NAMES, TRANSACTION_TYPES } from "../../../shared/constants";
 import { CategoryModel } from "./CategoryModel";
 import { AccountModel } from "./AccountModel";
 import { UserModel } from "./UserModel";
+import { v7 as uuidv7 } from "uuid";
 
 export class TransactionModel extends Model {
-  id!: number;
+  id!: string;
   type!: keyof typeof TRANSACTION_TYPES;
   amount!: number;
   date!: Date;
-  categoryId?: number;
+  categoryId?: string;
   description?: string;
-  fromAccountId?: number;
-  toAccountId?: number;
-  userId!: number;
+  fromAccountId?: string;
+  toAccountId?: string;
+  userId!: string;
   tags?: string;
   note?: string;
 
@@ -41,8 +42,8 @@ export default (sequelize: Sequelize) => {
   TransactionModel.init(
     {
       id: {
-        type: DataTypes.INTEGER,
-        autoIncrement: true,
+        type: DataTypes.CHAR(36),
+        defaultValue: () => uuidv7(),
         primaryKey: true,
       },
       type: {
@@ -58,19 +59,19 @@ export default (sequelize: Sequelize) => {
         allowNull: false,
       },
       categoryId: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.CHAR(36),
       },
       description: {
         type: DataTypes.STRING,
       },
       fromAccountId: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.CHAR(36),
       },
       toAccountId: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.CHAR(36),
       },
       userId: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.CHAR(36),
         allowNull: false,
       },
       tags: {

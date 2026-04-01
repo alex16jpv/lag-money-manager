@@ -26,7 +26,11 @@ const options: swaggerJsdoc.Options = {
         User: {
           type: "object",
           properties: {
-            id: { type: "integer", example: 1 },
+            id: {
+              type: "string",
+              format: "uuid",
+              example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            },
             name: { type: "string", example: "John Doe" },
             email: {
               type: "string",
@@ -45,15 +49,6 @@ const options: swaggerJsdoc.Options = {
             },
           },
         },
-        CreateUser: {
-          type: "object",
-          required: ["name", "email", "password"],
-          properties: {
-            name: { type: "string", minLength: 1, maxLength: 255 },
-            email: { type: "string", format: "email", maxLength: 255 },
-            password: { type: "string", minLength: 8, maxLength: 128 },
-          },
-        },
         UpdateUser: {
           type: "object",
           properties: {
@@ -65,7 +60,11 @@ const options: swaggerJsdoc.Options = {
         Account: {
           type: "object",
           properties: {
-            id: { type: "integer", example: 1 },
+            id: {
+              type: "string",
+              format: "uuid",
+              example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            },
             name: { type: "string", example: "Savings" },
             type: {
               type: "string",
@@ -83,12 +82,26 @@ const options: swaggerJsdoc.Options = {
               example: "SAVINGS",
             },
             balance: { type: "number", example: 1000 },
-            userId: { type: "integer", example: 1 },
+            color: {
+              type: "string",
+              enum: [
+                "RED", "ORANGE", "AMBER", "YELLOW", "LIME", "GREEN",
+                "TEAL", "CYAN", "BLUE", "INDIGO", "PURPLE", "PINK",
+                "ROSE", "GRAY", "BROWN", "BLACK",
+              ],
+              nullable: true,
+              example: "BLUE",
+            },
+            userId: {
+              type: "string",
+              format: "uuid",
+              example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            },
           },
         },
         CreateAccount: {
           type: "object",
-          required: ["name", "type", "userId"],
+          required: ["name", "type"],
           properties: {
             name: { type: "string", minLength: 1, maxLength: 255 },
             type: {
@@ -106,7 +119,14 @@ const options: swaggerJsdoc.Options = {
               ],
             },
             balance: { type: "number", default: 0 },
-            userId: { type: "integer", minimum: 1 },
+            color: {
+              type: "string",
+              enum: [
+                "RED", "ORANGE", "AMBER", "YELLOW", "LIME", "GREEN",
+                "TEAL", "CYAN", "BLUE", "INDIGO", "PURPLE", "PINK",
+                "ROSE", "GRAY", "BROWN", "BLACK",
+              ],
+            },
           },
         },
         UpdateAccount: {
@@ -128,14 +148,48 @@ const options: swaggerJsdoc.Options = {
               ],
             },
             balance: { type: "number" },
-            userId: { type: "integer", minimum: 1 },
+            color: {
+              type: "string",
+              enum: [
+                "RED", "ORANGE", "AMBER", "YELLOW", "LIME", "GREEN",
+                "TEAL", "CYAN", "BLUE", "INDIGO", "PURPLE", "PINK",
+                "ROSE", "GRAY", "BROWN", "BLACK",
+              ],
+              nullable: true,
+            },
           },
         },
         Category: {
           type: "object",
           properties: {
-            id: { type: "integer", example: 1 },
+            id: {
+              type: "string",
+              format: "uuid",
+              example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            },
             name: { type: "string", example: "Food" },
+            emoji: { type: "string", maxLength: 8, example: "🍔" },
+            color: {
+              type: "string",
+              enum: [
+                "RED", "ORANGE", "AMBER", "YELLOW", "LIME", "GREEN",
+                "TEAL", "CYAN", "BLUE", "INDIGO", "PURPLE", "PINK",
+                "ROSE", "GRAY", "BROWN", "BLACK",
+              ],
+              nullable: true,
+              example: "RED",
+            },
+            type: {
+              type: "string",
+              enum: ["INCOME", "EXPENSE", "TRANSFER"],
+              nullable: true,
+              example: "EXPENSE",
+            },
+            userId: {
+              type: "string",
+              format: "uuid",
+              example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            },
           },
         },
         CreateCategory: {
@@ -143,12 +197,40 @@ const options: swaggerJsdoc.Options = {
           required: ["name"],
           properties: {
             name: { type: "string", minLength: 1, maxLength: 255 },
+            emoji: { type: "string", maxLength: 8 },
+            color: {
+              type: "string",
+              enum: [
+                "RED", "ORANGE", "AMBER", "YELLOW", "LIME", "GREEN",
+                "TEAL", "CYAN", "BLUE", "INDIGO", "PURPLE", "PINK",
+                "ROSE", "GRAY", "BROWN", "BLACK",
+              ],
+            },
+            type: {
+              type: "string",
+              enum: ["INCOME", "EXPENSE", "TRANSFER"],
+            },
           },
         },
         UpdateCategory: {
           type: "object",
           properties: {
             name: { type: "string", minLength: 1, maxLength: 255 },
+            emoji: { type: "string", maxLength: 8 },
+            color: {
+              type: "string",
+              enum: [
+                "RED", "ORANGE", "AMBER", "YELLOW", "LIME", "GREEN",
+                "TEAL", "CYAN", "BLUE", "INDIGO", "PURPLE", "PINK",
+                "ROSE", "GRAY", "BROWN", "BLACK",
+              ],
+              nullable: true,
+            },
+            type: {
+              type: "string",
+              enum: ["INCOME", "EXPENSE", "TRANSFER"],
+              nullable: true,
+            },
           },
         },
         RegisterRequest: {
@@ -199,10 +281,59 @@ const options: swaggerJsdoc.Options = {
             message: { type: "string" },
           },
         },
+        Pagination: {
+          type: "object",
+          properties: {
+            limit: { type: "integer", example: 20 },
+            offset: { type: "integer", example: 0 },
+            total: { type: "integer", example: 100 },
+            hasMore: { type: "boolean", example: true },
+            nextCursor: {
+              type: "string",
+              format: "uuid",
+              nullable: true,
+              example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            },
+          },
+        },
+        PaginatedAccounts: {
+          type: "object",
+          properties: {
+            data: {
+              type: "array",
+              items: { $ref: "#/components/schemas/Account" },
+            },
+            pagination: { $ref: "#/components/schemas/Pagination" },
+          },
+        },
+        PaginatedCategories: {
+          type: "object",
+          properties: {
+            data: {
+              type: "array",
+              items: { $ref: "#/components/schemas/Category" },
+            },
+            pagination: { $ref: "#/components/schemas/Pagination" },
+          },
+        },
+        PaginatedTransactions: {
+          type: "object",
+          properties: {
+            data: {
+              type: "array",
+              items: { $ref: "#/components/schemas/Transaction" },
+            },
+            pagination: { $ref: "#/components/schemas/Pagination" },
+          },
+        },
         Transaction: {
           type: "object",
           properties: {
-            id: { type: "integer", example: 1 },
+            id: {
+              type: "string",
+              format: "uuid",
+              example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            },
             type: {
               type: "string",
               enum: ["INCOME", "EXPENSE", "TRANSFER"],
@@ -214,15 +345,34 @@ const options: swaggerJsdoc.Options = {
               format: "date-time",
               example: "2026-03-28T12:00:00.000Z",
             },
-            categoryId: { type: "integer", nullable: true, example: 1 },
+            categoryId: {
+              type: "string",
+              format: "uuid",
+              nullable: true,
+              example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            },
             description: {
               type: "string",
               nullable: true,
               example: "Grocery shopping",
             },
-            fromAccountId: { type: "integer", nullable: true, example: 1 },
-            toAccountId: { type: "integer", nullable: true, example: null },
-            userId: { type: "integer", example: 1 },
+            fromAccountId: {
+              type: "string",
+              format: "uuid",
+              nullable: true,
+              example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            },
+            toAccountId: {
+              type: "string",
+              format: "uuid",
+              nullable: true,
+              example: null,
+            },
+            userId: {
+              type: "string",
+              format: "uuid",
+              example: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            },
             tags: {
               type: "string",
               nullable: true,
@@ -247,7 +397,7 @@ const options: swaggerJsdoc.Options = {
         },
         CreateTransaction: {
           type: "object",
-          required: ["type", "amount", "date", "userId"],
+          required: ["type", "amount", "date"],
           properties: {
             type: {
               type: "string",
@@ -255,11 +405,10 @@ const options: swaggerJsdoc.Options = {
             },
             amount: { type: "number", minimum: 0, exclusiveMinimum: true },
             date: { type: "string", format: "date-time" },
-            categoryId: { type: "integer", nullable: true },
+            categoryId: { type: "string", format: "uuid", nullable: true },
             description: { type: "string", maxLength: 255, nullable: true },
-            fromAccountId: { type: "integer", nullable: true },
-            toAccountId: { type: "integer", nullable: true },
-            userId: { type: "integer", minimum: 1 },
+            fromAccountId: { type: "string", format: "uuid", nullable: true },
+            toAccountId: { type: "string", format: "uuid", nullable: true },
             tags: { type: "string", maxLength: 500, nullable: true },
             note: { type: "string", maxLength: 1000, nullable: true },
           },
@@ -273,11 +422,10 @@ const options: swaggerJsdoc.Options = {
             },
             amount: { type: "number", minimum: 0, exclusiveMinimum: true },
             date: { type: "string", format: "date-time" },
-            categoryId: { type: "integer", nullable: true },
+            categoryId: { type: "string", format: "uuid", nullable: true },
             description: { type: "string", maxLength: 255, nullable: true },
-            fromAccountId: { type: "integer", nullable: true },
-            toAccountId: { type: "integer", nullable: true },
-            userId: { type: "integer", minimum: 1 },
+            fromAccountId: { type: "string", format: "uuid", nullable: true },
+            toAccountId: { type: "string", format: "uuid", nullable: true },
             tags: { type: "string", maxLength: 500, nullable: true },
             note: { type: "string", maxLength: 1000, nullable: true },
           },

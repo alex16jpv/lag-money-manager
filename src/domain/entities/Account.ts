@@ -1,47 +1,29 @@
-import { DomainValidationError } from "../errors";
-import { ACCOUNT_TYPES, AccountType } from "../../shared/constants";
+import { v7 as uuidv7 } from "uuid";
+import { AccountType, Color } from "../../shared/constants";
 
 export interface AccountProps {
-  id?: number;
+  id?: string;
   name: string;
   type: AccountType;
   balance?: number;
-  userId: number;
+  color?: Color;
+  userId: string;
 }
 
 export class Account {
-  id: number;
+  id: string;
   name: string;
   type: AccountType;
   balance: number;
-  userId: number;
+  color?: Color;
+  userId: string;
 
-  constructor({ id, name, type, balance, userId }: AccountProps) {
-    this.id = id!;
+  constructor({ id, name, type, balance, color, userId }: AccountProps) {
+    this.id = id ?? uuidv7();
     this.name = name;
     this.type = type;
     this.balance = balance ?? 0;
+    this.color = color;
     this.userId = userId;
-  }
-
-  validate() {
-    if (!this.userId) {
-      throw new DomainValidationError("'userId' is required", "userId");
-    }
-
-    if (!this.name) {
-      throw new DomainValidationError("'name' is required", "name");
-    }
-
-    if (!this.type) {
-      throw new DomainValidationError("'type' is required", "type");
-    }
-
-    if (!ACCOUNT_TYPES[this.type]) {
-      throw new DomainValidationError(
-        `Invalid account type. Available: ${Object.values(ACCOUNT_TYPES).join(", ")}`,
-        "type",
-      );
-    }
   }
 }

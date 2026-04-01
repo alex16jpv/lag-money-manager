@@ -1,16 +1,46 @@
+import { Op, WhereOptions } from "sequelize";
+import {
+  buildPaginatedResult,
+  PaginatedResult,
+  PaginationParams,
+} from "../../../shared/pagination";
 import { ApiError } from "../../../shared/errors";
 import { Transaction } from "../../entities/Transaction";
-import { TransactionModel } from "../../models/TransactionModel";
-import { ITransactionRepository } from "./ITransactionRepository";
+import { TransactionModel } from "../../models/sequelize/TransactionModel";
+import {
+  ITransactionRepository,
+  TransactionFilters,
+} from "./ITransactionRepository";
 
 export class TransactionSeqRepository implements ITransactionRepository {
-  model: typeof TransactionModel;
+  private readonly model: typeof TransactionModel;
 
   constructor() {
     this.model = TransactionModel;
   }
 
-  async getById(id: number): Promise<Transaction | null> {
+  private async paginatedFindAll(
+    baseWhere: WhereOptions,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Transaction>> {
+    const { limit, offset, cursor } = pagination;
+    const where: WhereOptions = cursor
+      ? { ...baseWhere, id: { [Op.gt]: cursor } }
+      : baseWhere;
+
+    const { rows, count } = await this.model.findAndCountAll({
+      where,
+      order: [["id", "ASC"]],
+      limit,
+      offset: cursor ? 0 : offset,
+    });
+    const total = cursor ? await this.model.count({ where: baseWhere }) : count;
+
+    const data = rows.map((result) => new Transaction(result.toJSON()));
+    return buildPaginatedResult(data, total, pagination);
+  }
+
+  async getById(id: string): Promise<Transaction | null> {
     const result = await this.model.findByPk(id);
     if (!result) {
       return null;
@@ -18,9 +48,34 @@ export class TransactionSeqRepository implements ITransactionRepository {
     return new Transaction(result.toJSON());
   }
 
-  async getAll(): Promise<Transaction[]> {
-    const results = await this.model.findAll();
-    return results.map((result) => new Transaction(result.toJSON()));
+  async getAll(
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Transaction>> {
+    return this.paginatedFindAll({}, pagination);
+  }
+
+  async getAllByUserId(
+    userId: string,
+    pagination: PaginationParams,
+    filters?: TransactionFilters,
+  ): Promise<PaginatedResult<Transaction>> {
+    const where: WhereOptions = { userId };
+    if (filters?.ids?.length) {
+      where.id = { [Op.in]: filters.ids };
+    }
+    if (filters?.accountId) {
+      where[Op.or] = [
+        { fromAccountId: filters.accountId },
+        { toAccountId: filters.accountId },
+      ];
+    }
+    if (filters?.categoryId) {
+      where.categoryId = filters.categoryId;
+    }
+    if (filters?.type) {
+      where.type = filters.type;
+    }
+    return this.paginatedFindAll(where, pagination);
   }
 
   async create(transaction: Partial<Transaction>): Promise<Transaction> {
@@ -29,7 +84,7 @@ export class TransactionSeqRepository implements ITransactionRepository {
   }
 
   async update(
-    id: number,
+    id: string,
     transaction: Partial<Transaction>,
   ): Promise<Transaction> {
     const existing = await this.model.findByPk(id);
@@ -41,7 +96,7 @@ export class TransactionSeqRepository implements ITransactionRepository {
     return new Transaction(existing.toJSON());
   }
 
-  async delete(id: number): Promise<void> {
+  async delete(id: string): Promise<void> {
     const existing = await this.model.findByPk(id);
     if (!existing) {
       throw new ApiError("NotFound", "Transaction not found");

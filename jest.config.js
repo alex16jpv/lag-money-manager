@@ -6,7 +6,11 @@ module.exports = {
   testMatch: ["**/__tests__/**/*.test.ts"],
   moduleFileExtensions: ["ts", "js", "json"],
   clearMocks: true,
+  transformIgnorePatterns: ["/node_modules/(?!uuid/)"],
   transform: {
-    "^.+\\.ts$": ["ts-jest", { diagnostics: false }],
+    "^.+\\.[jt]s$": [
+      "ts-jest",
+      { diagnostics: false, tsconfig: { allowJs: true } },
+    ],
   },
 };

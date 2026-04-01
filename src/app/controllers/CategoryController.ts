@@ -1,39 +1,63 @@
 import { Request, Response } from "express";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { CategoryService } from "../services/CategoryService";
-import { asyncHandler } from "../../shared/asyncHandler";
+import { extractPagination } from "../../shared/pagination";
+import { CategoryFilters } from "../../domain/repositories/category/ICategoryRepository";
 
 const categoryService = new CategoryService(
   repositoryFactory.getCategoryRepository(),
+  repositoryFactory.getTransactionRepository(),
 );
 
 export class CategoryController {
-  static getAllCategories = asyncHandler(
-    async (_req: Request, res: Response) => {
-      const categories = await categoryService.getAllCategories();
-      res.status(200).json(categories);
-    },
-  );
+  static getAllCategories = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const filters: CategoryFilters = {};
+    if (req.query.ids) {
+      filters.ids = (req.query.ids as string).split(",").map((s) => s.trim());
+    }
+    if (req.query.type) {
+      filters.type = req.query.type as string;
+    }
 
-  static getCategoryById = asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const category = await categoryService.getCategoryById(Number(id));
+    const result = await categoryService.getAllCategories(
+      userId,
+      extractPagination(req),
+      filters,
+    );
+    res.status(200).json(result);
+  };
+
+  static getCategoryById = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const id = req.params.id as string;
+    const category = await categoryService.getCategoryById(id, userId);
     res.status(200).json(category);
-  });
+  };
 
-  static createCategory = asyncHandler(async (req: Request, res: Response) => {
-    const newCategory = await categoryService.createCategory(req.body);
+  static createCategory = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const newCategory = await categoryService.createCategory({
+      ...req.body,
+      userId,
+    });
     res.status(201).json(newCategory);
-  });
+  };
 
-  static updateCategory = asyncHandler(async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
-    const updatedCategory = await categoryService.updateCategory(id, req.body);
+  static updateCategory = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const id = req.params.id as string;
+    const updatedCategory = await categoryService.updateCategory(
+      id,
+      req.body,
+      userId,
+    );
     res.status(200).json(updatedCategory);
-  });
+  };
 
-  static deleteCategory = asyncHandler(async (req: Request, res: Response) => {
-    await categoryService.deleteCategory(Number(req.params.id));
+  static deleteCategory = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    await categoryService.deleteCategory(req.params.id as string, userId);
     res.status(204).send();
-  });
+  };
 }

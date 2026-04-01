@@ -1,9 +1,8 @@
 import { User } from "../../domain/entities/User";
-import { DomainValidationError } from "../../domain/errors";
 
 describe("User Entity", () => {
   const validProps = {
-    id: 1,
+    id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
     name: "John Doe",
     email: "john@example.com",
     password: "hashed_pw",
@@ -29,27 +28,6 @@ describe("User Entity", () => {
       expect(user.name).toBe("Jane");
       expect(user.email).toBe("jane@example.com");
       expect(user.password).toBeUndefined();
-    });
-  });
-
-  describe("validate", () => {
-    it("should not throw for a valid user", () => {
-      const user = new User(validProps);
-      expect(() => user.validate()).not.toThrow();
-    });
-
-    it("should throw DomainValidationError when email is missing", () => {
-      const user = new User({ ...validProps, email: "" });
-
-      expect(() => user.validate()).toThrow(DomainValidationError);
-      expect(() => user.validate()).toThrow("Email is required");
-    });
-
-    it("should throw DomainValidationError when name is missing", () => {
-      const user = new User({ ...validProps, name: "" });
-
-      expect(() => user.validate()).toThrow(DomainValidationError);
-      expect(() => user.validate()).toThrow("Name is required");
     });
   });
 });

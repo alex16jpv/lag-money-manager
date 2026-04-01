@@ -1,7 +1,9 @@
+import { PaginatedResult, PaginationParams } from "../../shared/pagination";
+
 export interface IRepository<T> {
-  getById(id: number): Promise<T | null>;
-  getAll(): Promise<T[]>;
-  create(entity: T): Promise<T>;
-  update(id: number, entity: Partial<T>): Promise<T>;
-  delete(id: number): Promise<void>;
+  getById(id: string): Promise<T | null>;
+  getAll(pagination: PaginationParams): Promise<PaginatedResult<T>>;
+  create(entity: Partial<T>): Promise<T>;
+  update(id: string, entity: Partial<T>): Promise<T>;
+  delete(id: string): Promise<void>;
 }

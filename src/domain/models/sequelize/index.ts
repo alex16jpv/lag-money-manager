@@ -1,5 +1,5 @@
 import * as models from "./models";
-import sequelize from "../../config/sequelizeConnection";
+import sequelize from "../../../config/sequelizeConnection";
 import { Model, ModelStatic } from "sequelize";
 
 interface AssociableModel extends ModelStatic<Model> {
@@ -19,6 +19,4 @@ export const loadSequelizeModels = () => {
       model.associate();
     }
   }
-
-  // sequelize.sync();
 };

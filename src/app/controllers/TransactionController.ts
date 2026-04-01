@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
 import { TransactionService } from "../services/TransactionService";
 import repositoryFactory from "../factories/RepositoryFactory";
-import { asyncHandler } from "../../shared/asyncHandler";
+import { extractPagination } from "../../shared/pagination";
+import { TransactionFilters } from "../../domain/repositories/transaction/ITransactionRepository";
+import { TransactionType } from "../../shared/constants";
 
 const transactionService = new TransactionService(
   repositoryFactory.getTransactionRepository(),
@@ -9,46 +11,58 @@ const transactionService = new TransactionService(
 );
 
 export class TransactionController {
-  static getAllTransactions = asyncHandler(
-    async (_req: Request, res: Response) => {
-      const transactions = await transactionService.getAllTransactions();
-      res.status(200).json(transactions);
-    },
-  );
+  static getAllTransactions = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const filters: TransactionFilters = {};
+    if (req.query.ids) {
+      filters.ids = (req.query.ids as string).split(",").map((s) => s.trim());
+    }
+    if (req.query.accountId) {
+      filters.accountId = req.query.accountId as string;
+    }
+    if (req.query.type) {
+      filters.type = req.query.type as TransactionType;
+    }
+    const result = await transactionService.getAllTransactions(
+      userId,
+      extractPagination(req),
+      filters,
+    );
+    res.status(200).json(result);
+  };
 
-  static getTransactionById = asyncHandler(
-    async (req: Request, res: Response) => {
-      const transaction = await transactionService.getTransactionById(
-        Number(req.params.id),
-      );
-      res.status(200).json(transaction);
-    },
-  );
+  static getTransactionById = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const transaction = await transactionService.getTransactionById(
+      req.params.id as string,
+      userId,
+    );
+    res.status(200).json(transaction);
+  };
 
-  static createTransaction = asyncHandler(
-    async (req: Request, res: Response) => {
-      const newTransaction = await transactionService.createTransaction(
-        req.body,
-      );
-      res.status(201).json(newTransaction);
-    },
-  );
+  static createTransaction = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const newTransaction = await transactionService.createTransaction({
+      ...req.body,
+      userId,
+    });
+    res.status(201).json(newTransaction);
+  };
 
-  static updateTransaction = asyncHandler(
-    async (req: Request, res: Response) => {
-      const id = Number(req.params.id);
-      const updatedTransaction = await transactionService.updateTransaction(
-        id,
-        req.body,
-      );
-      res.status(200).json(updatedTransaction);
-    },
-  );
+  static updateTransaction = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const id = req.params.id as string;
+    const updatedTransaction = await transactionService.updateTransaction(
+      id,
+      req.body,
+      userId,
+    );
+    res.status(200).json(updatedTransaction);
+  };
 
-  static deleteTransaction = asyncHandler(
-    async (req: Request, res: Response) => {
-      await transactionService.deleteTransaction(Number(req.params.id));
-      res.status(204).send();
-    },
-  );
+  static deleteTransaction = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    await transactionService.deleteTransaction(req.params.id as string, userId);
+    res.status(204).send();
+  };
 }

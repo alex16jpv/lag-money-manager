@@ -1,16 +1,16 @@
-import { AccountType } from "../../shared/constants";
+import { AccountType, Color } from "../../shared/constants";
 
 export interface CreateAccountDTO {
   name: string;
   type: AccountType;
   balance: number;
-  userId: number;
+  color?: Color;
+  userId: string;
 }
 
 export interface UpdateAccountDTO {
-  id?: number;
+  id?: string;
   name?: string;
   type?: AccountType;
-  balance?: number;
-  userId?: number;
+  color?: Color;
 }

@@ -6,6 +6,7 @@
 
 @baseUrl = http://localhost:3000
 @token = {{login.response.body.token}}
+@fakeUUID = 00000000-0000-0000-0000-000000000000
 
 ### ============================================================
 ### 1. HEALTH CHECK
@@ -113,27 +114,15 @@ GET {{baseUrl}}/users
 Authorization: Token {{token}}
 
 ### ============================================================
-### 4. USERS - CRUD
+### 4. USERS - CRUD (self-scoped: only own data accessible)
 ### ============================================================
 
-### Crear usuario
-# @name createUser
-POST {{baseUrl}}/users
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "name": "CRUD User",
-  "email": "cruduser@test.com",
-  "password": "TestP@ss123"
-}
-
-### Obtener todos los usuarios
+### Obtener todos los usuarios (returns only the authenticated user)
 GET {{baseUrl}}/users
 Authorization: Bearer {{token}}
 
-### Obtener usuario por ID
-@userId = {{createUser.response.body.id}}
+### Obtener usuario por ID (only own ID allowed, others return 403)
+@userId = {{login.response.body.user.id}}
 GET {{baseUrl}}/users/{{userId}}
 Authorization: Bearer {{token}}
 
@@ -155,30 +144,17 @@ Content-Type: application/json
   "email": "updated@test.com"
 }
 
-### Obtener usuario inexistente (404)
+### Obtener usuario inexistente (400 - invalid UUID format)
 GET {{baseUrl}}/users/99999
 Authorization: Bearer {{token}}
 
-### ID no numérico (400)
+### Obtener otro usuario (403 - forbidden, self-scoped)
+GET {{baseUrl}}/users/{{fakeUUID}}
+Authorization: Bearer {{token}}
+
+### ID no UUID (400)
 GET {{baseUrl}}/users/abc
 Authorization: Bearer {{token}}
-
-### Crear sin campos (400)
-POST {{baseUrl}}/users
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{}
-
-### Crear con email inválido (400)
-POST {{baseUrl}}/users
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "name": "Test",
-  "email": "bad"
-}
 
 ### Actualizar con body vacío (400)
 PUT {{baseUrl}}/users/{{userId}}
@@ -187,12 +163,12 @@ Content-Type: application/json
 
 {}
 
-### Eliminar ID no numérico (400)
+### Eliminar ID no UUID (400)
 DELETE {{baseUrl}}/users/abc
 Authorization: Bearer {{token}}
 
-### Eliminar inexistente (404)
-DELETE {{baseUrl}}/users/99999
+### Eliminar otro usuario (403 - forbidden)
+DELETE {{baseUrl}}/users/{{fakeUUID}}
 Authorization: Bearer {{token}}
 
 ### Eliminar usuario
@@ -200,20 +176,21 @@ DELETE {{baseUrl}}/users/{{userId}}
 Authorization: Bearer {{token}}
 
 ### ============================================================
-### 5. CATEGORIES - CRUD
+### 5. CATEGORIES - CRUD (user-scoped via token)
 ### ============================================================
 
-### Crear categoría
+### Crear categoría (userId injected from token)
 # @name createCategory
 POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "name": "Test Category"
+  "name": "Test Category",
+  "emoji": "💰"
 }
 
-### Obtener todas
+### Obtener todas (only own categories)
 GET {{baseUrl}}/categories
 Authorization: Bearer {{token}}
 
@@ -228,14 +205,15 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "name": "Updated Category"
+  "name": "Updated Category",
+  "emoji": "🎯"
 }
 
 ### Categoría inexistente (404)
-GET {{baseUrl}}/categories/99999
+GET {{baseUrl}}/categories/{{fakeUUID}}
 Authorization: Bearer {{token}}
 
-### ID no numérico (400)
+### ID no UUID (400)
 GET {{baseUrl}}/categories/abc
 Authorization: Bearer {{token}}
 
@@ -254,7 +232,7 @@ Content-Type: application/json
 {}
 
 ### Eliminar inexistente (404)
-DELETE {{baseUrl}}/categories/99999
+DELETE {{baseUrl}}/categories/{{fakeUUID}}
 Authorization: Bearer {{token}}
 
 ### Eliminar categoría
@@ -262,10 +240,10 @@ DELETE {{baseUrl}}/categories/{{categoryId}}
 Authorization: Bearer {{token}}
 
 ### ============================================================
-### 6. ACCOUNTS - CRUD
+### 6. ACCOUNTS - CRUD (userId injected from token)
 ### ============================================================
 
-### Crear cuenta (CASH)
+### Crear cuenta (CASH) — userId comes from token, not body
 # @name createAccount
 POST {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
@@ -274,8 +252,7 @@ Content-Type: application/json
 {
   "name": "Test Account",
   "type": "CASH",
-  "balance": 1000,
-  "userId": {{userId}}
+  "balance": 1000
 }
 
 ### Crear cuenta (SAVINGS)
@@ -286,11 +263,10 @@ Content-Type: application/json
 {
   "name": "Savings Account",
   "type": "SAVINGS",
-  "balance": 5000,
-  "userId": {{userId}}
+  "balance": 5000
 }
 
-### Obtener todas
+### Obtener todas (only own accounts)
 GET {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
 
@@ -327,10 +303,10 @@ Content-Type: application/json
 }
 
 ### Cuenta inexistente (404)
-GET {{baseUrl}}/accounts/99999
+GET {{baseUrl}}/accounts/{{fakeUUID}}
 Authorization: Bearer {{token}}
 
-### ID no numérico (400)
+### ID no UUID (400)
 GET {{baseUrl}}/accounts/abc
 Authorization: Bearer {{token}}
 
@@ -349,32 +325,7 @@ Content-Type: application/json
 {
   "name": "Bad Type",
   "type": "INVALID",
-  "balance": 0,
-  "userId": {{userId}}
-}
-
-### Crear con userId negativo (400)
-POST {{baseUrl}}/accounts
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "name": "Bad",
-  "type": "CASH",
-  "balance": 0,
-  "userId": -1
-}
-
-### Crear con userId inexistente (400)
-POST {{baseUrl}}/accounts
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "name": "Ghost",
-  "type": "CASH",
-  "balance": 0,
-  "userId": 999999
+  "balance": 0
 }
 
 ### Actualizar con body vacío (400)
@@ -385,7 +336,7 @@ Content-Type: application/json
 {}
 
 ### Eliminar inexistente (404)
-DELETE {{baseUrl}}/accounts/99999
+DELETE {{baseUrl}}/accounts/{{fakeUUID}}
 Authorization: Bearer {{token}}
 
 ### Eliminar cuenta
@@ -393,10 +344,10 @@ DELETE {{baseUrl}}/accounts/{{accountId}}
 Authorization: Bearer {{token}}
 
 ### ============================================================
-### 7. TRANSACTIONS - CRUD
+### 7. TRANSACTIONS - CRUD (userId injected from token)
 ### ============================================================
 
-### Crear transacción EXPENSE
+### Crear transacción EXPENSE — userId comes from token, not body
 # @name createTransaction
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
@@ -407,9 +358,8 @@ Content-Type: application/json
   "amount": 150.50,
   "date": "2026-03-29T12:00:00.000Z",
   "description": "Groceries",
-  "fromAccountId": {{accountId}},
-  "userId": {{userId}},
-  "categoryId": {{categoryId}},
+  "fromAccountId": "{{accountId}}",
+  "categoryId": "{{categoryId}}",
   "tags": "food,weekly",
   "note": "Weekly grocery shopping"
 }
@@ -424,12 +374,11 @@ Content-Type: application/json
   "amount": 3000,
   "date": "2026-03-29T09:00:00.000Z",
   "description": "Salary",
-  "toAccountId": {{accountId}},
-  "userId": {{userId}},
-  "categoryId": {{categoryId}}
+  "toAccountId": "{{accountId}}",
+  "categoryId": "{{categoryId}}"
 }
 
-### Crear transacción TRANSFER
+### Crear transacción TRANSFER (needs two different accounts)
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -439,12 +388,11 @@ Content-Type: application/json
   "amount": 500,
   "date": "2026-03-29T15:00:00.000Z",
   "description": "Move to savings",
-  "fromAccountId": {{accountId}},
-  "toAccountId": {{accountId}},
-  "userId": {{userId}}
+  "fromAccountId": "{{accountId}}",
+  "toAccountId": "{{accountId}}"
 }
 
-### Obtener todas
+### Obtener todas (only own transactions)
 GET {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 
@@ -473,10 +421,10 @@ Content-Type: application/json
 }
 
 ### Transacción inexistente (404)
-GET {{baseUrl}}/transactions/99999
+GET {{baseUrl}}/transactions/{{fakeUUID}}
 Authorization: Bearer {{token}}
 
-### ID no numérico (400)
+### ID no UUID (400)
 GET {{baseUrl}}/transactions/abc
 Authorization: Bearer {{token}}
 
@@ -495,8 +443,7 @@ Content-Type: application/json
 {
   "type": "INVALID",
   "amount": 100,
-  "date": "2026-03-29T12:00:00.000Z",
-  "userId": {{userId}}
+  "date": "2026-03-29T12:00:00.000Z"
 }
 
 ### Crear EXPENSE sin fromAccountId (400)
@@ -507,8 +454,7 @@ Content-Type: application/json
 {
   "type": "EXPENSE",
   "amount": 100,
-  "date": "2026-03-29T12:00:00.000Z",
-  "userId": {{userId}}
+  "date": "2026-03-29T12:00:00.000Z"
 }
 
 ### Crear INCOME sin toAccountId (400)
@@ -519,8 +465,7 @@ Content-Type: application/json
 {
   "type": "INCOME",
   "amount": 100,
-  "date": "2026-03-29T12:00:00.000Z",
-  "userId": {{userId}}
+  "date": "2026-03-29T12:00:00.000Z"
 }
 
 ### Crear TRANSFER con misma cuenta (400)
@@ -532,9 +477,8 @@ Content-Type: application/json
   "type": "TRANSFER",
   "amount": 100,
   "date": "2026-03-29T12:00:00.000Z",
-  "fromAccountId": {{accountId}},
-  "toAccountId": {{accountId}},
-  "userId": {{userId}}
+  "fromAccountId": "{{accountId}}",
+  "toAccountId": "{{accountId}}"
 }
 
 ### Crear con monto negativo (400)
@@ -546,8 +490,7 @@ Content-Type: application/json
   "type": "EXPENSE",
   "amount": -50,
   "date": "2026-03-29T12:00:00.000Z",
-  "fromAccountId": {{accountId}},
-  "userId": {{userId}}
+  "fromAccountId": "{{accountId}}"
 }
 
 ### Crear con fecha inválida (400)
@@ -559,8 +502,7 @@ Content-Type: application/json
   "type": "EXPENSE",
   "amount": 50,
   "date": "not-a-date",
-  "fromAccountId": {{accountId}},
-  "userId": {{userId}}
+  "fromAccountId": "{{accountId}}"
 }
 
 ### Actualizar con body vacío (400)
@@ -571,7 +513,7 @@ Content-Type: application/json
 {}
 
 ### Eliminar inexistente (404)
-DELETE {{baseUrl}}/transactions/99999
+DELETE {{baseUrl}}/transactions/{{fakeUUID}}
 Authorization: Bearer {{token}}
 
 ### Eliminar transacción

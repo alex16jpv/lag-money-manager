@@ -1,6 +1,10 @@
 import { Transaction } from "../../domain/entities/Transaction";
-import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
+import {
+  ITransactionRepository,
+  TransactionFilters,
+} from "../../domain/repositories/transaction/ITransactionRepository";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
 import {
   CreateTransactionDTO,
@@ -13,23 +17,33 @@ export class TransactionService {
     private accountRepo: IAccountRepository,
   ) {}
 
-  async getAllTransactions(): Promise<Transaction[]> {
-    return await this.transactionRepo.getAll();
+  async getAllTransactions(
+    userId: string,
+    pagination: PaginationParams,
+    filters?: TransactionFilters,
+  ): Promise<PaginatedResult<Transaction>> {
+    return await this.transactionRepo.getAllByUserId(
+      userId,
+      pagination,
+      filters,
+    );
   }
 
-  async getTransactionById(id: number): Promise<Transaction> {
+  async getTransactionById(id: string, userId: string): Promise<Transaction> {
     const transaction = await this.transactionRepo.getById(id);
     if (!transaction) {
       throw new ApiError("NotFound", "Transaction not found");
+    }
+    if (transaction.userId !== userId) {
+      throw new ApiError("Forbidden", "Access denied");
     }
     return transaction;
   }
 
   async createTransaction(dto: CreateTransactionDTO): Promise<Transaction> {
     const transaction = new Transaction(dto);
-    transaction.validate();
 
-    await this.applyBalanceChanges(transaction);
+    await this.adjustBalances(transaction, 1);
 
     // TODO: Update budget balance when budget feature is implemented
     // if (transaction.categoryId) {
@@ -40,8 +54,9 @@ export class TransactionService {
   }
 
   async updateTransaction(
-    id: number,
+    id: string,
     dto: UpdateTransactionDTO,
+    userId: string,
   ): Promise<Transaction> {
     if (dto.id && dto.id !== id) {
       throw new ApiError("BadRequest", "Transaction id does not match");
@@ -51,112 +66,82 @@ export class TransactionService {
     if (!existing) {
       throw new ApiError("NotFound", "Transaction not found");
     }
+    if (existing.userId !== userId) {
+      throw new ApiError("Forbidden", "Access denied");
+    }
 
-    await this.reverseBalanceChanges(existing);
+    await this.adjustBalances(existing, -1);
 
     const updated = new Transaction({ ...existing, ...dto });
-    updated.validate();
 
-    await this.applyBalanceChanges(updated);
+    await this.adjustBalances(updated, 1);
 
     return await this.transactionRepo.update(id, dto);
   }
 
-  async deleteTransaction(id: number): Promise<void> {
+  async deleteTransaction(id: string, userId: string): Promise<void> {
     const transaction = await this.transactionRepo.getById(id);
     if (!transaction) {
       throw new ApiError("NotFound", "Transaction not found");
     }
+    if (transaction.userId !== userId) {
+      throw new ApiError("Forbidden", "Access denied");
+    }
 
-    await this.reverseBalanceChanges(transaction);
+    await this.adjustBalances(transaction, -1);
 
     return await this.transactionRepo.delete(id);
   }
 
-  private async applyBalanceChanges(transaction: Transaction): Promise<void> {
+  private async adjustBalances(
+    transaction: Transaction,
+    direction: 1 | -1,
+  ): Promise<void> {
     const { type, amount, fromAccountId, toAccountId } = transaction;
 
-    if (type === "EXPENSE" && fromAccountId) {
-      const account = await this.accountRepo.getById(fromAccountId);
+    const adjustAccount = async (
+      accountId: string,
+      sign: number,
+    ): Promise<void> => {
+      const account = await this.accountRepo.getById(accountId);
       if (!account) {
-        throw new ApiError("NotFound", "Source account not found");
+        if (direction === 1) {
+          throw new ApiError(
+            "NotFound",
+            sign < 0
+              ? "Source account not found"
+              : "Destination account not found",
+          );
+        }
+        return;
       }
-      await this.accountRepo.update(fromAccountId, {
-        balance: Number(account.balance) - Number(amount),
+      if (direction === 1 && account.userId !== transaction.userId) {
+        throw new ApiError(
+          "Forbidden",
+          sign < 0
+            ? "Source account does not belong to the user"
+            : "Destination account does not belong to the user",
+        );
+      }
+      await this.accountRepo.update(accountId, {
+        balance: Number(account.balance) + Number(amount) * sign * direction,
       });
+    };
+
+    if (type === "EXPENSE" && fromAccountId) {
+      await adjustAccount(fromAccountId, -1);
     }
 
     if (type === "INCOME" && toAccountId) {
-      const account = await this.accountRepo.getById(toAccountId);
-      if (!account) {
-        throw new ApiError("NotFound", "Destination account not found");
-      }
-      await this.accountRepo.update(toAccountId, {
-        balance: Number(account.balance) + Number(amount),
-      });
+      await adjustAccount(toAccountId, 1);
     }
 
     if (type === "TRANSFER") {
       if (fromAccountId) {
-        const fromAccount = await this.accountRepo.getById(fromAccountId);
-        if (!fromAccount) {
-          throw new ApiError("NotFound", "Source account not found");
-        }
-        await this.accountRepo.update(fromAccountId, {
-          balance: Number(fromAccount.balance) - Number(amount),
-        });
+        await adjustAccount(fromAccountId, -1);
       }
-
       if (toAccountId) {
-        const toAccount = await this.accountRepo.getById(toAccountId);
-        if (!toAccount) {
-          throw new ApiError("NotFound", "Destination account not found");
-        }
-        await this.accountRepo.update(toAccountId, {
-          balance: Number(toAccount.balance) + Number(amount),
-        });
-      }
-    }
-  }
-
-  private async reverseBalanceChanges(transaction: Transaction): Promise<void> {
-    const { type, amount, fromAccountId, toAccountId } = transaction;
-
-    if (type === "EXPENSE" && fromAccountId) {
-      const account = await this.accountRepo.getById(fromAccountId);
-      if (account) {
-        await this.accountRepo.update(fromAccountId, {
-          balance: Number(account.balance) + Number(amount),
-        });
-      }
-    }
-
-    if (type === "INCOME" && toAccountId) {
-      const account = await this.accountRepo.getById(toAccountId);
-      if (account) {
-        await this.accountRepo.update(toAccountId, {
-          balance: Number(account.balance) - Number(amount),
-        });
-      }
-    }
-
-    if (type === "TRANSFER") {
-      if (fromAccountId) {
-        const fromAccount = await this.accountRepo.getById(fromAccountId);
-        if (fromAccount) {
-          await this.accountRepo.update(fromAccountId, {
-            balance: Number(fromAccount.balance) + Number(amount),
-          });
-        }
-      }
-
-      if (toAccountId) {
-        const toAccount = await this.accountRepo.getById(toAccountId);
-        if (toAccount) {
-          await this.accountRepo.update(toAccountId, {
-            balance: Number(toAccount.balance) - Number(amount),
-          });
-        }
+        await adjustAccount(toAccountId, 1);
       }
     }
   }

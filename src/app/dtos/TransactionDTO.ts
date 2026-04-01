@@ -4,25 +4,24 @@ export interface CreateTransactionDTO {
   type: TransactionType;
   amount: number;
   date: Date;
-  categoryId?: number | null;
+  categoryId?: string | null;
   description?: string | null;
-  fromAccountId?: number | null;
-  toAccountId?: number | null;
-  userId: number;
+  fromAccountId?: string | null;
+  toAccountId?: string | null;
+  userId: string;
   tags?: string | null;
   note?: string | null;
 }
 
 export interface UpdateTransactionDTO {
-  id?: number;
+  id?: string;
   type?: TransactionType;
   amount?: number;
   date?: Date;
-  categoryId?: number | null;
+  categoryId?: string | null;
   description?: string | null;
-  fromAccountId?: number | null;
-  toAccountId?: number | null;
-  userId?: number;
+  fromAccountId?: string | null;
+  toAccountId?: string | null;
   tags?: string | null;
   note?: string | null;
 }

@@ -5,6 +5,7 @@ import {
   createTransactionSchema,
   updateTransactionSchema,
   idParamSchema,
+  getTransactionsSchema,
 } from "../validation/schemas";
 
 const router = Router();
@@ -15,19 +16,60 @@ const router = Router();
  *   get:
  *     tags: [Transactions]
  *     summary: Get all transactions
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Maximum number of items to return
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: Number of items to skip (offset-based pagination)
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Cursor ID for cursor-based pagination (overrides offset)
+ *       - in: query
+ *         name: ids
+ *         schema:
+ *           type: string
+ *         description: Comma-separated list of UUIDs to filter by ID
+ *       - in: query
+ *         name: accountId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Filter transactions by account ID (matches fromAccountId or toAccountId)
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [INCOME, EXPENSE, TRANSFER]
+ *         description: Filter transactions by type
  *     responses:
  *       200:
- *         description: List of transactions
+ *         description: Paginated list of transactions
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Transaction'
+ *               $ref: '#/components/schemas/PaginatedTransactions'
  *       401:
  *         description: Unauthorized
  */
-router.get("/", TransactionController.getAllTransactions);
+router.get(
+  "/",
+  validate(getTransactionsSchema),
+  TransactionController.getAllTransactions,
+);
 
 /**
  * @openapi
@@ -79,7 +121,8 @@ router.post(
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Transaction ID
  *     responses:
  *       200:
@@ -113,7 +156,8 @@ router.get(
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Transaction ID
  *     requestBody:
  *       required: true
@@ -153,7 +197,8 @@ router.put(
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Transaction ID
  *     responses:
  *       204:

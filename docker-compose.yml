@@ -27,6 +27,30 @@ services:
     networks:
       - lag
 
+  mongo:
+    image: mongo
+    restart: no
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE}
+    ports:
+      - "27017:27017"
+    networks:
+      - lag
+
+  mongoku:
+    image: huggingface/mongoku
+    restart: no
+    ports:
+      - "3100:3100"
+    environment:
+      MONGOKU_DEFAULT_HOST: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017
+    depends_on:
+      - mongo
+    networks:
+      - lag
+
 networks:
   lag:
     driver: bridge

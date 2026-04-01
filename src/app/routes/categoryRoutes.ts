@@ -5,6 +5,7 @@ import {
   createCategorySchema,
   updateCategorySchema,
   idParamSchema,
+  getCategoriesSchema,
 } from "../validation/schemas";
 
 const router = Router();
@@ -15,19 +16,54 @@ const router = Router();
  *   get:
  *     tags: [Categories]
  *     summary: Get all categories
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Maximum number of items to return
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: Number of items to skip (offset-based pagination)
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Cursor ID for cursor-based pagination (overrides offset)
+ *       - in: query
+ *         name: ids
+ *         schema:
+ *           type: string
+ *         description: Comma-separated list of UUIDs to filter by ID
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [INCOME, EXPENSE, TRANSFER]
+ *         description: Filter categories by type
  *     responses:
  *       200:
- *         description: List of categories
+ *         description: Paginated list of categories
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Category'
+ *               $ref: '#/components/schemas/PaginatedCategories'
  *       401:
  *         description: Unauthorized
  */
-router.get("/", CategoryController.getAllCategories);
+router.get(
+  "/",
+  validate(getCategoriesSchema),
+  CategoryController.getAllCategories,
+);
 
 /**
  * @openapi
@@ -74,7 +110,8 @@ router.post(
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Category ID
  *     responses:
  *       200:
@@ -103,7 +140,8 @@ router.get("/:id", validate(idParamSchema), CategoryController.getCategoryById);
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Category ID
  *     requestBody:
  *       required: true
@@ -142,7 +180,8 @@ router.put(
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
+ *           type: string
+ *           format: uuid
  *         description: Category ID
  *     responses:
  *       204:

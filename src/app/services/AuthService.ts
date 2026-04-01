@@ -5,19 +5,31 @@ import { IUserRepository } from "../../domain/repositories/user/IUserRepository"
 import { User } from "../../domain/entities/User";
 import { ApiError } from "../../shared/errors";
 import { CreateUserDTO, UserResponseDTO } from "../dtos/UserDTO";
+import { CategoryService } from "./CategoryService";
+import logger from "../../shared/logger";
 
 export class AuthService {
-  constructor(private repo: IUserRepository) {}
+  constructor(
+    private repo: IUserRepository,
+    private categoryService: CategoryService,
+  ) {}
 
   async register(dto: CreateUserDTO): Promise<UserResponseDTO> {
-    const hashedPassword = await bcryptjs.hash(dto.password, 12);
+    const hashedPassword = await bcryptjs.hash(
+      dto.password,
+      ENVIRONMENT.BCRYPT_SALT_ROUNDS,
+    );
     const user = new User({ ...dto, password: hashedPassword });
-    user.validate();
 
     const created = await this.repo.create(user);
-    const { password: _, ...userWithoutPassword } = created as User & {
-      password?: string;
-    };
+
+    try {
+      await this.categoryService.seedDefaultCategories(created.id);
+    } catch (error) {
+      logger.error({ error, userId: created.id }, "Failed to seed default categories");
+    }
+
+    const { password: _, ...userWithoutPassword } = created;
     return userWithoutPassword as UserResponseDTO;
   }
 
@@ -30,10 +42,11 @@ export class AuthService {
       throw new ApiError("Unauthorized", "Invalid email or password");
     }
 
-    const isValidPassword = await bcryptjs.compare(
-      password,
-      (user as User & { password: string }).password,
-    );
+    if (!user.password) {
+      throw new ApiError("Unauthorized", "Invalid email or password");
+    }
+
+    const isValidPassword = await bcryptjs.compare(password, user.password);
     if (!isValidPassword) {
       throw new ApiError("Unauthorized", "Invalid email or password");
     }
@@ -41,12 +54,13 @@ export class AuthService {
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       ENVIRONMENT.JWT_SECRET,
-      { expiresIn: "24h" },
+      {
+        algorithm: "HS256",
+        expiresIn: ENVIRONMENT.JWT_EXPIRATION as jwt.SignOptions["expiresIn"],
+      },
     );
 
-    const { password: _, ...userWithoutPassword } = user as User & {
-      password?: string;
-    };
+    const { password: _, ...userWithoutPassword } = user;
     return { token, user: userWithoutPassword as UserResponseDTO };
   }
 }
