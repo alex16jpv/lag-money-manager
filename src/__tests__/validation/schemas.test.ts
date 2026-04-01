@@ -19,11 +19,33 @@ jest.mock("../../shared/constants", () => ({
     LOAN: "LOAN",
     OTHER: "OTHER",
   },
+  COLORS: {
+    RED: "RED",
+    ORANGE: "ORANGE",
+    AMBER: "AMBER",
+    YELLOW: "YELLOW",
+    LIME: "LIME",
+    GREEN: "GREEN",
+    TEAL: "TEAL",
+    CYAN: "CYAN",
+    BLUE: "BLUE",
+    INDIGO: "INDIGO",
+    PURPLE: "PURPLE",
+    PINK: "PINK",
+    ROSE: "ROSE",
+    GRAY: "GRAY",
+    BROWN: "BROWN",
+    BLACK: "BLACK",
+  },
   DB_TYPES: { SEQ: "SEQ", MONGO: "MONGO", LOCAL_STORAGE: "LOCAL_STORAGE" },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
+  },
+  CATEGORY_TYPES: {
+    INCOME: "INCOME",
+    EXPENSE: "EXPENSE",
   },
   MODEL_NAMES: {
     USER: "User",
@@ -43,6 +65,7 @@ import {
   updateAccountSchema,
   createCategorySchema,
   updateCategorySchema,
+  getCategoriesSchema,
   idParamSchema,
   createTransactionSchema,
   updateTransactionSchema,
@@ -358,6 +381,27 @@ describe("Validation Schemas", () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it("should accept valid color", () => {
+      const result = createAccountSchema.safeParse({
+        body: { name: "Test", type: "CASH", color: "BLUE" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject invalid color", () => {
+      const result = createAccountSchema.safeParse({
+        body: { name: "Test", type: "CASH", color: "RAINBOW" },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should accept account without color", () => {
+      const result = createAccountSchema.safeParse({
+        body: { name: "Test", type: "CASH" },
+      });
+      expect(result.success).toBe(true);
+    });
   });
 
   describe("updateAccountSchema", () => {
@@ -391,6 +435,57 @@ describe("Validation Schemas", () => {
         body: { type: "INVALID" },
       });
       expect(result.success).toBe(false);
+    });
+
+    it("should accept valid color update", () => {
+      const result = updateAccountSchema.safeParse({
+        params: { id: validUUID },
+        body: { color: "RED" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept null color to clear it", () => {
+      const result = updateAccountSchema.safeParse({
+        params: { id: validUUID },
+        body: { color: null },
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("getCategoriesSchema", () => {
+    it("should accept empty query (all optional)", () => {
+      const result = getCategoriesSchema.safeParse({ query: {} });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept valid type filter INCOME", () => {
+      const result = getCategoriesSchema.safeParse({
+        query: { type: "INCOME" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept valid type filter EXPENSE", () => {
+      const result = getCategoriesSchema.safeParse({
+        query: { type: "EXPENSE" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject invalid type filter", () => {
+      const result = getCategoriesSchema.safeParse({
+        query: { type: "INVALID_TYPE" },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should accept type with pagination", () => {
+      const result = getCategoriesSchema.safeParse({
+        query: { type: "EXPENSE", limit: "10", offset: "0" },
+      });
+      expect(result.success).toBe(true);
     });
   });
 
@@ -427,6 +522,48 @@ describe("Validation Schemas", () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it("should accept valid color", () => {
+      const result = createCategorySchema.safeParse({
+        body: { name: "Food", color: "GREEN" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject invalid color", () => {
+      const result = createCategorySchema.safeParse({
+        body: { name: "Food", color: "RAINBOW" },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should accept valid category type", () => {
+      const result = createCategorySchema.safeParse({
+        body: { name: "Salary", type: "INCOME" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept EXPENSE category type", () => {
+      const result = createCategorySchema.safeParse({
+        body: { name: "Food", type: "EXPENSE" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject invalid category type", () => {
+      const result = createCategorySchema.safeParse({
+        body: { name: "Food", type: "INVALID_TYPE" },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should accept category without color and type", () => {
+      const result = createCategorySchema.safeParse({
+        body: { name: "Food" },
+      });
+      expect(result.success).toBe(true);
+    });
   });
 
   describe("updateCategorySchema", () => {
@@ -452,6 +589,38 @@ describe("Validation Schemas", () => {
         body: {},
       });
       expect(result.success).toBe(false);
+    });
+
+    it("should accept update with color", () => {
+      const result = updateCategorySchema.safeParse({
+        params: { id: validUUID },
+        body: { color: "PURPLE" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept update with type", () => {
+      const result = updateCategorySchema.safeParse({
+        params: { id: validUUID },
+        body: { type: "INCOME" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept null color to clear it", () => {
+      const result = updateCategorySchema.safeParse({
+        params: { id: validUUID },
+        body: { color: null },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept null type to clear it", () => {
+      const result = updateCategorySchema.safeParse({
+        params: { id: validUUID },
+        body: { type: null },
+      });
+      expect(result.success).toBe(true);
     });
   });
 

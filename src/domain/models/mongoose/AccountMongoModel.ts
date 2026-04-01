@@ -2,6 +2,7 @@ import mongoose, { Schema } from "mongoose";
 import {
   ACCOUNT_TYPES,
   AccountType,
+  COLORS,
   MODEL_NAMES,
 } from "../../../shared/constants";
 
@@ -10,6 +11,7 @@ export interface IAccountDocument {
   name: string;
   type: AccountType;
   balance: number;
+  color?: string;
   userId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -25,6 +27,7 @@ const AccountSchema = new Schema<IAccountDocument>(
       enum: Object.keys(ACCOUNT_TYPES),
     },
     balance: { type: Number, required: true },
+    color: { type: String, required: false, enum: Object.keys(COLORS) },
     userId: { type: String, required: true },
   },
   { timestamps: true },

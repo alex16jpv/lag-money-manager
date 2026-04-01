@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ACCOUNT_TYPES, TRANSACTION_TYPES } from "../../shared/constants";
+import { ACCOUNT_TYPES, COLORS, TRANSACTION_TYPES } from "../../shared/constants";
 import { MAX_LIMIT } from "../../shared/pagination";
 
 const accountTypeValues = Object.keys(ACCOUNT_TYPES) as [string, ...string[]];
@@ -7,6 +7,8 @@ const transactionTypeValues = Object.keys(TRANSACTION_TYPES) as [
   string,
   ...string[],
 ];
+const categoryTypeValues = Object.keys(TRANSACTION_TYPES) as [string, ...string[]];
+const colorValues = Object.keys(COLORS) as [string, ...string[]];
 
 export const paginationQuerySchema = z.object({
   query: z.object({
@@ -62,6 +64,35 @@ export const getTransactionsSchema = z.object({
   }),
 });
 
+export const getCategoriesSchema = z.object({
+  query: z.object({
+    limit: z.coerce
+      .number()
+      .int("Limit must be an integer")
+      .min(1, "Limit must be at least 1")
+      .max(MAX_LIMIT, `Limit must be at most ${MAX_LIMIT}`)
+      .optional(),
+    offset: z.coerce
+      .number()
+      .int("Offset must be an integer")
+      .min(0, "Offset must be non-negative")
+      .optional(),
+    cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
+    ids: z
+      .string()
+      .transform((val) => val.split(",").map((s) => s.trim()))
+      .pipe(
+        z.array(z.string().uuid("Each ID must be a valid UUID")).min(1).max(100),
+      )
+      .optional(),
+    type: z
+      .enum(categoryTypeValues, {
+        error: `Invalid category type. Available: ${categoryTypeValues.join(", ")}`,
+      })
+      .optional(),
+  }),
+});
+
 export const updateUserSchema = z.object({
   params: z.object({
     id: z.string().uuid("ID must be a valid UUID"),
@@ -94,6 +125,11 @@ export const createAccountSchema = z.object({
       error: `Invalid account type. Available: ${accountTypeValues.join(", ")}`,
     }),
     balance: z.number().finite("Balance must be a finite number").default(0),
+    color: z
+      .enum(colorValues, {
+        error: `Invalid color. Available: ${colorValues.join(", ")}`,
+      })
+      .optional(),
   }),
 });
 
@@ -109,6 +145,12 @@ export const updateAccountSchema = z.object({
           error: `Invalid account type. Available: ${accountTypeValues.join(", ")}`,
         })
         .optional(),
+      color: z
+        .enum(colorValues, {
+          error: `Invalid color. Available: ${colorValues.join(", ")}`,
+        })
+        .optional()
+        .nullable(),
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {
       message: "At least one field must be provided",
@@ -119,6 +161,16 @@ export const createCategorySchema = z.object({
   body: z.object({
     name: z.string().min(1, "Name is required").max(255),
     emoji: z.string().max(8, "Emoji must be at most 8 characters").optional(),
+    color: z
+      .enum(colorValues, {
+        error: `Invalid color. Available: ${colorValues.join(", ")}`,
+      })
+      .optional(),
+    type: z
+      .enum(categoryTypeValues, {
+        error: `Invalid category type. Available: ${categoryTypeValues.join(", ")}`,
+      })
+      .optional(),
   }),
 });
 
@@ -130,10 +182,25 @@ export const updateCategorySchema = z.object({
     .object({
       name: z.string().min(1).max(255).optional(),
       emoji: z.string().max(8, "Emoji must be at most 8 characters").optional(),
+      color: z
+        .enum(colorValues, {
+          error: `Invalid color. Available: ${colorValues.join(", ")}`,
+        })
+        .optional()
+        .nullable(),
+      type: z
+        .enum(categoryTypeValues, {
+          error: `Invalid category type. Available: ${categoryTypeValues.join(", ")}`,
+        })
+        .optional()
+        .nullable(),
     })
-    .refine((data) => data.name !== undefined || data.emoji !== undefined, {
-      message: "At least one field (name, emoji) must be provided",
-    }),
+    .refine(
+      (data) => Object.values(data).some((v) => v !== undefined),
+      {
+        message: "At least one field must be provided",
+      },
+    ),
 });
 
 export const idParamSchema = z.object({

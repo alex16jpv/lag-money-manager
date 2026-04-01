@@ -6,17 +6,19 @@ import {
 } from "../../../shared/pagination";
 import { ApiError } from "../../../shared/errors";
 import { Category } from "../../entities/Category";
-import { CategoryMongoModel } from "../../models/mongoose/CategoryMongoModel";
+import { CategoryMongoModel, ICategoryDocument } from "../../models/mongoose/CategoryMongoModel";
 import { CategoryFilters, ICategoryRepository } from "./ICategoryRepository";
 
 export class CategoryMongoRepository implements ICategoryRepository {
-  private toEntity(doc: {
-    _id: string;
-    name: string;
-    emoji?: string;
-    userId: string;
-  }): Category {
-    return new Category({ id: doc._id, name: doc.name, emoji: doc.emoji, userId: doc.userId });
+  private toEntity(doc: ICategoryDocument): Category {
+    return new Category({
+      id: doc._id,
+      name: doc.name,
+      emoji: doc.emoji,
+      color: doc.color,
+      type: doc.type,
+      userId: doc.userId,
+    });
   }
 
   private async paginatedFind(
@@ -68,6 +70,9 @@ export class CategoryMongoRepository implements ICategoryRepository {
     const filter: Record<string, unknown> = { userId };
     if (filters?.ids?.length) {
       filter._id = { $in: filters.ids };
+    }
+    if (filters?.type) {
+      filter.type = filters.type;
     }
     return this.paginatedFind(filter, pagination);
   }

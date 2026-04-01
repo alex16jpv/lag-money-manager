@@ -17,11 +17,33 @@ jest.mock("../../shared/constants", () => ({
     LOAN: "LOAN",
     OTHER: "OTHER",
   },
+  COLORS: {
+    RED: "RED",
+    ORANGE: "ORANGE",
+    AMBER: "AMBER",
+    YELLOW: "YELLOW",
+    LIME: "LIME",
+    GREEN: "GREEN",
+    TEAL: "TEAL",
+    CYAN: "CYAN",
+    BLUE: "BLUE",
+    INDIGO: "INDIGO",
+    PURPLE: "PURPLE",
+    PINK: "PINK",
+    ROSE: "ROSE",
+    GRAY: "GRAY",
+    BROWN: "BROWN",
+    BLACK: "BLACK",
+  },
   DB_TYPES: { SEQ: "SEQ", MONGO: "MONGO", LOCAL_STORAGE: "LOCAL_STORAGE" },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
+  },
+  CATEGORY_TYPES: {
+    INCOME: "INCOME",
+    EXPENSE: "EXPENSE",
   },
   MODEL_NAMES: {
     USER: "User",
@@ -67,6 +89,18 @@ describe("Account Entity", () => {
       const account = new Account({ ...validProps, balance: 0 });
 
       expect(account.balance).toBe(0);
+    });
+
+    it("should create an account with color", () => {
+      const account = new Account({ ...validProps, color: "BLUE" });
+
+      expect(account.color).toBe("BLUE");
+    });
+
+    it("should create an account without color", () => {
+      const account = new Account(validProps);
+
+      expect(account.color).toBeUndefined();
     });
   });
 });

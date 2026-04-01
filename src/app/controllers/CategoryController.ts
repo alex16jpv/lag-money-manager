@@ -16,6 +16,10 @@ export class CategoryController {
     if (req.query.ids) {
       filters.ids = (req.query.ids as string).split(",").map((s) => s.trim());
     }
+    if (req.query.type) {
+      filters.type = req.query.type as string;
+    }
+
     const result = await categoryService.getAllCategories(
       userId,
       extractPagination(req),

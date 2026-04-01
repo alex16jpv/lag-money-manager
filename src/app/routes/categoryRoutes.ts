@@ -5,7 +5,7 @@ import {
   createCategorySchema,
   updateCategorySchema,
   idParamSchema,
-  paginationQuerySchema,
+  getCategoriesSchema,
 } from "../validation/schemas";
 
 const router = Router();
@@ -43,6 +43,12 @@ const router = Router();
  *         schema:
  *           type: string
  *         description: Comma-separated list of UUIDs to filter by ID
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [INCOME, EXPENSE, TRANSFER]
+ *         description: Filter categories by type
  *     responses:
  *       200:
  *         description: Paginated list of categories
@@ -55,7 +61,7 @@ const router = Router();
  */
 router.get(
   "/",
-  validate(paginationQuerySchema),
+  validate(getCategoriesSchema),
   CategoryController.getAllCategories,
 );
 

@@ -6,6 +6,8 @@ export class CategoryModel extends Model {
   id!: string;
   name!: string;
   emoji?: string;
+  color?: string;
+  type?: string;
   userId!: string;
 }
 
@@ -23,6 +25,14 @@ export default (sequelize: Sequelize) => {
       },
       emoji: {
         type: DataTypes.STRING(8),
+        allowNull: true,
+      },
+      color: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
+      type: {
+        type: DataTypes.STRING(20),
         allowNull: true,
       },
       userId: {

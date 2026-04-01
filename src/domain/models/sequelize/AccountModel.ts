@@ -8,6 +8,7 @@ export class AccountModel extends Model {
   name!: string;
   type!: keyof typeof ACCOUNT_TYPES;
   balance!: number;
+  color?: string;
   userId!: string;
 
   static associate() {
@@ -38,6 +39,10 @@ export default (sequelize: Sequelize) => {
       balance: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
+      },
+      color: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
       },
       userId: {
         type: DataTypes.CHAR(36),

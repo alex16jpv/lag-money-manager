@@ -4,6 +4,7 @@ import { IRepository } from "../IRepository";
 
 export interface CategoryFilters {
   ids?: string[];
+  type?: string;
 }
 
 export interface ICategoryRepository extends IRepository<Category> {

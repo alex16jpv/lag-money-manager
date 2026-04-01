@@ -102,6 +102,28 @@ describe("CategoryService", () => {
         filters,
       );
     });
+
+    it("should pass type filter to repository", async () => {
+      repo.getAllByUserId.mockResolvedValue({
+        data: [mockCategory],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+
+      const filters = { type: "EXPENSE" };
+      await service.getAllCategories(testUserId, pagination, filters);
+
+      expect(repo.getAllByUserId).toHaveBeenCalledWith(
+        testUserId,
+        pagination,
+        filters,
+      );
+    });
   });
 
   describe("getCategoryById", () => {

@@ -36,6 +36,29 @@ export const TRANSACTION_TYPES = {
 
 export type TransactionType = keyof typeof TRANSACTION_TYPES;
 
+export type CategoryType = keyof typeof TRANSACTION_TYPES;
+
+export const COLORS = {
+  RED: "RED",
+  ORANGE: "ORANGE",
+  AMBER: "AMBER",
+  YELLOW: "YELLOW",
+  LIME: "LIME",
+  GREEN: "GREEN",
+  TEAL: "TEAL",
+  CYAN: "CYAN",
+  BLUE: "BLUE",
+  INDIGO: "INDIGO",
+  PURPLE: "PURPLE",
+  PINK: "PINK",
+  ROSE: "ROSE",
+  GRAY: "GRAY",
+  BROWN: "BROWN",
+  BLACK: "BLACK",
+} as const;
+
+export type Color = keyof typeof COLORS;
+
 import { z } from "zod";
 
 const baseEnvSchema = z.object({

@@ -69,10 +69,20 @@ jest.mock("../../shared/constants", () => ({
     LOAN: "LOAN",
     OTHER: "OTHER",
   },
+  COLORS: {
+    RED: "RED", ORANGE: "ORANGE", AMBER: "AMBER", YELLOW: "YELLOW",
+    LIME: "LIME", GREEN: "GREEN", TEAL: "TEAL", CYAN: "CYAN",
+    BLUE: "BLUE", INDIGO: "INDIGO", PURPLE: "PURPLE", PINK: "PINK",
+    ROSE: "ROSE", GRAY: "GRAY", BROWN: "BROWN", BLACK: "BLACK",
+  },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
+  },
+  CATEGORY_TYPES: {
+    INCOME: "INCOME",
+    EXPENSE: "EXPENSE",
   },
   MODEL_NAMES: {
     USER: "User",

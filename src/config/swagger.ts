@@ -82,6 +82,16 @@ const options: swaggerJsdoc.Options = {
               example: "SAVINGS",
             },
             balance: { type: "number", example: 1000 },
+            color: {
+              type: "string",
+              enum: [
+                "RED", "ORANGE", "AMBER", "YELLOW", "LIME", "GREEN",
+                "TEAL", "CYAN", "BLUE", "INDIGO", "PURPLE", "PINK",
+                "ROSE", "GRAY", "BROWN", "BLACK",
+              ],
+              nullable: true,
+              example: "BLUE",
+            },
             userId: {
               type: "string",
               format: "uuid",
@@ -109,6 +119,14 @@ const options: swaggerJsdoc.Options = {
               ],
             },
             balance: { type: "number", default: 0 },
+            color: {
+              type: "string",
+              enum: [
+                "RED", "ORANGE", "AMBER", "YELLOW", "LIME", "GREEN",
+                "TEAL", "CYAN", "BLUE", "INDIGO", "PURPLE", "PINK",
+                "ROSE", "GRAY", "BROWN", "BLACK",
+              ],
+            },
           },
         },
         UpdateAccount: {
@@ -130,6 +148,15 @@ const options: swaggerJsdoc.Options = {
               ],
             },
             balance: { type: "number" },
+            color: {
+              type: "string",
+              enum: [
+                "RED", "ORANGE", "AMBER", "YELLOW", "LIME", "GREEN",
+                "TEAL", "CYAN", "BLUE", "INDIGO", "PURPLE", "PINK",
+                "ROSE", "GRAY", "BROWN", "BLACK",
+              ],
+              nullable: true,
+            },
           },
         },
         Category: {
@@ -142,6 +169,22 @@ const options: swaggerJsdoc.Options = {
             },
             name: { type: "string", example: "Food" },
             emoji: { type: "string", maxLength: 8, example: "🍔" },
+            color: {
+              type: "string",
+              enum: [
+                "RED", "ORANGE", "AMBER", "YELLOW", "LIME", "GREEN",
+                "TEAL", "CYAN", "BLUE", "INDIGO", "PURPLE", "PINK",
+                "ROSE", "GRAY", "BROWN", "BLACK",
+              ],
+              nullable: true,
+              example: "RED",
+            },
+            type: {
+              type: "string",
+              enum: ["INCOME", "EXPENSE", "TRANSFER"],
+              nullable: true,
+              example: "EXPENSE",
+            },
             userId: {
               type: "string",
               format: "uuid",
@@ -155,6 +198,18 @@ const options: swaggerJsdoc.Options = {
           properties: {
             name: { type: "string", minLength: 1, maxLength: 255 },
             emoji: { type: "string", maxLength: 8 },
+            color: {
+              type: "string",
+              enum: [
+                "RED", "ORANGE", "AMBER", "YELLOW", "LIME", "GREEN",
+                "TEAL", "CYAN", "BLUE", "INDIGO", "PURPLE", "PINK",
+                "ROSE", "GRAY", "BROWN", "BLACK",
+              ],
+            },
+            type: {
+              type: "string",
+              enum: ["INCOME", "EXPENSE", "TRANSFER"],
+            },
           },
         },
         UpdateCategory: {
@@ -162,6 +217,20 @@ const options: swaggerJsdoc.Options = {
           properties: {
             name: { type: "string", minLength: 1, maxLength: 255 },
             emoji: { type: "string", maxLength: 8 },
+            color: {
+              type: "string",
+              enum: [
+                "RED", "ORANGE", "AMBER", "YELLOW", "LIME", "GREEN",
+                "TEAL", "CYAN", "BLUE", "INDIGO", "PURPLE", "PINK",
+                "ROSE", "GRAY", "BROWN", "BLACK",
+              ],
+              nullable: true,
+            },
+            type: {
+              type: "string",
+              enum: ["INCOME", "EXPENSE", "TRANSFER"],
+              nullable: true,
+            },
           },
         },
         RegisterRequest: {

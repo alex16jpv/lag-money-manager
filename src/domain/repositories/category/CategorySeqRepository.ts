@@ -52,6 +52,9 @@ export class CategorySeqRepository implements ICategoryRepository {
     if (filters?.ids?.length) {
       where.id = { [Op.in]: filters.ids };
     }
+    if (filters?.type) {
+      where.type = filters.type;
+    }
     return this.paginatedFindAll(where, pagination);
   }
 
