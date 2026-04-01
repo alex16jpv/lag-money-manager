@@ -69,6 +69,9 @@ export class TransactionSeqRepository implements ITransactionRepository {
         { toAccountId: filters.accountId },
       ];
     }
+    if (filters?.categoryId) {
+      where.categoryId = filters.categoryId;
+    }
     if (filters?.type) {
       where.type = filters.type;
     }

@@ -6,6 +6,7 @@ import { AccountFilters } from "../../domain/repositories/account/IAccountReposi
 
 const accountService = new AccountService(
   repositoryFactory.getAccountRepository(),
+  repositoryFactory.getTransactionRepository(),
 );
 
 export class AccountController {

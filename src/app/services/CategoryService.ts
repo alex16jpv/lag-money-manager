@@ -1,11 +1,15 @@
 import { Category } from "../../domain/entities/Category";
 import { CategoryFilters, ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
 import { CreateCategoryDTO, UpdateCategoryDTO } from "../dtos/CategoryDTO";
 
 export class CategoryService {
-  constructor(private repo: ICategoryRepository) {}
+  constructor(
+    private repo: ICategoryRepository,
+    private transactionRepo: ITransactionRepository,
+  ) {}
 
   async getAllCategories(
     userId: string,
@@ -62,6 +66,11 @@ export class CategoryService {
     }
     if (existing.userId !== userId) {
       throw new ApiError("Forbidden", "Access denied");
+    }
+
+    const linked = await this.transactionRepo.getAllByUserId(userId, { limit: 1, offset: 0 }, { categoryId: id });
+    if (linked.data.length > 0) {
+      throw new ApiError("BadRequest", "Cannot delete category with associated transactions");
     }
 
     return await this.repo.delete(id);

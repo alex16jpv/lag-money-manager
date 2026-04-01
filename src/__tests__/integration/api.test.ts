@@ -521,6 +521,10 @@ describe("Integration Tests", () => {
     it("should delete an account", async () => {
       mockAccountRepo.getById.mockResolvedValue(testAccount);
       mockAccountRepo.delete.mockResolvedValue();
+      mockTransactionRepo.getAllByUserId.mockResolvedValue({
+        data: [],
+        pagination: { limit: 1, offset: 0, total: 0, hasMore: false, nextCursor: null },
+      });
 
       const res = await request(app)
         .delete("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71")
@@ -628,6 +632,10 @@ describe("Integration Tests", () => {
     it("should delete a category", async () => {
       mockCategoryRepo.getById.mockResolvedValue(testCategory);
       mockCategoryRepo.delete.mockResolvedValue();
+      mockTransactionRepo.getAllByUserId.mockResolvedValue({
+        data: [],
+        pagination: { limit: 1, offset: 0, total: 0, hasMore: false, nextCursor: null },
+      });
 
       const res = await request(app)
         .delete("/categories/019576a0-d7b6-7d6d-af6a-2b7545f5ac73")

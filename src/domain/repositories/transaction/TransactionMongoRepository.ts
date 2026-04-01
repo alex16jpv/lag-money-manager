@@ -90,6 +90,9 @@ export class TransactionMongoRepository implements ITransactionRepository {
         { toAccountId: filters.accountId },
       ];
     }
+    if (filters?.categoryId) {
+      filter.categoryId = filters.categoryId;
+    }
     if (filters?.type) {
       filter.type = filters.type;
     }

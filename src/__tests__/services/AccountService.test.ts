@@ -36,6 +36,7 @@ jest.mock("../../shared/constants", () => ({
 
 import { AccountService } from "../../app/services/AccountService";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { Account } from "../../domain/entities/Account";
 import { ApiError } from "../../shared/errors";
 import { CreateAccountDTO } from "../../app/dtos/AccountDTO";
@@ -59,13 +60,24 @@ const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   delete: jest.fn(),
 });
 
+const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
+  getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
+  getById: jest.fn(),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+});
+
 describe("AccountService", () => {
   let service: AccountService;
   let repo: jest.Mocked<IAccountRepository>;
+  let transactionRepo: jest.Mocked<ITransactionRepository>;
 
   beforeEach(() => {
     repo = createMockRepo();
-    service = new AccountService(repo);
+    transactionRepo = createMockTransactionRepo();
+    service = new AccountService(repo, transactionRepo);
   });
 
   describe("getAllAccounts", () => {
@@ -229,6 +241,10 @@ describe("AccountService", () => {
     it("should delete an account", async () => {
       repo.getById.mockResolvedValue(mockAccount);
       repo.delete.mockResolvedValue();
+      transactionRepo.getAllByUserId.mockResolvedValue({
+        data: [],
+        pagination: { limit: 1, offset: 0, total: 0, hasMore: false, nextCursor: null },
+      });
 
       await service.deleteAccount(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
@@ -249,6 +265,23 @@ describe("AccountService", () => {
           validAccountProps.userId,
         ),
       ).rejects.toThrow("Account not found");
+    });
+
+    it("should throw BadRequest when account has associated transactions", async () => {
+      repo.getById.mockResolvedValue(mockAccount);
+      transactionRepo.getAllByUserId.mockResolvedValue({
+        data: [{}] as any,
+        pagination: { limit: 1, offset: 0, total: 1, hasMore: false, nextCursor: null },
+      });
+
+      await expect(
+        service.deleteAccount(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          validAccountProps.userId,
+        ),
+      ).rejects.toThrow("Cannot delete account with associated transactions");
+
+      expect(repo.delete).not.toHaveBeenCalled();
     });
   });
 

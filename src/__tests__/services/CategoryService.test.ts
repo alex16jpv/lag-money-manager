@@ -1,5 +1,6 @@
 import { CategoryService } from "../../app/services/CategoryService";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { Category } from "../../domain/entities/Category";
 import { ApiError } from "../../shared/errors";
 import { CreateCategoryDTO } from "../../app/dtos/CategoryDTO";
@@ -21,13 +22,24 @@ const createMockRepo = (): jest.Mocked<ICategoryRepository> => ({
   delete: jest.fn(),
 });
 
+const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
+  getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
+  getById: jest.fn(),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+});
+
 describe("CategoryService", () => {
   let service: CategoryService;
   let repo: jest.Mocked<ICategoryRepository>;
+  let transactionRepo: jest.Mocked<ITransactionRepository>;
 
   beforeEach(() => {
     repo = createMockRepo();
-    service = new CategoryService(repo);
+    transactionRepo = createMockTransactionRepo();
+    service = new CategoryService(repo, transactionRepo);
   });
 
   describe("getAllCategories", () => {
@@ -188,6 +200,10 @@ describe("CategoryService", () => {
     it("should delete a category", async () => {
       repo.getById.mockResolvedValue(mockCategory);
       repo.delete.mockResolvedValue();
+      transactionRepo.getAllByUserId.mockResolvedValue({
+        data: [],
+        pagination: { limit: 1, offset: 0, total: 0, hasMore: false, nextCursor: null },
+      });
 
       await service.deleteCategory(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
@@ -208,6 +224,23 @@ describe("CategoryService", () => {
           testUserId,
         ),
       ).rejects.toThrow("Category not found");
+    });
+
+    it("should throw BadRequest when category has associated transactions", async () => {
+      repo.getById.mockResolvedValue(mockCategory);
+      transactionRepo.getAllByUserId.mockResolvedValue({
+        data: [{}] as any,
+        pagination: { limit: 1, offset: 0, total: 1, hasMore: false, nextCursor: null },
+      });
+
+      await expect(
+        service.deleteCategory(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          testUserId,
+        ),
+      ).rejects.toThrow("Cannot delete category with associated transactions");
+
+      expect(repo.delete).not.toHaveBeenCalled();
     });
   });
 

@@ -6,6 +6,7 @@ import { CategoryFilters } from "../../domain/repositories/category/ICategoryRep
 
 const categoryService = new CategoryService(
   repositoryFactory.getCategoryRepository(),
+  repositoryFactory.getTransactionRepository(),
 );
 
 export class CategoryController {

@@ -1,11 +1,15 @@
 import { Account } from "../../domain/entities/Account";
 import { AccountFilters, IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
 import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
 
 export class AccountService {
-  constructor(private repo: IAccountRepository) {}
+  constructor(
+    private repo: IAccountRepository,
+    private transactionRepo: ITransactionRepository,
+  ) {}
 
   async getAllAccounts(
     userId: string,
@@ -63,6 +67,11 @@ export class AccountService {
     }
     if (existing.userId !== userId) {
       throw new ApiError("Forbidden", "Access denied");
+    }
+
+    const linked = await this.transactionRepo.getAllByUserId(userId, { limit: 1, offset: 0 }, { accountId: id });
+    if (linked.data.length > 0) {
+      throw new ApiError("BadRequest", "Cannot delete account with associated transactions");
     }
 
     return await this.repo.delete(id);
