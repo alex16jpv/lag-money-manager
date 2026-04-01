@@ -18,6 +18,16 @@ jest.mock("../../shared/constants", () => ({
   ACCOUNT_TYPES: {},
 }));
 
+jest.mock("../../shared/logger", () => ({
+  __esModule: true,
+  default: {
+    error: jest.fn(),
+    warn: jest.fn(),
+    info: jest.fn(),
+    debug: jest.fn(),
+  },
+}));
+
 const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   getAll: jest.fn(),
   getById: jest.fn(),
