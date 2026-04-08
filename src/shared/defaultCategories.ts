@@ -17,7 +17,7 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   { name: "Housing", emoji: "🏠", color: "RED", type: "EXPENSE" },
   { name: "Food", emoji: "🍽️", color: "ORANGE", type: "EXPENSE" },
   { name: "Transportation", emoji: "🚗", color: "RED", type: "EXPENSE" },
-  { name: "Utilities", emoji: "⚡", color: "AMBER", type: "EXPENSE" },
+  { name: "Bills & Services", emoji: "⚡", color: "AMBER", type: "EXPENSE" },
   { name: "Lifestyle", emoji: "🛍️", color: "PURPLE", type: "EXPENSE" },
 
   // TRANSFER (2)
