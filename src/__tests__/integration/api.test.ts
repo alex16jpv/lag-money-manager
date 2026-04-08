@@ -418,7 +418,7 @@ describe("Integration Tests", () => {
         .delete("/users/019576a0-d7b6-7d6d-af6a-2b7545f5ac70")
         .set("Authorization", `Bearer ${token}`);
 
-      expect(res.status).toBe(204);
+      expect(res.status).toBe(200);
       expect(mockUserRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       );
@@ -540,7 +540,7 @@ describe("Integration Tests", () => {
         .delete("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71")
         .set("Authorization", `Bearer ${token}`);
 
-      expect(res.status).toBe(204);
+      expect(res.status).toBe(200);
       expect(mockAccountRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
       );
@@ -651,7 +651,7 @@ describe("Integration Tests", () => {
         .delete("/categories/019576a0-d7b6-7d6d-af6a-2b7545f5ac73")
         .set("Authorization", `Bearer ${token}`);
 
-      expect(res.status).toBe(204);
+      expect(res.status).toBe(200);
       expect(mockCategoryRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
       );
@@ -801,7 +801,7 @@ describe("Integration Tests", () => {
         .delete("/transactions/019576a0-d7b6-7d6d-af6a-2b7545f5ac74")
         .set("Authorization", `Bearer ${token}`);
 
-      expect(res.status).toBe(204);
+      expect(res.status).toBe(200);
       expect(mockTransactionRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac74",
       );
