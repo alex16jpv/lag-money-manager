@@ -12,6 +12,16 @@ npm run db:migrate      # Run database migrations (MySQL)
 npm run start:dev       # Start development server
 ```
 
+## Lambda Deployment
+
+```bash
+npm run build           # Build TypeScript code
+npm ci --omit=dev
+zip -r function.zip dist/ node_modules package.json
+# Upload function.zip to AWS Lambda and set handler to dist/lambda.handler
+# Configure environment variables in Lambda console (see docs/guides/environment-vars.md)
+```
+
 ## Stack
 
 | Technology      | Purpose                  |

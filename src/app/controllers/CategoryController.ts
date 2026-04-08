@@ -58,6 +58,6 @@ export class CategoryController {
   static deleteCategory = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     await categoryService.deleteCategory(req.params.id as string, userId);
-    res.status(204).send();
+    res.status(200).json({ message: 'Category deleted successfully' });
   };
 }

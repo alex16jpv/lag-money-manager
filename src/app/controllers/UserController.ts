@@ -29,6 +29,6 @@ export class UserController {
     const userId = req.user!.userId;
     const id = req.params.id as string;
     await userService.deleteUser(id, userId);
-    res.status(204).send();
+    res.status(200).json({ message: 'User deleted successfully' });
   };
 }

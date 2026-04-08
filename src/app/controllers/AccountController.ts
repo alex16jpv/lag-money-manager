@@ -56,6 +56,6 @@ export class AccountController {
   static deleteAccount = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     await accountService.deleteAccount(req.params.id as string, userId);
-    res.status(204).send();
+    res.status(200).json({ message: 'Account deleted successfully' });
   };
 }

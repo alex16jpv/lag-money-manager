@@ -87,7 +87,7 @@ export class CategoryMongoRepository implements ICategoryRepository {
     const docs = await CategoryMongoModel.insertMany(
       categories.map((c) => ({ _id: uuidv7(), ...c })),
     );
-    return docs.map((doc) => this.toEntity(doc));
+    return docs.map((doc) => this.toEntity(doc as unknown as ICategoryDocument));
   }
 
   async update(id: string, category: Partial<Category>): Promise<Category> {

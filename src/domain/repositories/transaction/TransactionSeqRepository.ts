@@ -59,7 +59,7 @@ export class TransactionSeqRepository implements ITransactionRepository {
     pagination: PaginationParams,
     filters?: TransactionFilters,
   ): Promise<PaginatedResult<Transaction>> {
-    const where: WhereOptions = { userId };
+    const where: WhereOptions & Record<symbol, unknown> = { userId };
     if (filters?.ids?.length) {
       where.id = { [Op.in]: filters.ids };
     }
