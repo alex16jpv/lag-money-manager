@@ -14,6 +14,7 @@ import { errorMiddleware } from "./shared/middlewares";
 import { requestIdMiddleware } from "./shared/requestId";
 import { authMiddleware } from "./app/middlewares/authMiddleware";
 import { ENVIRONMENT } from "./shared/constants";
+import { gatewaySecretMiddleware } from "./app/middlewares/gatewaySecretMiddleware";
 
 const app = express();
 
@@ -37,9 +38,16 @@ app.use(
     origin: ENVIRONMENT.CORS_ORIGIN.split(",").map((s) => s.trim()),
   }),
 );
+app.use(express.json({ limit: "10kb" }));
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+// All routes below require the gateway secret header
+app.use(gatewaySecretMiddleware);
+
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 1000,
+  max: ENVIRONMENT.RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -47,13 +55,10 @@ const apiLimiter = rateLimit({
     message: "Too many requests, please try again later",
   },
 });
-app.use(express.json({ limit: "10kb" }));
 
-app.get("/", (_req, res) => {
+app.get("/", apiLimiter, (_req, res) => {
   res.status(200).send({ hello: "world!" });
 });
-
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/auth", apiLimiter, authRoutes);
 

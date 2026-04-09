@@ -65,9 +65,11 @@ const baseEnvSchema = z.object({
   PORT: z.coerce.number().default(3000),
   DB_TYPE: z.string().default(DB_TYPES.SEQ),
   JWT_SECRET: z.string().min(1, "JWT_SECRET is required"),
+  API_SECRET: z.string().optional(),
   JWT_EXPIRATION: z.string().default("24h"),
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(4).max(20).default(12),
   CORS_ORIGIN: z.string().min(1, "CORS_ORIGIN is required"),
+  RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(200),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace"])
     .default("info"),
