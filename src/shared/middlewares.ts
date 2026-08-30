@@ -1,7 +1,24 @@
 import { NextFunction, Request, Response } from "express";
+import { ConnectionError as SequelizeConnectionError } from "sequelize";
 import { ApiError } from "./errors";
 import { DomainValidationError } from "../domain/errors";
 import logger from "./logger";
+
+const MONGO_UNAVAILABLE_ERROR_NAMES = new Set([
+  "MongooseServerSelectionError",
+  "MongoServerSelectionError",
+  "MongoNetworkError",
+  "MongoNetworkTimeoutError",
+]);
+
+function isDatabaseUnavailableError(error: Error): boolean {
+  return (
+    error instanceof SequelizeConnectionError ||
+    MONGO_UNAVAILABLE_ERROR_NAMES.has(error?.name) ||
+    (error?.name === "MongooseError" &&
+      /buffering timed out|before initial connection/.test(error.message))
+  );
+}
 
 interface ValidationError extends Error {
   errors: { message: string }[];
@@ -80,6 +97,18 @@ export const errorMiddleware = (
     res.status(400).json({
       error: "ValidationError",
       message: "Invalid ID format",
+    });
+    return;
+  }
+
+  if (isDatabaseUnavailableError(error)) {
+    logger.error(
+      { err: error, requestId: req.headers["x-request-id"] },
+      "Database unavailable",
+    );
+    res.status(503).json({
+      error: "ServiceUnavailable",
+      message: "Database connection unavailable, please try again later",
     });
     return;
   }

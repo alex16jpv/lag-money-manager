@@ -98,3 +98,6 @@ export const ENVIRONMENT =
   process.env.DB_TYPE === DB_TYPES.MONGO
     ? mongoEnvSchema.parse(process.env)
     : seqEnvSchema.parse(process.env);
+
+// True when running inside AWS Lambda (the runtime sets this variable).
+export const IS_LAMBDA = Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);

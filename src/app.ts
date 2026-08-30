@@ -13,8 +13,10 @@ import transactionRoutes from "./app/routes/transactionRoutes";
 import { errorMiddleware } from "./shared/middlewares";
 import { requestIdMiddleware } from "./shared/requestId";
 import { authMiddleware } from "./app/middlewares/authMiddleware";
+import { dbReadinessMiddleware } from "./app/middlewares/dbReadinessMiddleware";
 import { ENVIRONMENT } from "./shared/constants";
 import { gatewaySecretMiddleware } from "./app/middlewares/gatewaySecretMiddleware";
+import { pingDatabase } from "./config/dbHealth";
 
 const app = express();
 
@@ -59,6 +61,13 @@ const apiLimiter = rateLimit({
 app.get("/", apiLimiter, (_req, res) => {
   res.status(200).send({ hello: "world!" });
 });
+
+app.get("/health/db", apiLimiter, async (_req, res) => {
+  await pingDatabase();
+  res.status(200).json({ database: "ok" });
+});
+
+app.use(dbReadinessMiddleware);
 
 app.use("/auth", apiLimiter, authRoutes);
 

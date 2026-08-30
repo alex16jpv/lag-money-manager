@@ -1,4 +1,4 @@
-import { DB_TYPES } from "../../../shared/constants";
+import { DB_TYPES, IS_LAMBDA } from "../../../shared/constants";
 import { connectMongo } from "../../../config/mongoConnection";
 import { UserMongoRepository } from "../../../domain/repositories/user/UserMongoRepository";
 import { AccountMongoRepository } from "../../../domain/repositories/account/AccountMongoRepository";
@@ -15,7 +15,12 @@ export const dbType = DB_TYPES.MONGO;
 export function registerRepositories(factory: RegistryTarget): void {
   connectMongo().catch((err) => {
     logger.error({ err }, "Failed to connect to MongoDB");
-    process.exit(1);
+    // Fail fast in a long-lived server so the orchestrator restarts it.
+    // In Lambda, exiting poisons the runtime (later invocations get an
+    // opaque 502); requests retry the connection instead.
+    if (!IS_LAMBDA) {
+      process.exit(1);
+    }
   });
   factory.register("user", () => new UserMongoRepository());
   factory.register("account", () => new AccountMongoRepository());
