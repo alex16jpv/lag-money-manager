@@ -24,13 +24,32 @@ export class TransactionSeqRepository implements ITransactionRepository {
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Transaction>> {
     const { limit, offset, cursor } = pagination;
-    const where: WhereOptions = cursor
-      ? { ...baseWhere, id: { [Op.gt]: cursor } }
-      : baseWhere;
+    let where: WhereOptions = baseWhere;
+    if (cursor) {
+      // Keyset over (date DESC, id DESC): the id alone is not enough because
+      // transactions can be backdated, so fetch the cursor row's date.
+      const cursorRow = await this.model.findByPk(cursor);
+      if (cursorRow) {
+        where = {
+          [Op.and]: [
+            baseWhere,
+            {
+              [Op.or]: [
+                { date: { [Op.lt]: cursorRow.date } },
+                { date: cursorRow.date, id: { [Op.lt]: cursor } },
+              ],
+            },
+          ],
+        };
+      }
+    }
 
     const { rows, count } = await this.model.findAndCountAll({
       where,
-      order: [["id", "ASC"]],
+      order: [
+        ["date", "DESC"],
+        ["id", "DESC"],
+      ],
       limit,
       offset: cursor ? 0 : offset,
     });

@@ -39,15 +39,33 @@ export class TransactionMongoRepository implements ITransactionRepository {
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Transaction>> {
     const { limit, offset, cursor } = pagination;
-    const filter = { ...baseFilter };
+    let filter: Record<string, unknown> = baseFilter;
     if (cursor) {
-      filter._id = { $gt: cursor };
+      // Keyset over (date DESC, _id DESC): the id alone is not enough because
+      // transactions can be backdated, so fetch the cursor doc's date.
+      // $and keeps this from clashing with a $or already in baseFilter.
+      const cursorDoc = await TransactionMongoModel.findById(cursor)
+        .select("date")
+        .lean();
+      if (cursorDoc) {
+        filter = {
+          $and: [
+            baseFilter,
+            {
+              $or: [
+                { date: { $lt: cursorDoc.date } },
+                { date: cursorDoc.date, _id: { $lt: cursor } },
+              ],
+            },
+          ],
+        };
+      }
     }
 
     const hasFilter = Object.keys(baseFilter).length > 0;
     const [docs, total] = await Promise.all([
       TransactionMongoModel.find(filter)
-        .sort({ _id: 1 })
+        .sort({ date: -1, _id: -1 })
         .skip(cursor ? 0 : offset)
         .limit(limit)
         .lean(),
