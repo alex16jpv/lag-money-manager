@@ -85,6 +85,16 @@ export class BudgetService {
         patch.periodStartDate = null;
         patch.periodEndDate = null;
       }
+    } else if (
+      existing.periodType === "CUSTOM" &&
+      ((dto.periodStartDate !== undefined &&
+        dto.periodStartDate?.getTime() !== existing.periodStartDate?.getTime()) ||
+        (dto.periodEndDate !== undefined &&
+          dto.periodEndDate?.getTime() !== existing.periodEndDate?.getTime()))
+    ) {
+      // CUSTOM override keys encode the window dates: moving the window
+      // orphans them.
+      patch.amountOverrides = {};
     }
     const merged = new Budget({ ...existing, ...patch });
     this.assertValidPeriod(merged);

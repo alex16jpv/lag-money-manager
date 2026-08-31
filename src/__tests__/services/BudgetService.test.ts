@@ -359,6 +359,26 @@ describe("BudgetService", () => {
       expect(patch.periodEndDate).toBeNull();
     });
 
+    it("prunes overrides when the CUSTOM window dates move", async () => {
+      const b = makeBudget({
+        periodType: "CUSTOM",
+        periodStartDate: new Date("2026-08-01T00:00:00Z"),
+        periodEndDate: new Date("2026-09-01T00:00:00Z"),
+        amountOverrides: { "1754006400000_1756684800000": 50 },
+      });
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(b);
+      budgetRepo.update.mockResolvedValue(makeBudget());
+
+      await service.updateBudget(
+        "b1",
+        { periodEndDate: new Date("2026-09-15T00:00:00Z") },
+        USER,
+        CTX,
+      );
+
+      expect(budgetRepo.update.mock.calls[0][1].amountOverrides).toEqual({});
+    });
+
     it("rejects CUSTOM dates on a non-CUSTOM budget", async () => {
       await expect(
         service.createBudget(
@@ -472,6 +492,29 @@ describe("BudgetService", () => {
 
     it("lists it flagged when includeExpired=true", async () => {
       list([expiredCustom()]);
+
+      const result = await service.getBudgets(
+        USER,
+        { limit: 20, offset: 0 },
+        { includeExpired: true },
+        CTX,
+      );
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].expired).toBe(true);
+    });
+
+    it("a CUSTOM budget backdated before its creation still lists (retro window)", async () => {
+      list([
+        makeBudget({
+          id: "bc3",
+          periodType: "CUSTOM",
+          periodStartDate: new Date("2026-07-01T00:00:00Z"),
+          periodEndDate: new Date("2026-08-01T00:00:00Z"),
+          // Created AFTER the window it describes: the explicit window wins.
+          createdAt: new Date("2026-08-10T00:00:00Z"),
+        }),
+      ]);
 
       const result = await service.getBudgets(
         USER,

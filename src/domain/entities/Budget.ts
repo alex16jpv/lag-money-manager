@@ -69,7 +69,17 @@ export class Budget {
 
   // Windows that end on or before this instant predate the budget.
   lifetimeFloor(): Date {
-    return this.effectiveFrom ?? this.createdAt;
+    const floor = this.effectiveFrom ?? this.createdAt;
+    // A CUSTOM window is explicit: a budget backdated before its creation
+    // must still list, so the window start caps the floor.
+    if (
+      this.periodType === "CUSTOM" &&
+      this.periodStartDate &&
+      this.periodStartDate.getTime() < floor.getTime()
+    ) {
+      return this.periodStartDate;
+    }
+    return floor;
   }
 
   amountForPeriod(periodKey: string): number {
