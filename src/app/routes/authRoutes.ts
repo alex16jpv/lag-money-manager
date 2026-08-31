@@ -1,9 +1,24 @@
 import { Router } from "express";
+
+import { ENVIRONMENT } from "../../shared/constants";
 import { AuthController } from "../controllers/AuthController";
+import { authRateLimit } from "../middlewares/authRateLimitMiddleware";
+import { loginSchema,registerSchema } from "../validation/schemas";
 import { validate } from "../validation/validate";
-import { registerSchema, loginSchema } from "../validation/schemas";
 
 const router = Router();
+
+const AUTH_WINDOW_MS = 15 * 60 * 1000;
+const loginLimiter = authRateLimit({
+  keyPrefix: "login",
+  max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
+  windowMs: AUTH_WINDOW_MS,
+});
+const registerLimiter = authRateLimit({
+  keyPrefix: "register",
+  max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
+  windowMs: AUTH_WINDOW_MS,
+});
 
 /**
  * @openapi
@@ -32,7 +47,12 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/ValidationError'
  */
-router.post("/register", validate(registerSchema), AuthController.register);
+router.post(
+  "/register",
+  registerLimiter,
+  validate(registerSchema),
+  AuthController.register,
+);
 
 /**
  * @openapi
@@ -67,6 +87,11 @@ router.post("/register", validate(registerSchema), AuthController.register);
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post("/login", validate(loginSchema), AuthController.login);
+router.post(
+  "/login",
+  loginLimiter,
+  validate(loginSchema),
+  AuthController.login,
+);
 
 export default router;
