@@ -2,6 +2,7 @@ import mongoose, { Schema } from "mongoose";
 
 import {
   MODEL_NAMES,
+  TRANSACTION_SOURCES,
   TRANSACTION_TYPES,
   TransactionType,
 } from "../../shared/constants";
@@ -19,6 +20,7 @@ export interface ITransactionDocument {
   tags: string[];
   note: string | null;
   pendingDetails: boolean;
+  source?: string;
   revisions?: {
     at: Date;
     amount: number;
@@ -50,6 +52,12 @@ const TransactionSchema = new Schema<ITransactionDocument>(
     tags: { type: [String], default: [] },
     note: { type: String, default: null },
     pendingDetails: { type: Boolean, required: true, default: false },
+    source: {
+      type: String,
+      required: true,
+      enum: Object.keys(TRANSACTION_SOURCES),
+      default: "MANUAL",
+    },
     // Audit trail of monetary edits (amount in cents); capped, internal-only.
     revisions: {
       type: [

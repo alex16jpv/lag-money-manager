@@ -1,4 +1,4 @@
-import { TransactionType } from "../../shared/constants";
+import { TransactionSource, TransactionType } from "../../shared/constants";
 
 export interface CreateTransactionDTO {
   type: TransactionType;
@@ -12,6 +12,8 @@ export interface CreateTransactionDTO {
   tags?: string[];
   note?: string | null;
   pendingDetails?: boolean;
+  // Server-derived (quick-add sets QUICK); the schema never accepts it.
+  source?: TransactionSource;
 }
 
 export interface UpdateTransactionDTO {

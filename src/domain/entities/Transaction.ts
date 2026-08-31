@@ -1,6 +1,6 @@
 import { v7 as uuidv7 } from "uuid";
 
-import { TransactionType } from "../../shared/constants";
+import { TransactionSource, TransactionType } from "../../shared/constants";
 import { MAX_AMOUNT } from "../../shared/money";
 import { DomainValidationError } from "../errors";
 
@@ -17,6 +17,7 @@ export interface TransactionProps {
   tags?: string[];
   note?: string | null;
   pendingDetails?: boolean;
+  source?: TransactionSource;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -34,6 +35,7 @@ export class Transaction {
   tags: string[];
   note: string | null;
   pendingDetails: boolean;
+  source: TransactionSource;
   createdAt: Date;
   updatedAt: Date;
 
@@ -50,6 +52,7 @@ export class Transaction {
     this.tags = props.tags ?? [];
     this.note = props.note ?? null;
     this.pendingDetails = props.pendingDetails ?? false;
+    this.source = props.source ?? "MANUAL";
     this.createdAt = props.createdAt ?? new Date();
     this.updatedAt = props.updatedAt ?? new Date();
   }

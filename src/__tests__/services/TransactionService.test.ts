@@ -574,6 +574,26 @@ describe("TransactionService", () => {
     });
   });
 
+  describe("source [R2-27b]", () => {
+    it("quick-add marks source QUICK; normal create defaults to MANUAL", async () => {
+      acctRepo.getById.mockResolvedValue(account());
+      acctRepo.getDefaultByUserId.mockResolvedValue(account());
+      txRepo.create.mockImplementation(async (tx) => tx as Transaction);
+
+      const quick = await service.quickAddTransaction({ amount: 5, userId: USER });
+      expect(quick.source).toBe("QUICK");
+
+      const manual = await service.createTransaction({
+        type: "EXPENSE",
+        amount: 10,
+        date: new Date("2026-03-28"),
+        fromAccountId: ACC_A,
+        userId: USER,
+      });
+      expect(manual.source).toBe("MANUAL");
+    });
+  });
+
   describe("category validation [R2-05]", () => {
     const CAT = "019576a0-d7b6-7d6d-af6a-2b7545f5ac90";
     const expenseDto = (): CreateTransactionDTO => ({

@@ -37,6 +37,7 @@ export class TransactionRepository implements ITransactionRepository {
       tags: doc.tags ?? [],
       note: doc.note ?? null,
       pendingDetails: doc.pendingDetails,
+      source: doc.source as Transaction["source"],
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });

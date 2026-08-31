@@ -162,6 +162,7 @@ export class TransactionService {
         toAccountId,
         userId: dto.userId,
         pendingDetails: true,
+        source: "QUICK",
       },
       idempotency,
     );

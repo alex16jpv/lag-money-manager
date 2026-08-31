@@ -56,6 +56,16 @@ export const TRANSACTION_TYPES = {
 
 export type TransactionType = keyof typeof TRANSACTION_TYPES;
 
+// Where a transaction was born; server-derived (never client-settable).
+// IMPORT is reserved for the future bank/CSV import feature.
+export const TRANSACTION_SOURCES = {
+  MANUAL: "MANUAL",
+  QUICK: "QUICK",
+  IMPORT: "IMPORT",
+} as const;
+
+export type TransactionSource = keyof typeof TRANSACTION_SOURCES;
+
 export const CATEGORY_TYPES = {
   INCOME: "INCOME",
   EXPENSE: "EXPENSE",
