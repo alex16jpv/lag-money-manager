@@ -60,7 +60,6 @@ import { CreateAccountDTO } from "../../app/dtos/AccountDTO";
 import { AccountService } from "../../app/services/AccountService";
 import { Account } from "../../domain/entities/Account";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
-import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { ApiError } from "../../shared/errors";
 
 const validAccountProps = {
@@ -80,26 +79,16 @@ const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
-});
-
-const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
-  getAll: jest.fn(),
-  getAllByUserId: jest.fn(),
-  getById: jest.fn(),
-  create: jest.fn(),
-  update: jest.fn(),
-  delete: jest.fn(),
+  incrementBalance: jest.fn(),
 });
 
 describe("AccountService", () => {
   let service: AccountService;
   let repo: jest.Mocked<IAccountRepository>;
-  let transactionRepo: jest.Mocked<ITransactionRepository>;
 
   beforeEach(() => {
     repo = createMockRepo();
-    transactionRepo = createMockTransactionRepo();
-    service = new AccountService(repo, transactionRepo);
+    service = new AccountService(repo);
   });
 
   describe("getAllAccounts", () => {
@@ -259,14 +248,10 @@ describe("AccountService", () => {
     });
   });
 
-  describe("deleteAccount", () => {
-    it("should delete an account", async () => {
+  describe("deleteAccount (archive)", () => {
+    it("should archive an account (even when it has transactions)", async () => {
       repo.getById.mockResolvedValue(mockAccount);
       repo.delete.mockResolvedValue();
-      transactionRepo.getAllByUserId.mockResolvedValue({
-        data: [],
-        pagination: { limit: 1, offset: 0, total: 0, hasMore: false, nextCursor: null },
-      });
 
       await service.deleteAccount(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
@@ -278,7 +263,7 @@ describe("AccountService", () => {
       );
     });
 
-    it("should throw NotFound when deleting non-existent account", async () => {
+    it("should throw NotFound when archiving non-existent account", async () => {
       repo.getById.mockResolvedValue(null);
 
       await expect(
@@ -289,19 +274,15 @@ describe("AccountService", () => {
       ).rejects.toThrow("Account not found");
     });
 
-    it("should throw BadRequest when account has associated transactions", async () => {
+    it("should throw Forbidden when archiving another user's account", async () => {
       repo.getById.mockResolvedValue(mockAccount);
-      transactionRepo.getAllByUserId.mockResolvedValue({
-        data: [{}] as any,
-        pagination: { limit: 1, offset: 0, total: 1, hasMore: false, nextCursor: null },
-      });
 
       await expect(
         service.deleteAccount(
           "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-          validAccountProps.userId,
+          "another-user",
         ),
-      ).rejects.toThrow("Cannot delete account with associated transactions");
+      ).rejects.toThrow("Access denied");
 
       expect(repo.delete).not.toHaveBeenCalled();
     });

@@ -6,7 +6,6 @@ import { CategoryService } from "../services/CategoryService";
 
 const categoryService = new CategoryService(
   repositoryFactory.getCategoryRepository(),
-  repositoryFactory.getTransactionRepository(),
 );
 const authService = new AuthService(
   repositoryFactory.getUserRepository(),

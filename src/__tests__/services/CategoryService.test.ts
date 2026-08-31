@@ -2,7 +2,6 @@ import { CreateCategoryDTO } from "../../app/dtos/CategoryDTO";
 import { CategoryService } from "../../app/services/CategoryService";
 import { Category } from "../../domain/entities/Category";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
-import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
 import { ApiError } from "../../shared/errors";
 
@@ -24,24 +23,13 @@ const createMockRepo = (): jest.Mocked<ICategoryRepository> => ({
   delete: jest.fn(),
 });
 
-const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
-  getAll: jest.fn(),
-  getAllByUserId: jest.fn(),
-  getById: jest.fn(),
-  create: jest.fn(),
-  update: jest.fn(),
-  delete: jest.fn(),
-});
-
 describe("CategoryService", () => {
   let service: CategoryService;
   let repo: jest.Mocked<ICategoryRepository>;
-  let transactionRepo: jest.Mocked<ITransactionRepository>;
 
   beforeEach(() => {
     repo = createMockRepo();
-    transactionRepo = createMockTransactionRepo();
-    service = new CategoryService(repo, transactionRepo);
+    service = new CategoryService(repo);
   });
 
   describe("getAllCategories", () => {
@@ -220,14 +208,10 @@ describe("CategoryService", () => {
     });
   });
 
-  describe("deleteCategory", () => {
-    it("should delete a category", async () => {
+  describe("deleteCategory (archive)", () => {
+    it("should archive a category (even when it has transactions)", async () => {
       repo.getById.mockResolvedValue(mockCategory);
       repo.delete.mockResolvedValue();
-      transactionRepo.getAllByUserId.mockResolvedValue({
-        data: [],
-        pagination: { limit: 1, offset: 0, total: 0, hasMore: false, nextCursor: null },
-      });
 
       await service.deleteCategory(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
@@ -239,7 +223,7 @@ describe("CategoryService", () => {
       );
     });
 
-    it("should throw NotFound when deleting non-existent category", async () => {
+    it("should throw NotFound when archiving non-existent category", async () => {
       repo.getById.mockResolvedValue(null);
 
       await expect(
@@ -250,19 +234,15 @@ describe("CategoryService", () => {
       ).rejects.toThrow("Category not found");
     });
 
-    it("should throw BadRequest when category has associated transactions", async () => {
+    it("should throw Forbidden when archiving another user's category", async () => {
       repo.getById.mockResolvedValue(mockCategory);
-      transactionRepo.getAllByUserId.mockResolvedValue({
-        data: [{}] as any,
-        pagination: { limit: 1, offset: 0, total: 1, hasMore: false, nextCursor: null },
-      });
 
       await expect(
         service.deleteCategory(
           "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-          testUserId,
+          "another-user",
         ),
-      ).rejects.toThrow("Cannot delete category with associated transactions");
+      ).rejects.toThrow("Access denied");
 
       expect(repo.delete).not.toHaveBeenCalled();
     });

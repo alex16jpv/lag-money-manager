@@ -1,16 +1,12 @@
 import { Category } from "../../domain/entities/Category";
 import { CategoryFilters, ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
-import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { CreateCategoryDTO, UpdateCategoryDTO } from "../dtos/CategoryDTO";
 
 export class CategoryService {
-  constructor(
-    private repo: ICategoryRepository,
-    private transactionRepo: ITransactionRepository,
-  ) {}
+  constructor(private repo: ICategoryRepository) {}
 
   async getAllCategories(
     userId: string,
@@ -60,6 +56,9 @@ export class CategoryService {
     return new Category(await this.repo.update(id, dto));
   }
 
+  // Archive (soft delete). Allowed even with linked transactions: the category
+  // document is kept, so existing transactions keep resolving it; it is only
+  // hidden from active listings and its name is freed for reuse.
   async deleteCategory(id: string, userId: string): Promise<void> {
     const existing = await this.repo.getById(id);
     if (!existing) {
@@ -67,11 +66,6 @@ export class CategoryService {
     }
     if (existing.userId !== userId) {
       throw new ApiError("Forbidden", "Access denied");
-    }
-
-    const linked = await this.transactionRepo.getAllByUserId(userId, { limit: 1, offset: 0 }, { categoryId: id });
-    if (linked.data.length > 0) {
-      throw new ApiError("BadRequest", "Cannot delete category with associated transactions");
     }
 
     return await this.repo.delete(id);

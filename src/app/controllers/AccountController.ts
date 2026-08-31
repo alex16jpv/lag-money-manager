@@ -7,7 +7,6 @@ import { AccountService } from "../services/AccountService";
 
 const accountService = new AccountService(
   repositoryFactory.getAccountRepository(),
-  repositoryFactory.getTransactionRepository(),
 );
 
 export class AccountController {
