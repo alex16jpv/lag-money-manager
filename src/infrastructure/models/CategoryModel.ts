@@ -30,10 +30,16 @@ const CategorySchema = new Schema<ICategoryDocument>(
 );
 
 CategorySchema.index({ userId: 1, _id: 1 });
-// One active category name per user (partial: excludes soft-deleted rows).
+// One active category name per user (partial: excludes archived rows).
+// Collation strength 2: case-insensitive ("Comida" = "comida"), accents
+// still distinct. Display casing is preserved in the stored name.
 CategorySchema.index(
   { userId: 1, name: 1 },
-  { unique: true, partialFilterExpression: { archivedAt: null } },
+  {
+    unique: true,
+    partialFilterExpression: { archivedAt: null },
+    collation: { locale: "es", strength: 2 },
+  },
 );
 
 export const CategoryModel = mongoose.model<ICategoryDocument>(
