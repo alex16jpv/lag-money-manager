@@ -1,12 +1,13 @@
 import { Router } from "express";
+
 import { AccountController } from "../controllers/AccountController";
-import { validate } from "../validation/validate";
 import {
   createAccountSchema,
-  updateAccountSchema,
   idParamSchema,
   paginationQuerySchema,
+  updateAccountSchema,
 } from "../validation/schemas";
+import { validate } from "../validation/validate";
 
 const router = Router();
 

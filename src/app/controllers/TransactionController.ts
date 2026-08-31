@@ -1,9 +1,10 @@
 import { Request, Response } from "express";
-import { TransactionService } from "../services/TransactionService";
-import repositoryFactory from "../factories/RepositoryFactory";
-import { extractPagination } from "../../shared/pagination";
+
 import { TransactionFilters } from "../../domain/repositories/transaction/ITransactionRepository";
 import { TransactionType } from "../../shared/constants";
+import { extractPagination } from "../../shared/pagination";
+import repositoryFactory from "../factories/RepositoryFactory";
+import { TransactionService } from "../services/TransactionService";
 
 const transactionService = new TransactionService(
   repositoryFactory.getTransactionRepository(),

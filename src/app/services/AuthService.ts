@@ -1,12 +1,13 @@
 import bcryptjs from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { ENVIRONMENT } from "../../shared/constants";
-import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+
 import { User } from "../../domain/entities/User";
+import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { ENVIRONMENT } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
+import logger from "../../shared/logger";
 import { CreateUserDTO, UserResponseDTO } from "../dtos/UserDTO";
 import { CategoryService } from "./CategoryService";
-import logger from "../../shared/logger";
 
 export class AuthService {
   constructor(

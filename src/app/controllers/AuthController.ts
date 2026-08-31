@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
+
+import repositoryFactory from "../factories/RepositoryFactory";
 import { AuthService } from "../services/AuthService";
 import { CategoryService } from "../services/CategoryService";
-import repositoryFactory from "../factories/RepositoryFactory";
 
 const categoryService = new CategoryService(
   repositoryFactory.getCategoryRepository(),

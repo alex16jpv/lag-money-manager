@@ -1,12 +1,13 @@
 import { Router } from "express";
+
 import { CategoryController } from "../controllers/CategoryController";
-import { validate } from "../validation/validate";
 import {
   createCategorySchema,
-  updateCategorySchema,
-  idParamSchema,
   getCategoriesSchema,
+  idParamSchema,
+  updateCategorySchema,
 } from "../validation/schemas";
+import { validate } from "../validation/validate";
 
 const router = Router();
 

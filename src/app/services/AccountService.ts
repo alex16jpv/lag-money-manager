@@ -1,8 +1,8 @@
 import { Account } from "../../domain/entities/Account";
 import { AccountFilters, IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
-import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
+import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
 
 export class AccountService {

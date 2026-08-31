@@ -1,4 +1,5 @@
 import pino from "pino";
+
 import { ENVIRONMENT } from "./constants";
 
 const logger = pino({

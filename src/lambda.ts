@@ -1,6 +1,7 @@
 import serverlessExpress from '@codegenie/serverless-express';
-import app from './app';
 import type { APIGatewayProxyEvent, Context } from 'aws-lambda';
+
+import app from './app';
 import { pingDatabase } from './config/dbHealth';
 import { IS_LAMBDA } from './shared/constants';
 

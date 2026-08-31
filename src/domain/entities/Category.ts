@@ -1,4 +1,5 @@
 import { v7 as uuidv7 } from "uuid";
+
 import { CategoryType, Color } from "../../shared/constants";
 
 export interface CategoryProps {

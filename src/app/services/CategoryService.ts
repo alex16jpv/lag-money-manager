@@ -1,10 +1,10 @@
 import { Category } from "../../domain/entities/Category";
 import { CategoryFilters, ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
-import { PaginatedResult, PaginationParams } from "../../shared/pagination";
-import { ApiError } from "../../shared/errors";
-import { CreateCategoryDTO, UpdateCategoryDTO } from "../dtos/CategoryDTO";
 import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
+import { ApiError } from "../../shared/errors";
+import { PaginatedResult, PaginationParams } from "../../shared/pagination";
+import { CreateCategoryDTO, UpdateCategoryDTO } from "../dtos/CategoryDTO";
 
 export class CategoryService {
   constructor(

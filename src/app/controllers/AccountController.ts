@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
-import { AccountService } from "../services/AccountService";
-import repositoryFactory from "../factories/RepositoryFactory";
-import { extractPagination } from "../../shared/pagination";
+
 import { AccountFilters } from "../../domain/repositories/account/IAccountRepository";
+import { extractPagination } from "../../shared/pagination";
+import repositoryFactory from "../factories/RepositoryFactory";
+import { AccountService } from "../services/AccountService";
 
 const accountService = new AccountService(
   repositoryFactory.getAccountRepository(),

@@ -1,7 +1,8 @@
+import { timingSafeEqual } from "crypto";
 import { NextFunction, Request, Response } from "express";
+
 import { ENVIRONMENT } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
-import { timingSafeEqual } from "crypto";
 
 const HEADER_NAME = "x-api-secret";
 

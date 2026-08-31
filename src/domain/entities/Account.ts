@@ -1,4 +1,5 @@
 import { v7 as uuidv7 } from "uuid";
+
 import { AccountType, Color } from "../../shared/constants";
 
 export interface AccountProps {

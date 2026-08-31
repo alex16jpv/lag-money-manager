@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
+
+import { CategoryFilters } from "../../domain/repositories/category/ICategoryRepository";
+import { extractPagination } from "../../shared/pagination";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { CategoryService } from "../services/CategoryService";
-import { extractPagination } from "../../shared/pagination";
-import { CategoryFilters } from "../../domain/repositories/category/ICategoryRepository";
 
 const categoryService = new CategoryService(
   repositoryFactory.getCategoryRepository(),

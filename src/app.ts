@@ -1,22 +1,23 @@
-import express from "express";
 import compression from "compression";
 import cors from "cors";
-import helmet from "helmet";
+import express from "express";
 import rateLimit from "express-rate-limit";
+import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
-import { swaggerSpec } from "./config/swagger";
-import authRoutes from "./app/routes/authRoutes";
-import userRoutes from "./app/routes/userRoutes";
-import accountRoutes from "./app/routes/accountRoutes";
-import categoryRoutes from "./app/routes/categoryRoutes";
-import transactionRoutes from "./app/routes/transactionRoutes";
-import { errorMiddleware } from "./shared/middlewares";
-import { requestIdMiddleware } from "./shared/requestId";
+
 import { authMiddleware } from "./app/middlewares/authMiddleware";
 import { dbReadinessMiddleware } from "./app/middlewares/dbReadinessMiddleware";
-import { ENVIRONMENT } from "./shared/constants";
 import { gatewaySecretMiddleware } from "./app/middlewares/gatewaySecretMiddleware";
+import accountRoutes from "./app/routes/accountRoutes";
+import authRoutes from "./app/routes/authRoutes";
+import categoryRoutes from "./app/routes/categoryRoutes";
+import transactionRoutes from "./app/routes/transactionRoutes";
+import userRoutes from "./app/routes/userRoutes";
 import { pingDatabase } from "./config/dbHealth";
+import { swaggerSpec } from "./config/swagger";
+import { ENVIRONMENT } from "./shared/constants";
+import { errorMiddleware } from "./shared/middlewares";
+import { requestIdMiddleware } from "./shared/requestId";
 
 const app = express();
 
