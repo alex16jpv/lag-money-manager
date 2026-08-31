@@ -1,27 +1,21 @@
 // Syncs MongoDB indexes to the Mongoose schemas (creates missing, drops removed).
 // Run as a deploy step: npm run db:sync-indexes
+//
+// The model list comes from the registry, not from a list kept here: a
+// hand-maintained one had already lost RefreshSession, so its TTL and
+// familyId indexes were never created in production.
 import "dotenv/config";
 import mongoose from "mongoose";
+
 import { connectMongo } from "../src/config/mongoConnection";
-import { UserModel } from "../src/infrastructure/models/UserModel";
-import { AccountModel } from "../src/infrastructure/models/AccountModel";
-import { CategoryModel } from "../src/infrastructure/models/CategoryModel";
-import { TransactionModel } from "../src/infrastructure/models/TransactionModel";
-import { RateLimitModel } from "../src/infrastructure/models/RateLimitModel";
-import { BudgetModel } from "../src/infrastructure/models/BudgetModel";
-import { IdempotencyKeyModel } from "../src/infrastructure/models/IdempotencyKeyModel";
+import "../src/infrastructure/models";
 
 async function main(): Promise<void> {
   await connectMongo();
-  const models = [
-    UserModel,
-    AccountModel,
-    CategoryModel,
-    TransactionModel,
-    RateLimitModel,
-    BudgetModel,
-    IdempotencyKeyModel,
-  ];
+  const models = Object.values(mongoose.models);
+  if (models.length === 0) {
+    throw new Error("No Mongoose models registered; nothing to sync");
+  }
   for (const model of models) {
     await model.syncIndexes();
     // eslint-disable-next-line no-console
@@ -29,7 +23,7 @@ async function main(): Promise<void> {
   }
   await mongoose.disconnect();
   // eslint-disable-next-line no-console
-  console.log("Done.");
+  console.log(`Done (${models.length} models).`);
 }
 
 main().catch((err) => {
