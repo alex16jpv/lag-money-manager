@@ -11,6 +11,8 @@ export interface UserProps {
   tokenVersion?: number;
   // IANA timezone; drives day/period boundaries for stats and budgets.
   timezone?: string;
+  // Last session open (login/register); impossible to reconstruct later.
+  lastLoginAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -22,6 +24,7 @@ export class User {
   password?: string;
   tokenVersion: number;
   timezone: string;
+  lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 
@@ -32,6 +35,7 @@ export class User {
     password,
     tokenVersion,
     timezone,
+    lastLoginAt,
     createdAt,
     updatedAt,
   }: UserProps) {
@@ -41,6 +45,7 @@ export class User {
     this.password = password;
     this.tokenVersion = tokenVersion ?? 0;
     this.timezone = timezone ?? DEFAULT_TIMEZONE;
+    this.lastLoginAt = lastLoginAt ?? null;
     this.createdAt = createdAt ?? new Date();
     this.updatedAt = updatedAt ?? new Date();
   }

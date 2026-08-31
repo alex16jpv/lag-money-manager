@@ -10,6 +10,7 @@ export interface IUserDocument {
   password: string;
   tokenVersion: number;
   timezone: string;
+  lastLoginAt: Date | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -23,6 +24,7 @@ const UserSchema = new Schema<IUserDocument>(
     password: { type: String, required: true },
     tokenVersion: { type: Number, required: true, default: 0 },
     timezone: { type: String, required: true, default: DEFAULT_TIMEZONE },
+    lastLoginAt: { type: Date, default: null },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true },

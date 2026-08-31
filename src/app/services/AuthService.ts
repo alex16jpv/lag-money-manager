@@ -42,6 +42,7 @@ export class AuthService {
       name: user.name,
       email: user.email,
       timezone: user.timezone,
+      lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -94,6 +95,7 @@ export class AuthService {
       expiresAt: new Date(exp * 1000),
       userAgent,
     });
+    await this.repo.recordLogin(user.id);
     return { accessToken: this.signAccessToken(user), refreshToken };
   }
 

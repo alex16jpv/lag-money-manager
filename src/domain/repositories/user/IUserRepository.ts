@@ -7,6 +7,8 @@ export interface IUserRepository extends IRepository<User> {
   getByIdWithPassword(id: string): Promise<User | null>;
   // Atomic $inc: revokes every live refresh token of the user.
   bumpTokenVersion(id: string): Promise<void>;
+  // Stamps lastLoginAt; fire-and-forget semantics (no error surfaced).
+  recordLogin(id: string): Promise<void>;
   getDeletedByEmail(email: string): Promise<User | null>;
   // Clears the soft delete; the account keeps its financial history.
   reactivate(

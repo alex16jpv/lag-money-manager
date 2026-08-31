@@ -15,6 +15,7 @@ export class UserService {
       name: user.name,
       email: user.email,
       timezone: user.timezone,
+      lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

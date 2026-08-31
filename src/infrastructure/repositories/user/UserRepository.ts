@@ -18,6 +18,7 @@ export class UserRepository implements IUserRepository {
     password?: string;
     tokenVersion?: number;
     timezone?: string;
+    lastLoginAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
   }): User {
@@ -28,6 +29,7 @@ export class UserRepository implements IUserRepository {
       password: doc.password,
       tokenVersion: doc.tokenVersion,
       timezone: doc.timezone,
+      lastLoginAt: doc.lastLoginAt,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });
@@ -51,6 +53,13 @@ export class UserRepository implements IUserRepository {
     const doc = await UserModel.findOne({ _id: id, deletedAt: null }).lean();
     if (!doc) return null;
     return this.toEntity(doc);
+  }
+
+  async recordLogin(id: string): Promise<void> {
+    await UserModel.updateOne(
+      { _id: id, deletedAt: null },
+      { lastLoginAt: new Date() },
+    );
   }
 
   async bumpTokenVersion(id: string): Promise<void> {

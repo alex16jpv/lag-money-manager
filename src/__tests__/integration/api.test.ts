@@ -18,6 +18,7 @@ const mockUserRepo: jest.Mocked<IUserRepository> = {
   getDeletedByEmail: jest.fn().mockResolvedValue(null),
   getByIdWithPassword: jest.fn().mockResolvedValue(null),
   bumpTokenVersion: jest.fn().mockResolvedValue(undefined),
+  recordLogin: jest.fn().mockResolvedValue(undefined),
   reactivate: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
