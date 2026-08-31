@@ -83,6 +83,8 @@ function periodKey(type: BudgetPeriodType, start: DateTime): string {
     case "YEARLY":
       return start.toFormat("yyyy");
     default:
-      return start.toISO() ?? "";
+      // Keys are Mongo $set paths: a fallback like toISO() (dots) would corrupt
+      // amountOverrides for any future period type. Fail loudly instead.
+      throw new Error(`No period key format defined for period type ${type}`);
   }
 }
