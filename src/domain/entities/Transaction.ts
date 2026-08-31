@@ -68,17 +68,35 @@ export class Transaction {
         "amount",
       );
     }
-    if (this.type === "EXPENSE" && !this.fromAccountId) {
-      throw new DomainValidationError(
-        "fromAccountId is required for expense transactions",
-        "fromAccountId",
-      );
+    if (this.type === "EXPENSE") {
+      if (!this.fromAccountId) {
+        throw new DomainValidationError(
+          "fromAccountId is required for expense transactions",
+          "fromAccountId",
+        );
+      }
+      // An expense has no destination; a stray toAccountId would misreport the
+      // transaction against an account it never affected.
+      if (this.toAccountId) {
+        throw new DomainValidationError(
+          "toAccountId is not allowed for expense transactions",
+          "toAccountId",
+        );
+      }
     }
-    if (this.type === "INCOME" && !this.toAccountId) {
-      throw new DomainValidationError(
-        "toAccountId is required for income transactions",
-        "toAccountId",
-      );
+    if (this.type === "INCOME") {
+      if (!this.toAccountId) {
+        throw new DomainValidationError(
+          "toAccountId is required for income transactions",
+          "toAccountId",
+        );
+      }
+      if (this.fromAccountId) {
+        throw new DomainValidationError(
+          "fromAccountId is not allowed for income transactions",
+          "fromAccountId",
+        );
+      }
     }
     if (this.type === "TRANSFER") {
       if (!this.fromAccountId) {

@@ -213,6 +213,20 @@ describe("TransactionService", () => {
       ).rejects.toThrow("Amount must be greater than 0");
       expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
     });
+
+    it("rejects an EXPENSE that also carries a destination account [B10]", async () => {
+      await expect(
+        service.createTransaction({
+          type: "EXPENSE",
+          amount: 50,
+          date: new Date("2026-03-28"),
+          fromAccountId: ACC_A,
+          toAccountId: ACC_B,
+          userId: USER,
+        }),
+      ).rejects.toThrow("toAccountId is not allowed");
+      expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
+    });
   });
 
   describe("updateTransaction", () => {
