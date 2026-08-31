@@ -84,4 +84,19 @@ export class CategoryService {
     const created = await this.repo.createMany(categories);
     return created.map((c) => new Category(c));
   }
+
+  // Idempotent by seedKey: creates only the missing defaults. Archived seed
+  // categories count as present (the user removed them on purpose) and
+  // renamed ones keep their seedKey, so neither gets duplicated.
+  async restoreDefaults(userId: string): Promise<Category[]> {
+    const existing = new Set(await this.repo.listSeedKeys(userId));
+    const missing = DEFAULT_CATEGORIES.filter((c) => !existing.has(c.seedKey));
+    if (missing.length === 0) {
+      return [];
+    }
+    const created = await this.repo.createMany(
+      missing.map((cat) => new Category({ ...cat, userId })),
+    );
+    return created.map((c) => new Category(c));
+  }
 }

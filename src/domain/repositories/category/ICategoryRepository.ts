@@ -16,6 +16,9 @@ export interface ICategoryRepository extends IRepository<Category> {
   ): Promise<PaginatedResult<Category>>;
   // Unlike getById, also resolves archived categories (callers decide the policy).
   getByIdIncludingArchived(id: string): Promise<Category | null>;
+  // Duplicate-tolerant: skips (userId,name) duplicates, inserts the rest.
   createMany(entities: Partial<Category>[]): Promise<Category[]>;
+  // Seed keys present for the user, archived included.
+  listSeedKeys(userId: string): Promise<string[]>;
   restore(id: string, userId: string): Promise<Category | null>;
 }

@@ -19,6 +19,7 @@ export class CategoryRepository implements ICategoryRepository {
       color: doc.color,
       type: doc.type,
       userId: doc.userId,
+      seedKey: doc.seedKey,
       archivedAt: doc.deletedAt,
     });
   }
@@ -99,10 +100,39 @@ export class CategoryRepository implements ICategoryRepository {
   }
 
   async createMany(categories: Partial<Category>[]): Promise<Category[]> {
-    const docs = await CategoryModel.insertMany(
-      categories.map((c) => ({ _id: c.id ?? uuidv7(), ...c })),
-    );
-    return docs.map((doc) => this.toEntity(doc as unknown as ICategoryDocument));
+    const payload = categories.map((c) => ({ _id: c.id ?? uuidv7(), ...c }));
+    try {
+      const docs = await CategoryModel.insertMany(payload, { ordered: false });
+      return docs.map((doc) =>
+        this.toEntity(doc as unknown as ICategoryDocument),
+      );
+    } catch (err) {
+      // Duplicates (unique userId+name) are skipped and the rest inserted:
+      // this makes the register seed and restore-defaults retry-safe.
+      const bulk = err as {
+        insertedDocs?: unknown[];
+        writeErrors?: { code?: number; err?: { code?: number } }[];
+      };
+      const onlyDuplicates =
+        bulk.writeErrors?.length &&
+        bulk.writeErrors.every((w) => (w.code ?? w.err?.code) === 11000);
+      if (bulk.insertedDocs && onlyDuplicates) {
+        return bulk.insertedDocs.map((d) =>
+          this.toEntity(d as ICategoryDocument),
+        );
+      }
+      throw err;
+    }
+  }
+
+  async listSeedKeys(userId: string): Promise<string[]> {
+    // Includes archived: an archived seed category counts as existing
+    // (the user chose to remove it; restore-defaults must not resurrect it).
+    const keys = await CategoryModel.distinct("seedKey", {
+      userId,
+      seedKey: { $ne: null },
+    });
+    return keys as string[];
   }
 
   async update(id: string, category: Partial<Category>): Promise<Category> {

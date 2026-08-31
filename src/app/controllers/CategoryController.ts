@@ -72,4 +72,9 @@ export class CategoryController {
     );
     res.status(200).json(category);
   };
+
+  static restoreDefaults = async (req: Request, res: Response) => {
+    const created = await categoryService.restoreDefaults(req.user!.userId);
+    res.status(200).json({ data: created });
+  };
 }

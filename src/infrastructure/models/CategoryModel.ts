@@ -9,6 +9,7 @@ export interface ICategoryDocument {
   color?: Color;
   type?: CategoryType;
   userId: string;
+  seedKey?: string;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -22,6 +23,7 @@ const CategorySchema = new Schema<ICategoryDocument>(
     color: { type: String, required: false, enum: Object.keys(COLORS) },
     type: { type: String, required: false, enum: Object.keys(CATEGORY_TYPES) },
     userId: { type: String, required: true },
+    seedKey: { type: String, required: false },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true },

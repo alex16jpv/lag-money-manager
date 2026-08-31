@@ -94,6 +94,17 @@ router.get(
  *       401:
  *         description: Unauthorized
  */
+/**
+ * @openapi
+ * /categories/restore-defaults:
+ *   post:
+ *     tags: [Categories]
+ *     summary: Recreate the missing default categories (idempotent by seedKey)
+ *     responses:
+ *       200: { description: Newly created defaults (empty when none were missing) }
+ */
+router.post("/restore-defaults", CategoryController.restoreDefaults);
+
 router.post(
   "/",
   validate(createCategorySchema),

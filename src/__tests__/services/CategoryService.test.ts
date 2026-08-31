@@ -19,6 +19,7 @@ const createMockRepo = (): jest.Mocked<ICategoryRepository> => ({
   getByIdIncludingArchived: jest.fn(),
   create: jest.fn(),
   createMany: jest.fn(),
+  listSeedKeys: jest.fn().mockResolvedValue([]),
   update: jest.fn(),
   delete: jest.fn(),
   restore: jest.fn(),
@@ -246,6 +247,37 @@ describe("CategoryService", () => {
       ).rejects.toThrow("Access denied");
 
       expect(repo.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("restoreDefaults [R2-04]", () => {
+    it("creates only the defaults whose seedKey is missing", async () => {
+      const present = DEFAULT_CATEGORIES.slice(0, 7).map((c) => c.seedKey);
+      repo.listSeedKeys.mockResolvedValue(present);
+      repo.createMany.mockImplementation(async (cats) =>
+        cats.map((c) => new Category(c as Category)),
+      );
+
+      const created = await service.restoreDefaults(testUserId);
+
+      expect(created).toHaveLength(DEFAULT_CATEGORIES.length - 7);
+      const sentKeys = repo.createMany.mock.calls[0][0].map(
+        (c) => (c as Category).seedKey,
+      );
+      expect(sentKeys).toEqual(
+        DEFAULT_CATEGORIES.slice(7).map((c) => c.seedKey),
+      );
+    });
+
+    it("is a no-op when every seedKey exists (archived included)", async () => {
+      repo.listSeedKeys.mockResolvedValue(
+        DEFAULT_CATEGORIES.map((c) => c.seedKey),
+      );
+
+      const created = await service.restoreDefaults(testUserId);
+
+      expect(created).toEqual([]);
+      expect(repo.createMany).not.toHaveBeenCalled();
     });
   });
 
