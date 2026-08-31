@@ -361,6 +361,30 @@ describe("TransactionService", () => {
       );
     });
 
+    it("skips balance adjustments when no monetary field changes [R2-19]", async () => {
+      const existing = new Transaction({
+        id: TX_ID,
+        type: "EXPENSE",
+        amount: 100,
+        date: new Date("2026-03-28"),
+        fromAccountId: ACC_A,
+        userId: USER,
+      });
+      txRepo.getById.mockResolvedValue(existing);
+      txRepo.update.mockResolvedValue(
+        new Transaction({ ...existing, note: "coffee" }),
+      );
+
+      // Works even if the account is archived: no account lookup happens.
+      acctRepo.getById.mockResolvedValue(null);
+
+      await service.updateTransaction(TX_ID, { note: "coffee" }, USER);
+
+      expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
+      expect(acctRepo.getById).not.toHaveBeenCalled();
+      expect(txRepo.update).toHaveBeenCalled();
+    });
+
     it("rejects an update that would leave an invalid shape (INCOME without destination)", async () => {
       const existing = new Transaction({
         id: TX_ID,

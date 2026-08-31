@@ -159,10 +159,21 @@ export class TransactionService {
 
       const updated = new Transaction({ ...existing, ...dto });
       updated.assertValid();
-      await this.assertCategoryUsable(updated, existing.categoryId);
+      if (dto.categoryId !== undefined || dto.type !== undefined) {
+        await this.assertCategoryUsable(updated, existing.categoryId);
+      }
 
-      await this.adjustBalances(existing, -1, session);
-      await this.adjustBalances(updated, 1, session);
+      // Reverse+reapply only when money moves change; this also lets
+      // non-monetary edits succeed on transactions of archived accounts.
+      const monetaryChanged =
+        updated.type !== existing.type ||
+        updated.amount !== existing.amount ||
+        updated.fromAccountId !== existing.fromAccountId ||
+        updated.toAccountId !== existing.toAccountId;
+      if (monetaryChanged) {
+        await this.adjustBalances(existing, -1, session);
+        await this.adjustBalances(updated, 1, session);
+      }
 
       return await this.transactionRepo.update(id, dto, session);
     });
