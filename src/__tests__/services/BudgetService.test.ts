@@ -38,6 +38,7 @@ const createBudgetRepo = (): jest.Mocked<IBudgetRepository> =>
 const createTxRepo = (): jest.Mocked<ITransactionRepository> =>
   ({
     sumExpensesByCategory: jest.fn().mockResolvedValue({}),
+    sumExpenses: jest.fn().mockResolvedValue(0),
   }) as unknown as jest.Mocked<ITransactionRepository>;
 
 const createCategoryRepo = (): jest.Mocked<ICategoryRepository> =>
@@ -196,6 +197,43 @@ describe("BudgetService", () => {
       await expect(
         service.updateBudget("b1", { categoryIds: ["c1"] }, USER, CTX),
       ).resolves.toBeDefined();
+    });
+  });
+
+  describe("global budget [R2-13]", () => {
+    it("computes spent as the window's TOTAL expense (quick-adds included)", async () => {
+      const globalBudget = makeBudget({ id: "bg", categoryIds: [] });
+      budgetRepo.getAllByUserId.mockResolvedValue({
+        data: [globalBudget],
+        pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
+      });
+      txRepo.sumExpenses.mockResolvedValue(12550);
+
+      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+
+      expect(result.data[0].spent).toBe(125.5);
+      expect(txRepo.sumExpenses).toHaveBeenCalled();
+      expect(txRepo.sumExpensesByCategory).not.toHaveBeenCalled();
+    });
+
+    it("rejects a second global budget for the same period type", async () => {
+      budgetRepo.findOverlapping.mockResolvedValue([
+        makeBudget({ id: "bg", categoryIds: [] }),
+      ]);
+
+      await expect(
+        service.createBudget(
+          {
+            name: "Total 2",
+            color: "RED",
+            categoryIds: [],
+            amount: 900,
+            periodType: "MONTHLY",
+            userId: USER,
+          },
+          CTX,
+        ),
+      ).rejects.toThrow("already exists");
     });
   });
 });

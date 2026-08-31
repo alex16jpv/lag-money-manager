@@ -136,7 +136,11 @@ export class BudgetRepository implements IBudgetRepository {
       userId,
       deletedAt: null,
       periodType,
-      categoryIds: { $in: categoryIds },
+      // A global budget ([]) only conflicts with another global one; it
+      // coexists with per-category budgets by design.
+      categoryIds: categoryIds.length
+        ? { $in: categoryIds }
+        : { $size: 0 },
     };
     if (excludeId) {
       filter._id = { $ne: excludeId };

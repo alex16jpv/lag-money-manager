@@ -324,9 +324,9 @@ export const createBudgetSchema = z.object({
     color: z.enum(colorValues, {
       error: `Invalid color. Available: ${colorValues.join(", ")}`,
     }),
+    // Empty array = global budget: counts ALL expenses of the user.
     categoryIds: z
       .array(z.string().uuid("Each categoryId must be a valid UUID"))
-      .min(1, "At least one category is required")
       .max(20),
     amount: moneyAmount,
     periodType: z.enum(budgetPeriodValues, {
@@ -347,7 +347,6 @@ export const updateBudgetSchema = z.object({
       color: z.enum(colorValues).optional(),
       categoryIds: z
         .array(z.string().uuid("Each categoryId must be a valid UUID"))
-        .min(1)
         .max(20)
         .optional(),
       amount: moneyAmount.optional(),

@@ -63,6 +63,7 @@ const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   aggregateSpending: jest.fn(),
   listTags: jest.fn().mockResolvedValue([]),
   sumExpensesByCategory: jest.fn().mockResolvedValue({}),
+  sumExpenses: jest.fn().mockResolvedValue(0),
 };
 
 const mockBudgetRepo = {

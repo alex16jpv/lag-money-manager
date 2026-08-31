@@ -64,4 +64,8 @@ export interface ITransactionRepository extends IRepository<Transaction> {
     to: Date,
     categoryIds: string[],
   ): Promise<Record<string, number>>;
+
+  // Total EXPENSE cents in [from, to) regardless of category (uncategorized
+  // included) — the spend of a global budget sees quick-adds immediately.
+  sumExpenses(userId: string, from: Date, to: Date): Promise<number>;
 }

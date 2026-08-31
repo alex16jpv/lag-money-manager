@@ -296,4 +296,19 @@ export class TransactionRepository implements ITransactionRepository {
     }
     return map;
   }
+
+  async sumExpenses(userId: string, from: Date, to: Date): Promise<number> {
+    const rows = await TransactionModel.aggregate<{ total: number }>([
+      {
+        $match: {
+          userId,
+          type: "EXPENSE",
+          deletedAt: null,
+          date: { $gte: from, $lt: to },
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    return rows[0]?.total ?? 0;
+  }
 }

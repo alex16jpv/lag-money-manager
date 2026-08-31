@@ -193,7 +193,7 @@ export class BudgetService {
 
     const windows = new Map<
       string,
-      { from: Date; to: Date; categoryIds: Set<string> }
+      { from: Date; to: Date; categoryIds: Set<string>; hasGlobal: boolean }
     >();
     for (const { budget, period } of resolved) {
       const wk = `${period.from.getTime()}_${period.to.getTime()}`;
@@ -201,31 +201,47 @@ export class BudgetService {
         from: period.from,
         to: period.to,
         categoryIds: new Set<string>(),
+        hasGlobal: false,
       };
-      budget.categoryIds.forEach((c) => w.categoryIds.add(c));
+      if (budget.categoryIds.length === 0) {
+        // Global budget: spend is the window's TOTAL expense (uncategorized
+        // and quick-adds included), not a per-category sum.
+        w.hasGlobal = true;
+      } else {
+        budget.categoryIds.forEach((c) => w.categoryIds.add(c));
+      }
       windows.set(wk, w);
     }
 
     const sums = new Map<string, Record<string, number>>();
+    const totals = new Map<string, number>();
     await Promise.all(
       Array.from(windows.entries()).map(async ([wk, w]) => {
-        const map = await this.transactionRepo.sumExpensesByCategory(
-          userId,
-          w.from,
-          w.to,
-          Array.from(w.categoryIds),
-        );
-        sums.set(wk, map);
+        if (w.categoryIds.size > 0) {
+          const map = await this.transactionRepo.sumExpensesByCategory(
+            userId,
+            w.from,
+            w.to,
+            Array.from(w.categoryIds),
+          );
+          sums.set(wk, map);
+        }
+        if (w.hasGlobal) {
+          totals.set(
+            wk,
+            await this.transactionRepo.sumExpenses(userId, w.from, w.to),
+          );
+        }
       }),
     );
 
     return resolved.map(({ budget, period }) => {
       const wk = `${period.from.getTime()}_${period.to.getTime()}`;
       const map = sums.get(wk) ?? {};
-      const spentCents = budget.categoryIds.reduce(
-        (acc, c) => acc + (map[c] ?? 0),
-        0,
-      );
+      const spentCents =
+        budget.categoryIds.length === 0
+          ? (totals.get(wk) ?? 0)
+          : budget.categoryIds.reduce((acc, c) => acc + (map[c] ?? 0), 0);
       const amount = budget.amountForPeriod(period.key);
       return {
         id: budget.id,
