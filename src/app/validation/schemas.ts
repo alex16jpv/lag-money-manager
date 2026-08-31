@@ -253,20 +253,30 @@ export const spendingStatsSchema = z.object({
   }),
 });
 
+// Every budget route resolves the period from `reference`, so all must validate it.
+const budgetReferenceQuery = z.object({
+  reference: z
+    .string()
+    .datetime({ message: "reference must be a valid ISO 8601 date" })
+    .optional(),
+});
+
 export const getBudgetsSchema = z.object({
-  query: z.object({
+  query: budgetReferenceQuery.extend({
     limit: z.coerce.number().int().min(1).max(MAX_LIMIT).optional(),
     offset: z.coerce.number().int().min(0).optional(),
     cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
     includeArchived: z.enum(["true", "false"]).optional(),
-    reference: z
-      .string()
-      .datetime({ message: "reference must be a valid ISO 8601 date" })
-      .optional(),
   }),
 });
 
+export const budgetIdParamSchema = z.object({
+  params: z.object({ id: z.string().uuid("ID must be a valid UUID") }),
+  query: budgetReferenceQuery,
+});
+
 export const createBudgetSchema = z.object({
+  query: budgetReferenceQuery,
   body: z.object({
     name: z.string().min(1, "Name is required").max(255),
     color: z.enum(colorValues, {
@@ -288,6 +298,7 @@ export const createBudgetSchema = z.object({
 
 export const updateBudgetSchema = z.object({
   params: z.object({ id: z.string().uuid("ID must be a valid UUID") }),
+  query: budgetReferenceQuery,
   body: z
     .object({
       name: z.string().min(1).max(255).optional(),
@@ -310,6 +321,7 @@ export const updateBudgetSchema = z.object({
 
 export const budgetAmountOverrideSchema = z.object({
   params: z.object({ id: z.string().uuid("ID must be a valid UUID") }),
+  query: budgetReferenceQuery,
   body: z.object({ amount: moneyAmount }),
 });
 

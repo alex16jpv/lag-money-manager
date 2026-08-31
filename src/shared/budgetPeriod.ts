@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 
+import { DomainValidationError } from "../domain/errors";
 import { BudgetPeriodType } from "./constants";
 
 export interface BudgetPeriodDef {
@@ -21,6 +22,12 @@ export function resolvePeriod(
   reference: Date,
   timezone: string,
 ): ResolvedPeriod {
+  // Guard: an Invalid Date would otherwise produce the literal period key
+  // "Invalid DateTime" and persist corrupt override entries.
+  if (isNaN(reference.getTime())) {
+    throw new DomainValidationError("Invalid reference date", "reference");
+  }
+
   if (period.type === "CUSTOM") {
     if (!period.startDate || !period.endDate) {
       throw new Error("Custom period requires startDate and endDate");

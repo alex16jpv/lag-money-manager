@@ -3,9 +3,9 @@ import { Router } from "express";
 import { BudgetController } from "../controllers/BudgetController";
 import {
   budgetAmountOverrideSchema,
+  budgetIdParamSchema,
   createBudgetSchema,
   getBudgetsSchema,
-  idParamSchema,
   updateBudgetSchema,
 } from "../validation/schemas";
 import { validate } from "../validation/validate";
@@ -37,13 +37,13 @@ const router = Router();
 router.get("/", validate(getBudgetsSchema), BudgetController.getAllBudgets);
 router.post("/", validate(createBudgetSchema), BudgetController.createBudget);
 
-router.get("/:id", validate(idParamSchema), BudgetController.getBudgetById);
+router.get("/:id", validate(budgetIdParamSchema), BudgetController.getBudgetById);
 router.put("/:id", validate(updateBudgetSchema), BudgetController.updateBudget);
-router.delete("/:id", validate(idParamSchema), BudgetController.deleteBudget);
+router.delete("/:id", validate(budgetIdParamSchema), BudgetController.deleteBudget);
 
 router.post(
   "/:id/restore",
-  validate(idParamSchema),
+  validate(budgetIdParamSchema),
   BudgetController.restoreBudget,
 );
 
