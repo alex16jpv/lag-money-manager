@@ -111,6 +111,7 @@ jest.mock("../../shared/constants", () => ({
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
+    ADJUSTMENT: "ADJUSTMENT",
   },
   BUDGET_PERIOD_TYPES: {
     WEEKLY: "WEEKLY",

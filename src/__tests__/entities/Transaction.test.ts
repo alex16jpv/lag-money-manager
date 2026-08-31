@@ -28,6 +28,7 @@ jest.mock("../../shared/constants", () => ({
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
+    ADJUSTMENT: "ADJUSTMENT",
   },
   CATEGORY_TYPES: {
     INCOME: "INCOME",
@@ -101,6 +102,59 @@ describe("Transaction Entity", () => {
       });
 
       expect(tx.date).toBeInstanceOf(Date);
+    });
+  });
+
+  describe("assertValid — ADJUSTMENT [R2-06]", () => {
+    const base = {
+      amount: 25,
+      date: new Date("2026-08-31"),
+      userId: validExpenseProps.userId,
+    };
+
+    it("accepts a decrease (fromAccountId only)", () => {
+      const tx = new Transaction({
+        ...base,
+        type: "ADJUSTMENT",
+        fromAccountId: validExpenseProps.fromAccountId,
+      });
+      expect(() => tx.assertValid()).not.toThrow();
+    });
+
+    it("accepts an increase (toAccountId only)", () => {
+      const tx = new Transaction({
+        ...base,
+        type: "ADJUSTMENT",
+        toAccountId: validExpenseProps.fromAccountId,
+      });
+      expect(() => tx.assertValid()).not.toThrow();
+    });
+
+    it("rejects both account sides", () => {
+      const tx = new Transaction({
+        ...base,
+        type: "ADJUSTMENT",
+        fromAccountId: validExpenseProps.fromAccountId,
+        toAccountId: validExpenseProps.categoryId,
+      });
+      expect(() => tx.assertValid()).toThrow("exactly one");
+    });
+
+    it("rejects no account side", () => {
+      const tx = new Transaction({ ...base, type: "ADJUSTMENT" });
+      expect(() => tx.assertValid()).toThrow("exactly one");
+    });
+
+    it("rejects a category", () => {
+      const tx = new Transaction({
+        ...base,
+        type: "ADJUSTMENT",
+        fromAccountId: validExpenseProps.fromAccountId,
+        categoryId: validExpenseProps.categoryId,
+      });
+      expect(() => tx.assertValid()).toThrow(
+        "categoryId is not allowed for adjustment",
+      );
     });
   });
 });

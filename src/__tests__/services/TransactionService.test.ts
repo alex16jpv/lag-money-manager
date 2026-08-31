@@ -9,7 +9,13 @@ jest.mock("../../shared/constants", () => ({
     NODE_ENV: "test",
   },
   DB_TYPES: { MONGO: "MONGO" },
-  TRANSACTION_TYPES: { INCOME: "INCOME", EXPENSE: "EXPENSE", TRANSFER: "TRANSFER" },
+  TRANSACTION_TYPES: {
+    INCOME: "INCOME",
+    EXPENSE: "EXPENSE",
+    TRANSFER: "TRANSFER",
+    ADJUSTMENT: "ADJUSTMENT",
+  },
+  CATEGORY_TYPES: { INCOME: "INCOME", EXPENSE: "EXPENSE", TRANSFER: "TRANSFER" },
   MODEL_NAMES: {
     USER: "User",
     ACCOUNT: "Account",
@@ -115,6 +121,37 @@ describe("TransactionService", () => {
   });
 
   describe("createTransaction", () => {
+    it("applies an ADJUSTMENT as a signed increment on the single account [R2-06]", async () => {
+      acctRepo.getById.mockResolvedValue(account());
+      txRepo.create.mockImplementation(async (tx) => tx as Transaction);
+
+      await service.createTransaction({
+        type: "ADJUSTMENT",
+        amount: 30,
+        date: new Date("2026-08-31"),
+        fromAccountId: ACC_A,
+        userId: USER,
+      });
+      expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
+        ACC_A,
+        -30,
+        "test-session",
+      );
+
+      await service.createTransaction({
+        type: "ADJUSTMENT",
+        amount: 30,
+        date: new Date("2026-08-31"),
+        toAccountId: ACC_B,
+        userId: USER,
+      });
+      expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
+        ACC_B,
+        30,
+        "test-session",
+      );
+    });
+
     it("debits the source account for an EXPENSE (atomic increment)", async () => {
       acctRepo.getById.mockResolvedValue(account());
       const dto: CreateTransactionDTO = {

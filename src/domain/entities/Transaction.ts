@@ -94,6 +94,21 @@ export class Transaction {
         );
       }
     }
+    if (this.type === "ADJUSTMENT") {
+      const sides = [this.fromAccountId, this.toAccountId].filter(Boolean);
+      if (sides.length !== 1) {
+        throw new DomainValidationError(
+          "Adjustment requires exactly one of fromAccountId (decrease) or toAccountId (increase)",
+          "fromAccountId",
+        );
+      }
+      if (this.categoryId) {
+        throw new DomainValidationError(
+          "categoryId is not allowed for adjustment transactions",
+          "categoryId",
+        );
+      }
+    }
     if (this.type === "TRANSFER") {
       if (!this.fromAccountId) {
         throw new DomainValidationError(

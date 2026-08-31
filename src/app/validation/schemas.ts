@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   ACCOUNT_TYPES,
   BUDGET_PERIOD_TYPES,
+  CATEGORY_TYPES,
   COLORS,
   TRANSACTION_TYPES,
 } from "../../shared/constants";
@@ -36,7 +37,7 @@ const transactionTypeValues = Object.keys(TRANSACTION_TYPES) as [
   string,
   ...string[],
 ];
-const categoryTypeValues = Object.keys(TRANSACTION_TYPES) as [string, ...string[]];
+const categoryTypeValues = Object.keys(CATEGORY_TYPES) as [string, ...string[]];
 const colorValues = Object.keys(COLORS) as [string, ...string[]];
 const budgetPeriodValues = Object.keys(BUDGET_PERIOD_TYPES) as [
   string,
@@ -399,6 +400,24 @@ export const createTransactionSchema = z.object({
           message: "toAccountId is required for income transactions",
           path: ["toAccountId"],
         });
+      }
+      if (data.type === "ADJUSTMENT") {
+        const sides = [data.fromAccountId, data.toAccountId].filter(Boolean);
+        if (sides.length !== 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              "Adjustment requires exactly one of fromAccountId (decrease) or toAccountId (increase)",
+            path: ["fromAccountId"],
+          });
+        }
+        if (data.categoryId) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "categoryId is not allowed for adjustment transactions",
+            path: ["categoryId"],
+          });
+        }
       }
       if (data.type === "TRANSFER") {
         if (!data.fromAccountId) {

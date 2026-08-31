@@ -41,11 +41,19 @@ export const TRANSACTION_TYPES = {
   INCOME: "INCOME",
   EXPENSE: "EXPENSE",
   TRANSFER: "TRANSFER",
+  // Balance reconciliation: excluded from stats and budgets, no category.
+  ADJUSTMENT: "ADJUSTMENT",
 } as const;
 
 export type TransactionType = keyof typeof TRANSACTION_TYPES;
 
-export type CategoryType = keyof typeof TRANSACTION_TYPES;
+export const CATEGORY_TYPES = {
+  INCOME: "INCOME",
+  EXPENSE: "EXPENSE",
+  TRANSFER: "TRANSFER",
+} as const;
+
+export type CategoryType = keyof typeof CATEGORY_TYPES;
 
 export const COLORS = {
   RED: "RED",

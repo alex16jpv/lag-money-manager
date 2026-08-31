@@ -177,9 +177,8 @@ export class TransactionRepository implements ITransactionRepository {
     query: SpendingQuery,
   ): Promise<SpendingBucket[]> {
     const match: Record<string, unknown> = { userId, deletedAt: null };
-    if (query.type) {
-      match.type = query.type;
-    }
+    // ADJUSTMENT is reconciliation, not real cash flow: hidden unless asked for.
+    match.type = query.type ?? { $ne: "ADJUSTMENT" };
     if (query.from || query.to) {
       // Half-open range [from, to), consistent with budget windows.
       const range: Record<string, Date> = {};

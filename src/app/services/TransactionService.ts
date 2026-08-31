@@ -256,7 +256,7 @@ export class TransactionService {
       await adjustAccount(toAccountId, 1);
     }
 
-    if (type === "TRANSFER") {
+    if (type === "TRANSFER" || type === "ADJUSTMENT") {
       if (fromAccountId) {
         await adjustAccount(fromAccountId, -1);
       }
