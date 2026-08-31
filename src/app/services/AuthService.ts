@@ -63,12 +63,20 @@ export class AuthService {
     // that account, keeping its financial history (categories included).
     const deleted = await this.repo.getDeletedByEmail(dto.email);
     if (deleted) {
-      const reactivated = await this.repo.reactivate(deleted.id, {
-        name: dto.name,
-        password: hashedPassword,
-        ...(dto.timezone ? { timezone: dto.timezone } : {}),
-      });
-      return this.toResponseDTO(reactivated);
+      try {
+        const reactivated = await this.repo.reactivate(deleted.id, {
+          name: dto.name,
+          password: hashedPassword,
+          ...(dto.timezone ? { timezone: dto.timezone } : {}),
+        });
+        return { ...this.toResponseDTO(reactivated), reactivated: true };
+      } catch (err) {
+        // Concurrent register already reactivated it: surface as a conflict.
+        if (err instanceof ApiError && err.statusCode === 404) {
+          throw new ApiError("Conflict", "Email is already registered");
+        }
+        throw err;
+      }
     }
 
     const user = new User({ ...dto, password: hashedPassword });

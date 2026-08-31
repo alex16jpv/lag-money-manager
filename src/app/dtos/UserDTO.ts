@@ -20,4 +20,6 @@ export interface UserResponseDTO {
   timezone: string;
   createdAt: Date;
   updatedAt: Date;
+  // Present (true) only when register revived a soft-deleted account.
+  reactivated?: boolean;
 }

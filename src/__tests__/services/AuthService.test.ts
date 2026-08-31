@@ -86,6 +86,7 @@ describe("AuthService", () => {
       // Existing categories are kept: no re-seed on reactivation.
       expect(categoryService.seedDefaultCategories).not.toHaveBeenCalled();
       expect(result.name).toBe("John");
+      expect(result.reactivated).toBe(true);
     });
 
     it("should hash the password and create a user", async () => {

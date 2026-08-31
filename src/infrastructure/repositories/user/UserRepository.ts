@@ -56,7 +56,10 @@ export class UserRepository implements IUserRepository {
     return this.toEntity(doc);
   }
 
-  async reactivate(id: string, updates: Partial<User>): Promise<User> {
+  async reactivate(
+    id: string,
+    updates: Pick<User, "name" | "password"> & Partial<Pick<User, "timezone">>,
+  ): Promise<User> {
     // tokenVersion bump keeps any pre-deletion refresh tokens revoked.
     const doc = await UserModel.findOneAndUpdate(
       { _id: id, deletedAt: { $ne: null } },
