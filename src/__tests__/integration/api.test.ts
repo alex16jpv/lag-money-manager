@@ -1,12 +1,13 @@
-import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
-import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
-import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
-import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
-import { User } from "../../domain/entities/User";
+import bcryptjs from "bcryptjs";
+
 import { Account } from "../../domain/entities/Account";
 import { Category } from "../../domain/entities/Category";
 import { Transaction } from "../../domain/entities/Transaction";
-import bcryptjs from "bcryptjs";
+import { User } from "../../domain/entities/User";
+import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
+import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 
 // --- Mock repositories ---
 const mockUserRepo: jest.Mocked<IUserRepository> = {
@@ -25,6 +26,7 @@ const mockAccountRepo: jest.Mocked<IAccountRepository> = {
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
+  incrementBalance: jest.fn(),
 };
 
 const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
@@ -32,6 +34,7 @@ const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   create: jest.fn(),
+  createMany: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
 };
@@ -49,15 +52,17 @@ const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
     PORT: 3000,
-    DB_TYPE: "SEQ",
+    DB_TYPE: "MONGO",
     JWT_SECRET: "test-secret-for-integration",
     JWT_EXPIRATION: "1h",
     BCRYPT_SALT_ROUNDS: 12,
     CORS_ORIGIN: "http://localhost:5173",
+    RATE_LIMIT_MAX: 100000,
+    AUTH_RATE_LIMIT_MAX: 100000,
     LOG_LEVEL: "info",
     NODE_ENV: "test",
   },
-  DB_TYPES: { SEQ: "SEQ", MONGO: "MONGO", LOCAL_STORAGE: "LOCAL_STORAGE" },
+  DB_TYPES: { MONGO: "MONGO" },
   ACCOUNT_TYPES: {
     CASH: "CASH",
     ACCOUNT: "ACCOUNT",
@@ -100,12 +105,25 @@ jest.mock("../../shared/logger", () => ({
   warn: jest.fn(),
 }));
 
-jest.mock("../../domain/models/sequelize/index", () => ({
-  loadSequelizeModels: jest.fn(),
-}));
-
 jest.mock("../../config/swagger", () => ({
   swaggerSpec: {},
+}));
+
+// No real MongoDB in these tests: stub the connection and the transaction
+// runner so the service layer runs against the mocked repositories.
+jest.mock("../../config/mongoConnection", () => ({
+  connectMongo: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock("../../shared/unitOfWork", () => ({
+  withTransaction: jest.fn((fn: (session: unknown) => unknown) => fn({})),
+}));
+
+jest.mock("../../app/middlewares/authRateLimitMiddleware", () => ({
+  authRateLimit:
+    () =>
+    (_req: unknown, _res: unknown, next: () => void): void =>
+      next(),
 }));
 
 jest.mock("../../app/factories/RepositoryFactory", () => ({
@@ -119,8 +137,9 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
   RepositoryFactory: jest.fn(),
 }));
 
-import request from "supertest";
 import jwt from "jsonwebtoken";
+import request from "supertest";
+
 import app from "../../app";
 
 const generateToken = (
@@ -332,26 +351,12 @@ describe("Integration Tests", () => {
 
   // ==================== User Routes ====================
   describe("GET /users", () => {
-    it("should return paginated users", async () => {
-      mockUserRepo.getAll.mockResolvedValue({
-        data: [testUser],
-        pagination: {
-          limit: 20,
-          offset: 0,
-          total: 1,
-          hasMore: false,
-          nextCursor: null,
-        },
-      });
-
+    it("should be removed (user enumeration) and return 404", async () => {
       const res = await request(app)
         .get("/users")
         .set("Authorization", `Bearer ${token}`);
 
-      expect(res.status).toBe(200);
-      expect(res.body.data).toHaveLength(1);
-      expect(res.body.data[0].password).toBeUndefined();
-      expect(res.body.pagination).toBeDefined();
+      expect(res.status).toBe(404);
     });
   });
 
@@ -804,6 +809,7 @@ describe("Integration Tests", () => {
       expect(res.status).toBe(200);
       expect(mockTransactionRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac74",
+        expect.anything(),
       );
     });
   });

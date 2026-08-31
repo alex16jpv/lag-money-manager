@@ -57,19 +57,19 @@ jest.mock("../../shared/constants", () => ({
 }));
 
 import {
+  createAccountSchema,
+  createCategorySchema,
+  createTransactionSchema,
+  getCategoriesSchema,
+  getTransactionsSchema,
+  idParamSchema,
+  loginSchema,
   paginationQuerySchema,
   registerSchema,
-  loginSchema,
-  updateUserSchema,
-  createAccountSchema,
   updateAccountSchema,
-  createCategorySchema,
   updateCategorySchema,
-  getCategoriesSchema,
-  idParamSchema,
-  createTransactionSchema,
   updateTransactionSchema,
-  getTransactionsSchema,
+  updateUserSchema,
 } from "../../app/validation/schemas";
 
 const validUUID = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";

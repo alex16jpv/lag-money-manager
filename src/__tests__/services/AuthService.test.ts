@@ -1,10 +1,11 @@
-import { AuthService } from "../../app/services/AuthService";
-import { CategoryService } from "../../app/services/CategoryService";
-import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
-import { User } from "../../domain/entities/User";
-import { ApiError } from "../../shared/errors";
 import bcryptjs from "bcryptjs";
 import jwt from "jsonwebtoken";
+
+import { AuthService } from "../../app/services/AuthService";
+import { CategoryService } from "../../app/services/CategoryService";
+import { User } from "../../domain/entities/User";
+import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { ApiError } from "../../shared/errors";
 
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {

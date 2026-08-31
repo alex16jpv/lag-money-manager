@@ -10,12 +10,13 @@ jest.mock("../../shared/constants", () => ({
   },
 }));
 
-import { UserService } from "../../app/services/UserService";
-import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
-import { User } from "../../domain/entities/User";
-import { ApiError } from "../../shared/errors";
 import bcryptjs from "bcryptjs";
+
 import { UpdateUserDTO } from "../../app/dtos/UserDTO";
+import { UserService } from "../../app/services/UserService";
+import { User } from "../../domain/entities/User";
+import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 
 const testUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
@@ -45,50 +46,6 @@ describe("UserService", () => {
   beforeEach(() => {
     repo = createMockRepo();
     service = new UserService(repo);
-  });
-
-  describe("getAllUsers", () => {
-    const pagination: PaginationParams = { limit: 20, offset: 0 };
-
-    it("should return paginated users", async () => {
-      const paginatedResult: PaginatedResult<User> = {
-        data: [mockUser],
-        pagination: {
-          limit: 20,
-          offset: 0,
-          total: 1,
-          hasMore: false,
-          nextCursor: null,
-        },
-      };
-      repo.getAll.mockResolvedValue(paginatedResult);
-
-      const result = await service.getAllUsers(pagination);
-
-      expect(repo.getAll).toHaveBeenCalledWith(pagination);
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].name).toBe("John Doe");
-      expect(result.pagination.total).toBe(1);
-    });
-
-    it("should return empty list when no users exist", async () => {
-      const paginatedResult: PaginatedResult<User> = {
-        data: [],
-        pagination: {
-          limit: 20,
-          offset: 0,
-          total: 0,
-          hasMore: false,
-          nextCursor: null,
-        },
-      };
-      repo.getAll.mockResolvedValue(paginatedResult);
-
-      const result = await service.getAllUsers(pagination);
-
-      expect(result.data).toHaveLength(0);
-      expect(result.pagination.total).toBe(0);
-    });
   });
 
   describe("getUserById", () => {
@@ -218,14 +175,6 @@ describe("UserService", () => {
   });
 
   describe("error propagation", () => {
-    it("should propagate repository error on getAll failure", async () => {
-      repo.getAll.mockRejectedValue(new Error("DB connection lost"));
-
-      await expect(
-        service.getAllUsers({ limit: 20, offset: 0 }),
-      ).rejects.toThrow("DB connection lost");
-    });
-
     it("should propagate repository error on create (update) failure", async () => {
       repo.update.mockRejectedValue(new Error("DB write failed"));
 

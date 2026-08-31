@@ -1,10 +1,10 @@
+import { CreateCategoryDTO } from "../../app/dtos/CategoryDTO";
 import { CategoryService } from "../../app/services/CategoryService";
+import { Category } from "../../domain/entities/Category";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
-import { Category } from "../../domain/entities/Category";
-import { ApiError } from "../../shared/errors";
-import { CreateCategoryDTO } from "../../app/dtos/CategoryDTO";
 import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
+import { ApiError } from "../../shared/errors";
 
 const testUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac71";
 
@@ -332,9 +332,11 @@ describe("CategoryService", () => {
       const expenseCategories = result.filter((c) => c.type === "EXPENSE");
       const transferCategories = result.filter((c) => c.type === "TRANSFER");
 
-      expect(incomeCategories.length).toBe(11);
-      expect(expenseCategories.length).toBe(21);
-      expect(transferCategories.length).toBe(5);
+      const expected = (type: string) =>
+        DEFAULT_CATEGORIES.filter((c) => c.type === type).length;
+      expect(incomeCategories.length).toBe(expected("INCOME"));
+      expect(expenseCategories.length).toBe(expected("EXPENSE"));
+      expect(transferCategories.length).toBe(expected("TRANSFER"));
     });
 
     it("should propagate error when createMany fails", async () => {

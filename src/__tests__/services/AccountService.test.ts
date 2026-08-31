@@ -56,12 +56,12 @@ jest.mock("../../shared/constants", () => ({
   },
 }));
 
+import { CreateAccountDTO } from "../../app/dtos/AccountDTO";
 import { AccountService } from "../../app/services/AccountService";
+import { Account } from "../../domain/entities/Account";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
-import { Account } from "../../domain/entities/Account";
 import { ApiError } from "../../shared/errors";
-import { CreateAccountDTO } from "../../app/dtos/AccountDTO";
 
 const validAccountProps = {
   id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",

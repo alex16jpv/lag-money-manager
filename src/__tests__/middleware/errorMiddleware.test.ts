@@ -1,7 +1,8 @@
-import { Request, Response, NextFunction } from "express";
-import { errorMiddleware } from "../../shared/middlewares";
-import { ApiError } from "../../shared/errors";
+import { NextFunction,Request, Response } from "express";
+
 import { DomainValidationError } from "../../domain/errors";
+import { ApiError } from "../../shared/errors";
+import { errorMiddleware } from "../../shared/middlewares";
 
 jest.mock("../../shared/logger", () => ({
   error: jest.fn(),
@@ -78,40 +79,6 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "ValidationError",
       message: "Invalid data",
-    });
-  });
-
-  it("should handle SequelizeUniqueConstraintError", () => {
-    const error = Object.assign(new Error("Validation error"), {
-      name: "SequelizeUniqueConstraintError",
-      errors: [
-        { message: "email must be unique" },
-        { message: "name must be unique" },
-      ],
-    });
-
-    errorMiddleware(error as Error, req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(409);
-    expect(res.json).toHaveBeenCalledWith({
-      error: "ConflictError",
-      message: "email must be unique, name must be unique",
-    });
-  });
-
-  it("should handle SequelizeForeignKeyConstraintError", () => {
-    const error = Object.assign(new Error("FK error"), {
-      name: "SequelizeForeignKeyConstraintError",
-      fields: ["userId"],
-    });
-
-    errorMiddleware(error as Error, req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({
-      error: "ValidationError",
-      message: "Foreign key constraint error",
-      details: { fields: "userId" },
     });
   });
 

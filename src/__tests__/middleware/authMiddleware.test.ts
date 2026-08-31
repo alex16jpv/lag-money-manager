@@ -4,8 +4,9 @@ jest.mock("../../shared/constants", () => ({
   },
 }));
 
-import { Request, Response, NextFunction } from "express";
+import { NextFunction,Request, Response } from "express";
 import jwt from "jsonwebtoken";
+
 import { authMiddleware } from "../../app/middlewares/authMiddleware";
 import { ApiError } from "../../shared/errors";
 

@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
+
 import { ENVIRONMENT } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
 
@@ -9,6 +10,7 @@ export interface AuthPayload {
 }
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace -- module augmentation of Express types requires a namespace
   namespace Express {
     interface Request {
       user?: AuthPayload;
