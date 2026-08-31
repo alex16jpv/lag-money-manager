@@ -29,7 +29,7 @@ Content-Type: application/json
 
 ###
 
-@accA = {{accA.response.body.id}}
+@accAId = {{accA.response.body.id}}
 
 ### Cuenta B — destino de INCOME/TRANSFER
 # @name accB
@@ -41,7 +41,7 @@ Content-Type: application/json
 
 ###
 
-@accB = {{accB.response.body.id}}
+@accBId = {{accB.response.body.id}}
 
 ### Categoría para clasificar (el type debe coincidir con el de la transacción)
 # @name cat
@@ -67,7 +67,7 @@ Content-Type: application/json
   "type": "EXPENSE",
   "amount": 42.50,
   "date": "{{date}}",
-  "fromAccountId": "{{accA}}",
+  "fromAccountId": "{{accAId}}",
   "categoryId": "{{catId}}",
   "tags": ["Café ", "café", "hormiga"],
   "note": "prueba"
@@ -82,14 +82,14 @@ POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "INCOME", "amount": 300, "date": "{{date}}", "toAccountId": "{{accB}}" }
+{ "type": "INCOME", "amount": 300, "date": "{{date}}", "toAccountId": "{{accBId}}" }
 
 ### Crear TRANSFER (A -> B)
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "TRANSFER", "amount": 100, "date": "{{date}}", "fromAccountId": "{{accA}}", "toAccountId": "{{accB}}" }
+{ "type": "TRANSFER", "amount": 100, "date": "{{date}}", "fromAccountId": "{{accAId}}", "toAccountId": "{{accBId}}" }
 
 ### ADJUSTMENT — reconciliar saldo: SUBE el saldo de B (toAccountId)
 ### Sin categoría; excluido de stats y budgets.
@@ -97,14 +97,14 @@ POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "ADJUSTMENT", "amount": 12.34, "date": "{{date}}", "toAccountId": "{{accB}}" }
+{ "type": "ADJUSTMENT", "amount": 12.34, "date": "{{date}}", "toAccountId": "{{accBId}}" }
 
 ### ADJUSTMENT — BAJA el saldo de A (fromAccountId)
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "ADJUSTMENT", "amount": 5, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+{ "type": "ADJUSTMENT", "amount": 5, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
 
 ### Idempotencia — mismo Idempotency-Key + mismo body dos veces = una sola transacción
 ### Corre esta y la siguiente: deben devolver el MISMO id.
@@ -113,7 +113,7 @@ Authorization: Bearer {{token}}
 Idempotency-Key: demo-key-001
 Content-Type: application/json
 
-{ "type": "EXPENSE", "amount": 9.99, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+{ "type": "EXPENSE", "amount": 9.99, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
 
 ### Idempotencia — reintento con la misma clave (devuelve la existente)
 POST {{baseUrl}}/transactions
@@ -121,7 +121,7 @@ Authorization: Bearer {{token}}
 Idempotency-Key: demo-key-001
 Content-Type: application/json
 
-{ "type": "EXPENSE", "amount": 9.99, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+{ "type": "EXPENSE", "amount": 9.99, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
 
 ### Quick-add — solo amount (usa la cuenta default, marca pendingDetails y source=QUICK)
 ### También acepta Idempotency-Key (el flujo del doble-tap).
@@ -141,7 +141,7 @@ GET {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 
 ### Filtrar por cuenta
-GET {{baseUrl}}/transactions?accountId={{accA}}
+GET {{baseUrl}}/transactions?accountId={{accAId}}
 Authorization: Bearer {{token}}
 
 ### Filtrar por categoría (drill-down desde stats/budgets)
@@ -198,7 +198,7 @@ POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "EXPENSE", "amount": 10, "date": "2030-01-01T00:00:00.000Z", "fromAccountId": "{{accA}}" }
+{ "type": "EXPENSE", "amount": 10, "date": "2030-01-01T00:00:00.000Z", "fromAccountId": "{{accAId}}" }
 
 ### Idempotencia — misma clave con BODY DISTINTO (422 IDEMPOTENCY_PAYLOAD_MISMATCH)
 POST {{baseUrl}}/transactions
@@ -206,7 +206,7 @@ Authorization: Bearer {{token}}
 Idempotency-Key: demo-key-001
 Content-Type: application/json
 
-{ "type": "EXPENSE", "amount": 777, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+{ "type": "EXPENSE", "amount": 777, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
 
 ### Idempotency-Key inválida — charset/longitud (400)
 POST {{baseUrl}}/transactions
@@ -214,21 +214,21 @@ Authorization: Bearer {{token}}
 Idempotency-Key: clave con espacios!!
 Content-Type: application/json
 
-{ "type": "EXPENSE", "amount": 1, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+{ "type": "EXPENSE", "amount": 1, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
 
 ### ADJUSTMENT con ambos lados (400: exactamente uno)
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "ADJUSTMENT", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accA}}", "toAccountId": "{{accB}}" }
+{ "type": "ADJUSTMENT", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accAId}}", "toAccountId": "{{accBId}}" }
 
 ### ADJUSTMENT con categoría (400: no admite categoryId)
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "ADJUSTMENT", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accA}}", "categoryId": "{{catId}}" }
+{ "type": "ADJUSTMENT", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accAId}}", "categoryId": "{{catId}}" }
 
 ### Quick-add con type ADJUSTMENT (400: no permitido en quick)
 POST {{baseUrl}}/transactions/quick
@@ -242,21 +242,21 @@ POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "EXPENSE", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accA}}", "categoryId": "00000000-0000-0000-0000-000000000000" }
+{ "type": "EXPENSE", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accAId}}", "categoryId": "00000000-0000-0000-0000-000000000000" }
 
 ### Categoría de tipo contrario (400 CATEGORY_TYPE_MISMATCH) — catId es EXPENSE
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "INCOME", "amount": 10, "date": "{{date}}", "toAccountId": "{{accB}}", "categoryId": "{{catId}}" }
+{ "type": "INCOME", "amount": 10, "date": "{{date}}", "toAccountId": "{{accBId}}", "categoryId": "{{catId}}" }
 
 ### EXPENSE con toAccountId (no permitido) (400)
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "EXPENSE", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accA}}", "toAccountId": "{{accB}}" }
+{ "type": "EXPENSE", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accAId}}", "toAccountId": "{{accBId}}" }
 
 ### INCOME sin toAccountId (400)
 POST {{baseUrl}}/transactions
@@ -270,21 +270,21 @@ POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "TRANSFER", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accA}}", "toAccountId": "{{accA}}" }
+{ "type": "TRANSFER", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accAId}}", "toAccountId": "{{accAId}}" }
 
 ### Monto 0 (400)
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "EXPENSE", "amount": 0, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+{ "type": "EXPENSE", "amount": 0, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
 
 ### Monto con 3 decimales (400)
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "EXPENSE", "amount": 10.555, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+{ "type": "EXPENSE", "amount": 10.555, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
 
 ### fromAccountId de otro usuario / inexistente (404 uniforme)
 POST {{baseUrl}}/transactions
