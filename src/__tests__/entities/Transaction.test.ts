@@ -157,4 +157,22 @@ describe("Transaction Entity", () => {
       );
     });
   });
+
+  describe("assertValid — future dates [R2-30]", () => {
+    it("rejects a date more than 24h in the future", () => {
+      const tx = new Transaction({
+        ...validExpenseProps,
+        date: new Date(Date.now() + 48 * 60 * 60 * 1000),
+      });
+      expect(() => tx.assertValid()).toThrow("24 hours in the future");
+    });
+
+    it("accepts today and the timezone margin", () => {
+      const tx = new Transaction({
+        ...validExpenseProps,
+        date: new Date(Date.now() + 12 * 60 * 60 * 1000),
+      });
+      expect(() => tx.assertValid()).not.toThrow();
+    });
+  });
 });
