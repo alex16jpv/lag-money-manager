@@ -10,6 +10,7 @@ const transactionService = new TransactionService(
   repositoryFactory.getTransactionRepository(),
   repositoryFactory.getAccountRepository(),
   repositoryFactory.getIdempotencyRepository(),
+  repositoryFactory.getCategoryRepository(),
 );
 
 export class TransactionController {

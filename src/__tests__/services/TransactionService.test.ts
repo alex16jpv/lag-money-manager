@@ -29,8 +29,10 @@ jest.mock("../../shared/unitOfWork", () => ({
 import { CreateTransactionDTO } from "../../app/dtos/TransactionDTO";
 import { TransactionService } from "../../app/services/TransactionService";
 import { Account } from "../../domain/entities/Account";
+import { Category } from "../../domain/entities/Category";
 import { Transaction } from "../../domain/entities/Transaction";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 
@@ -69,6 +71,18 @@ const createMockIdempotencyRepo = (): jest.Mocked<IIdempotencyRepository> => ({
   record: jest.fn().mockResolvedValue(undefined),
 });
 
+const createMockCategoryRepo = (): jest.Mocked<ICategoryRepository> => ({
+  getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
+  getById: jest.fn(),
+  getByIdIncludingArchived: jest.fn(),
+  create: jest.fn(),
+  createMany: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+  restore: jest.fn(),
+});
+
 const account = (overrides: Partial<Account> = {}): Account =>
   new Account({
     id: ACC_A,
@@ -84,12 +98,19 @@ describe("TransactionService", () => {
   let txRepo: jest.Mocked<ITransactionRepository>;
   let acctRepo: jest.Mocked<IAccountRepository>;
   let idempotencyRepo: jest.Mocked<IIdempotencyRepository>;
+  let categoryRepo: jest.Mocked<ICategoryRepository>;
 
   beforeEach(() => {
     txRepo = createMockTransactionRepo();
     acctRepo = createMockAccountRepo();
     idempotencyRepo = createMockIdempotencyRepo();
-    service = new TransactionService(txRepo, acctRepo, idempotencyRepo);
+    categoryRepo = createMockCategoryRepo();
+    service = new TransactionService(
+      txRepo,
+      acctRepo,
+      idempotencyRepo,
+      categoryRepo,
+    );
     acctRepo.incrementBalance.mockResolvedValue(account());
   });
 
@@ -404,6 +425,104 @@ describe("TransactionService", () => {
         service.quickAddTransaction({ amount: 20, userId: USER }),
       ).rejects.toThrow("No default account");
       expect(txRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("category validation [R2-05]", () => {
+    const CAT = "019576a0-d7b6-7d6d-af6a-2b7545f5ac90";
+    const expenseDto = (): CreateTransactionDTO => ({
+      type: "EXPENSE",
+      amount: 100,
+      date: new Date("2026-03-28"),
+      fromAccountId: ACC_A,
+      categoryId: CAT,
+      userId: USER,
+    });
+
+    beforeEach(() => {
+      acctRepo.getById.mockResolvedValue(account());
+      txRepo.create.mockImplementation(async (tx) => tx as Transaction);
+    });
+
+    it("rejects a nonexistent category", async () => {
+      categoryRepo.getByIdIncludingArchived.mockResolvedValue(null);
+
+      await expect(service.createTransaction(expenseDto())).rejects.toThrow(
+        "Category not found",
+      );
+      expect(txRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects another user's category without revealing it exists", async () => {
+      categoryRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({ id: CAT, name: "Food", userId: "someone-else" }),
+      );
+
+      await expect(service.createTransaction(expenseDto())).rejects.toThrow(
+        "Category not found",
+      );
+    });
+
+    it("rejects assigning an archived category", async () => {
+      categoryRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({
+          id: CAT,
+          name: "Food",
+          userId: USER,
+          archivedAt: new Date(),
+        }),
+      );
+
+      await expect(service.createTransaction(expenseDto())).rejects.toThrow(
+        "Category is archived",
+      );
+    });
+
+    it("rejects a category whose type contradicts the transaction type", async () => {
+      categoryRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({ id: CAT, name: "Salary", type: "INCOME", userId: USER }),
+      );
+
+      await expect(service.createTransaction(expenseDto())).rejects.toThrow(
+        "does not match transaction type",
+      );
+    });
+
+    it("accepts an active category of the user with a matching type", async () => {
+      categoryRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({ id: CAT, name: "Food", type: "EXPENSE", userId: USER }),
+      );
+
+      await expect(service.createTransaction(expenseDto())).resolves.toBeDefined();
+      expect(txRepo.create).toHaveBeenCalled();
+    });
+
+    it("keeps an archived category on update when it does not change", async () => {
+      const existing = new Transaction({
+        id: TX_ID,
+        type: "EXPENSE",
+        amount: 100,
+        date: new Date("2026-03-28"),
+        fromAccountId: ACC_A,
+        categoryId: CAT,
+        userId: USER,
+      });
+      txRepo.getById.mockResolvedValue(existing);
+      txRepo.update.mockResolvedValue(
+        new Transaction({ ...existing, amount: 175 }),
+      );
+      categoryRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({
+          id: CAT,
+          name: "Food",
+          userId: USER,
+          archivedAt: new Date(),
+        }),
+      );
+
+      await expect(
+        service.updateTransaction(TX_ID, { amount: 175 }, USER),
+      ).resolves.toBeDefined();
     });
   });
 

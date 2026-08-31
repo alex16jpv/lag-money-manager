@@ -1,5 +1,6 @@
 import { Transaction } from "../../domain/entities/Transaction";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
 import {
   ITransactionRepository,
@@ -27,6 +28,7 @@ export class TransactionService {
     private transactionRepo: ITransactionRepository,
     private accountRepo: IAccountRepository,
     private idempotencyRepo: IIdempotencyRepository,
+    private categoryRepo: ICategoryRepository,
   ) {}
 
   async getAllTransactions(
@@ -63,6 +65,7 @@ export class TransactionService {
 
     const transaction = new Transaction(dto);
     transaction.assertValid();
+    await this.assertCategoryUsable(transaction);
 
     try {
       return await withTransaction(async (session) => {
@@ -156,6 +159,7 @@ export class TransactionService {
 
       const updated = new Transaction({ ...existing, ...dto });
       updated.assertValid();
+      await this.assertCategoryUsable(updated, existing.categoryId);
 
       await this.adjustBalances(existing, -1, session);
       await this.adjustBalances(updated, 1, session);
@@ -177,6 +181,31 @@ export class TransactionService {
       await this.adjustBalances(transaction, -1, session);
       await this.transactionRepo.delete(id, session);
     });
+  }
+
+  // 404 covers both missing and foreign categories so ids can't be probed.
+  // An archived category stays valid only while the transaction already had it.
+  private async assertCategoryUsable(
+    transaction: Transaction,
+    previousCategoryId: string | null = null,
+  ): Promise<void> {
+    const { categoryId, userId, type } = transaction;
+    if (!categoryId) return;
+
+    const category =
+      await this.categoryRepo.getByIdIncludingArchived(categoryId);
+    if (!category || category.userId !== userId) {
+      throw new ApiError("NotFound", "Category not found");
+    }
+    if (category.archivedAt && categoryId !== previousCategoryId) {
+      throw new ApiError("BadRequest", "Category is archived");
+    }
+    if (category.type && category.type !== type) {
+      throw new ApiError(
+        "BadRequest",
+        `Category type ${category.type} does not match transaction type ${type}`,
+      );
+    }
   }
 
   private async adjustBalances(

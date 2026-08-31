@@ -58,6 +58,12 @@ export class CategoryRepository implements ICategoryRepository {
     return this.toEntity(doc);
   }
 
+  async getByIdIncludingArchived(id: string): Promise<Category | null> {
+    const doc = await CategoryModel.findOne({ _id: id }).lean();
+    if (!doc) return null;
+    return this.toEntity(doc);
+  }
+
   async getAll(
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Category>> {

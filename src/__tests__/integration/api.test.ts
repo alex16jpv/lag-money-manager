@@ -38,6 +38,7 @@ const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
+  getByIdIncludingArchived: jest.fn(),
   create: jest.fn(),
   createMany: jest.fn(),
   update: jest.fn(),
@@ -885,6 +886,7 @@ describe("Integration Tests", () => {
     it("should update a transaction", async () => {
       mockTransactionRepo.getById.mockResolvedValue(testTransaction);
       mockAccountRepo.getById.mockResolvedValue(testAccount);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
       const updated = new Transaction({ ...testTransaction, amount: 75 });
       mockTransactionRepo.update.mockResolvedValue(updated);
 
