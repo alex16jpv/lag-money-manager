@@ -16,6 +16,8 @@ const mockLogger = {
 
 jest.mock("../../shared/logger", () => mockLogger);
 
+const mockModels: Record<string, { createIndexes: jest.Mock }> = {};
+
 jest.mock("mongoose", () => ({
   __esModule: true,
   default: {
@@ -23,54 +25,100 @@ jest.mock("mongoose", () => ({
     connect: jest.fn().mockResolvedValue(undefined),
     connection: { readyState: 0 },
     STATES: { connected: 1 },
-    models: {},
+    get models() {
+      return mockModels;
+    },
   },
 }));
 
-const remoteWarning = (): unknown[][] =>
-  mockLogger.warn.mock.calls.filter((c) =>
-    String(c[1]).includes("remote database"),
-  );
-
 // connectMongo memoises its in-flight promise, so each case needs a fresh copy
-// of the module or only the first one would run the check.
+// of the module or only the first one would run.
 const connectFresh = async (): Promise<void> => {
   jest.resetModules();
   const { connectMongo } = await import("../../config/mongoConnection");
   await connectMongo();
 };
 
-describe("connectMongo — development pointed at a remote database", () => {
-  beforeEach(() => jest.clearAllMocks());
+const duplicateKeyError = Object.assign(new Error("E11000 duplicate key"), {
+  code: 11000,
+});
 
-  it.each([
-    "mongodb://localhost:27017/lag_money?replicaSet=rs0",
-    "mongodb://127.0.0.1:27017/lag_money",
-    "mongodb://mongo:27017/lag_money?directConnection=true",
-  ])("stays quiet for the local URI %s", async (uri) => {
-    mockEnv.MONGO_URI = uri;
-    await connectFresh();
-    expect(remoteWarning()).toHaveLength(0);
-  });
+const setModels = (defs: Record<string, jest.Mock>): void => {
+  for (const key of Object.keys(mockModels)) delete mockModels[key];
+  for (const [name, createIndexes] of Object.entries(defs)) {
+    mockModels[name] = { createIndexes };
+    (mockModels[name] as unknown as { modelName: string }).modelName = name;
+  }
+};
 
-  it.each([
-    "mongodb://user:pass@ac-abc-shard-00-00.xxx.mongodb.net:27017/lag_money?ssl=true",
-    "mongodb+srv://user:pass@cluster0.xxx.mongodb.net/lag_money",
-  ])("warns for the remote URI %s", async (uri) => {
-    mockEnv.MONGO_URI = uri;
-    await connectFresh();
-    const warnings = remoteWarning();
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0][0]).toEqual({
-      host: expect.stringContaining("mongodb.net"),
-    });
-  });
-
-  it("never warns outside development", async () => {
-    mockEnv.NODE_ENV = "production";
-    mockEnv.MONGO_URI = "mongodb+srv://user:pass@cluster0.xxx.mongodb.net/lag";
-    await connectFresh();
-    expect(remoteWarning()).toHaveLength(0);
+describe("connectMongo", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
     mockEnv.NODE_ENV = "development";
+    mockEnv.MONGO_URI =
+      "mongodb://user:secret@cluster0.xxx.mongodb.net:27017/lag_money?ssl=true";
+  });
+
+  it("logs the host it connected to, never the credentials", async () => {
+    setModels({ User: jest.fn().mockResolvedValue(undefined) });
+    await connectFresh();
+
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      { host: "cluster0.xxx.mongodb.net:27017" },
+      "Connected to MongoDB",
+    );
+    const logged = JSON.stringify(mockLogger.info.mock.calls);
+    expect(logged).not.toContain("secret");
+  });
+
+  it("retries a transient index failure and stays quiet when it then works", async () => {
+    const createIndexes = jest
+      .fn()
+      .mockRejectedValueOnce(new Error("getaddrinfo ENOTFOUND"))
+      .mockResolvedValueOnce(undefined);
+    setModels({ Budget: createIndexes });
+
+    await connectFresh();
+
+    expect(createIndexes).toHaveBeenCalledTimes(2);
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it("warns — not errors — when a transient failure survives the retry", async () => {
+    setModels({
+      Budget: jest.fn().mockRejectedValue(new Error("getaddrinfo ENOTFOUND")),
+    });
+
+    await connectFresh();
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "Budget" }),
+      expect.stringContaining("Could not verify indexes"),
+    );
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it("errors on a data conflict and does not retry it", async () => {
+    const createIndexes = jest.fn().mockRejectedValue(duplicateKeyError);
+    setModels({ User: createIndexes });
+
+    await connectFresh();
+
+    expect(createIndexes).toHaveBeenCalledTimes(1);
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "User" }),
+      expect.stringContaining("constraint NOT enforced"),
+    );
+  });
+
+  it("does not touch indexes in production", async () => {
+    mockEnv.NODE_ENV = "production";
+    const createIndexes = jest.fn();
+    setModels({ User: createIndexes });
+
+    await connectFresh();
+
+    expect(createIndexes).not.toHaveBeenCalled();
   });
 });
