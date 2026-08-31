@@ -113,6 +113,7 @@ jest.mock("../../shared/constants", () => ({
   },
   BUDGET_PERIOD_TYPES: {
     WEEKLY: "WEEKLY",
+    BIWEEKLY: "BIWEEKLY",
     MONTHLY: "MONTHLY",
     QUARTERLY: "QUARTERLY",
     YEARLY: "YEARLY",

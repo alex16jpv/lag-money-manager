@@ -4,6 +4,7 @@ jest.mock("../../shared/constants", () => ({
   COLORS: { RED: "RED", TEAL: "TEAL" },
   BUDGET_PERIOD_TYPES: {
     WEEKLY: "WEEKLY",
+    BIWEEKLY: "BIWEEKLY",
     MONTHLY: "MONTHLY",
     QUARTERLY: "QUARTERLY",
     YEARLY: "YEARLY",

@@ -22,6 +22,15 @@ describe("resolvePeriod", () => {
     expect(key).toBe("2026-07");
   });
 
+  it("resolves a biweekly window of 14 days containing the reference", () => {
+    const ref = new Date("2026-08-15T12:00:00Z");
+    const { from, to } = resolvePeriod({ type: "BIWEEKLY" }, ref, TZ);
+    const days = (to.getTime() - from.getTime()) / 86400000;
+    expect(days).toBe(14);
+    expect(from.getTime()).toBeLessThanOrEqual(ref.getTime());
+    expect(to.getTime()).toBeGreaterThan(ref.getTime());
+  });
+
   it("resolves quarterly and yearly keys", () => {
     const ref = new Date("2026-08-15T12:00:00Z");
     expect(resolvePeriod({ type: "QUARTERLY" }, ref, TZ).key).toBe("2026-Q3");

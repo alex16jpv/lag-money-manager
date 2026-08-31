@@ -33,6 +33,23 @@ export function resolvePeriod(
   }
 
   const ref = DateTime.fromJSDate(reference, { zone: timezone });
+
+  if (period.type === "BIWEEKLY") {
+    // 2-week windows aligned to a global grid anchored on a fixed Monday.
+    const anchor = DateTime.fromISO("2024-01-01T00:00:00", {
+      zone: timezone,
+    }).startOf("week");
+    const weekStart = ref.startOf("week");
+    const weeks = Math.floor(weekStart.diff(anchor, "weeks").weeks);
+    const from = weekStart.minus({ weeks: ((weeks % 2) + 2) % 2 });
+    const to = from.plus({ weeks: 2 });
+    return {
+      from: from.toJSDate(),
+      to: to.toJSDate(),
+      key: from.toFormat("kkkk-'BW'WW"),
+    };
+  }
+
   const unit =
     period.type === "WEEKLY"
       ? "week"
