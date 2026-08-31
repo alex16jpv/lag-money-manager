@@ -5,6 +5,7 @@ import { AuthController } from "../controllers/AuthController";
 import { authMiddleware } from "../middlewares/authMiddleware";
 import { authRateLimit } from "../middlewares/authRateLimitMiddleware";
 import {
+  idParamSchema,
   loginSchema,
   refreshSchema,
   registerSchema,
@@ -179,5 +180,35 @@ router.post(
  *       200: { description: All sessions revoked }
  */
 router.post("/logout-all", authMiddleware, AuthController.logoutAll);
+
+/**
+ * @openapi
+ * /auth/sessions:
+ *   get:
+ *     tags: [Auth]
+ *     summary: List the user's active device sessions
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Active sessions (one per device login) }
+ */
+router.get("/sessions", authMiddleware, AuthController.listSessions);
+
+/**
+ * @openapi
+ * /auth/sessions/{id}:
+ *   delete:
+ *     tags: [Auth]
+ *     summary: Revoke one device session by its id
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Session revoked (idempotent) }
+ *       404: { description: Not the user's session }
+ */
+router.delete(
+  "/sessions/:id",
+  authMiddleware,
+  validate(idParamSchema),
+  AuthController.revokeSession,
+);
 
 export default router;

@@ -1,6 +1,7 @@
 import {
   IRefreshSessionRepository,
   RefreshSession,
+  SessionSummary,
 } from "../../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import {
   IRefreshSessionDocument,
@@ -61,5 +62,55 @@ export class RefreshSessionRepository implements IRefreshSessionRepository {
       { userId, revokedAt: null },
       { revokedAt: new Date() },
     );
+  }
+
+  async listActiveByUser(userId: string): Promise<SessionSummary[]> {
+    // Group the rotation chain per family: root brings login time and
+    // userAgent; the chain tip (replacedBy: null) proves the family is live.
+    const rows = await RefreshSessionModel.aggregate<{
+      _id: string;
+      createdAt: Date;
+      userAgent?: string;
+      lastUsedAt: Date;
+      expiresAt: Date;
+      live: number;
+    }>([
+      { $match: { userId, revokedAt: null } },
+      { $sort: { createdAt: 1 } },
+      {
+        $group: {
+          _id: "$familyId",
+          createdAt: { $first: "$createdAt" },
+          userAgent: { $first: "$userAgent" },
+          lastUsedAt: { $max: { $ifNull: ["$lastUsedAt", "$createdAt"] } },
+          expiresAt: { $max: "$expiresAt" },
+          live: {
+            $max: { $cond: [{ $eq: ["$replacedBy", null] }, 1, 0] },
+          },
+        },
+      },
+      { $match: { live: 1, expiresAt: { $gt: new Date() } } },
+      { $sort: { lastUsedAt: -1 } },
+    ]);
+    return rows.map((r) => ({
+      id: r._id,
+      createdAt: r.createdAt,
+      lastUsedAt: r.lastUsedAt,
+      expiresAt: r.expiresAt,
+      userAgent: r.userAgent,
+    }));
+  }
+
+  async revokeFamilyForUser(
+    userId: string,
+    familyId: string,
+  ): Promise<boolean> {
+    const exists = await RefreshSessionModel.exists({ familyId, userId });
+    if (!exists) return false;
+    await RefreshSessionModel.updateMany(
+      { familyId, userId, revokedAt: null },
+      { revokedAt: new Date() },
+    );
+    return true;
   }
 }

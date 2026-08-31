@@ -48,4 +48,17 @@ export class AuthController {
     await authService.logoutAll(req.user!.userId);
     res.status(200).json({ message: "All sessions revoked" });
   };
+
+  static listSessions = async (req: Request, res: Response) => {
+    const sessions = await authService.listSessions(req.user!.userId);
+    res.status(200).json({ data: sessions });
+  };
+
+  static revokeSession = async (req: Request, res: Response) => {
+    await authService.revokeSession(
+      req.user!.userId,
+      req.params.id as string,
+    );
+    res.status(200).json({ message: "Session revoked" });
+  };
 }

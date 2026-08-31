@@ -55,6 +55,8 @@ const createMockSessionRepo = (): jest.Mocked<IRefreshSessionRepository> => ({
   rotate: jest.fn().mockResolvedValue(null),
   revokeFamily: jest.fn().mockResolvedValue(undefined),
   revokeAllForUser: jest.fn().mockResolvedValue(undefined),
+  listActiveByUser: jest.fn().mockResolvedValue([]),
+  revokeFamilyForUser: jest.fn().mockResolvedValue(true),
 });
 
 describe("AuthService", () => {
@@ -377,6 +379,35 @@ describe("AuthService", () => {
 
       expect(repo.bumpTokenVersion).toHaveBeenCalledWith(user.id);
       expect(sessions.revokeAllForUser).toHaveBeenCalledWith(user.id);
+    });
+  });
+
+  describe("sessions [R2-21]", () => {
+    it("lists the user's active sessions", async () => {
+      const summary = {
+        id: "fam-1",
+        createdAt: new Date(),
+        lastUsedAt: new Date(),
+        expiresAt: new Date(Date.now() + 1000),
+        userAgent: "test-agent",
+      };
+      sessions.listActiveByUser.mockResolvedValue([summary]);
+
+      const result = await service.listSessions("user-1");
+
+      expect(result).toEqual([summary]);
+      expect(sessions.listActiveByUser).toHaveBeenCalledWith("user-1");
+    });
+
+    it("revokes an owned session and 404s a foreign one", async () => {
+      sessions.revokeFamilyForUser.mockResolvedValue(true);
+      await expect(service.revokeSession("user-1", "fam-1")).resolves.toBeUndefined();
+      expect(sessions.revokeFamilyForUser).toHaveBeenCalledWith("user-1", "fam-1");
+
+      sessions.revokeFamilyForUser.mockResolvedValue(false);
+      await expect(service.revokeSession("user-1", "fam-2")).rejects.toThrow(
+        "Session not found",
+      );
     });
   });
 });

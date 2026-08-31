@@ -93,6 +93,8 @@ const mockRefreshSessionRepo = {
   rotate: jest.fn().mockResolvedValue(null),
   revokeFamily: jest.fn().mockResolvedValue(undefined),
   revokeAllForUser: jest.fn().mockResolvedValue(undefined),
+  listActiveByUser: jest.fn().mockResolvedValue([]),
+  revokeFamilyForUser: jest.fn().mockResolvedValue(true),
 };
 
 // --- Mock modules before importing app ---

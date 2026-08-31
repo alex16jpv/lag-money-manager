@@ -3,7 +3,10 @@ import jwt from "jsonwebtoken";
 import { v7 as uuidv7 } from "uuid";
 
 import { User } from "../../domain/entities/User";
-import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
+import {
+  IRefreshSessionRepository,
+  SessionSummary,
+} from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
@@ -260,5 +263,17 @@ export class AuthService {
   async logoutAll(userId: string): Promise<void> {
     await this.repo.bumpTokenVersion(userId);
     await this.sessions.revokeAllForUser(userId);
+  }
+
+  async listSessions(userId: string): Promise<SessionSummary[]> {
+    return this.sessions.listActiveByUser(userId);
+  }
+
+  // Idempotent: revoking an own, already-revoked session is a no-op success.
+  async revokeSession(userId: string, familyId: string): Promise<void> {
+    const owned = await this.sessions.revokeFamilyForUser(userId, familyId);
+    if (!owned) {
+      throw new ApiError("NotFound", "Session not found");
+    }
   }
 }
