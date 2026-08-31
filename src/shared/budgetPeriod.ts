@@ -28,7 +28,8 @@ export function resolvePeriod(
     return {
       from: period.startDate,
       to: period.endDate,
-      key: `${period.startDate.toISOString()}_${period.endDate.toISOString()}`,
+      // Epoch millis: keys are used as Mongo $set paths, so no dots allowed.
+      key: `${period.startDate.getTime()}_${period.endDate.getTime()}`,
     };
   }
 
