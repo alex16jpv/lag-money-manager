@@ -414,6 +414,37 @@ describe("TransactionService", () => {
       );
     });
 
+    it("records a pre-update snapshot only on monetary changes [R2-27]", async () => {
+      const existing = new Transaction({
+        id: TX_ID,
+        type: "EXPENSE",
+        amount: 100,
+        date: new Date("2026-03-28"),
+        fromAccountId: ACC_A,
+        userId: USER,
+      });
+      txRepo.getById.mockResolvedValue(existing);
+      acctRepo.getById.mockResolvedValue(account());
+      txRepo.update.mockResolvedValue(existing);
+
+      await service.updateTransaction(TX_ID, { amount: 175 }, USER);
+      expect(txRepo.update).toHaveBeenCalledWith(
+        TX_ID,
+        { amount: 175 },
+        "test-session",
+        expect.objectContaining({ amount: 100, type: "EXPENSE" }),
+      );
+
+      txRepo.update.mockClear();
+      await service.updateTransaction(TX_ID, { note: "x" }, USER);
+      expect(txRepo.update).toHaveBeenCalledWith(
+        TX_ID,
+        { note: "x" },
+        "test-session",
+        undefined,
+      );
+    });
+
     it("skips balance adjustments when no monetary field changes [R2-19]", async () => {
       const existing = new Transaction({
         id: TX_ID,

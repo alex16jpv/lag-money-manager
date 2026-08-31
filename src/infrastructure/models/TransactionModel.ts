@@ -19,6 +19,14 @@ export interface ITransactionDocument {
   tags: string[];
   note: string | null;
   pendingDetails: boolean;
+  revisions?: {
+    at: Date;
+    amount: number;
+    type: string;
+    fromAccountId: string | null;
+    toAccountId: string | null;
+    date: Date;
+  }[];
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -42,6 +50,23 @@ const TransactionSchema = new Schema<ITransactionDocument>(
     tags: { type: [String], default: [] },
     note: { type: String, default: null },
     pendingDetails: { type: Boolean, required: true, default: false },
+    // Audit trail of monetary edits (amount in cents); capped, internal-only.
+    revisions: {
+      type: [
+        new Schema(
+          {
+            at: { type: Date, required: true },
+            amount: { type: Number, required: true },
+            type: { type: String, required: true },
+            fromAccountId: { type: String, default: null },
+            toAccountId: { type: String, default: null },
+            date: { type: Date, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true },

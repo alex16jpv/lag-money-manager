@@ -33,6 +33,17 @@ export interface SpendingBucket {
   avg: number;
 }
 
+// Pre-update snapshot of the monetary fields, kept inside the document
+// (capped) so 'why doesn't it balance' is answerable. Not exposed via API.
+export interface TransactionRevision {
+  at: Date;
+  amount: number;
+  type: TransactionType;
+  fromAccountId: string | null;
+  toAccountId: string | null;
+  date: Date;
+}
+
 export interface SpendingResult {
   buckets: SpendingBucket[];
   // Grand total in integer cents, computed WITHOUT the tag unwind: for
@@ -42,6 +53,13 @@ export interface SpendingResult {
 }
 
 export interface ITransactionRepository extends IRepository<Transaction> {
+  update(
+    id: string,
+    entity: Partial<Transaction>,
+    session?: unknown,
+    revision?: TransactionRevision,
+  ): Promise<Transaction>;
+
   getAllByUserId(
     userId: string,
     pagination: PaginationParams,

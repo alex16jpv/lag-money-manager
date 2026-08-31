@@ -7,6 +7,7 @@ import {
   SpendingQuery,
   SpendingResult,
   TransactionFilters,
+  TransactionRevision,
 } from "../../../domain/repositories/transaction/ITransactionRepository";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
@@ -172,10 +173,23 @@ export class TransactionRepository implements ITransactionRepository {
     id: string,
     transaction: Partial<Transaction>,
     session?: TxSession,
+    revision?: TransactionRevision,
   ): Promise<Transaction> {
+    const update: Record<string, unknown> = {
+      $set: this.toStorage(transaction),
+    };
+    if (revision) {
+      update.$push = {
+        revisions: {
+          $each: [{ ...revision, amount: toCents(revision.amount) }],
+          // Cap: keep only the most recent monetary edits.
+          $slice: -20,
+        },
+      };
+    }
     const doc = await TransactionModel.findOneAndUpdate(
       { _id: id, deletedAt: null },
-      this.toStorage(transaction),
+      update,
       { new: true, session: session ?? undefined },
     ).lean();
     if (!doc) {

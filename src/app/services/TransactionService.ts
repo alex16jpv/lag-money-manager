@@ -215,7 +215,19 @@ export class TransactionService {
         await this.adjustBalances(updated, 1, session);
       }
 
-      return await this.transactionRepo.update(id, dto, session);
+      // Monetary edits keep a pre-update snapshot (audit trail, R2-27).
+      const revision = monetaryChanged
+        ? {
+            at: new Date(),
+            amount: existing.amount,
+            type: existing.type,
+            fromAccountId: existing.fromAccountId,
+            toAccountId: existing.toAccountId,
+            date: existing.date,
+          }
+        : undefined;
+
+      return await this.transactionRepo.update(id, dto, session, revision);
     });
   }
 
