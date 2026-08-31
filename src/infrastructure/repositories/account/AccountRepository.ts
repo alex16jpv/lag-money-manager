@@ -191,18 +191,25 @@ export class AccountRepository implements IAccountRepository {
 
   async setDefault(id: string, userId: string): Promise<Account | null> {
     return withTransaction(async (session) => {
-      const target = await AccountModel.findOneAndUpdate(
-        { _id: id, userId, archivedAt: null },
-        { isDefault: true },
-        { new: true, session },
-      ).lean();
-      if (!target) return null;
+      const exists = await AccountModel.exists({
+        _id: id,
+        userId,
+        archivedAt: null,
+      }).session(session);
+      if (!exists) return null;
+      // Unset BEFORE set: the partial unique default index rejects a second
+      // isDefault:true per write, even inside the transaction.
       await AccountModel.updateMany(
         { userId, _id: { $ne: id }, isDefault: true },
         { isDefault: false },
         { session },
       );
-      return this.toEntity(target);
+      const target = await AccountModel.findOneAndUpdate(
+        { _id: id, userId, archivedAt: null },
+        { isDefault: true },
+        { new: true, session },
+      ).lean();
+      return target ? this.toEntity(target) : null;
     });
   }
 
