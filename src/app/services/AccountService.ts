@@ -25,7 +25,7 @@ export class AccountService {
       throw new ApiError("NotFound", "Account not found");
     }
     if (account.userId !== userId) {
-      throw new ApiError("Forbidden", "Access denied");
+      throw new ApiError("NotFound", "Account not found");
     }
     return new Account(account);
   }
@@ -65,7 +65,7 @@ export class AccountService {
       throw new ApiError("NotFound", "Account not found");
     }
     if (existing.userId !== userId) {
-      throw new ApiError("Forbidden", "Access denied");
+      throw new ApiError("NotFound", "Account not found");
     }
 
     return new Account(await this.repo.update(id, dto));
@@ -78,7 +78,7 @@ export class AccountService {
       throw new ApiError("NotFound", "Account not found");
     }
     if (existing.userId !== userId) {
-      throw new ApiError("Forbidden", "Access denied");
+      throw new ApiError("NotFound", "Account not found");
     }
     if (existing.isDefault) {
       throw new ApiError(

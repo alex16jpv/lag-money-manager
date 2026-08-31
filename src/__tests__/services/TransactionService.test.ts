@@ -275,7 +275,7 @@ describe("TransactionService", () => {
           fromAccountId: ACC_A,
           userId: USER,
         }),
-      ).rejects.toThrow("does not belong to the user");
+      ).rejects.toThrow("Source account not found");
       expect(txRepo.create).not.toHaveBeenCalled();
     });
 
@@ -467,7 +467,7 @@ describe("TransactionService", () => {
 
       await expect(
         service.updateTransaction(TX_ID, { amount: 50 }, USER),
-      ).rejects.toThrow("Access denied");
+      ).rejects.toThrow("Transaction not found");
     });
   });
 
@@ -508,7 +508,7 @@ describe("TransactionService", () => {
       );
 
       await expect(service.deleteTransaction(TX_ID, USER)).rejects.toThrow(
-        "Access denied",
+        "Transaction not found",
       );
       expect(txRepo.delete).not.toHaveBeenCalled();
     });

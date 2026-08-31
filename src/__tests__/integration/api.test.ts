@@ -478,12 +478,12 @@ describe("Integration Tests", () => {
       expect(res.body.password).toBeUndefined();
     });
 
-    it("should return 403 for accessing another user", async () => {
+    it("should return 404 for accessing another user (uniform, no id probing) [R2-25a]", async () => {
       const res = await request(app)
         .get("/users/019576a0-d7b6-7d6d-af6a-000000000000")
         .set("Authorization", `Bearer ${token}`);
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
     });
 
     it("should return 400 for non-numeric id", async () => {

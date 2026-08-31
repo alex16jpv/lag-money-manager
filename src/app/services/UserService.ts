@@ -22,7 +22,7 @@ export class UserService {
 
   async getUserById(id: string, userId: string): Promise<UserResponseDTO> {
     if (id !== userId) {
-      throw new ApiError("Forbidden", "Access denied");
+      throw new ApiError("NotFound", "User not found");
     }
     const user = await this.repo.getById(id);
     if (!user) {
@@ -37,7 +37,7 @@ export class UserService {
     userId: string,
   ): Promise<UserResponseDTO> {
     if (id !== userId) {
-      throw new ApiError("Forbidden", "Access denied");
+      throw new ApiError("NotFound", "User not found");
     }
     if (dto.id && id !== dto.id) {
       throw new ApiError("BadRequest", "User id does not match");
@@ -86,7 +86,7 @@ export class UserService {
 
   async deleteUser(id: string, userId: string): Promise<void> {
     if (id !== userId) {
-      throw new ApiError("Forbidden", "Access denied");
+      throw new ApiError("NotFound", "User not found");
     }
     const existing = await this.repo.getById(id);
     if (!existing) {

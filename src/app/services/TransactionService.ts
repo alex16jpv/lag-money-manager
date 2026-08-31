@@ -61,7 +61,7 @@ export class TransactionService {
       throw new ApiError("NotFound", "Transaction not found");
     }
     if (transaction.userId !== userId) {
-      throw new ApiError("Forbidden", "Access denied");
+      throw new ApiError("NotFound", "Transaction not found");
     }
     return transaction;
   }
@@ -194,7 +194,7 @@ export class TransactionService {
         throw new ApiError("NotFound", "Transaction not found");
       }
       if (existing.userId !== userId) {
-        throw new ApiError("Forbidden", "Access denied");
+        throw new ApiError("NotFound", "Transaction not found");
       }
 
       const updated = new Transaction({ ...existing, ...dto });
@@ -226,7 +226,7 @@ export class TransactionService {
         throw new ApiError("NotFound", "Transaction not found");
       }
       if (transaction.userId !== userId) {
-        throw new ApiError("Forbidden", "Access denied");
+        throw new ApiError("NotFound", "Transaction not found");
       }
 
       await this.adjustBalances(transaction, -1, session);
@@ -283,12 +283,13 @@ export class TransactionService {
               : "Destination account not found",
           );
         }
+        // 404 for foreign accounts too: ids must not be probeable (R2-25a).
         if (account.userId !== transaction.userId) {
           throw new ApiError(
-            "Forbidden",
+            "NotFound",
             sign < 0
-              ? "Source account does not belong to the user"
-              : "Destination account does not belong to the user",
+              ? "Source account not found"
+              : "Destination account not found",
           );
         }
       }

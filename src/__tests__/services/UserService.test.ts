@@ -64,7 +64,7 @@ describe("UserService", () => {
     it("should throw Forbidden when accessing another user", async () => {
       await expect(
         service.getUserById("019576a0-d7b6-7d6d-af6a-000000000000", testUserId),
-      ).rejects.toThrow("Access denied");
+      ).rejects.toThrow("User not found");
     });
 
     it("should throw NotFound when user does not exist", async () => {
@@ -106,7 +106,7 @@ describe("UserService", () => {
           },
           testUserId,
         ),
-      ).rejects.toThrow("Access denied");
+      ).rejects.toThrow("User not found");
     });
 
     it("should throw when id in body does not match param id", async () => {
@@ -192,7 +192,7 @@ describe("UserService", () => {
     it("should throw Forbidden when deleting another user", async () => {
       await expect(
         service.deleteUser("019576a0-d7b6-7d6d-af6a-000000000000", testUserId),
-      ).rejects.toThrow("Access denied");
+      ).rejects.toThrow("User not found");
     });
 
     it("should throw NotFound when user does not exist", async () => {

@@ -345,7 +345,7 @@ describe("AccountService", () => {
           "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
           "another-user",
         ),
-      ).rejects.toThrow("Access denied");
+      ).rejects.toThrow("Account not found");
 
       expect(repo.archiveNonDefault).not.toHaveBeenCalled();
     });

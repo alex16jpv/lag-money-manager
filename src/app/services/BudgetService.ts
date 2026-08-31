@@ -142,7 +142,7 @@ export class BudgetService {
       throw new ApiError("NotFound", "Budget not found");
     }
     if (budget.userId !== userId) {
-      throw new ApiError("Forbidden", "Access denied");
+      throw new ApiError("NotFound", "Budget not found");
     }
     return budget;
   }

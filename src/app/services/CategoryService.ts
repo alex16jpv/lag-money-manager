@@ -29,7 +29,7 @@ export class CategoryService {
       throw new ApiError("NotFound", "Category not found");
     }
     if (category.userId !== userId) {
-      throw new ApiError("Forbidden", "Access denied");
+      throw new ApiError("NotFound", "Category not found");
     }
     return new Category(category);
   }
@@ -60,7 +60,7 @@ export class CategoryService {
       throw new ApiError("NotFound", "Category not found");
     }
     if (existing.userId !== userId) {
-      throw new ApiError("Forbidden", "Access denied");
+      throw new ApiError("NotFound", "Category not found");
     }
 
     return new Category(await this.repo.update(id, dto));
@@ -73,7 +73,7 @@ export class CategoryService {
       throw new ApiError("NotFound", "Category not found");
     }
     if (existing.userId !== userId) {
-      throw new ApiError("Forbidden", "Access denied");
+      throw new ApiError("NotFound", "Category not found");
     }
 
     return await this.repo.delete(id);
