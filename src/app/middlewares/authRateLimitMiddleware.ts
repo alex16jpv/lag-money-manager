@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 
-import { RateLimitModel } from "../../domain/models/RateLimitModel";
+import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
 import logger from "../../shared/logger";
 
 interface AuthRateLimitOptions {

@@ -3,13 +3,13 @@
 import "dotenv/config";
 import mongoose from "mongoose";
 import { connectMongo } from "../src/config/mongoConnection";
-import { UserModel } from "../src/domain/models/UserModel";
-import { AccountModel } from "../src/domain/models/AccountModel";
-import { CategoryModel } from "../src/domain/models/CategoryModel";
-import { TransactionModel } from "../src/domain/models/TransactionModel";
-import { RateLimitModel } from "../src/domain/models/RateLimitModel";
-import { BudgetModel } from "../src/domain/models/BudgetModel";
-import { IdempotencyKeyModel } from "../src/domain/models/IdempotencyKeyModel";
+import { UserModel } from "../src/infrastructure/models/UserModel";
+import { AccountModel } from "../src/infrastructure/models/AccountModel";
+import { CategoryModel } from "../src/infrastructure/models/CategoryModel";
+import { TransactionModel } from "../src/infrastructure/models/TransactionModel";
+import { RateLimitModel } from "../src/infrastructure/models/RateLimitModel";
+import { BudgetModel } from "../src/infrastructure/models/BudgetModel";
+import { IdempotencyKeyModel } from "../src/infrastructure/models/IdempotencyKeyModel";
 
 async function main(): Promise<void> {
   await connectMongo();

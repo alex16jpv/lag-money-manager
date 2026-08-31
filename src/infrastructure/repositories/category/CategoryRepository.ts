@@ -1,14 +1,14 @@
 import { v7 as uuidv7 } from "uuid";
 
+import { Category } from "../../../domain/entities/Category";
+import { CategoryFilters, ICategoryRepository } from "../../../domain/repositories/category/ICategoryRepository";
 import { ApiError } from "../../../shared/errors";
 import {
   buildPaginatedResult,
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
-import { Category } from "../../entities/Category";
 import { CategoryModel, ICategoryDocument } from "../../models/CategoryModel";
-import { CategoryFilters, ICategoryRepository } from "./ICategoryRepository";
 
 export class CategoryRepository implements ICategoryRepository {
   private toEntity(doc: ICategoryDocument): Category {

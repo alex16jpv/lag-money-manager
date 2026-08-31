@@ -1,5 +1,7 @@
 import { v7 as uuidv7 } from "uuid";
 
+import { Account } from "../../../domain/entities/Account";
+import { AccountFilters, IAccountRepository } from "../../../domain/repositories/account/IAccountRepository";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
 import {
@@ -8,12 +10,10 @@ import {
   PaginationParams,
 } from "../../../shared/pagination";
 import { TxSession, withTransaction } from "../../../shared/unitOfWork";
-import { Account } from "../../entities/Account";
 import {
   AccountModel,
   IAccountDocument,
 } from "../../models/AccountModel";
-import { AccountFilters, IAccountRepository } from "./IAccountRepository";
 
 export class AccountRepository implements IAccountRepository {
   private toEntity(doc: IAccountDocument): Account {

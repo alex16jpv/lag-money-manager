@@ -1,6 +1,6 @@
+import { IIdempotencyRepository } from "../../../domain/repositories/idempotency/IIdempotencyRepository";
 import { TxSession } from "../../../shared/unitOfWork";
 import { IdempotencyKeyModel } from "../../models/IdempotencyKeyModel";
-import { IIdempotencyRepository } from "./IIdempotencyRepository";
 
 export class IdempotencyRepository implements IIdempotencyRepository {
   private id(userId: string, key: string): string {

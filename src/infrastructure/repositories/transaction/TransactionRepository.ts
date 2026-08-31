@@ -1,6 +1,13 @@
 import { PipelineStage } from "mongoose";
 import { v7 as uuidv7 } from "uuid";
 
+import { Transaction } from "../../../domain/entities/Transaction";
+import {
+  ITransactionRepository,
+  SpendingBucket,
+  SpendingQuery,
+  TransactionFilters,
+} from "../../../domain/repositories/transaction/ITransactionRepository";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
 import {
@@ -9,17 +16,10 @@ import {
   PaginationParams,
 } from "../../../shared/pagination";
 import { TxSession } from "../../../shared/unitOfWork";
-import { Transaction } from "../../entities/Transaction";
 import {
   ITransactionDocument,
   TransactionModel,
 } from "../../models/TransactionModel";
-import {
-  ITransactionRepository,
-  SpendingBucket,
-  SpendingQuery,
-  TransactionFilters,
-} from "./ITransactionRepository";
 
 export class TransactionRepository implements ITransactionRepository {
   private toEntity(doc: ITransactionDocument): Transaction {

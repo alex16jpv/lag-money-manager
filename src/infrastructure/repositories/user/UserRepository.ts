@@ -1,14 +1,14 @@
 import { v7 as uuidv7 } from "uuid";
 
+import { User } from "../../../domain/entities/User";
+import { IUserRepository } from "../../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../../shared/errors";
 import {
   buildPaginatedResult,
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
-import { User } from "../../entities/User";
 import { UserModel } from "../../models/UserModel";
-import { IUserRepository } from "./IUserRepository";
 
 export class UserRepository implements IUserRepository {
   private toEntity(doc: {

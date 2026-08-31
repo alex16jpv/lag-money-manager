@@ -1,10 +1,10 @@
 import { connectMongo } from "../../../config/mongoConnection";
-import { AccountRepository } from "../../../domain/repositories/account/AccountRepository";
-import { BudgetRepository } from "../../../domain/repositories/budget/BudgetRepository";
-import { CategoryRepository } from "../../../domain/repositories/category/CategoryRepository";
-import { IdempotencyRepository } from "../../../domain/repositories/idempotency/IdempotencyRepository";
-import { TransactionRepository } from "../../../domain/repositories/transaction/TransactionRepository";
-import { UserRepository } from "../../../domain/repositories/user/UserRepository";
+import { AccountRepository } from "../../../infrastructure/repositories/account/AccountRepository";
+import { BudgetRepository } from "../../../infrastructure/repositories/budget/BudgetRepository";
+import { CategoryRepository } from "../../../infrastructure/repositories/category/CategoryRepository";
+import { IdempotencyRepository } from "../../../infrastructure/repositories/idempotency/IdempotencyRepository";
+import { TransactionRepository } from "../../../infrastructure/repositories/transaction/TransactionRepository";
+import { UserRepository } from "../../../infrastructure/repositories/user/UserRepository";
 import { DB_TYPES, IS_LAMBDA } from "../../../shared/constants";
 import logger from "../../../shared/logger";
 

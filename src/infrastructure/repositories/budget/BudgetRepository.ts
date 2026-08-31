@@ -1,5 +1,7 @@
 import { v7 as uuidv7 } from "uuid";
 
+import { Budget } from "../../../domain/entities/Budget";
+import { BudgetFilters, IBudgetRepository } from "../../../domain/repositories/budget/IBudgetRepository";
 import { BudgetPeriodType } from "../../../shared/constants";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
@@ -8,9 +10,7 @@ import {
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
-import { Budget } from "../../entities/Budget";
 import { BudgetModel, IBudgetDocument } from "../../models/BudgetModel";
-import { BudgetFilters, IBudgetRepository } from "./IBudgetRepository";
 
 export class BudgetRepository implements IBudgetRepository {
   private toEntity(doc: IBudgetDocument): Budget {
