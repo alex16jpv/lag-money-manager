@@ -21,6 +21,7 @@ function idempotencyMeta(req: Request): IdempotencyMeta | undefined {
     throw new ApiError(
       "BadRequest",
       "Idempotency-Key must be 1-200 characters of [A-Za-z0-9_-]",
+      "IDEMPOTENCY_KEY_INVALID",
     );
   }
   return { key, requestHash: hashPayload(req.body) };

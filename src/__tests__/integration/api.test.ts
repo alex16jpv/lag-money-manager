@@ -825,9 +825,38 @@ describe("Integration Tests", () => {
       expect(res.body.data).toHaveLength(1);
       expect(res.body.pagination).toBeDefined();
     });
+
+    it("rejects uncategorized=true combined with categoryId", async () => {
+      const res = await request(app)
+        .get(
+          "/transactions?uncategorized=true&categoryId=019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
+        )
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+    });
   });
 
   describe("POST /transactions", () => {
+    it("rejects a malformed Idempotency-Key with IDEMPOTENCY_KEY_INVALID", async () => {
+      mockAccountRepo.getById.mockResolvedValue(testAccount);
+      mockTransactionRepo.create.mockResolvedValue(testTransaction);
+
+      const res = await request(app)
+        .post("/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", "bad key with spaces!")
+        .send({
+          type: "EXPENSE",
+          amount: 50,
+          date: "2026-03-28T00:00:00.000Z",
+          fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("IDEMPOTENCY_KEY_INVALID");
+    });
+
     it("should create an expense transaction", async () => {
       mockAccountRepo.getById.mockResolvedValue(testAccount);
       mockTransactionRepo.create.mockResolvedValue(testTransaction);

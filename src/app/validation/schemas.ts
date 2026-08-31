@@ -139,7 +139,14 @@ export const getTransactionsSchema = z.object({
       .datetime({ offset: true, message: "to must be a valid ISO 8601 date" })
       .optional(),
     tag: z.string().min(1).max(50).optional(),
-  }),
+  })
+    .refine(
+      (q) => !(q.uncategorized === "true" && q.categoryId !== undefined),
+      {
+        message: "uncategorized=true cannot be combined with categoryId",
+        path: ["uncategorized"],
+      },
+    ),
 });
 
 export const getCategoriesSchema = z.object({
