@@ -62,16 +62,26 @@ export function authRateLimit(options: AuthRateLimitOptions) {
       ).lean();
 
       if (refundOnSuccess) {
-        res.on("finish", () => {
-          if (res.statusCode < 400) {
-            RateLimitModel.updateOne(
-              { _id: key },
-              { $inc: { count: -1 } },
-            ).catch(() => {
-              /* best-effort refund */
-            });
+        // Refund BEFORE the response goes out: on Lambda the container can
+        // freeze right after replying, losing any post-response write.
+        const originalJson = res.json.bind(res);
+        res.json = ((body?: unknown) => {
+          if (res.statusCode >= 400) {
+            return originalJson(body);
           }
-        });
+          res.json = originalJson;
+          // count > 0 floors at 0: a refund landing in a fresh window must not go negative.
+          RateLimitModel.updateOne(
+            { _id: key, count: { $gt: 0 } },
+            { $inc: { count: -1 } },
+          )
+            .exec()
+            .catch(() => {
+              /* best-effort refund */
+            })
+            .finally(() => originalJson(body));
+          return res;
+        }) as typeof res.json;
       }
 
       if (doc && doc.count > max) {
