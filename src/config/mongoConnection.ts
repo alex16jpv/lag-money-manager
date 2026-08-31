@@ -42,16 +42,40 @@ async function buildIndexes(): Promise<void> {
       ? [{ model: models[i].modelName, err: result.reason }]
       : [],
   );
-  if (failed.length > 0) {
-    for (const { model, err } of failed) {
+  for (const { model, err } of failed) {
+    // Data that violates the index is a real problem: the constraint is not
+    // enforced and will not be until the offending rows are fixed. A network
+    // blip is not — it leaves the index in an unknown, probably fine state,
+    // and saying "NOT enforced" there sends people hunting a phantom.
+    if ((err as { code?: number })?.code === 11000) {
       logger.error(
         { err, model },
-        "Index build failed; constraint NOT enforced",
+        "Index rejected by existing data; constraint NOT enforced until the duplicates are removed",
+      );
+    } else {
+      logger.warn(
+        { err, model },
+        "Could not verify indexes (database unreachable); run npm run db:sync-indexes if this persists",
       );
     }
-    return;
   }
-  logger.debug({ models: models.length }, "Indexes in sync");
+  if (failed.length === 0) {
+    logger.debug({ models: models.length }, "Indexes in sync");
+  }
+}
+
+// A development run pointed at a remote database writes test data straight
+// into it. Cheap to say out loud, expensive to discover afterwards.
+function warnIfDevelopmentPointsAtRemote(uri: string): void {
+  if (ENVIRONMENT.NODE_ENV !== "development") return;
+  const host = uri
+    .replace(/^mongodb(\+srv)?:\/\/([^@]*@)?/, "")
+    .split(/[/,?]/)[0];
+  if (/^(localhost|127\.0\.0\.1|\[::1\]|mongo)(:\d+)?$/i.test(host)) return;
+  logger.warn(
+    { host },
+    "NODE_ENV=development but MONGO_URI points at a remote database — local writes land there",
+  );
 }
 
 export function connectMongo(): Promise<void> {
@@ -60,6 +84,7 @@ export function connectMongo(): Promise<void> {
   }
   if (!connecting) {
     const uri = (ENVIRONMENT as { MONGO_URI: string }).MONGO_URI;
+    warnIfDevelopmentPointsAtRemote(uri);
     connecting = mongoose
       .connect(uri, {
         serverSelectionTimeoutMS: SERVER_SELECTION_TIMEOUT_MS,
