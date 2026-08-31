@@ -28,6 +28,9 @@ const mockAccountRepo: jest.Mocked<IAccountRepository> = {
   delete: jest.fn(),
   incrementBalance: jest.fn(),
   restore: jest.fn(),
+  getDefaultByUserId: jest.fn(),
+  setDefault: jest.fn(),
+  countByUserId: jest.fn().mockResolvedValue(1),
 };
 
 const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {

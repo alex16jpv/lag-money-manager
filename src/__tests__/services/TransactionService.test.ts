@@ -56,6 +56,10 @@ const createMockAccountRepo = (): jest.Mocked<IAccountRepository> => ({
   update: jest.fn(),
   delete: jest.fn(),
   incrementBalance: jest.fn(),
+  restore: jest.fn(),
+  getDefaultByUserId: jest.fn(),
+  setDefault: jest.fn(),
+  countByUserId: jest.fn(),
 });
 
 const createMockIdempotencyRepo = (): jest.Mocked<IIdempotencyRepository> => ({
@@ -371,6 +375,33 @@ describe("TransactionService", () => {
         "Access denied",
       );
       expect(txRepo.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("quickAddTransaction [F2]", () => {
+    it("uses the default account and flags pendingDetails", async () => {
+      acctRepo.getDefaultByUserId.mockResolvedValue(account());
+      acctRepo.getById.mockResolvedValue(account());
+      txRepo.create.mockImplementation(async (t) =>
+        new Transaction({ ...(t as object), id: TX_ID } as never),
+      );
+
+      await service.quickAddTransaction({ amount: 20, userId: USER });
+
+      expect(acctRepo.getDefaultByUserId).toHaveBeenCalledWith(USER);
+      const created = txRepo.create.mock.calls[0][0];
+      expect(created.pendingDetails).toBe(true);
+      expect(created.fromAccountId).toBe(ACC_A);
+      expect(created.type).toBe("EXPENSE");
+    });
+
+    it("rejects when no default account is set", async () => {
+      acctRepo.getDefaultByUserId.mockResolvedValue(null);
+
+      await expect(
+        service.quickAddTransaction({ amount: 20, userId: USER }),
+      ).rejects.toThrow("No default account");
+      expect(txRepo.create).not.toHaveBeenCalled();
     });
   });
 

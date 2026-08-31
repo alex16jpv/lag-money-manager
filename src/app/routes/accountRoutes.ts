@@ -209,4 +209,25 @@ router.post(
   AccountController.restoreAccount,
 );
 
+/**
+ * @openapi
+ * /accounts/{id}/default:
+ *   post:
+ *     tags: [Accounts]
+ *     summary: Mark an account as the user's default
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200: { description: Default account set }
+ *       404: { description: Account not found }
+ */
+router.post(
+  "/:id/default",
+  validate(idParamSchema),
+  AccountController.setDefaultAccount,
+);
+
 export default router;

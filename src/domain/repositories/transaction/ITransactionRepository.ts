@@ -8,6 +8,7 @@ export interface TransactionFilters {
   accountId?: string;
   categoryId?: string;
   type?: TransactionType;
+  pendingDetails?: boolean;
 }
 
 export interface ITransactionRepository extends IRepository<Transaction> {

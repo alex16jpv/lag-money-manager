@@ -11,6 +11,7 @@ export interface CreateTransactionDTO {
   userId: string;
   tags?: string[];
   note?: string | null;
+  pendingDetails?: boolean;
 }
 
 export interface UpdateTransactionDTO {
@@ -24,4 +25,15 @@ export interface UpdateTransactionDTO {
   toAccountId?: string | null;
   tags?: string[];
   note?: string | null;
+  pendingDetails?: boolean;
+}
+
+export interface QuickAddTransactionDTO {
+  amount: number;
+  type?: TransactionType;
+  date?: Date;
+  categoryId?: string | null;
+  fromAccountId?: string | null;
+  toAccountId?: string | null;
+  userId: string;
 }

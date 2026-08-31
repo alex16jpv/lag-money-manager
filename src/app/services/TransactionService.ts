@@ -10,6 +10,7 @@ import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { TxSession, withTransaction } from "../../shared/unitOfWork";
 import {
   CreateTransactionDTO,
+  QuickAddTransactionDTO,
   UpdateTransactionDTO,
 } from "../dtos/TransactionDTO";
 
@@ -93,6 +94,46 @@ export class TransactionService {
     const id = await this.idempotencyRepo.findTransactionId(userId, key);
     if (!id) return null;
     return this.transactionRepo.getById(id);
+  }
+
+  // Low-friction create: only amount is required; type defaults to EXPENSE, date
+  // to now, and the missing side account to the user's default. Flagged
+  // pendingDetails so the client can list these for later detailing.
+  async quickAddTransaction(
+    dto: QuickAddTransactionDTO,
+  ): Promise<Transaction> {
+    const type = dto.type ?? "EXPENSE";
+    let fromAccountId = dto.fromAccountId ?? null;
+    let toAccountId = dto.toAccountId ?? null;
+
+    if ((type === "EXPENSE" || type === "TRANSFER") && !fromAccountId) {
+      fromAccountId = await this.resolveDefaultAccountId(dto.userId);
+    }
+    if (type === "INCOME" && !toAccountId) {
+      toAccountId = await this.resolveDefaultAccountId(dto.userId);
+    }
+
+    return this.createTransaction({
+      type,
+      amount: dto.amount,
+      date: dto.date ?? new Date(),
+      categoryId: dto.categoryId ?? null,
+      fromAccountId,
+      toAccountId,
+      userId: dto.userId,
+      pendingDetails: true,
+    });
+  }
+
+  private async resolveDefaultAccountId(userId: string): Promise<string> {
+    const account = await this.accountRepo.getDefaultByUserId(userId);
+    if (!account) {
+      throw new ApiError(
+        "BadRequest",
+        "No default account set; set one or pass an account id",
+      );
+    }
+    return account.id;
   }
 
   async updateTransaction(

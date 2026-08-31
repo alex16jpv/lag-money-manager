@@ -80,6 +80,7 @@ export const getTransactionsSchema = z.object({
         error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
       })
       .optional(),
+    pendingDetails: z.enum(["true", "false"]).optional(),
   }),
 });
 
@@ -361,8 +362,26 @@ export const updateTransactionSchema = z.object({
         .nullable(),
       tags: z.array(z.string().min(1).max(50)).max(30).optional(),
       note: z.string().max(1000).optional().nullable(),
+      pendingDetails: z.boolean().optional(),
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {
       message: "At least one field must be provided",
     }),
+});
+
+export const quickAddTransactionSchema = z.object({
+  body: z.object({
+    amount: moneyAmount,
+    type: z.enum(transactionTypeValues).optional(),
+    date: z
+      .string()
+      .datetime({ message: "Date must be a valid ISO 8601 date" })
+      .optional(),
+    categoryId: z.string().uuid("categoryId must be a valid UUID").optional(),
+    fromAccountId: z
+      .string()
+      .uuid("fromAccountId must be a valid UUID")
+      .optional(),
+    toAccountId: z.string().uuid("toAccountId must be a valid UUID").optional(),
+  }),
 });

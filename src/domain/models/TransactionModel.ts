@@ -18,6 +18,7 @@ export interface ITransactionDocument {
   userId: string;
   tags: string[];
   note: string | null;
+  pendingDetails: boolean;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -40,6 +41,7 @@ const TransactionSchema = new Schema<ITransactionDocument>(
     userId: { type: String, required: true },
     tags: { type: [String], default: [] },
     note: { type: String, default: null },
+    pendingDetails: { type: Boolean, required: true, default: false },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true },

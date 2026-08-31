@@ -5,6 +5,7 @@ import {
   createTransactionSchema,
   getTransactionsSchema,
   idParamSchema,
+  quickAddTransactionSchema,
   updateTransactionSchema,
 } from "../validation/schemas";
 import { validate } from "../validation/validate";
@@ -109,6 +110,31 @@ router.post(
   "/",
   validate(createTransactionSchema),
   TransactionController.createTransaction,
+);
+
+/**
+ * @openapi
+ * /transactions/quick:
+ *   post:
+ *     tags: [Transactions]
+ *     summary: Quick-add a transaction (amount only; other fields defaulted)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [amount]
+ *             properties:
+ *               amount: { type: number }
+ *     responses:
+ *       201: { description: Transaction created (pendingDetails=true) }
+ *       400: { description: Validation error or no default account }
+ */
+router.post(
+  "/quick",
+  validate(quickAddTransactionSchema),
+  TransactionController.quickAddTransaction,
 );
 
 /**

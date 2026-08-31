@@ -32,6 +32,7 @@ export class TransactionRepository implements ITransactionRepository {
       userId: doc.userId,
       tags: doc.tags ?? [],
       note: doc.note ?? null,
+      pendingDetails: doc.pendingDetails,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });
@@ -122,6 +123,9 @@ export class TransactionRepository implements ITransactionRepository {
     }
     if (filters?.type) {
       filter.type = filters.type;
+    }
+    if (filters?.pendingDetails !== undefined) {
+      filter.pendingDetails = filters.pendingDetails;
     }
     return this.paginatedFind(filter, pagination);
   }

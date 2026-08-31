@@ -70,4 +70,13 @@ export class AccountController {
     );
     res.status(200).json(account);
   };
+
+  static setDefaultAccount = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const account = await accountService.setDefaultAccount(
+      req.params.id as string,
+      userId,
+    );
+    res.status(200).json(account);
+  };
 }

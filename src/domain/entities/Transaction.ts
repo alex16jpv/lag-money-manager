@@ -16,6 +16,7 @@ export interface TransactionProps {
   userId: string;
   tags?: string[];
   note?: string | null;
+  pendingDetails?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -32,6 +33,7 @@ export class Transaction {
   userId: string;
   tags: string[];
   note: string | null;
+  pendingDetails: boolean;
   createdAt: Date;
   updatedAt: Date;
 
@@ -47,6 +49,7 @@ export class Transaction {
     this.userId = props.userId;
     this.tags = props.tags ?? [];
     this.note = props.note ?? null;
+    this.pendingDetails = props.pendingDetails ?? false;
     this.createdAt = props.createdAt ?? new Date();
     this.updatedAt = props.updatedAt ?? new Date();
   }

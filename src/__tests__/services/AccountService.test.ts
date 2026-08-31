@@ -81,6 +81,9 @@ const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   delete: jest.fn(),
   incrementBalance: jest.fn(),
   restore: jest.fn(),
+  getDefaultByUserId: jest.fn(),
+  setDefault: jest.fn(),
+  countByUserId: jest.fn().mockResolvedValue(1),
 });
 
 describe("AccountService", () => {
@@ -205,6 +208,34 @@ describe("AccountService", () => {
 
       expect(repo.create).toHaveBeenCalledTimes(1);
       expect(result.name).toBe("Savings");
+    });
+
+    it("marks the first account as default [F2]", async () => {
+      repo.countByUserId.mockResolvedValue(0);
+      repo.create.mockImplementation(async (a) => new Account(a));
+
+      const result = await service.createAccount(validAccountProps);
+
+      expect(result.isDefault).toBe(true);
+    });
+  });
+
+  describe("setDefaultAccount [F2]", () => {
+    it("sets the account as default", async () => {
+      repo.setDefault.mockResolvedValue(new Account({ ...validAccountProps, isDefault: true }));
+
+      const result = await service.setDefaultAccount(mockAccount.id, mockAccount.userId);
+
+      expect(repo.setDefault).toHaveBeenCalledWith(mockAccount.id, mockAccount.userId);
+      expect(result.isDefault).toBe(true);
+    });
+
+    it("throws NotFound when the account does not exist", async () => {
+      repo.setDefault.mockResolvedValue(null);
+
+      await expect(
+        service.setDefaultAccount(mockAccount.id, mockAccount.userId),
+      ).rejects.toThrow("Account not found");
     });
   });
 

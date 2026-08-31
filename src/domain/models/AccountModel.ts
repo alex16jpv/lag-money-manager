@@ -14,6 +14,7 @@ export interface IAccountDocument {
   balance: number; // integer cents
   color?: string;
   userId: string;
+  isDefault: boolean;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -31,6 +32,7 @@ const AccountSchema = new Schema<IAccountDocument>(
     balance: { type: Number, required: true },
     color: { type: String, required: false, enum: Object.keys(COLORS) },
     userId: { type: String, required: true },
+    isDefault: { type: Boolean, required: true, default: false },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true },

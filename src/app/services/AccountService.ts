@@ -32,8 +32,17 @@ export class AccountService {
   }
 
   async createAccount(dto: CreateAccountDTO): Promise<Account> {
-    const account = new Account(dto);
+    const isFirst = (await this.repo.countByUserId(dto.userId)) === 0;
+    const account = new Account({ ...dto, isDefault: isFirst });
     return new Account(await this.repo.create(account));
+  }
+
+  async setDefaultAccount(id: string, userId: string): Promise<Account> {
+    const account = await this.repo.setDefault(id, userId);
+    if (!account) {
+      throw new ApiError("NotFound", "Account not found");
+    }
+    return account;
   }
 
   async updateAccount(

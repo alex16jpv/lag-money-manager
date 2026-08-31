@@ -25,6 +25,9 @@ export class TransactionController {
     if (req.query.type) {
       filters.type = req.query.type as TransactionType;
     }
+    if (req.query.pendingDetails !== undefined) {
+      filters.pendingDetails = req.query.pendingDetails === "true";
+    }
     const result = await transactionService.getAllTransactions(
       userId,
       extractPagination(req),
@@ -49,6 +52,15 @@ export class TransactionController {
       { ...req.body, userId },
       idempotencyKey,
     );
+    res.status(201).json(newTransaction);
+  };
+
+  static quickAddTransaction = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const newTransaction = await transactionService.quickAddTransaction({
+      ...req.body,
+      userId,
+    });
     res.status(201).json(newTransaction);
   };
 

@@ -7,7 +7,7 @@ import {
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
-import { TxSession } from "../../../shared/unitOfWork";
+import { TxSession, withTransaction } from "../../../shared/unitOfWork";
 import { Account } from "../../entities/Account";
 import {
   AccountModel,
@@ -24,6 +24,7 @@ export class AccountRepository implements IAccountRepository {
       balance: fromCents(doc.balance),
       color: doc.color as Account["color"],
       userId: doc.userId,
+      isDefault: doc.isDefault,
       archivedAt: doc.deletedAt,
     });
   }
@@ -150,5 +151,35 @@ export class AccountRepository implements IAccountRepository {
       { new: true },
     ).lean();
     return doc ? this.toEntity(doc) : null;
+  }
+
+  async getDefaultByUserId(userId: string): Promise<Account | null> {
+    const doc = await AccountModel.findOne({
+      userId,
+      isDefault: true,
+      deletedAt: null,
+    }).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async setDefault(id: string, userId: string): Promise<Account | null> {
+    return withTransaction(async (session) => {
+      const target = await AccountModel.findOneAndUpdate(
+        { _id: id, userId, deletedAt: null },
+        { isDefault: true },
+        { new: true, session },
+      ).lean();
+      if (!target) return null;
+      await AccountModel.updateMany(
+        { userId, _id: { $ne: id }, isDefault: true },
+        { isDefault: false },
+        { session },
+      );
+      return this.toEntity(target);
+    });
+  }
+
+  async countByUserId(userId: string): Promise<number> {
+    return AccountModel.countDocuments({ userId, deletedAt: null });
   }
 }

@@ -9,6 +9,7 @@ export interface AccountProps {
   balance?: number;
   color?: Color;
   userId: string;
+  isDefault?: boolean;
   archivedAt?: Date | null;
 }
 
@@ -19,15 +20,26 @@ export class Account {
   balance: number;
   color?: Color;
   userId: string;
+  isDefault: boolean;
   archivedAt: Date | null;
 
-  constructor({ id, name, type, balance, color, userId, archivedAt }: AccountProps) {
+  constructor({
+    id,
+    name,
+    type,
+    balance,
+    color,
+    userId,
+    isDefault,
+    archivedAt,
+  }: AccountProps) {
     this.id = id ?? uuidv7();
     this.name = name;
     this.type = type;
     this.balance = balance ?? 0;
     this.color = color;
     this.userId = userId;
+    this.isDefault = isDefault ?? false;
     this.archivedAt = archivedAt ?? null;
   }
 }
