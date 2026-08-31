@@ -10,6 +10,10 @@ mongoose.set("bufferCommands", false);
 
 const SERVER_SELECTION_TIMEOUT_MS = 5000;
 
+// Atlas M0 caps ~500 connections cluster-wide; the driver default of 100 per
+// process can exhaust it with a handful of warm Lambda instances.
+const MAX_POOL_SIZE = process.env.AWS_LAMBDA_FUNCTION_NAME ? 5 : 10;
+
 let connecting: Promise<void> | null = null;
 
 /**
@@ -27,6 +31,7 @@ export function connectMongo(): Promise<void> {
     connecting = mongoose
       .connect(uri, {
         serverSelectionTimeoutMS: SERVER_SELECTION_TIMEOUT_MS,
+        maxPoolSize: MAX_POOL_SIZE,
         // Off in production; indexes are built by the db:sync-indexes deploy step.
         autoIndex: ENVIRONMENT.NODE_ENV !== "production",
       })

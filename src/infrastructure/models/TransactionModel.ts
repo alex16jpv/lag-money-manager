@@ -47,10 +47,14 @@ const TransactionSchema = new Schema<ITransactionDocument>(
   { timestamps: true },
 );
 
-// Primary listing sort; without it the (date desc) sort runs in memory.
-TransactionSchema.index({ userId: 1, date: -1, _id: -1 });
+// Primary listing sort; deletedAt included so the per-page count is
+// resolved from the index instead of fetching every document.
+TransactionSchema.index({ userId: 1, deletedAt: 1, date: -1, _id: -1 });
 TransactionSchema.index({ userId: 1, categoryId: 1, date: -1 });
 TransactionSchema.index({ userId: 1, tags: 1, date: -1 });
+// Each $or branch of the accountId filter needs its own userId-prefixed index.
+TransactionSchema.index({ userId: 1, fromAccountId: 1, date: -1 });
+TransactionSchema.index({ userId: 1, toAccountId: 1, date: -1 });
 
 export const TransactionModel = mongoose.model<ITransactionDocument>(
   MODEL_NAMES.TRANSACTION,

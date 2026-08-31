@@ -116,9 +116,10 @@ export class TransactionRepository implements ITransactionRepository {
       filter._id = { $in: filters.ids };
     }
     if (filters?.accountId) {
+      // userId inside each branch so the planner can index-union the $or.
       filter.$or = [
-        { fromAccountId: filters.accountId },
-        { toAccountId: filters.accountId },
+        { userId, fromAccountId: filters.accountId },
+        { userId, toAccountId: filters.accountId },
       ];
     }
     if (filters?.categoryId) {
