@@ -58,7 +58,11 @@ export class TransactionRepository implements ITransactionRepository {
     if (cursor) {
       // Keyset over (date DESC, _id DESC): the id alone is not enough because
       // transactions can be backdated, so fetch the cursor doc's date.
-      const cursorDoc = await TransactionModel.findById(cursor)
+      // Scoped to the owner so foreign ids can't act as pivots (id oracle).
+      const cursorDoc = await TransactionModel.findOne({
+        _id: cursor,
+        ...(baseFilter.userId ? { userId: baseFilter.userId } : {}),
+      })
         .select("date")
         .lean();
       if (cursorDoc) {
