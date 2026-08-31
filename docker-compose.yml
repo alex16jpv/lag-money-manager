@@ -29,7 +29,10 @@ services:
     ports:
       - "3100:3100"
     environment:
-      MONGOKU_DEFAULT_HOST: "mongodb://mongo:27017/?replicaSet=rs0"
+      # directConnection=true, NOT replicaSet=rs0: the replica set advertises
+      # its member as "localhost:27017", so a driver doing topology discovery
+      # from inside a container would try to reach 127.0.0.1 and hit itself.
+      MONGOKU_DEFAULT_HOST: "mongodb://mongo:27017/lag_money?directConnection=true"
     depends_on:
       - mongo
     networks:

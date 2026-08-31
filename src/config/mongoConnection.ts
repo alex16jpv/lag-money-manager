@@ -22,6 +22,38 @@ let connecting: Promise<void> | null = null;
  * a fresh retry after a failed attempt (important in Lambda, where the
  * process outlives a failed cold-start connection).
  */
+/**
+ * Builds the declared indexes once the connection is up.
+ *
+ * Mongoose's own `autoIndex` cannot do this here: with `bufferCommands`
+ * disabled and a lazy connection, the automatic `Model.init()` fires while the
+ * socket is still closed, throws on an undefined db handle, and the rejection
+ * is swallowed — so NO index was ever created, silently. That left every
+ * unique constraint unenforced (duplicate emails, two default accounts...).
+ * A failure here is logged loudly rather than ignored.
+ */
+async function buildIndexes(): Promise<void> {
+  const models = Object.values(mongoose.models);
+  const results = await Promise.allSettled(
+    models.map((model) => model.createIndexes()),
+  );
+  const failed = results.flatMap((result, i) =>
+    result.status === "rejected"
+      ? [{ model: models[i].modelName, err: result.reason }]
+      : [],
+  );
+  if (failed.length > 0) {
+    for (const { model, err } of failed) {
+      logger.error(
+        { err, model },
+        "Index build failed; constraint NOT enforced",
+      );
+    }
+    return;
+  }
+  logger.debug({ models: models.length }, "Indexes in sync");
+}
+
 export function connectMongo(): Promise<void> {
   if (mongoose.connection.readyState === mongoose.STATES.connected) {
     return Promise.resolve();
@@ -35,8 +67,11 @@ export function connectMongo(): Promise<void> {
         // Off in production; indexes are built by the db:sync-indexes deploy step.
         autoIndex: ENVIRONMENT.NODE_ENV !== "production",
       })
-      .then(() => {
+      .then(async () => {
         logger.info("Connected to MongoDB");
+        if (ENVIRONMENT.NODE_ENV !== "production") {
+          await buildIndexes();
+        }
       })
       .catch((err) => {
         connecting = null;
