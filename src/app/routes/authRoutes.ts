@@ -18,14 +18,30 @@ const loginLimiter = authRateLimit({
   max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
+// Second dimension for login: a distributed attack on ONE account rotates
+// IPs, so the target email needs its own counter.
+const loginEmailLimiter = authRateLimit({
+  keyPrefix: "login-email",
+  max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
+  windowMs: AUTH_WINDOW_MS,
+  // Runs before Zod: normalize the same way the schema will.
+  keyFrom: (req) => {
+    const email = (req.body as { email?: unknown } | undefined)?.email;
+    return typeof email === "string" && email
+      ? email.trim().toLowerCase()
+      : null;
+  },
+});
 const registerLimiter = authRateLimit({
   keyPrefix: "register",
   max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
+// Refresh is legitimate high-frequency traffic (every ~15 min per device):
+// it gets its own, higher threshold.
 const refreshLimiter = authRateLimit({
   keyPrefix: "refresh",
-  max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
+  max: ENVIRONMENT.REFRESH_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
 
@@ -99,6 +115,7 @@ router.post(
 router.post(
   "/login",
   loginLimiter,
+  loginEmailLimiter,
   validate(loginSchema),
   AuthController.login,
 );
