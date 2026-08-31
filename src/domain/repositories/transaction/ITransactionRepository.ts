@@ -11,10 +11,31 @@ export interface TransactionFilters {
   pendingDetails?: boolean;
 }
 
+export type SpendingGroupBy = "category" | "day" | "tag";
+
+export interface SpendingQuery {
+  from?: Date;
+  to?: Date;
+  type?: TransactionType;
+  groupBy: SpendingGroupBy;
+}
+
+export interface SpendingBucket {
+  key: string;
+  total: number;
+  count: number;
+  avg: number;
+}
+
 export interface ITransactionRepository extends IRepository<Transaction> {
   getAllByUserId(
     userId: string,
     pagination: PaginationParams,
     filters?: TransactionFilters,
   ): Promise<PaginatedResult<Transaction>>;
+
+  aggregateSpending(
+    userId: string,
+    query: SpendingQuery,
+  ): Promise<SpendingBucket[]>;
 }

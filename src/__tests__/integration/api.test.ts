@@ -51,6 +51,7 @@ const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
+  aggregateSpending: jest.fn(),
 };
 
 const mockIdempotencyRepo = {
@@ -888,6 +889,36 @@ describe("Integration Tests", () => {
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac74",
         expect.anything(),
       );
+    });
+  });
+
+  // ==================== Stats Routes ====================
+  describe("GET /stats/spending [F1]", () => {
+    it("returns spending buckets grouped by category", async () => {
+      mockTransactionRepo.aggregateSpending.mockResolvedValue([
+        { key: "cat-1", total: 30.5, count: 3, avg: 10.17 },
+      ]);
+
+      const res = await request(app)
+        .get("/stats/spending?groupBy=category")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.groupBy).toBe("category");
+      expect(res.body.buckets).toHaveLength(1);
+      expect(res.body.total).toBe(30.5);
+      expect(mockTransactionRepo.aggregateSpending).toHaveBeenCalledWith(
+        testUser.id,
+        expect.objectContaining({ groupBy: "category", type: "EXPENSE" }),
+      );
+    });
+
+    it("rejects an invalid groupBy", async () => {
+      const res = await request(app)
+        .get("/stats/spending?groupBy=nope")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
     });
   });
 });

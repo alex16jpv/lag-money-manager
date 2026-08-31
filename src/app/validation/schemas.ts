@@ -224,6 +224,21 @@ export const updateCategorySchema = z.object({
     ),
 });
 
+export const spendingStatsSchema = z.object({
+  query: z.object({
+    groupBy: z.enum(["category", "day", "tag"]).optional(),
+    type: z.enum(transactionTypeValues).optional(),
+    from: z
+      .string()
+      .datetime({ message: "from must be a valid ISO 8601 date" })
+      .optional(),
+    to: z
+      .string()
+      .datetime({ message: "to must be a valid ISO 8601 date" })
+      .optional(),
+  }),
+});
+
 export const idParamSchema = z.object({
   params: z.object({
     id: z.string().uuid("ID must be a valid UUID"),

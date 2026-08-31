@@ -11,6 +11,7 @@ import { gatewaySecretMiddleware } from "./app/middlewares/gatewaySecretMiddlewa
 import accountRoutes from "./app/routes/accountRoutes";
 import authRoutes from "./app/routes/authRoutes";
 import categoryRoutes from "./app/routes/categoryRoutes";
+import statsRoutes from "./app/routes/statsRoutes";
 import transactionRoutes from "./app/routes/transactionRoutes";
 import userRoutes from "./app/routes/userRoutes";
 import { pingDatabase } from "./config/dbHealth";
@@ -80,6 +81,7 @@ app.use("/users", apiLimiter, userRoutes);
 app.use("/accounts", apiLimiter, accountRoutes);
 app.use("/categories", apiLimiter, categoryRoutes);
 app.use("/transactions", apiLimiter, transactionRoutes);
+app.use("/stats", apiLimiter, statsRoutes);
 
 app.use(errorMiddleware);
 

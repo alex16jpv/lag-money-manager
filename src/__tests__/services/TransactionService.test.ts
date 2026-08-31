@@ -46,6 +46,7 @@ const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
+  aggregateSpending: jest.fn(),
 });
 
 const createMockAccountRepo = (): jest.Mocked<IAccountRepository> => ({

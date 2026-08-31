@@ -1,3 +1,4 @@
+import { PipelineStage } from "mongoose";
 import { v7 as uuidv7 } from "uuid";
 
 import { ApiError } from "../../../shared/errors";
@@ -15,6 +16,8 @@ import {
 } from "../../models/TransactionModel";
 import {
   ITransactionRepository,
+  SpendingBucket,
+  SpendingQuery,
   TransactionFilters,
 } from "./ITransactionRepository";
 
@@ -167,5 +170,56 @@ export class TransactionRepository implements ITransactionRepository {
     if (!doc) {
       throw new ApiError("NotFound", "Transaction not found");
     }
+  }
+
+  async aggregateSpending(
+    userId: string,
+    query: SpendingQuery,
+  ): Promise<SpendingBucket[]> {
+    const match: Record<string, unknown> = { userId, deletedAt: null };
+    if (query.type) {
+      match.type = query.type;
+    }
+    if (query.from || query.to) {
+      const range: Record<string, Date> = {};
+      if (query.from) range.$gte = query.from;
+      if (query.to) range.$lte = query.to;
+      match.date = range;
+    }
+
+    const groupId =
+      query.groupBy === "day"
+        ? { $dateToString: { format: "%Y-%m-%d", date: "$date" } }
+        : query.groupBy === "tag"
+          ? "$tags"
+          : { $ifNull: ["$categoryId", "uncategorized"] };
+
+    const pipeline: PipelineStage[] = [{ $match: match }];
+    if (query.groupBy === "tag") {
+      pipeline.push({ $unwind: "$tags" });
+    }
+    pipeline.push(
+      {
+        $group: {
+          _id: groupId,
+          total: { $sum: "$amount" },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { total: -1 } },
+    );
+
+    const rows = await TransactionModel.aggregate<{
+      _id: string;
+      total: number;
+      count: number;
+    }>(pipeline);
+
+    return rows.map((r) => ({
+      key: String(r._id),
+      total: fromCents(r.total),
+      count: r.count,
+      avg: fromCents(Math.round(r.total / r.count)),
+    }));
   }
 }
