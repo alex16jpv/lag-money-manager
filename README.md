@@ -1,6 +1,8 @@
 # lag-money-manager
 
-REST API for personal money management — track accounts, categories, and transactions with automatic balance adjustments.
+REST API for personal money management — track accounts, categories and
+transactions with automatic balance adjustments, budget per period, and see
+where the money went.
 
 ## Quick Start
 
@@ -75,7 +77,9 @@ zip -r function.zip dist/ node_modules package.json
 - [Users](docs/modules/users.md) — User profile management
 - [Accounts](docs/modules/accounts.md) — Financial accounts and balances
 - [Categories](docs/modules/categories.md) — Transaction categories
-- [Transactions](docs/modules/transactions.md) — Income, expenses, transfers
+- [Transactions](docs/modules/transactions.md) — Income, expenses, transfers, adjustments
+- [Budgets](docs/modules/budgets.md) — Per-period spending limits with live spend
+- [Stats](docs/modules/stats.md) — Spending aggregated by category, day or tag
 
 ### Examples
 

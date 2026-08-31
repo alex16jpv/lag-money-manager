@@ -61,7 +61,7 @@ first write (`autoIndex` is on outside production), and the first registered
 user gets the default categories seeded.
 
 Optionally, `docker compose up -d` also starts **Mongoku**, a lightweight
-MongoDB web UI, on http://localhost:3100.
+MongoDB web UI, on `http://localhost:3100`.
 
 ## 5. Run the Project
 
@@ -155,7 +155,7 @@ refresh token.
 
 ### API documentation
 
-Open http://localhost:3000/api-docs for the interactive Swagger UI (not served
+Open `http://localhost:3000/api-docs` for the interactive Swagger UI (not served
 when `NODE_ENV=production`).
 
 ### Ready-made requests

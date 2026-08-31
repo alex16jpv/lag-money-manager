@@ -2,45 +2,72 @@
 
 ## What This Module Does
 
-Manages transaction categories. Categories are user-scoped — each user has their own set of categories. Categories are referenced by transactions to classify spending/income. Simple CRUD with ownership enforcement.
+Manages transaction categories. Categories are user-scoped — each user has their own set. Categories are referenced by transactions (to classify spending/income) and by budgets (to scope a limit). Each category has a `name`, and optionally an `emoji`, a `color`, and a `type` (`INCOME` / `EXPENSE` / `TRANSFER`).
+
+Two behaviours set this module apart from plain CRUD:
+
+- **Seeded defaults** — registering a user seeds 10 default categories. Each carries a stable `seedKey`, which makes `POST /categories/restore-defaults` idempotent across renames and archives.
+- **Archiving** — `DELETE` is a soft delete (`archivedAt`), reversible through `POST /categories/:id/restore`. Transactions keep pointing at archived categories, so history is never rewritten.
 
 ## Files and Responsibilities
 
-| File                                                          | Role                                                             |
-| ------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `src/app/routes/categoryRoutes.ts`                            | Route definitions with OpenAPI docs (full CRUD at `/categories`) |
-| `src/app/controllers/CategoryController.ts`                   | Thin HTTP handler, delegates to CategoryService                  |
-| `src/app/services/CategoryService.ts`                         | Business logic: ownership checks, CRUD operations                |
-| `src/app/dtos/CategoryDTO.ts`                                 | `CreateCategoryDTO`, `UpdateCategoryDTO`                         |
-| `src/app/validation/schemas.ts`                               | `createCategorySchema`, `updateCategorySchema`                   |
-| `src/domain/entities/Category.ts`                             | Category domain entity                                           |
-| `src/domain/repositories/category/ICategoryRepository.ts`     | Repository interface                                             |
-| `src/domain/repositories/category/CategorySeqRepository.ts`   | Sequelize implementation                                         |
-| `src/domain/repositories/category/CategoryMongoRepository.ts` | Mongoose implementation                                          |
-| `src/domain/models/sequelize/CategoryModel.ts`                | Sequelize model                                                  |
-| `src/domain/models/mongoose/CategoryMongoModel.ts`            | Mongoose model                                                   |
+| File                                                            | Role                                                                            |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `src/app/routes/categoryRoutes.ts`                              | Route definitions with OpenAPI docs (CRUD at `/categories` + restore endpoints)  |
+| `src/app/controllers/CategoryController.ts`                     | Thin HTTP handler, delegates to CategoryService                                  |
+| `src/app/services/CategoryService.ts`                           | Business logic: ownership checks, archive/restore, seeding, type-lock, per-user cap |
+| `src/app/dtos/CategoryDTO.ts`                                   | `CreateCategoryDTO`, `UpdateCategoryDTO`                                         |
+| `src/app/validation/schemas.ts`                                 | `createCategorySchema`, `updateCategorySchema`, `getCategoriesSchema`            |
+| `src/shared/defaultCategories.ts`                               | `DEFAULT_CATEGORIES` — the 10 seeded defaults with their `seedKey`s              |
+| `src/domain/entities/Category.ts`                               | Category domain entity                                                           |
+| `src/domain/repositories/category/ICategoryRepository.ts`       | Repository interface                                                             |
+| `src/infrastructure/repositories/category/CategoryRepository.ts` | Mongoose implementation                                                          |
+| `src/infrastructure/models/CategoryModel.ts`                    | Mongoose model and indexes (case-insensitive unique name)                        |
 
 ## Public API
 
 ### `GET /categories`
 
-Get all categories for the authenticated user (paginated).
+Get all categories for the authenticated user (paginated, offset + cursor).
+
+| Parameter         | Type   | Description                                                    |
+| ----------------- | ------ | -------------------------------------------------------------- |
+| `limit`           | number | 1–100, default 20                                              |
+| `offset`          | number | Items to skip (offset pagination)                              |
+| `cursor`          | string | Last ID of the previous page (overrides `offset`)              |
+| `ids`             | string | Comma-separated list of category UUIDs (1–100)                 |
+| `type`            | enum   | Filter by `INCOME`, `EXPENSE`, or `TRANSFER`                   |
+| `includeArchived` | enum   | `"true"` also returns archived categories (hidden by default)  |
 
 ### `POST /categories`
 
-Create a new category. Requires: `name`.
+Create a new category. Requires: `name` (1–255 chars). Optional: `emoji` (max 16 chars), `color`, `type`.
+
+Names are unique per user, **case-insensitively** — "Comida" and "comida" collide; accents stay distinct. A user is capped at 200 categories (`CATEGORY_LIMIT_REACHED`).
+
+### `POST /categories/restore-defaults`
+
+Recreate the missing default categories. Idempotent by `seedKey`: archived seed categories count as present (the user removed them on purpose) and renamed ones keep their `seedKey`, so neither is duplicated. Responds `200` with `{ "data": [...] }` — an empty array when nothing was missing.
 
 ### `GET /categories/:id`
 
-Get a single category by ID. Ownership enforced.
+Get a single category by ID. Archived categories stay readable here (`archivedAt` tells them apart); only the listing hides them.
 
 ### `PUT /categories/:id`
 
-Update a category. Supports: `name`.
+Update a category. Partial updates supported (`name`, `emoji`, `color`, `type`). At least one field must be present. Archived categories are not writable (`RESOURCE_ARCHIVED`).
+
+**`type` is immutable once transactions reference the category** (`CATEGORY_TYPE_LOCKED`): the type of a category with history is part of that history, and changing it would silently reclassify stats. Create a new category instead.
 
 ### `DELETE /categories/:id`
 
-Delete a category. Ownership enforced.
+Archive the category (soft delete, sets `archivedAt`). Allowed even with linked transactions — they keep pointing at it. Idempotent: archiving an already-archived category is a no-op success.
+
+An archived category can no longer be assigned to a new transaction or budget (`CATEGORY_ARCHIVED`), but a transaction or budget that already had it may keep it.
+
+### `POST /categories/:id/restore`
+
+Un-archive a category. Idempotent: restoring an already-active category returns it unchanged. Fails with `409 DUPLICATE` when another active category took its name meanwhile.
 
 ## Internal Flow
 
@@ -53,27 +80,50 @@ sequenceDiagram
     participant REPO as CategoryRepository
     participant DB as Database
 
-    C->>VAL: POST /categories { name }
+    C->>VAL: POST /categories { name, emoji, color, type }
     VAL->>CTRL: Validated body
     CTRL->>CTRL: Extract userId, merge into body
-    CTRL->>SVC: createCategory({ name, userId })
+    CTRL->>SVC: createCategory({ ...body, userId })
+    SVC->>REPO: countByUserId(userId)
+    Note over SVC: Reject with CATEGORY_LIMIT_REACHED past 200
     SVC->>SVC: new Category(dto)
     SVC->>REPO: create(category)
-    REPO->>DB: INSERT
-    DB->>REPO: Created record
+    REPO->>DB: Insert
+    Note over DB: Unique partial index on { userId, name }<br/>collation strength 2 → 409 DUPLICATE on a case-insensitive clash
+    DB->>REPO: Created document
     REPO->>SVC: Category entity
     SVC->>CTRL: Category
     CTRL->>C: 201 + category JSON
 ```
 
+### Seeding and Re-seeding
+
+```mermaid
+sequenceDiagram
+    participant AUTH as AuthService.register
+    participant SVC as CategoryService
+    participant REPO as CategoryRepository
+
+    AUTH->>SVC: seedDefaultCategories(userId)
+    Note over AUTH: Failures are logged, never fail the registration
+    SVC->>REPO: createMany(DEFAULT_CATEGORIES)
+
+    Note over SVC: Later — POST /categories/restore-defaults
+    SVC->>REPO: listSeedKeys(userId)
+    REPO->>SVC: Existing seedKeys (archived included)
+    SVC->>SVC: missing = DEFAULT_CATEGORIES minus existing
+    SVC->>REPO: createMany(missing)
+```
+
 ## Dependencies
 
-**Imports:** `shared/errors`, `shared/pagination`, `domain/entities/Category`, `domain/repositories/category/ICategoryRepository`, DTOs
+**Imports:** `shared/errors`, `shared/pagination`, `shared/defaultCategories`, `domain/entities/Category`, `domain/repositories/category/ICategoryRepository`, `domain/repositories/transaction/ITransactionRepository` (to count linked transactions before a type change), DTOs
 
 **Imported by:**
 
-- Category routes registered in `src/app.ts`
-- Transactions reference `categoryId` (optional foreign key)
+- Category routes registered in `src/app.ts` at `/categories`, after `authMiddleware`
+- `AuthService` calls `seedDefaultCategories()` on registration
+- `TransactionService` and `BudgetService` validate `categoryId` references through `ICategoryRepository`
 
 ## Environment Variables
 
@@ -81,15 +131,27 @@ None specific to this module.
 
 ## Error States
 
-| Error             | Status | Condition                                   |
-| ----------------- | ------ | ------------------------------------------- |
-| `NotFoundError`   | 404    | Category ID does not exist                  |
-| `ForbiddenError`  | 403    | Category belongs to another user            |
-| `BadRequestError` | 400    | ID mismatch between URL param and body      |
-| `ValidationError` | 400    | Invalid input (missing name, name too long) |
+| Error / code              | Status | Condition                                                       |
+| ------------------------- | ------ | --------------------------------------------------------------- |
+| `ValidationError`         | 400    | Invalid input (missing name, name too long, unknown type/color)  |
+| `BadRequest`              | 400    | ID mismatch between URL param and body                           |
+| `CATEGORY_LIMIT_REACHED`  | 400    | The user already has 200 categories                              |
+| `RESOURCE_ARCHIVED`       | 400    | Updating an archived category (restore it first)                 |
+| `CATEGORY_TYPE_LOCKED`    | 400    | Changing `type` on a category that already has transactions      |
+| `Unauthorized`            | 401    | Missing, invalid or expired access token                         |
+| `NotFound`                | 404    | Category missing **or owned by another user**                    |
+| `DUPLICATE`               | 409    | An active category already uses this name (case-insensitively)   |
+
+> Foreign categories return **404, not 403** — the response is uniform for "missing" and "not yours" so category ids cannot be probed.
+
+## Default Categories
+
+`DEFAULT_CATEGORIES` in `src/shared/defaultCategories.ts` holds 10 entries — 3 `INCOME` (Salary, Business, Other Income), 5 `EXPENSE` (Housing, Food, Transportation, Bills & Services, Lifestyle) and 2 `TRANSFER` (Transfer, Credit Card Payment) — each with an emoji, a color, and a stable `seedKey` such as `"salary"` or `"bills-services"`.
+
+The `seedKey` is the category's identity for re-seeding: it survives renames, so `restore-defaults` never duplicates a default the user simply renamed, and archived seeds count as present because their removal was deliberate.
 
 ## How to Extend
 
-- To add category icons or colors: add fields to entity, model, DTO, and validation schema
-- To add subcategories: add a `parentCategoryId` field, update entity/model, add validation
-- Deleting a category does not cascade-delete transactions — consider adding a check in `CategoryService.deleteCategory()` if this behavior is needed
+- To add a new default category: append an entry to `DEFAULT_CATEGORIES` with a fresh `seedKey`. Existing users pick it up on their next `POST /categories/restore-defaults` — never reuse or rename an existing `seedKey`
+- To add subcategories: add a `parentCategoryId` field, update entity/model, add validation — and decide how stats should roll children up before touching the aggregation
+- Archiving a category does not cascade to transactions or budgets by design; both keep their reference and surface it (budgets expose `archivedCategoryIds`)

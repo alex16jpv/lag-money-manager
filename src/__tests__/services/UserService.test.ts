@@ -1,7 +1,7 @@
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
     PORT: 3000,
-    DB_TYPE: "SEQ",
+    DB_TYPE: "MONGO",
     JWT_SECRET: "test",
     BCRYPT_SALT_ROUNDS: 12,
     JWT_EXPIRATION: "24h",

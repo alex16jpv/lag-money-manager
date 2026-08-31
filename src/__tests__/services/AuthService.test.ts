@@ -17,7 +17,7 @@ jest.mock("../../shared/constants", () => ({
     LOG_LEVEL: "info",
     NODE_ENV: "test",
   },
-  DB_TYPES: { SEQ: "SEQ" },
+  DB_TYPES: { MONGO: "MONGO" },
   ACCOUNT_TYPES: {},
 }));
 

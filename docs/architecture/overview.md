@@ -2,7 +2,7 @@
 
 ## What the System Does
 
-lag-money-manager is a REST API for personal money management. Users register and authenticate via JWT, then manage financial accounts (cash, cards, savings, etc.), organize transaction categories, and record income, expenses, and transfers — with automatic balance adjustments on affected accounts.
+lag-money-manager is a REST API for personal money management. Users register and authenticate via JWT, then manage financial accounts (cash, cards, savings, etc.), organize transaction categories, budgets and statistics, and record income, expenses, transfers and balance adjustments — with automatic balance updates on affected accounts, applied inside a MongoDB transaction so the ledger and the stored balance can never drift apart.
 
 ## High-Level Architecture
 
@@ -13,16 +13,21 @@ graph TB
     subgraph "API Gateway Layer"
         HTTPS["HTTPS Redirect<br/>(production)"]
         RID["Request ID<br/>Middleware"]
-        SEC["Security<br/>(Helmet, CORS, Rate Limit)"]
+        RLOG["Request Log<br/>Middleware"]
+        SEC["Security<br/>(Helmet, Compression, CORS)"]
         BP["Body Parser<br/>(JSON, 10kb limit)"]
+        GATE["Gateway Secret<br/>(x-api-secret)"]
+        RL["Rate Limiter"]
     end
 
     subgraph "Public Routes"
-        SWAGGER["/api-docs<br/>Swagger UI"]
-        AUTH_R["/auth<br/>Register & Login"]
+        SWAGGER["/api-docs<br/>Swagger UI (non-production)"]
+        PROBE["/ and /health/db<br/>Liveness probes"]
+        AUTH_R["/auth<br/>Register, Login, Refresh"]
     end
 
     subgraph "Auth Wall"
+        DBR["DB Readiness<br/>Middleware"]
         AUTH_MW["JWT Auth<br/>Middleware"]
     end
 
@@ -31,6 +36,8 @@ graph TB
         ACCT_R["/accounts"]
         CAT_R["/categories"]
         TX_R["/transactions"]
+        BUD_R["/budgets"]
+        STAT_R["/stats"]
     end
 
     subgraph "Application Layer"
@@ -47,42 +54,41 @@ graph TB
     end
 
     subgraph "Infrastructure Layer"
-        FACTORY["Repository Factory"]
-        SEQ_P["Sequelize Provider"]
+        FACTORY["Repository Factory<br/>(src/app/factories/)"]
         MONGO_P["Mongo Provider"]
-        SEQ_R["Seq Repositories"]
-        MONGO_R["Mongo Repositories"]
+        MONGO_R["Repositories<br/>(src/infrastructure/repositories/)"]
+        MODELS["Mongoose Models<br/>(src/infrastructure/models/)"]
     end
 
     subgraph "Database Layer"
-        MYSQL[(MySQL)]
-        MONGODB[(MongoDB)]
+        MONGODB[(MongoDB<br/>replica set)]
     end
 
-    Client --> HTTPS --> RID --> SEC --> BP
+    Client --> HTTPS --> RID --> RLOG --> SEC --> BP
     BP --> SWAGGER
-    BP --> AUTH_R
-    BP --> AUTH_MW
-    AUTH_MW --> USER_R & ACCT_R & CAT_R & TX_R
+    BP --> GATE --> RL
+    RL --> PROBE
+    RL --> DBR
+    DBR --> AUTH_R
+    DBR --> AUTH_MW
+    AUTH_MW --> USER_R & ACCT_R & CAT_R & TX_R & BUD_R & STAT_R
 
-    AUTH_R & USER_R & ACCT_R & CAT_R & TX_R --> VAL --> CTRL
+    AUTH_R & USER_R & ACCT_R & CAT_R & TX_R & BUD_R & STAT_R --> VAL --> CTRL
     CTRL --> SVC
     SVC --> ENT & REPO_I & DTO & DERR
 
-    FACTORY --> SEQ_P & MONGO_P
-    SEQ_P --> SEQ_R
+    FACTORY --> MONGO_P
     MONGO_P --> MONGO_R
-    REPO_I -.-> SEQ_R & MONGO_R
+    REPO_I -.-> MONGO_R
 
-    SEQ_R --> MYSQL
-    MONGO_R --> MONGODB
+    MONGO_R --> MODELS --> MONGODB
 ```
 
 ## Layer Descriptions
 
 ### Middleware Layer
 
-Cross-cutting concerns applied to every request before routing. Includes request correlation ID, security headers (Helmet), CORS policy, rate limiting (100 req/15min), and JSON body parsing with a 10kb size limit.
+Cross-cutting concerns applied to every request before routing. Includes request correlation ID, a per-request completion log line, security headers (Helmet), response compression, CORS policy, JSON body parsing with a 10kb size limit, the shared-secret gateway check (`x-api-secret`), rate limiting (`RATE_LIMIT_MAX`, default 200 per 15-minute window), and a database-readiness check. See `request-lifecycle.md` for the exact order.
 
 ### Validation Layer
 
@@ -94,36 +100,36 @@ Thin HTTP handlers. Extract `userId` from the authenticated request, extract pag
 
 ### Service Layer
 
-Business logic. Performs ownership verification (`userId` checks), data transformations via domain entities and DTOs, cross-entity operations (e.g., adjusting account balances on transaction CRUD), and throws `ApiError` for expected error conditions.
+Business logic. Performs ownership verification (`userId` checks), data transformations via domain entities and DTOs, and cross-entity operations (e.g., adjusting account balances on transaction CRUD, wrapped in `withTransaction()` from `src/shared/unitOfWork.ts`). Throws `ApiError` — with a stable machine-readable `code` where the client needs to branch — for expected error conditions.
 
 ### Domain Layer
 
-Framework-agnostic. Contains entity classes (plain TypeScript), repository interfaces (contracts), and domain-specific validation errors. No dependency on Express, Sequelize, or Mongoose.
+Framework-agnostic (`src/domain/`). Contains entity classes (plain TypeScript), repository interfaces (contracts), and domain-specific validation errors. No dependency on Express or Mongoose.
 
 ### Infrastructure Layer
 
-Database-specific implementations. The `RepositoryFactory` uses a provider pattern to select Sequelize or Mongoose implementations at runtime based on the `DB_TYPE` environment variable. Repositories map between database records and domain entities.
+Persistence implementations (`src/infrastructure/`): Mongoose models in `models/` and the concrete repositories in `repositories/`, one directory per entity. Repositories map between MongoDB documents and domain entities — including the cents-to-decimal conversion for money. The `RepositoryFactory` (`src/app/factories/`) still resolves repositories through a provider registered under `DB_TYPE`, but MongoDB is the only registered provider; the seam is kept for test doubles, not for a second backend.
 
 ## Key Technical Decisions
 
-| Decision                                     | Rationale                                                                   |
-| -------------------------------------------- | --------------------------------------------------------------------------- |
-| Dual database support (MySQL + MongoDB)      | Allows deployment flexibility; provider pattern encapsulates the difference |
-| Repository pattern with interfaces           | Decouples business logic from data access; enables swapping DB backends     |
-| Factory + Provider for repository creation   | Centralizes repository instantiation; lazy caching for performance          |
-| UUID v7 for all IDs                          | Time-ordered, globally unique, no DB-generated auto-increment dependency    |
-| Zod for validation (not Joi/class-validator) | Type-safe, lightweight, first-class TypeScript support                      |
-| Express 5                                    | Latest stable release with native async error handling improvements         |
-| Pino for logging                             | High-performance structured JSON logging, pretty-print in dev               |
-| Global error middleware                      | Single place to handle all error types; consistent error response format    |
+| Decision                                     | Rationale                                                                                     |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| MongoDB only (Mongoose)                      | Single backend; multi-document transactions make the atomic balance update possible (ADR-001) |
+| Repository pattern with interfaces           | Decouples business logic from data access; keeps services testable with fakes                 |
+| Factory + Provider for repository creation   | Centralizes repository instantiation; lazy caching for performance                            |
+| Money stored as integer cents                | Exact arithmetic; `$inc` balance updates never accumulate float error                         |
+| UUID v7 for all IDs                          | Time-ordered, globally unique, generated in the app before the insert                         |
+| Zod for validation (not Joi/class-validator) | Type-safe, lightweight, first-class TypeScript support                                        |
+| Express 5                                    | Latest stable release with native async error handling improvements                           |
+| Pino for logging                             | High-performance structured JSON logging, pretty-print in dev                                 |
+| Global error middleware                      | Single place to handle all error types; consistent error response format with stable `code`   |
 
 ## External Dependencies and Integrations
 
-| Dependency     | Purpose                                                           |
-| -------------- | ----------------------------------------------------------------- |
-| MySQL          | Primary relational database (via Sequelize ORM)                   |
-| MongoDB        | Alternative document database (via Mongoose ODM)                  |
-| Docker Compose | Local development: MySQL, phpMyAdmin, MongoDB, Mongoku containers |
-| Swagger UI     | Interactive API documentation at `/api-docs`                      |
+| Dependency     | Purpose                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| MongoDB        | The database (via Mongoose ODM). Must be a replica set — transactions require one           |
+| Docker Compose | Local development: a single-node `rs0` replica set plus Mongoku (web UI)                    |
+| Swagger UI     | Interactive API documentation at `/api-docs`, mounted only when `NODE_ENV !== "production"` |
 
 No external third-party API integrations. The system is self-contained.
