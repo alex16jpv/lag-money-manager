@@ -82,6 +82,8 @@ const baseEnvSchema = z.object({
   PORT: z.coerce.number().default(3000),
   DB_TYPE: z.string().default(DB_TYPES.MONGO),
   JWT_SECRET: z.string().min(1, "JWT_SECRET is required"),
+  // Separate secret for refresh tokens; falls back to JWT_SECRET when unset.
+  REFRESH_SECRET: z.string().min(1).optional(),
   API_SECRET: z.string().optional(),
   JWT_EXPIRATION: z.string().default("15m"),
   REFRESH_TOKEN_EXPIRATION: z.string().default("30d"),

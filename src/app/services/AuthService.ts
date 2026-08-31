@@ -49,7 +49,7 @@ export class AuthService {
     );
     const refreshToken = jwt.sign(
       { userId: user.id, tokenVersion: user.tokenVersion, type: REFRESH_TOKEN_TYPE },
-      ENVIRONMENT.JWT_SECRET,
+      ENVIRONMENT.REFRESH_SECRET ?? ENVIRONMENT.JWT_SECRET,
       {
         algorithm: "HS256",
         expiresIn: ENVIRONMENT.REFRESH_TOKEN_EXPIRATION as jwt.SignOptions["expiresIn"],
@@ -121,9 +121,11 @@ export class AuthService {
   async refresh(refreshToken: string): Promise<AuthTokens> {
     let payload: unknown;
     try {
-      payload = jwt.verify(refreshToken, ENVIRONMENT.JWT_SECRET, {
-        algorithms: ["HS256"],
-      });
+      payload = jwt.verify(
+        refreshToken,
+        ENVIRONMENT.REFRESH_SECRET ?? ENVIRONMENT.JWT_SECRET,
+        { algorithms: ["HS256"] },
+      );
     } catch {
       throw new ApiError("Unauthorized", "Invalid or expired refresh token", "REFRESH_INVALID");
     }
