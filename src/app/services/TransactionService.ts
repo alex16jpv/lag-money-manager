@@ -1,11 +1,12 @@
 import { Transaction } from "../../domain/entities/Transaction";
+import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import {
   ITransactionRepository,
   TransactionFilters,
 } from "../../domain/repositories/transaction/ITransactionRepository";
-import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
-import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { ApiError } from "../../shared/errors";
+import { PaginatedResult, PaginationParams } from "../../shared/pagination";
+import { TxSession, withTransaction } from "../../shared/unitOfWork";
 import {
   CreateTransactionDTO,
   UpdateTransactionDTO,
@@ -42,15 +43,14 @@ export class TransactionService {
 
   async createTransaction(dto: CreateTransactionDTO): Promise<Transaction> {
     const transaction = new Transaction(dto);
+    transaction.assertValid();
 
-    await this.adjustBalances(transaction, 1);
-
-    // TODO: Update budget balance when budget feature is implemented
-    // if (transaction.categoryId) {
-    //   await this.updateBudgetBalance(transaction.categoryId, transaction.amount, transaction.type);
-    // }
-
-    return await this.transactionRepo.create(transaction);
+    // The balance adjustment and the transaction insert commit together: if
+    // either fails, the whole thing rolls back and no money is left dangling.
+    return await withTransaction(async (session) => {
+      await this.adjustBalances(transaction, 1, session);
+      return await this.transactionRepo.create(transaction, session);
+    });
   }
 
   async updateTransaction(
@@ -62,40 +62,45 @@ export class TransactionService {
       throw new ApiError("BadRequest", "Transaction id does not match");
     }
 
-    const existing = await this.transactionRepo.getById(id);
-    if (!existing) {
-      throw new ApiError("NotFound", "Transaction not found");
-    }
-    if (existing.userId !== userId) {
-      throw new ApiError("Forbidden", "Access denied");
-    }
+    return await withTransaction(async (session) => {
+      const existing = await this.transactionRepo.getById(id, session);
+      if (!existing) {
+        throw new ApiError("NotFound", "Transaction not found");
+      }
+      if (existing.userId !== userId) {
+        throw new ApiError("Forbidden", "Access denied");
+      }
 
-    await this.adjustBalances(existing, -1);
+      const updated = new Transaction({ ...existing, ...dto });
+      updated.assertValid();
 
-    const updated = new Transaction({ ...existing, ...dto });
+      // Reverse the old effect, apply the new one, persist — atomically.
+      await this.adjustBalances(existing, -1, session);
+      await this.adjustBalances(updated, 1, session);
 
-    await this.adjustBalances(updated, 1);
-
-    return await this.transactionRepo.update(id, dto);
+      return await this.transactionRepo.update(id, dto, session);
+    });
   }
 
   async deleteTransaction(id: string, userId: string): Promise<void> {
-    const transaction = await this.transactionRepo.getById(id);
-    if (!transaction) {
-      throw new ApiError("NotFound", "Transaction not found");
-    }
-    if (transaction.userId !== userId) {
-      throw new ApiError("Forbidden", "Access denied");
-    }
+    await withTransaction(async (session) => {
+      const transaction = await this.transactionRepo.getById(id, session);
+      if (!transaction) {
+        throw new ApiError("NotFound", "Transaction not found");
+      }
+      if (transaction.userId !== userId) {
+        throw new ApiError("Forbidden", "Access denied");
+      }
 
-    await this.adjustBalances(transaction, -1);
-
-    return await this.transactionRepo.delete(id);
+      await this.adjustBalances(transaction, -1, session);
+      await this.transactionRepo.delete(id, session);
+    });
   }
 
   private async adjustBalances(
     transaction: Transaction,
     direction: 1 | -1,
+    session: TxSession,
   ): Promise<void> {
     const { type, amount, fromAccountId, toAccountId } = transaction;
 
@@ -103,9 +108,13 @@ export class TransactionService {
       accountId: string,
       sign: number,
     ): Promise<void> => {
-      const account = await this.accountRepo.getById(accountId);
-      if (!account) {
-        if (direction === 1) {
+      // On apply (direction 1) the account must exist and belong to the user.
+      // On reverse (direction -1) we operate on the account the (already
+      // validated) transaction referenced, without re-checking, so reversals
+      // still work even if the account was archived in the meantime.
+      if (direction === 1) {
+        const account = await this.accountRepo.getById(accountId, session);
+        if (!account) {
           throw new ApiError(
             "NotFound",
             sign < 0
@@ -113,19 +122,21 @@ export class TransactionService {
               : "Destination account not found",
           );
         }
-        return;
+        if (account.userId !== transaction.userId) {
+          throw new ApiError(
+            "Forbidden",
+            sign < 0
+              ? "Source account does not belong to the user"
+              : "Destination account does not belong to the user",
+          );
+        }
       }
-      if (direction === 1 && account.userId !== transaction.userId) {
-        throw new ApiError(
-          "Forbidden",
-          sign < 0
-            ? "Source account does not belong to the user"
-            : "Destination account does not belong to the user",
-        );
-      }
-      await this.accountRepo.update(accountId, {
-        balance: Number(account.balance) + Number(amount) * sign * direction,
-      });
+
+      await this.accountRepo.incrementBalance(
+        accountId,
+        amount * sign * direction,
+        session,
+      );
     };
 
     if (type === "EXPENSE" && fromAccountId) {

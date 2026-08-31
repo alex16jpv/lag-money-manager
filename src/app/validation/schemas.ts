@@ -1,6 +1,24 @@
 import { z } from "zod";
+
 import { ACCOUNT_TYPES, COLORS, TRANSACTION_TYPES } from "../../shared/constants";
+import { MAX_AMOUNT } from "../../shared/money";
 import { MAX_LIMIT } from "../../shared/pagination";
+
+// Money is decimal in the API but stored as integer cents, so amounts must
+// have at most 2 decimals and stay within a sane bound (rejects 10.555 and 1e300).
+const moneyAmount = z
+  .number()
+  .positive("Amount must be greater than 0")
+  .multipleOf(0.01, "Amount must have at most 2 decimal places")
+  .max(MAX_AMOUNT, `Amount must be at most ${MAX_AMOUNT}`);
+
+const initialBalance = z
+  .number()
+  .finite("Balance must be a finite number")
+  .multipleOf(0.01, "Balance must have at most 2 decimal places")
+  .min(-MAX_AMOUNT, `Balance must be at least ${-MAX_AMOUNT}`)
+  .max(MAX_AMOUNT, `Balance must be at most ${MAX_AMOUNT}`)
+  .default(0);
 
 const accountTypeValues = Object.keys(ACCOUNT_TYPES) as [string, ...string[]];
 const transactionTypeValues = Object.keys(TRANSACTION_TYPES) as [
@@ -124,7 +142,7 @@ export const createAccountSchema = z.object({
     type: z.enum(accountTypeValues, {
       error: `Invalid account type. Available: ${accountTypeValues.join(", ")}`,
     }),
-    balance: z.number().finite("Balance must be a finite number").default(0),
+    balance: initialBalance,
     color: z
       .enum(colorValues, {
         error: `Invalid color. Available: ${colorValues.join(", ")}`,
@@ -233,7 +251,7 @@ export const createTransactionSchema = z.object({
       type: z.enum(transactionTypeValues, {
         error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
       }),
-      amount: z.number().positive("Amount must be greater than 0"),
+      amount: moneyAmount,
       date: z
         .string()
         .datetime({ message: "Date must be a valid ISO 8601 date" }),
@@ -312,7 +330,7 @@ export const updateTransactionSchema = z.object({
           error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
         })
         .optional(),
-      amount: z.number().positive("Amount must be greater than 0").optional(),
+      amount: moneyAmount.optional(),
       date: z
         .string()
         .datetime({ message: "Date must be a valid ISO 8601 date" })

@@ -1,5 +1,8 @@
 import { v7 as uuidv7 } from "uuid";
+
 import { TransactionType } from "../../shared/constants";
+import { MAX_AMOUNT } from "../../shared/money";
+import { DomainValidationError } from "../errors";
 
 export interface TransactionProps {
   id?: string;
@@ -46,5 +49,56 @@ export class Transaction {
     this.note = props.note ?? null;
     this.createdAt = props.createdAt ?? new Date();
     this.updatedAt = props.updatedAt ?? new Date();
+  }
+
+  /**
+   * Enforces the type/account invariants of a transaction. Called on create and
+   * on the result of an update merge, so a partial update can never leave a
+   * transaction in an inconsistent shape (e.g. an INCOME with no destination
+   * account, or a TRANSFER to the same account) — the bug class that historically
+   * let updates corrupt balances.
+   */
+  assertValid(): void {
+    if (!(this.amount > 0)) {
+      throw new DomainValidationError("Amount must be greater than 0", "amount");
+    }
+    if (this.amount > MAX_AMOUNT) {
+      throw new DomainValidationError(
+        `Amount must be at most ${MAX_AMOUNT}`,
+        "amount",
+      );
+    }
+    if (this.type === "EXPENSE" && !this.fromAccountId) {
+      throw new DomainValidationError(
+        "fromAccountId is required for expense transactions",
+        "fromAccountId",
+      );
+    }
+    if (this.type === "INCOME" && !this.toAccountId) {
+      throw new DomainValidationError(
+        "toAccountId is required for income transactions",
+        "toAccountId",
+      );
+    }
+    if (this.type === "TRANSFER") {
+      if (!this.fromAccountId) {
+        throw new DomainValidationError(
+          "fromAccountId is required for transfer transactions",
+          "fromAccountId",
+        );
+      }
+      if (!this.toAccountId) {
+        throw new DomainValidationError(
+          "toAccountId is required for transfer transactions",
+          "toAccountId",
+        );
+      }
+      if (this.fromAccountId === this.toAccountId) {
+        throw new DomainValidationError(
+          "fromAccountId and toAccountId must be different",
+          "toAccountId",
+        );
+      }
+    }
   }
 }
