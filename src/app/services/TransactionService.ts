@@ -118,6 +118,7 @@ export class TransactionService {
       throw new ApiError(
         "UnprocessableEntity",
         "Idempotency-Key was already used with a different payload",
+        "IDEMPOTENCY_PAYLOAD_MISMATCH",
       );
     }
     const transaction = await this.transactionRepo.getById(
@@ -127,6 +128,7 @@ export class TransactionService {
       throw new ApiError(
         "Conflict",
         "The transaction created with this Idempotency-Key was deleted; retry with a new key",
+        "IDEMPOTENCY_ORIGINAL_DELETED",
       );
     }
     return transaction;
@@ -171,6 +173,7 @@ export class TransactionService {
       throw new ApiError(
         "BadRequest",
         "No default account set; set one or pass an account id",
+        "NO_DEFAULT_ACCOUNT",
       );
     }
     return account.id;
@@ -246,12 +249,13 @@ export class TransactionService {
       throw new ApiError("NotFound", "Category not found");
     }
     if (category.archivedAt && categoryId !== previousCategoryId) {
-      throw new ApiError("BadRequest", "Category is archived");
+      throw new ApiError("BadRequest", "Category is archived", "CATEGORY_ARCHIVED");
     }
     if (category.type && category.type !== type) {
       throw new ApiError(
         "BadRequest",
         `Category type ${category.type} does not match transaction type ${type}`,
+        "CATEGORY_TYPE_MISMATCH",
       );
     }
   }

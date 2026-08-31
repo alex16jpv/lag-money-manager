@@ -73,7 +73,7 @@ export class AuthService {
       } catch (err) {
         // Concurrent register already reactivated it: surface as a conflict.
         if (err instanceof ApiError && err.statusCode === 404) {
-          throw new ApiError("Conflict", "Email is already registered");
+          throw new ApiError("Conflict", "Email is already registered", "EMAIL_TAKEN");
         }
         throw err;
       }
@@ -119,7 +119,7 @@ export class AuthService {
         algorithms: ["HS256"],
       });
     } catch {
-      throw new ApiError("Unauthorized", "Invalid or expired refresh token");
+      throw new ApiError("Unauthorized", "Invalid or expired refresh token", "REFRESH_INVALID");
     }
 
     if (
@@ -128,7 +128,7 @@ export class AuthService {
       (payload as { type?: unknown }).type !== REFRESH_TOKEN_TYPE ||
       typeof (payload as { userId?: unknown }).userId !== "string"
     ) {
-      throw new ApiError("Unauthorized", "Invalid refresh token");
+      throw new ApiError("Unauthorized", "Invalid refresh token", "REFRESH_INVALID");
     }
 
     const { userId, tokenVersion } = payload as {
@@ -138,10 +138,10 @@ export class AuthService {
 
     const user = await this.repo.getById(userId);
     if (!user) {
-      throw new ApiError("Unauthorized", "Invalid refresh token");
+      throw new ApiError("Unauthorized", "Invalid refresh token", "REFRESH_INVALID");
     }
     if (user.tokenVersion !== (tokenVersion ?? 0)) {
-      throw new ApiError("Unauthorized", "Refresh token has been revoked");
+      throw new ApiError("Unauthorized", "Refresh token has been revoked", "REFRESH_REVOKED");
     }
 
     return this.issueTokens(user);

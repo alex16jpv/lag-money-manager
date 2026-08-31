@@ -37,6 +37,7 @@ export const validate =
         _res.status(400).json({
           error: "ValidationError",
           message: "Invalid request data",
+          code: "VALIDATION",
           details,
         });
         return;

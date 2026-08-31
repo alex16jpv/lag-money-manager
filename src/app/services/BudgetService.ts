@@ -157,6 +157,7 @@ export class BudgetService {
       throw new ApiError(
         "BadRequest",
         "A budget for this category and period type already exists",
+        "BUDGET_PERIOD_OVERLAP",
       );
     }
   }

@@ -34,16 +34,19 @@ export const errorMiddleware = (
     res.status(error.statusCode).json({
       error: error.name,
       message: error.message,
-      details: error?.details,
+      ...(error.code && { code: error.code }),
+      ...(error.details !== undefined && { details: error.details }),
     });
     return;
   }
 
   if (error instanceof DomainValidationError) {
+    // Same shape as the Zod path: details is always [{field, message}].
     res.status(400).json({
       error: "ValidationError",
       message: error.message,
-      ...(error.field && { details: { field: error.field } }),
+      code: "VALIDATION",
+      details: [{ field: error.field ?? "", message: error.message }],
     });
     return;
   }
@@ -58,6 +61,7 @@ export const errorMiddleware = (
     res.status(409).json({
       error: "ConflictError",
       message: `Duplicate value for: ${fields}`,
+      code: "DUPLICATE",
     });
     return;
   }
@@ -67,6 +71,7 @@ export const errorMiddleware = (
     res.status(400).json({
       error: "ValidationError",
       message: "Invalid ID format",
+      code: "INVALID_ID",
     });
     return;
   }
@@ -77,8 +82,9 @@ export const errorMiddleware = (
       "Database unavailable",
     );
     res.status(503).json({
-      error: "ServiceUnavailable",
+      error: "ServiceUnavailableError",
       message: "Database connection unavailable, please try again later",
+      code: "DB_UNAVAILABLE",
     });
     return;
   }
@@ -91,5 +97,6 @@ export const errorMiddleware = (
   res.status(500).json({
     error: "InternalServerError",
     message: "An unexpected error occurred",
+    code: "INTERNAL",
   });
 };

@@ -38,12 +38,11 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "NotFoundError",
       message: "User not found",
-      details: undefined,
     });
   });
 
   it("should handle ApiError with details", () => {
-    const error = new ApiError("BadRequest", "Validation failed", {
+    const error = new ApiError("BadRequest", "Validation failed", undefined, {
       field: "email",
     });
 
@@ -66,7 +65,8 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "ValidationError",
       message: "'name' is required",
-      details: { field: "name" },
+      code: "VALIDATION",
+      details: [{ field: "name", message: "'name' is required" }],
     });
   });
 
@@ -79,6 +79,8 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "ValidationError",
       message: "Invalid data",
+      code: "VALIDATION",
+      details: [{ field: "", message: "Invalid data" }],
     });
   });
 
@@ -91,6 +93,7 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "InternalServerError",
       message: "An unexpected error occurred",
+      code: "INTERNAL",
     });
   });
 
@@ -107,6 +110,7 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "ConflictError",
       message: "Duplicate value for: email",
+      code: "DUPLICATE",
     });
   });
 
@@ -121,6 +125,7 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "ValidationError",
       message: "Invalid ID format",
+      code: "INVALID_ID",
     });
   });
 });

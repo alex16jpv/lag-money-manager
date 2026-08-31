@@ -78,6 +78,7 @@ export class AccountService {
       throw new ApiError(
         "BadRequest",
         "Cannot archive the default account; set another account as default first",
+        "DEFAULT_ACCOUNT_ARCHIVE_BLOCKED",
       );
     }
 
@@ -91,6 +92,7 @@ export class AccountService {
       throw new ApiError(
         "BadRequest",
         "Cannot archive the default account; set another account as default first",
+        "DEFAULT_ACCOUNT_ARCHIVE_BLOCKED",
       );
     }
   }
