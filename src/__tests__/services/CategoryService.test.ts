@@ -21,6 +21,7 @@ const createMockRepo = (): jest.Mocked<ICategoryRepository> => ({
   createMany: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
+  restore: jest.fn(),
 });
 
 describe("CategoryService", () => {

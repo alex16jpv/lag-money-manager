@@ -71,6 +71,14 @@ export class CategoryService {
     return await this.repo.delete(id);
   }
 
+  async restoreCategory(id: string, userId: string): Promise<Category> {
+    const restored = await this.repo.restore(id, userId);
+    if (!restored) {
+      throw new ApiError("NotFound", "Archived category not found");
+    }
+    return new Category(restored);
+  }
+
   async seedDefaultCategories(userId: string): Promise<Category[]> {
     const categories = DEFAULT_CATEGORIES.map(
       (cat) => new Category({ ...cat, userId }),

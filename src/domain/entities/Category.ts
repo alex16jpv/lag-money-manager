@@ -9,6 +9,7 @@ export interface CategoryProps {
   color?: Color;
   type?: CategoryType;
   userId: string;
+  archivedAt?: Date | null;
 }
 
 export class Category {
@@ -18,13 +19,15 @@ export class Category {
   color?: Color;
   type?: CategoryType;
   userId: string;
+  archivedAt: Date | null;
 
-  constructor({ id, name, emoji, color, type, userId }: CategoryProps) {
+  constructor({ id, name, emoji, color, type, userId, archivedAt }: CategoryProps) {
     this.id = id ?? uuidv7();
     this.name = name;
     this.emoji = emoji;
     this.color = color;
     this.type = type;
     this.userId = userId;
+    this.archivedAt = archivedAt ?? null;
   }
 }

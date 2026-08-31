@@ -198,4 +198,25 @@ router.delete(
   CategoryController.deleteCategory,
 );
 
+/**
+ * @openapi
+ * /categories/{id}/restore:
+ *   post:
+ *     tags: [Categories]
+ *     summary: Restore an archived category
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200: { description: Category restored }
+ *       404: { description: Archived category not found }
+ */
+router.post(
+  "/:id/restore",
+  validate(idParamSchema),
+  CategoryController.restoreCategory,
+);
+
 export default router;

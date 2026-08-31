@@ -188,4 +188,25 @@ router.put(
  */
 router.delete("/:id", validate(idParamSchema), AccountController.deleteAccount);
 
+/**
+ * @openapi
+ * /accounts/{id}/restore:
+ *   post:
+ *     tags: [Accounts]
+ *     summary: Restore an archived account
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200: { description: Account restored }
+ *       404: { description: Archived account not found }
+ */
+router.post(
+  "/:id/restore",
+  validate(idParamSchema),
+  AccountController.restoreAccount,
+);
+
 export default router;

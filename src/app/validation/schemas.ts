@@ -49,6 +49,7 @@ export const paginationQuerySchema = z.object({
         z.array(z.string().uuid("Each ID must be a valid UUID")).min(1).max(100),
       )
       .optional(),
+    includeArchived: z.enum(["true", "false"]).optional(),
   }),
 });
 
@@ -108,6 +109,7 @@ export const getCategoriesSchema = z.object({
         error: `Invalid category type. Available: ${categoryTypeValues.join(", ")}`,
       })
       .optional(),
+    includeArchived: z.enum(["true", "false"]).optional(),
   }),
 });
 

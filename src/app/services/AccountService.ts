@@ -70,4 +70,12 @@ export class AccountService {
 
     return await this.repo.delete(id);
   }
+
+  async restoreAccount(id: string, userId: string): Promise<Account> {
+    const restored = await this.repo.restore(id, userId);
+    if (!restored) {
+      throw new ApiError("NotFound", "Archived account not found");
+    }
+    return new Account(restored);
+  }
 }

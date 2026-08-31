@@ -5,6 +5,7 @@ import { IRepository } from "../IRepository";
 
 export interface AccountFilters {
   ids?: string[];
+  includeArchived?: boolean;
 }
 
 export interface IAccountRepository extends IRepository<Account> {
@@ -14,14 +15,13 @@ export interface IAccountRepository extends IRepository<Account> {
     filters?: AccountFilters,
   ): Promise<PaginatedResult<Account>>;
 
-  /**
-   * Atomically adds `delta` (a decimal amount, may be negative) to the
-   * account's balance and returns the updated account, or null if not found.
-   * Uses a single `$inc` so concurrent adjustments never lose updates.
-   */
+  // Atomic balance change (decimal delta) via $inc; null if not found.
   incrementBalance(
     id: string,
     delta: number,
     session?: TxSession,
   ): Promise<Account | null>;
+
+  // Un-archives the user's own archived account; null if none to restore.
+  restore(id: string, userId: string): Promise<Account | null>;
 }

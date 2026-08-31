@@ -5,6 +5,7 @@ import { IRepository } from "../IRepository";
 export interface CategoryFilters {
   ids?: string[];
   type?: string;
+  includeArchived?: boolean;
 }
 
 export interface ICategoryRepository extends IRepository<Category> {
@@ -14,4 +15,5 @@ export interface ICategoryRepository extends IRepository<Category> {
     filters?: CategoryFilters,
   ): Promise<PaginatedResult<Category>>;
   createMany(entities: Partial<Category>[]): Promise<Category[]>;
+  restore(id: string, userId: string): Promise<Category | null>;
 }

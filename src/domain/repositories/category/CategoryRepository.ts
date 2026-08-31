@@ -19,6 +19,7 @@ export class CategoryRepository implements ICategoryRepository {
       color: doc.color,
       type: doc.type,
       userId: doc.userId,
+      archivedAt: doc.deletedAt,
     });
   }
 
@@ -68,7 +69,10 @@ export class CategoryRepository implements ICategoryRepository {
     pagination: PaginationParams,
     filters?: CategoryFilters,
   ): Promise<PaginatedResult<Category>> {
-    const filter: Record<string, unknown> = { userId, deletedAt: null };
+    const filter: Record<string, unknown> = { userId };
+    if (!filters?.includeArchived) {
+      filter.deletedAt = null;
+    }
     if (filters?.ids?.length) {
       filter._id = { $in: filters.ids };
     }
@@ -112,5 +116,14 @@ export class CategoryRepository implements ICategoryRepository {
     if (!doc) {
       throw new ApiError("NotFound", "Category not found");
     }
+  }
+
+  async restore(id: string, userId: string): Promise<Category | null> {
+    const doc = await CategoryModel.findOneAndUpdate(
+      { _id: id, userId, deletedAt: { $ne: null } },
+      { deletedAt: null },
+      { new: true },
+    ).lean();
+    return doc ? this.toEntity(doc) : null;
   }
 }

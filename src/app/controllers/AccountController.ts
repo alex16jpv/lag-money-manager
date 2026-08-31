@@ -16,6 +16,9 @@ export class AccountController {
     if (req.query.ids) {
       filters.ids = (req.query.ids as string).split(",").map((s) => s.trim());
     }
+    if (req.query.includeArchived === "true") {
+      filters.includeArchived = true;
+    }
     const result = await accountService.getAllAccounts(
       userId,
       extractPagination(req),
@@ -56,6 +59,15 @@ export class AccountController {
   static deleteAccount = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     await accountService.deleteAccount(req.params.id as string, userId);
-    res.status(200).json({ message: 'Account deleted successfully' });
+    res.status(200).json({ message: "Account archived successfully" });
+  };
+
+  static restoreAccount = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const account = await accountService.restoreAccount(
+      req.params.id as string,
+      userId,
+    );
+    res.status(200).json(account);
   };
 }

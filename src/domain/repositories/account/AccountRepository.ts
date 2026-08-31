@@ -24,10 +24,10 @@ export class AccountRepository implements IAccountRepository {
       balance: fromCents(doc.balance),
       color: doc.color as Account["color"],
       userId: doc.userId,
+      archivedAt: doc.deletedAt,
     });
   }
 
-  /** Converts a partial entity's decimal balance to stored cents. */
   private toStorage(account: Partial<Account>): Record<string, unknown> {
     const doc: Record<string, unknown> = { ...account };
     if (account.balance !== undefined) {
@@ -46,16 +46,13 @@ export class AccountRepository implements IAccountRepository {
       filter._id = { $gt: cursor };
     }
 
-    const hasFilter = Object.keys(baseFilter).length > 1; // beyond deletedAt
     const [docs, total] = await Promise.all([
       AccountModel.find(filter)
         .sort({ _id: 1 })
         .skip(cursor ? 0 : offset)
         .limit(limit)
         .lean(),
-      hasFilter
-        ? AccountModel.countDocuments(baseFilter)
-        : AccountModel.countDocuments({ deletedAt: null }),
+      AccountModel.countDocuments(baseFilter),
     ]);
 
     return buildPaginatedResult(
@@ -84,7 +81,10 @@ export class AccountRepository implements IAccountRepository {
     pagination: PaginationParams,
     filters?: AccountFilters,
   ): Promise<PaginatedResult<Account>> {
-    const filter: Record<string, unknown> = { userId, deletedAt: null };
+    const filter: Record<string, unknown> = { userId };
+    if (!filters?.includeArchived) {
+      filter.deletedAt = null;
+    }
     if (filters?.ids?.length) {
       filter._id = { $in: filters.ids };
     }
@@ -141,5 +141,14 @@ export class AccountRepository implements IAccountRepository {
     if (!doc) {
       throw new ApiError("NotFound", "Account not found");
     }
+  }
+
+  async restore(id: string, userId: string): Promise<Account | null> {
+    const doc = await AccountModel.findOneAndUpdate(
+      { _id: id, userId, deletedAt: { $ne: null } },
+      { deletedAt: null },
+      { new: true },
+    ).lean();
+    return doc ? this.toEntity(doc) : null;
   }
 }

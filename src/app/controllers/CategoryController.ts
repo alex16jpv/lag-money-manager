@@ -19,6 +19,9 @@ export class CategoryController {
     if (req.query.type) {
       filters.type = req.query.type as string;
     }
+    if (req.query.includeArchived === "true") {
+      filters.includeArchived = true;
+    }
 
     const result = await categoryService.getAllCategories(
       userId,
@@ -58,6 +61,15 @@ export class CategoryController {
   static deleteCategory = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     await categoryService.deleteCategory(req.params.id as string, userId);
-    res.status(200).json({ message: 'Category deleted successfully' });
+    res.status(200).json({ message: "Category archived successfully" });
+  };
+
+  static restoreCategory = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const category = await categoryService.restoreCategory(
+      req.params.id as string,
+      userId,
+    );
+    res.status(200).json(category);
   };
 }

@@ -27,6 +27,7 @@ const mockAccountRepo: jest.Mocked<IAccountRepository> = {
   update: jest.fn(),
   delete: jest.fn(),
   incrementBalance: jest.fn(),
+  restore: jest.fn(),
 };
 
 const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
@@ -37,6 +38,7 @@ const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
   createMany: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
+  restore: jest.fn(),
 };
 
 const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
@@ -589,6 +591,32 @@ describe("Integration Tests", () => {
       expect(mockAccountRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
       );
+    });
+  });
+
+  describe("POST /accounts/:id/restore [archive]", () => {
+    it("restores an archived account", async () => {
+      mockAccountRepo.restore.mockResolvedValue(testAccount);
+
+      const res = await request(app)
+        .post("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71/restore")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(mockAccountRepo.restore).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        testUser.id,
+      );
+    });
+
+    it("returns 404 when there is nothing to restore", async () => {
+      mockAccountRepo.restore.mockResolvedValue(null);
+
+      const res = await request(app)
+        .post("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71/restore")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
     });
   });
 

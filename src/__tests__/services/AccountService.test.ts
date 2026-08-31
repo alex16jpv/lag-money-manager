@@ -80,6 +80,7 @@ const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   update: jest.fn(),
   delete: jest.fn(),
   incrementBalance: jest.fn(),
+  restore: jest.fn(),
 });
 
 describe("AccountService", () => {
@@ -285,6 +286,25 @@ describe("AccountService", () => {
       ).rejects.toThrow("Access denied");
 
       expect(repo.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("restoreAccount", () => {
+    it("restores the user's archived account", async () => {
+      repo.restore.mockResolvedValue(mockAccount);
+
+      const result = await service.restoreAccount(mockAccount.id, mockAccount.userId);
+
+      expect(repo.restore).toHaveBeenCalledWith(mockAccount.id, mockAccount.userId);
+      expect(result.id).toBe(mockAccount.id);
+    });
+
+    it("throws NotFound when there is nothing to restore", async () => {
+      repo.restore.mockResolvedValue(null);
+
+      await expect(
+        service.restoreAccount(mockAccount.id, mockAccount.userId),
+      ).rejects.toThrow("Archived account not found");
     });
   });
 
