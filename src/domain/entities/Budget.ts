@@ -1,12 +1,14 @@
 import { v7 as uuidv7 } from "uuid";
 
-import { BudgetPeriodType, Color } from "../../shared/constants";
+import { BudgetPeriodType, BudgetType, Color } from "../../shared/constants";
 
 export interface BudgetProps {
   id?: string;
   name: string;
   color: Color;
   categoryIds: string[];
+  // EXPENSE = spending limit; INCOME = earning goal.
+  type?: BudgetType;
   amount: number;
   // Per-period amount overrides keyed by period key (e.g. "2026-12"): the
   // limit for that specific instance instead of the base amount.
@@ -28,6 +30,7 @@ export class Budget {
   name: string;
   color: Color;
   categoryIds: string[];
+  type: BudgetType;
   amount: number;
   amountOverrides: Record<string, number>;
   periodType: BudgetPeriodType;
@@ -44,6 +47,7 @@ export class Budget {
     this.name = props.name;
     this.color = props.color;
     this.categoryIds = props.categoryIds;
+    this.type = props.type ?? "EXPENSE";
     this.amount = props.amount;
     this.amountOverrides = props.amountOverrides ?? {};
     this.periodType = props.periodType;

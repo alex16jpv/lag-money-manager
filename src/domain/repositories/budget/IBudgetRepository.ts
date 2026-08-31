@@ -1,4 +1,4 @@
-import { BudgetPeriodType } from "../../../shared/constants";
+import { BudgetPeriodType, BudgetType } from "../../../shared/constants";
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
 import { Budget } from "../../entities/Budget";
 import { IRepository } from "../IRepository";
@@ -19,6 +19,7 @@ export interface IBudgetRepository extends IRepository<Budget> {
   // categories (used to reject duplicates). `excludeId` skips a budget being updated.
   findOverlapping(
     userId: string,
+    type: BudgetType,
     periodType: BudgetPeriodType,
     categoryIds: string[],
     excludeId?: string,

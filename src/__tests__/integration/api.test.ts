@@ -63,8 +63,8 @@ const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   delete: jest.fn(),
   aggregateSpending: jest.fn(),
   listTags: jest.fn().mockResolvedValue([]),
-  sumExpensesByCategory: jest.fn().mockResolvedValue({}),
-  sumExpenses: jest.fn().mockResolvedValue(0),
+  sumAmountsByCategory: jest.fn().mockResolvedValue({}),
+  sumAmounts: jest.fn().mockResolvedValue(0),
 };
 
 const mockBudgetRepo = {
@@ -131,6 +131,7 @@ jest.mock("../../shared/constants", () => ({
     TRANSFER: "TRANSFER",
     ADJUSTMENT: "ADJUSTMENT",
   },
+  BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
   BUDGET_PERIOD_TYPES: {
     WEEKLY: "WEEKLY",
     BIWEEKLY: "BIWEEKLY",
@@ -991,7 +992,7 @@ describe("Integration Tests", () => {
 
     beforeEach(() => {
       mockUserRepo.getById.mockResolvedValue(testUser);
-      mockTransactionRepo.sumExpensesByCategory.mockResolvedValue({});
+      mockTransactionRepo.sumAmountsByCategory.mockResolvedValue({});
     });
 
     it("lists budgets with computed spent", async () => {
@@ -999,7 +1000,7 @@ describe("Integration Tests", () => {
         data: [testBudget],
         pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
       });
-      mockTransactionRepo.sumExpensesByCategory.mockResolvedValue({
+      mockTransactionRepo.sumAmountsByCategory.mockResolvedValue({
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac73": 12000,
       });
 

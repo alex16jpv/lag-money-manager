@@ -1,9 +1,10 @@
-import { BudgetPeriodType, Color } from "../../shared/constants";
+import { BudgetPeriodType, BudgetType, Color } from "../../shared/constants";
 
 export interface CreateBudgetDTO {
   name: string;
   color: Color;
   categoryIds: string[];
+  type?: BudgetType;
   amount: number;
   periodType: BudgetPeriodType;
   periodStartDate?: Date | null;
@@ -18,6 +19,7 @@ export interface UpdateBudgetDTO {
   name?: string;
   color?: Color;
   categoryIds?: string[];
+  type?: BudgetType;
   amount?: number;
   periodType?: BudgetPeriodType;
   periodStartDate?: Date | null;
@@ -34,6 +36,7 @@ export interface BudgetView {
   // Subset of categoryIds the user archived: the budget still tracks their
   // history, but the client should flag them.
   archivedCategoryIds: string[];
+  type: BudgetType;
   periodType: BudgetPeriodType;
   periodKey: string;
   periodFrom: Date;

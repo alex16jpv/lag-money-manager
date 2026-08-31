@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   ACCOUNT_TYPES,
   BUDGET_PERIOD_TYPES,
+  BUDGET_TYPES,
   CATEGORY_TYPES,
   COLORS,
   TRANSACTION_TYPES,
@@ -43,6 +44,7 @@ const budgetPeriodValues = Object.keys(BUDGET_PERIOD_TYPES) as [
   string,
   ...string[],
 ];
+const budgetTypeValues = Object.keys(BUDGET_TYPES) as [string, ...string[]];
 const isoDate = z
   .string()
   .datetime({ offset: true, message: "Must be a valid ISO 8601 date" })
@@ -328,6 +330,7 @@ export const createBudgetSchema = z.object({
     categoryIds: z
       .array(z.string().uuid("Each categoryId must be a valid UUID"))
       .max(20),
+    type: z.enum(budgetTypeValues).optional(),
     amount: moneyAmount,
     periodType: z.enum(budgetPeriodValues, {
       error: `Invalid period. Available: ${budgetPeriodValues.join(", ")}`,
@@ -350,6 +353,7 @@ export const updateBudgetSchema = z.object({
         .array(z.string().uuid("Each categoryId must be a valid UUID"))
         .max(20)
         .optional(),
+      type: z.enum(budgetTypeValues).optional(),
       amount: moneyAmount.optional(),
       periodType: z.enum(budgetPeriodValues).optional(),
       periodStartDate: isoDate.optional(),

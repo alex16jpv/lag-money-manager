@@ -56,16 +56,22 @@ export interface ITransactionRepository extends IRepository<Transaction> {
   // Distinct tags of the user's active transactions (autocomplete source).
   listTags(userId: string): Promise<string[]>;
 
-  // Sum of EXPENSE amounts (in integer cents) per category in [from, to),
-  // restricted to the given categories. Used to compute budget spend.
-  sumExpensesByCategory(
+  // Sum of amounts (integer cents) of the given flow type per category in
+  // [from, to), restricted to the given categories. Budget spend/earned.
+  sumAmountsByCategory(
     userId: string,
     from: Date,
     to: Date,
     categoryIds: string[],
+    type: "EXPENSE" | "INCOME",
   ): Promise<Record<string, number>>;
 
-  // Total EXPENSE cents in [from, to) regardless of category (uncategorized
-  // included) — the spend of a global budget sees quick-adds immediately.
-  sumExpenses(userId: string, from: Date, to: Date): Promise<number>;
+  // Total cents of the given flow type in [from, to) regardless of category
+  // (uncategorized included) — a global budget sees quick-adds immediately.
+  sumAmounts(
+    userId: string,
+    from: Date,
+    to: Date,
+    type: "EXPENSE" | "INCOME",
+  ): Promise<number>;
 }

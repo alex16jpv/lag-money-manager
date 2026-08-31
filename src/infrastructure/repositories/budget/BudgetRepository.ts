@@ -2,7 +2,7 @@ import { v7 as uuidv7 } from "uuid";
 
 import { Budget } from "../../../domain/entities/Budget";
 import { BudgetFilters, IBudgetRepository } from "../../../domain/repositories/budget/IBudgetRepository";
-import { BudgetPeriodType } from "../../../shared/constants";
+import { BudgetPeriodType, BudgetType } from "../../../shared/constants";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
 import {
@@ -28,6 +28,7 @@ export class BudgetRepository implements IBudgetRepository {
       name: doc.name,
       color: doc.color as Budget["color"],
       categoryIds: doc.categoryIds,
+      type: doc.type,
       amount: fromCents(doc.amount),
       amountOverrides: overrides,
       periodType: doc.periodType,
@@ -130,12 +131,14 @@ export class BudgetRepository implements IBudgetRepository {
 
   async findOverlapping(
     userId: string,
+    type: BudgetType,
     periodType: BudgetPeriodType,
     categoryIds: string[],
     excludeId?: string,
   ): Promise<Budget[]> {
     const filter: Record<string, unknown> = {
       userId,
+      type,
       deletedAt: null,
       periodType,
       // A global budget ([]) only conflicts with another global one; it

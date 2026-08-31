@@ -2,6 +2,7 @@ jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: { NODE_ENV: "test" },
   DB_TYPES: { MONGO: "MONGO" },
   COLORS: { RED: "RED", TEAL: "TEAL" },
+  BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
   BUDGET_PERIOD_TYPES: {
     WEEKLY: "WEEKLY",
     BIWEEKLY: "BIWEEKLY",
@@ -38,8 +39,8 @@ const createBudgetRepo = (): jest.Mocked<IBudgetRepository> =>
 
 const createTxRepo = (): jest.Mocked<ITransactionRepository> =>
   ({
-    sumExpensesByCategory: jest.fn().mockResolvedValue({}),
-    sumExpenses: jest.fn().mockResolvedValue(0),
+    sumAmountsByCategory: jest.fn().mockResolvedValue({}),
+    sumAmounts: jest.fn().mockResolvedValue(0),
   }) as unknown as jest.Mocked<ITransactionRepository>;
 
 const createCategoryRepo = (): jest.Mocked<ICategoryRepository> =>
@@ -84,7 +85,7 @@ describe("BudgetService", () => {
       data: [makeBudget()],
       pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
     });
-    txRepo.sumExpensesByCategory.mockResolvedValue({ c1: 4200 }); // cents
+    txRepo.sumAmountsByCategory.mockResolvedValue({ c1: 4200 }); // cents
 
     const res = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
 
@@ -98,7 +99,7 @@ describe("BudgetService", () => {
       data: [makeBudget({ amountOverrides: { "2026-08": 150 } })],
       pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
     });
-    txRepo.sumExpensesByCategory.mockResolvedValue({ c1: 1000 });
+    txRepo.sumAmountsByCategory.mockResolvedValue({ c1: 1000 });
 
     const res = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
     expect(res.data[0].amount).toBe(150);
@@ -210,13 +211,13 @@ describe("BudgetService", () => {
         data: [globalBudget],
         pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
       });
-      txRepo.sumExpenses.mockResolvedValue(12550);
+      txRepo.sumAmounts.mockResolvedValue(12550);
 
       const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
 
       expect(result.data[0].spent).toBe(125.5);
-      expect(txRepo.sumExpenses).toHaveBeenCalled();
-      expect(txRepo.sumExpensesByCategory).not.toHaveBeenCalled();
+      expect(txRepo.sumAmounts).toHaveBeenCalled();
+      expect(txRepo.sumAmountsByCategory).not.toHaveBeenCalled();
     });
 
     it("rejects a second global budget for the same period type", async () => {
@@ -345,6 +346,74 @@ describe("BudgetService", () => {
           CTX,
         ),
       ).rejects.toThrow("only allowed for CUSTOM");
+    });
+  });
+
+  describe("budget type [R2-16c]", () => {
+    it("an INCOME budget sums INCOME amounts", async () => {
+      const goal = makeBudget({ id: "bi", type: "INCOME", categoryIds: [] });
+      budgetRepo.getAllByUserId.mockResolvedValue({
+        data: [goal],
+        pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
+      });
+      txRepo.sumAmounts.mockResolvedValue(200000);
+
+      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+
+      expect(txRepo.sumAmounts).toHaveBeenCalledWith(
+        USER,
+        expect.any(Date),
+        expect.any(Date),
+        "INCOME",
+      );
+      expect(result.data[0].type).toBe("INCOME");
+      expect(result.data[0].spent).toBe(2000);
+    });
+
+    it("EXPENSE and INCOME budgets over the same category do not overlap", async () => {
+      budgetRepo.findOverlapping.mockResolvedValue([]);
+      budgetRepo.create.mockImplementation(async (b) => new Budget(b as Budget));
+
+      await service.createBudget(
+        {
+          name: "Meta Salary",
+          color: "TEAL",
+          categoryIds: ["c1"],
+          type: "INCOME",
+          amount: 5000,
+          periodType: "MONTHLY",
+          userId: USER,
+        },
+        CTX,
+      );
+
+      expect(budgetRepo.findOverlapping).toHaveBeenCalledWith(
+        USER,
+        "INCOME",
+        "MONTHLY",
+        ["c1"],
+        undefined,
+      );
+    });
+
+    it("rejects a category whose type contradicts the budget type", async () => {
+      categoryRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({ id: "c1", name: "Salary", type: "INCOME", userId: USER }),
+      );
+
+      await expect(
+        service.createBudget(
+          {
+            name: "Gasto salario",
+            color: "RED",
+            categoryIds: ["c1"],
+            amount: 100,
+            periodType: "MONTHLY",
+            userId: USER,
+          },
+          CTX,
+        ),
+      ).rejects.toThrow("does not match budget type");
     });
   });
 });

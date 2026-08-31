@@ -23,6 +23,15 @@ export const BUDGET_PERIOD_TYPES = {
 
 export type BudgetPeriodType = keyof typeof BUDGET_PERIOD_TYPES;
 
+// Backend-ready (R2-16c): INCOME budgets are goals ("earn at least X").
+// The MVP frontend only exposes EXPENSE.
+export const BUDGET_TYPES = {
+  EXPENSE: "EXPENSE",
+  INCOME: "INCOME",
+} as const;
+
+export type BudgetType = keyof typeof BUDGET_TYPES;
+
 export const ACCOUNT_TYPES = {
   CASH: "CASH",
   ACCOUNT: "ACCOUNT",

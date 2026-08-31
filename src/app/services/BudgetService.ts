@@ -50,9 +50,10 @@ export class BudgetService {
   }
 
   async createBudget(dto: CreateBudgetDTO, ctx: ViewContext): Promise<BudgetView> {
+    const type = dto.type ?? "EXPENSE";
     this.assertValidPeriod(dto);
-    await this.assertCategoriesUsable(dto.userId, dto.categoryIds);
-    await this.assertNoOverlap(dto.userId, dto.periodType, dto.categoryIds);
+    await this.assertCategoriesUsable(dto.userId, dto.categoryIds, type);
+    await this.assertNoOverlap(dto.userId, type, dto.periodType, dto.categoryIds);
     const created = await this.repo.create(new Budget(dto));
     const [view] = await this.toViews(dto.userId, [created], ctx);
     return view;
@@ -76,15 +77,17 @@ export class BudgetService {
     }
     const merged = new Budget({ ...existing, ...patch });
     this.assertValidPeriod(merged);
-    if (dto.categoryIds !== undefined) {
+    if (dto.categoryIds !== undefined || dto.type !== undefined) {
       await this.assertCategoriesUsable(
         userId,
         merged.categoryIds,
+        merged.type,
         existing.categoryIds,
       );
     }
     await this.assertNoOverlap(
       userId,
+      merged.type,
       merged.periodType,
       merged.categoryIds,
       id,
@@ -177,6 +180,7 @@ export class BudgetService {
   private async assertCategoriesUsable(
     userId: string,
     categoryIds: string[],
+    budgetType: string,
     previous: string[] = [],
   ): Promise<void> {
     const prev = new Set(previous);
@@ -189,17 +193,26 @@ export class BudgetService {
       if (category.archivedAt && !prev.has(categoryId)) {
         throw new ApiError("BadRequest", "Category is archived", "CATEGORY_ARCHIVED");
       }
+      if (category.type && category.type !== budgetType) {
+        throw new ApiError(
+          "BadRequest",
+          `Category type ${category.type} does not match budget type ${budgetType}`,
+          "CATEGORY_TYPE_MISMATCH",
+        );
+      }
     }
   }
 
   private async assertNoOverlap(
     userId: string,
+    type: string,
     periodType: string,
     categoryIds: string[],
     excludeId?: string,
   ): Promise<void> {
     const overlapping = await this.repo.findOverlapping(
       userId,
+      type as never,
       periodType as never,
       categoryIds,
       excludeId,
@@ -227,13 +240,20 @@ export class BudgetService {
 
     const windows = new Map<
       string,
-      { from: Date; to: Date; categoryIds: Set<string>; hasGlobal: boolean }
+      {
+        from: Date;
+        to: Date;
+        type: "EXPENSE" | "INCOME";
+        categoryIds: Set<string>;
+        hasGlobal: boolean;
+      }
     >();
     for (const { budget, period } of resolved) {
-      const wk = `${period.from.getTime()}_${period.to.getTime()}`;
+      const wk = `${period.from.getTime()}_${period.to.getTime()}_${budget.type}`;
       const w = windows.get(wk) ?? {
         from: period.from,
         to: period.to,
+        type: budget.type,
         categoryIds: new Set<string>(),
         hasGlobal: false,
       };
@@ -259,25 +279,26 @@ export class BudgetService {
     await Promise.all(
       Array.from(windows.entries()).map(async ([wk, w]) => {
         if (w.categoryIds.size > 0) {
-          const map = await this.transactionRepo.sumExpensesByCategory(
+          const map = await this.transactionRepo.sumAmountsByCategory(
             userId,
             w.from,
             w.to,
             Array.from(w.categoryIds),
+            w.type,
           );
           sums.set(wk, map);
         }
         if (w.hasGlobal) {
           totals.set(
             wk,
-            await this.transactionRepo.sumExpenses(userId, w.from, w.to),
+            await this.transactionRepo.sumAmounts(userId, w.from, w.to, w.type),
           );
         }
       }),
     );
 
     return resolved.map(({ budget, period }) => {
-      const wk = `${period.from.getTime()}_${period.to.getTime()}`;
+      const wk = `${period.from.getTime()}_${period.to.getTime()}_${budget.type}`;
       const map = sums.get(wk) ?? {};
       const spentCents =
         budget.categoryIds.length === 0
@@ -292,6 +313,7 @@ export class BudgetService {
         archivedCategoryIds: budget.categoryIds.filter((c) =>
           archivedIds.has(c),
         ),
+        type: budget.type,
         periodType: budget.periodType,
         periodKey: period.key,
         periodFrom: period.from,

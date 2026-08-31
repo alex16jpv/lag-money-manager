@@ -269,11 +269,12 @@ export class TransactionRepository implements ITransactionRepository {
     };
   }
 
-  async sumExpensesByCategory(
+  async sumAmountsByCategory(
     userId: string,
     from: Date,
     to: Date,
     categoryIds: string[],
+    type: "EXPENSE" | "INCOME",
   ): Promise<Record<string, number>> {
     const rows = await TransactionModel.aggregate<{
       _id: string;
@@ -282,7 +283,7 @@ export class TransactionRepository implements ITransactionRepository {
       {
         $match: {
           userId,
-          type: "EXPENSE",
+          type,
           deletedAt: null,
           categoryId: { $in: categoryIds },
           date: { $gte: from, $lt: to },
@@ -297,12 +298,17 @@ export class TransactionRepository implements ITransactionRepository {
     return map;
   }
 
-  async sumExpenses(userId: string, from: Date, to: Date): Promise<number> {
+  async sumAmounts(
+    userId: string,
+    from: Date,
+    to: Date,
+    type: "EXPENSE" | "INCOME",
+  ): Promise<number> {
     const rows = await TransactionModel.aggregate<{ total: number }>([
       {
         $match: {
           userId,
-          type: "EXPENSE",
+          type,
           deletedAt: null,
           date: { $gte: from, $lt: to },
         },
