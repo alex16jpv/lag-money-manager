@@ -9,7 +9,18 @@ export const MODEL_NAMES = {
   ACCOUNT: "Account",
   TRANSACTION: "Transaction",
   CATEGORY: "Category",
+  BUDGET: "Budget",
 } as const;
+
+export const BUDGET_PERIOD_TYPES = {
+  WEEKLY: "WEEKLY",
+  MONTHLY: "MONTHLY",
+  QUARTERLY: "QUARTERLY",
+  YEARLY: "YEARLY",
+  CUSTOM: "CUSTOM",
+} as const;
+
+export type BudgetPeriodType = keyof typeof BUDGET_PERIOD_TYPES;
 
 export const ACCOUNT_TYPES = {
   CASH: "CASH",

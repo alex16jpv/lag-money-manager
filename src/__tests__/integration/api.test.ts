@@ -1,6 +1,7 @@
 import bcryptjs from "bcryptjs";
 
 import { Account } from "../../domain/entities/Account";
+import { Budget } from "../../domain/entities/Budget";
 import { Category } from "../../domain/entities/Category";
 import { Transaction } from "../../domain/entities/Transaction";
 import { User } from "../../domain/entities/User";
@@ -52,6 +53,19 @@ const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   update: jest.fn(),
   delete: jest.fn(),
   aggregateSpending: jest.fn(),
+  sumExpensesByCategory: jest.fn().mockResolvedValue({}),
+};
+
+const mockBudgetRepo = {
+  getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
+  getById: jest.fn(),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+  restore: jest.fn(),
+  findOverlapping: jest.fn().mockResolvedValue([]),
+  setAmountOverride: jest.fn(),
 };
 
 const mockIdempotencyRepo = {
@@ -96,6 +110,13 @@ jest.mock("../../shared/constants", () => ({
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
+  },
+  BUDGET_PERIOD_TYPES: {
+    WEEKLY: "WEEKLY",
+    MONTHLY: "MONTHLY",
+    QUARTERLY: "QUARTERLY",
+    YEARLY: "YEARLY",
+    CUSTOM: "CUSTOM",
   },
   CATEGORY_TYPES: {
     INCOME: "INCOME",
@@ -146,6 +167,7 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getCategoryRepository: () => mockCategoryRepo,
     getTransactionRepository: () => mockTransactionRepo,
     getIdempotencyRepository: () => mockIdempotencyRepo,
+    getBudgetRepository: () => mockBudgetRepo,
   },
   RepositoryFactory: jest.fn(),
 }));
@@ -917,6 +939,77 @@ describe("Integration Tests", () => {
       const res = await request(app)
         .get("/stats/spending?groupBy=nope")
         .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ==================== Budget Routes ====================
+  describe("Budgets [F3]", () => {
+    const testBudget = new Budget({
+      id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac90",
+      name: "Food",
+      color: "RED",
+      categoryIds: ["019576a0-d7b6-7d6d-af6a-2b7545f5ac73"],
+      amount: 500,
+      periodType: "MONTHLY",
+      userId: testUser.id,
+    });
+
+    beforeEach(() => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+      mockTransactionRepo.sumExpensesByCategory.mockResolvedValue({});
+    });
+
+    it("lists budgets with computed spent", async () => {
+      mockBudgetRepo.getAllByUserId.mockResolvedValue({
+        data: [testBudget],
+        pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
+      });
+      mockTransactionRepo.sumExpensesByCategory.mockResolvedValue({
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac73": 12000,
+      });
+
+      const res = await request(app)
+        .get("/budgets")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data[0].spent).toBe(120);
+      expect(res.body.data[0].amount).toBe(500);
+    });
+
+    it("creates a budget", async () => {
+      mockBudgetRepo.findOverlapping.mockResolvedValue([]);
+      mockBudgetRepo.create.mockResolvedValue(testBudget);
+
+      const res = await request(app)
+        .post("/budgets")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          name: "Food",
+          color: "RED",
+          categoryIds: ["019576a0-d7b6-7d6d-af6a-2b7545f5ac73"],
+          amount: 500,
+          periodType: "MONTHLY",
+        });
+
+      expect(res.status).toBe(201);
+    });
+
+    it("rejects a duplicate budget (same category + period)", async () => {
+      mockBudgetRepo.findOverlapping.mockResolvedValue([testBudget]);
+
+      const res = await request(app)
+        .post("/budgets")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          name: "Food 2",
+          color: "TEAL",
+          categoryIds: ["019576a0-d7b6-7d6d-af6a-2b7545f5ac73"],
+          amount: 300,
+          periodType: "MONTHLY",
+        });
 
       expect(res.status).toBe(400);
     });

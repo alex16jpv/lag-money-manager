@@ -39,4 +39,13 @@ export interface ITransactionRepository extends IRepository<Transaction> {
     userId: string,
     query: SpendingQuery,
   ): Promise<SpendingBucket[]>;
+
+  // Sum of EXPENSE amounts (in integer cents) per category in [from, to),
+  // restricted to the given categories. Used to compute budget spend.
+  sumExpensesByCategory(
+    userId: string,
+    from: Date,
+    to: Date,
+    categoryIds: string[],
+  ): Promise<Record<string, number>>;
 }

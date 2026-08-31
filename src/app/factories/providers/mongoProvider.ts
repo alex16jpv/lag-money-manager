@@ -1,5 +1,6 @@
 import { connectMongo } from "../../../config/mongoConnection";
 import { AccountRepository } from "../../../domain/repositories/account/AccountRepository";
+import { BudgetRepository } from "../../../domain/repositories/budget/BudgetRepository";
 import { CategoryRepository } from "../../../domain/repositories/category/CategoryRepository";
 import { IdempotencyRepository } from "../../../domain/repositories/idempotency/IdempotencyRepository";
 import { TransactionRepository } from "../../../domain/repositories/transaction/TransactionRepository";
@@ -28,4 +29,5 @@ export function registerRepositories(factory: RegistryTarget): void {
   factory.register("category", () => new CategoryRepository());
   factory.register("transaction", () => new TransactionRepository());
   factory.register("idempotency", () => new IdempotencyRepository());
+  factory.register("budget", () => new BudgetRepository());
 }

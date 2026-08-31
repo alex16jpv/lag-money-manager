@@ -8,6 +8,8 @@ import { AccountModel } from "../src/domain/models/AccountModel";
 import { CategoryModel } from "../src/domain/models/CategoryModel";
 import { TransactionModel } from "../src/domain/models/TransactionModel";
 import { RateLimitModel } from "../src/domain/models/RateLimitModel";
+import { BudgetModel } from "../src/domain/models/BudgetModel";
+import { IdempotencyKeyModel } from "../src/domain/models/IdempotencyKeyModel";
 
 async function main(): Promise<void> {
   await connectMongo();
@@ -17,6 +19,8 @@ async function main(): Promise<void> {
     CategoryModel,
     TransactionModel,
     RateLimitModel,
+    BudgetModel,
+    IdempotencyKeyModel,
   ];
   for (const model of models) {
     await model.syncIndexes();

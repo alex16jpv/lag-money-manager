@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { ACCOUNT_TYPES, COLORS, TRANSACTION_TYPES } from "../../shared/constants";
+import {
+  ACCOUNT_TYPES,
+  BUDGET_PERIOD_TYPES,
+  COLORS,
+  TRANSACTION_TYPES,
+} from "../../shared/constants";
 import { MAX_AMOUNT } from "../../shared/money";
 import { isValidTimeZone } from "../../shared/timezone";
 
@@ -33,6 +38,14 @@ const transactionTypeValues = Object.keys(TRANSACTION_TYPES) as [
 ];
 const categoryTypeValues = Object.keys(TRANSACTION_TYPES) as [string, ...string[]];
 const colorValues = Object.keys(COLORS) as [string, ...string[]];
+const budgetPeriodValues = Object.keys(BUDGET_PERIOD_TYPES) as [
+  string,
+  ...string[],
+];
+const isoDate = z
+  .string()
+  .datetime({ message: "Must be a valid ISO 8601 date" })
+  .transform((s) => new Date(s));
 
 export const paginationQuerySchema = z.object({
   query: z.object({
@@ -238,6 +251,66 @@ export const spendingStatsSchema = z.object({
       .datetime({ message: "to must be a valid ISO 8601 date" })
       .optional(),
   }),
+});
+
+export const getBudgetsSchema = z.object({
+  query: z.object({
+    limit: z.coerce.number().int().min(1).max(MAX_LIMIT).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+    cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
+    includeArchived: z.enum(["true", "false"]).optional(),
+    reference: z
+      .string()
+      .datetime({ message: "reference must be a valid ISO 8601 date" })
+      .optional(),
+  }),
+});
+
+export const createBudgetSchema = z.object({
+  body: z.object({
+    name: z.string().min(1, "Name is required").max(255),
+    color: z.enum(colorValues, {
+      error: `Invalid color. Available: ${colorValues.join(", ")}`,
+    }),
+    categoryIds: z
+      .array(z.string().uuid("Each categoryId must be a valid UUID"))
+      .min(1, "At least one category is required")
+      .max(20),
+    amount: moneyAmount,
+    periodType: z.enum(budgetPeriodValues, {
+      error: `Invalid period. Available: ${budgetPeriodValues.join(", ")}`,
+    }),
+    periodStartDate: isoDate.optional(),
+    periodEndDate: isoDate.optional(),
+    note: z.string().max(1000).optional().nullable(),
+  }),
+});
+
+export const updateBudgetSchema = z.object({
+  params: z.object({ id: z.string().uuid("ID must be a valid UUID") }),
+  body: z
+    .object({
+      name: z.string().min(1).max(255).optional(),
+      color: z.enum(colorValues).optional(),
+      categoryIds: z
+        .array(z.string().uuid("Each categoryId must be a valid UUID"))
+        .min(1)
+        .max(20)
+        .optional(),
+      amount: moneyAmount.optional(),
+      periodType: z.enum(budgetPeriodValues).optional(),
+      periodStartDate: isoDate.optional(),
+      periodEndDate: isoDate.optional(),
+      note: z.string().max(1000).optional().nullable(),
+    })
+    .refine((data) => Object.values(data).some((v) => v !== undefined), {
+      message: "At least one field must be provided",
+    }),
+});
+
+export const budgetAmountOverrideSchema = z.object({
+  params: z.object({ id: z.string().uuid("ID must be a valid UUID") }),
+  body: z.object({ amount: moneyAmount }),
 });
 
 export const idParamSchema = z.object({

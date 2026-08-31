@@ -1,0 +1,166 @@
+import { v7 as uuidv7 } from "uuid";
+
+import { BudgetPeriodType } from "../../../shared/constants";
+import { ApiError } from "../../../shared/errors";
+import { fromCents, toCents } from "../../../shared/money";
+import {
+  buildPaginatedResult,
+  PaginatedResult,
+  PaginationParams,
+} from "../../../shared/pagination";
+import { Budget } from "../../entities/Budget";
+import { BudgetModel, IBudgetDocument } from "../../models/BudgetModel";
+import { BudgetFilters, IBudgetRepository } from "./IBudgetRepository";
+
+export class BudgetRepository implements IBudgetRepository {
+  private toEntity(doc: IBudgetDocument): Budget {
+    const overrides: Record<string, number> = {};
+    const raw = doc.amountOverrides as unknown;
+    const entries =
+      raw instanceof Map
+        ? Array.from(raw.entries())
+        : Object.entries((raw as Record<string, number>) ?? {});
+    for (const [key, cents] of entries) {
+      overrides[key] = fromCents(cents as number);
+    }
+    return new Budget({
+      id: doc._id,
+      name: doc.name,
+      color: doc.color as Budget["color"],
+      categoryIds: doc.categoryIds,
+      amount: fromCents(doc.amount),
+      amountOverrides: overrides,
+      periodType: doc.periodType,
+      periodStartDate: doc.periodStartDate,
+      periodEndDate: doc.periodEndDate,
+      note: doc.note ?? null,
+      userId: doc.userId,
+      archivedAt: doc.deletedAt,
+    });
+  }
+
+  private toStorage(budget: Partial<Budget>): Record<string, unknown> {
+    const doc: Record<string, unknown> = { ...budget };
+    if (budget.amount !== undefined) {
+      doc.amount = toCents(budget.amount);
+    }
+    if (budget.amountOverrides !== undefined) {
+      const overrides: Record<string, number> = {};
+      for (const [key, amount] of Object.entries(budget.amountOverrides)) {
+        overrides[key] = toCents(amount);
+      }
+      doc.amountOverrides = overrides;
+    }
+    return doc;
+  }
+
+  async getById(id: string): Promise<Budget | null> {
+    const doc = await BudgetModel.findOne({ _id: id, deletedAt: null }).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async getAll(pagination: PaginationParams): Promise<PaginatedResult<Budget>> {
+    return this.getAllByUserId("", pagination);
+  }
+
+  async getAllByUserId(
+    userId: string,
+    pagination: PaginationParams,
+    filters?: BudgetFilters,
+  ): Promise<PaginatedResult<Budget>> {
+    const { limit, offset, cursor } = pagination;
+    const filter: Record<string, unknown> = { userId };
+    if (!filters?.includeArchived) {
+      filter.deletedAt = null;
+    }
+    if (cursor) {
+      filter._id = { $gt: cursor };
+    }
+    const [docs, total] = await Promise.all([
+      BudgetModel.find(filter)
+        .sort({ _id: 1 })
+        .skip(cursor ? 0 : offset)
+        .limit(limit)
+        .lean(),
+      BudgetModel.countDocuments(
+        filters?.includeArchived ? { userId } : { userId, deletedAt: null },
+      ),
+    ]);
+    return buildPaginatedResult(
+      docs.map((doc) => this.toEntity(doc)),
+      total,
+      pagination,
+    );
+  }
+
+  async create(budget: Partial<Budget>): Promise<Budget> {
+    const id = budget.id ?? uuidv7();
+    const doc = await BudgetModel.create({ _id: id, ...this.toStorage(budget) });
+    return this.toEntity(doc.toObject() as IBudgetDocument);
+  }
+
+  async update(id: string, budget: Partial<Budget>): Promise<Budget> {
+    const doc = await BudgetModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      this.toStorage(budget),
+      { new: true },
+    ).lean();
+    if (!doc) {
+      throw new ApiError("NotFound", "Budget not found");
+    }
+    return this.toEntity(doc);
+  }
+
+  async delete(id: string): Promise<void> {
+    const doc = await BudgetModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      { deletedAt: new Date() },
+      { new: true },
+    ).lean();
+    if (!doc) {
+      throw new ApiError("NotFound", "Budget not found");
+    }
+  }
+
+  async restore(id: string, userId: string): Promise<Budget | null> {
+    const doc = await BudgetModel.findOneAndUpdate(
+      { _id: id, userId, deletedAt: { $ne: null } },
+      { deletedAt: null },
+      { new: true },
+    ).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async findOverlapping(
+    userId: string,
+    periodType: BudgetPeriodType,
+    categoryIds: string[],
+    excludeId?: string,
+  ): Promise<Budget[]> {
+    const filter: Record<string, unknown> = {
+      userId,
+      deletedAt: null,
+      periodType,
+      categoryIds: { $in: categoryIds },
+    };
+    if (excludeId) {
+      filter._id = { $ne: excludeId };
+    }
+    const docs = await BudgetModel.find(filter).lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
+  async setAmountOverride(
+    id: string,
+    userId: string,
+    periodKey: string,
+    amount: number,
+  ): Promise<Budget | null> {
+    const doc = await BudgetModel.findOneAndUpdate(
+      { _id: id, userId, deletedAt: null },
+      { $set: { [`amountOverrides.${periodKey}`]: toCents(amount) } },
+      { new: true },
+    ).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+}

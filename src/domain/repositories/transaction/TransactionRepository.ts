@@ -228,4 +228,32 @@ export class TransactionRepository implements ITransactionRepository {
       avg: fromCents(Math.round(r.total / r.count)),
     }));
   }
+
+  async sumExpensesByCategory(
+    userId: string,
+    from: Date,
+    to: Date,
+    categoryIds: string[],
+  ): Promise<Record<string, number>> {
+    const rows = await TransactionModel.aggregate<{
+      _id: string;
+      total: number;
+    }>([
+      {
+        $match: {
+          userId,
+          type: "EXPENSE",
+          deletedAt: null,
+          categoryId: { $in: categoryIds },
+          date: { $gte: from, $lt: to },
+        },
+      },
+      { $group: { _id: "$categoryId", total: { $sum: "$amount" } } },
+    ]);
+    const map: Record<string, number> = {};
+    for (const r of rows) {
+      map[r._id] = r.total;
+    }
+    return map;
+  }
 }
