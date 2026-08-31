@@ -1,5 +1,7 @@
 ### ==========================================================
-### ACCOUNTS — CRUD, cuenta default, archivar/restaurar
+### ACCOUNTS — CRUD, cuenta default, archivar/restaurar (idempotentes)
+### Las respuestas incluyen currency (estampada del usuario),
+### openingBalance y createdAt/updatedAt.
 ### ==========================================================
 @baseUrl = http://localhost:3000
 @email = tester@test.com
@@ -13,7 +15,8 @@ Content-Type: application/json
 
 @token = {{login.response.body.accessToken}}
 
-### Crear cuenta A (éxito) — la primera queda isDefault=true
+### Crear cuenta A (éxito) — la primera queda isDefault=true;
+### currency la estampa el servidor (la del usuario)
 # @name createA
 POST {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
@@ -52,12 +55,16 @@ Content-Type: application/json
 POST {{baseUrl}}/accounts/{{accountB}}/default
 Authorization: Bearer {{token}}
 
-### Verificar que A ya no es default y B sí (mira isDefault en la lista)
-GET {{baseUrl}}/accounts
+### Archivar A (soft delete) — solo funciona porque A ya NO es default
+DELETE {{baseUrl}}/accounts/{{accountA}}
 Authorization: Bearer {{token}}
 
-### Archivar A (soft delete)
+### Archivar A de nuevo — IDEMPOTENTE (200, no 404)
 DELETE {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+
+### Get de la archivada por id — SÍ responde (archivedAt la distingue)
+GET {{baseUrl}}/accounts/{{accountA}}
 Authorization: Bearer {{token}}
 
 ### Listar (A ya no aparece)
@@ -68,11 +75,27 @@ Authorization: Bearer {{token}}
 GET {{baseUrl}}/accounts?includeArchived=true
 Authorization: Bearer {{token}}
 
-### Restaurar A
+### Restaurar A — vuelve SIN isDefault (B conserva el default)
+POST {{baseUrl}}/accounts/{{accountA}}/restore
+Authorization: Bearer {{token}}
+
+### Restaurar A de nuevo — IDEMPOTENTE (200 con el estado actual)
 POST {{baseUrl}}/accounts/{{accountA}}/restore
 Authorization: Bearer {{token}}
 
 ### ---------- Casos de error ----------
+
+### Archivar la cuenta DEFAULT (400 DEFAULT_ACCOUNT_ARCHIVE_BLOCKED)
+### B es la default ahora — hay que marcar otra default primero.
+DELETE {{baseUrl}}/accounts/{{accountB}}
+Authorization: Bearer {{token}}
+
+### Update de una cuenta ARCHIVADA (400 RESOURCE_ARCHIVED) — archívala antes
+# PUT {{baseUrl}}/accounts/{{accountA}}
+# Authorization: Bearer {{token}}
+# Content-Type: application/json
+#
+# { "name": "no se puede" }
 
 ### Crear — tipo inválido (400)
 POST {{baseUrl}}/accounts
@@ -88,17 +111,13 @@ Content-Type: application/json
 
 { "name": "X", "type": "CASH", "balance": 10.555 }
 
-### Mass assignment — intentar setear balance/userId directo (se ignora)
+### Mass assignment — balance/userId/currency directos (se ignoran)
 PUT {{baseUrl}}/accounts/{{accountA}}
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "Hack", "balance": 999999, "userId": "00000000-0000-0000-0000-000000000000" }
+{ "name": "Hack", "balance": 999999, "userId": "00000000-0000-0000-0000-000000000000", "currency": "USD" }
 
-### Get inexistente (404)
+### Get inexistente o de otro usuario (404 uniforme)
 GET {{baseUrl}}/accounts/00000000-0000-0000-0000-000000000000
-Authorization: Bearer {{token}}
-
-### Restaurar algo no archivado (404)
-POST {{baseUrl}}/accounts/{{accountB}}/restore
 Authorization: Bearer {{token}}

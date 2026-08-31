@@ -1,12 +1,15 @@
 ### ==========================================================
-### AUTH — registro, login, refresh
+### AUTH — registro (devuelve tokens), login, refresh con rotación,
+### logout por dispositivo, logout-all, sesiones activas
 ### Corre "register" una vez, luego "login". El resto encadena.
 ### ==========================================================
 @baseUrl = http://localhost:3000
 @email = tester@test.com
 @password = SecureP@ss123
 
-### Register (éxito) — timezone es opcional (default America/Bogota)
+### Register (éxito) — timezone y currency opcionales (defaults America/Bogota, COP)
+### Devuelve { accessToken, refreshToken, user } — ya no hace falta login aparte.
+# @name register
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
 
@@ -14,8 +17,13 @@ Content-Type: application/json
   "name": "Tester",
   "email": "{{email}}",
   "password": "{{password}}",
-  "timezone": "America/Bogota"
+  "timezone": "America/Bogota",
+  "currency": "COP"
 }
+
+### Register con email de una cuenta borrada (soft delete) — REACTIVA la cuenta
+### con todo su historial; la respuesta trae user.reactivated: true.
+# (mismo request de arriba tras un DELETE /users/:id)
 
 ### Login (éxito) — captura accessToken y refreshToken
 # @name login
@@ -30,7 +38,9 @@ Content-Type: application/json
 @accessToken = {{login.response.body.accessToken}}
 @refreshToken = {{login.response.body.refreshToken}}
 
-### Refresh (éxito) — nuevo par de tokens
+### Refresh (éxito) — ROTA de verdad: el refresh viejo queda invalidado.
+### Guarda SIEMPRE el par nuevo.
+# @name refresh
 POST {{baseUrl}}/auth/refresh
 Content-Type: application/json
 
@@ -38,52 +48,82 @@ Content-Type: application/json
   "refreshToken": "{{refreshToken}}"
 }
 
+@rotatedRefresh = {{refresh.response.body.refreshToken}}
+
+### Reuso de un refresh YA ROTADO (401 REFRESH_REVOKED) — detección de robo:
+### revoca la familia completa de la sesión. Corre después del refresh de arriba.
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### Sesiones activas (una fila por dispositivo/login) — backend-ready, sin UI en MVP
+# @name sessions
+GET {{baseUrl}}/auth/sessions
+Authorization: Bearer {{accessToken}}
+
+@sessionId = {{sessions.response.body.data.0.id}}
+
+### Revocar UNA sesión por id (idempotente; 404 si no es tuya)
+DELETE {{baseUrl}}/auth/sessions/{{sessionId}}
+Authorization: Bearer {{accessToken}}
+
+### Logout del dispositivo actual — revoca la familia del refresh presentado
+POST {{baseUrl}}/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "{{rotatedRefresh}}"
+}
+
+### Logout-all — revoca TODAS las sesiones (bump de tokenVersion)
+POST {{baseUrl}}/auth/logout-all
+Authorization: Bearer {{accessToken}}
+
 ### ---------- Casos de error ----------
 
-### Register — email duplicado (409)
+### Register — email duplicado (409 EMAIL_TAKEN vía índice único)
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
 
-{ "name": "Dup", "email": "{{email}}", "password": "{{password}}" }
+{ "name": "Otro", "email": "{{email}}", "password": "{{password}}" }
 
-### Register — email inválido (400)
+### Register — email con mayúsculas = misma cuenta (409; emails normalizados)
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
 
-{ "name": "Bad", "email": "not-an-email", "password": "{{password}}" }
+{ "name": "Otro", "email": "TESTER@test.com", "password": "{{password}}" }
 
-### Register — password corta (400)
+### Register — currency inválida (400: debe ser ISO 4217 de 3 letras)
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
 
-{ "name": "Bad", "email": "x@test.com", "password": "short" }
+{ "name": "X", "email": "x@test.com", "password": "{{password}}", "currency": "pesos" }
 
-### Register — timezone inválida (400)
-POST {{baseUrl}}/auth/register
-Content-Type: application/json
-
-{ "name": "Bad", "email": "tz@test.com", "password": "{{password}}", "timezone": "Mars/Phobos" }
-
-### Login — password incorrecta (401)
+### Login — password incorrecta (401; mismo timing que email inexistente)
 POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
-{ "email": "{{email}}", "password": "wrongpassword" }
+{ "email": "{{email}}", "password": "wrong-password" }
 
-### Login — email inexistente (401)
+### Login — email inexistente (401, sin filtrar existencia por tiempo)
 POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
-{ "email": "nobody@test.com", "password": "{{password}}" }
+{ "email": "nadie@test.com", "password": "{{password}}" }
 
-### Refresh — token basura (401)
+### Refresh — token basura (401 REFRESH_INVALID)
 POST {{baseUrl}}/auth/refresh
 Content-Type: application/json
 
 { "refreshToken": "not-a-jwt" }
 
-### Refresh — falta el campo (400)
+### Refresh — access token usado como refresh (401 REFRESH_INVALID)
 POST {{baseUrl}}/auth/refresh
 Content-Type: application/json
 
-{}
+{ "refreshToken": "{{accessToken}}" }
+
+### Rate limit — repetir login fallido >10 veces/15min por IP o por email (429 RATE_LIMITED)

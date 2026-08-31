@@ -35,15 +35,19 @@ Cada archivo define arriba: `@baseUrl`, `@email`, `@password` y `@apiSecret`.
 | Archivo | Módulo |
 |---|---|
 | `health.http` | Health check |
-| `auth.http` | Registro, login, refresh token |
-| `users.http` | Perfil, timezone, cambio de password |
-| `accounts.http` | Cuentas, default, archivar/restaurar |
-| `categories.http` | Categorías, archivar/restaurar |
-| `transactions.http` | Transacciones, quick-add, idempotencia, filtros |
-| `budgets.http` | Budgets, períodos, override, archivar |
-| `stats.http` | Estadísticas de gasto |
+| `auth.http` | Registro (devuelve tokens, reactivación), login, refresh con rotación real, logout/logout-all, sesiones activas |
+| `users.http` | Perfil (currency, lastLoginAt), timezone, currency con bloqueo, credenciales con `currentPassword` |
+| `accounts.http` | Cuentas (currency estampada), default (bloqueo al archivarla), archivar/restaurar idempotentes, lectura de archivadas |
+| `categories.http` | Categorías, seedKey/restore-defaults, type bloqueado con historial, unicidad case-insensitive, archivar idempotente |
+| `transactions.http` | Transacciones, ADJUSTMENT, quick-add con idempotencia, hash de payload (422), filtros nuevos (categoría/fechas/tag/uncategorized), `GET /transactions/tags`, FUTURE_DATE |
+| `budgets.http` | Budgets por categoría y GLOBAL, meta INCOME, effectiveFrom, overrides (set/0/DELETE), CUSTOM con expiración, sin restore |
+| `stats.http` | Estadísticas (day cronológico, untagged, total real en tags, ADJUSTMENT excluido, from<=to) |
 
 > Reemplaza al viejo `api.http` (un solo archivo, desactualizado).
+>
+> **Errores:** todas las respuestas de error traen un `code` estable
+> (`VALIDATION`, `CURRENCY_LOCKED`, `BUDGET_PERIOD_OVERLAP`, …) — branchear por
+> `code`, no por `message`. "No existe" y "no es tuyo" son **404 uniforme**.
 
 ## Alternativa si quieres una UI más rica
 

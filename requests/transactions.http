@@ -1,6 +1,8 @@
 ### ==========================================================
-### TRANSACTIONS — crear, quick-add, idempotencia, filtros, update, delete
+### TRANSACTIONS — crear, quick-add, ADJUSTMENT, idempotencia,
+### filtros, tags, update, delete
 ### Crea sus propias cuentas/categoría arriba para ser autosuficiente.
+### Las respuestas incluyen source (MANUAL/QUICK), currency y timestamps.
 ### ==========================================================
 @baseUrl = http://localhost:3000
 @email = tester@test.com
@@ -35,7 +37,7 @@ Content-Type: application/json
 
 @accB = {{accB.response.body.id}}
 
-### Categoría para clasificar
+### Categoría para clasificar (el type debe coincidir con el de la transacción)
 # @name cat
 POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}
@@ -47,7 +49,7 @@ Content-Type: application/json
 
 ### ---------- Éxito ----------
 
-### Crear EXPENSE (resta de A)
+### Crear EXPENSE (resta de A) — tags se normalizan (trim+minúsculas+dedupe)
 # @name expense
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
@@ -59,7 +61,7 @@ Content-Type: application/json
   "date": "{{date}}",
   "fromAccountId": "{{accA}}",
   "categoryId": "{{catId}}",
-  "tags": ["café", "hormiga"],
+  "tags": ["Café ", "café", "hormiga"],
   "note": "prueba"
 }
 
@@ -79,7 +81,22 @@ Content-Type: application/json
 
 { "type": "TRANSFER", "amount": 100, "date": "{{date}}", "fromAccountId": "{{accA}}", "toAccountId": "{{accB}}" }
 
-### Idempotencia — mismo Idempotency-Key dos veces = una sola transacción
+### ADJUSTMENT — reconciliar saldo: SUBE el saldo de B (toAccountId)
+### Sin categoría; excluido de stats y budgets.
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "ADJUSTMENT", "amount": 12.34, "date": "{{date}}", "toAccountId": "{{accB}}" }
+
+### ADJUSTMENT — BAJA el saldo de A (fromAccountId)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "ADJUSTMENT", "amount": 5, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+
+### Idempotencia — mismo Idempotency-Key + mismo body dos veces = una sola transacción
 ### Corre esta y la siguiente: deben devolver el MISMO id.
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
@@ -96,9 +113,11 @@ Content-Type: application/json
 
 { "type": "EXPENSE", "amount": 9.99, "date": "{{date}}", "fromAccountId": "{{accA}}" }
 
-### Quick-add — solo amount (usa la cuenta default, marca pendingDetails)
+### Quick-add — solo amount (usa la cuenta default, marca pendingDetails y source=QUICK)
+### También acepta Idempotency-Key (el flujo del doble-tap).
 POST {{baseUrl}}/transactions/quick
 Authorization: Bearer {{token}}
+Idempotency-Key: quick-key-001
 Content-Type: application/json
 
 { "amount": 5.25 }
@@ -115,26 +134,112 @@ Authorization: Bearer {{token}}
 GET {{baseUrl}}/transactions?accountId={{accA}}
 Authorization: Bearer {{token}}
 
+### Filtrar por categoría (drill-down desde stats/budgets)
+GET {{baseUrl}}/transactions?categoryId={{catId}}
+Authorization: Bearer {{token}}
+
+### Filtrar por rango de fechas [from, to) — límites en la zona del usuario
+GET {{baseUrl}}/transactions?from=2026-08-01T00:00:00.000Z&to=2026-09-01T00:00:00.000Z
+Authorization: Bearer {{token}}
+
+### Filtrar por tag (normalizado: minúsculas)
+GET {{baseUrl}}/transactions?tag=café
+Authorization: Bearer {{token}}
+
+### Sin categoría (drill-down del bucket "uncategorized" de stats)
+GET {{baseUrl}}/transactions?uncategorized=true
+Authorization: Bearer {{token}}
+
 ### Filtrar por tipo
 GET {{baseUrl}}/transactions?type=EXPENSE
+Authorization: Bearer {{token}}
+
+### Tags distintos del usuario (autocomplete)
+GET {{baseUrl}}/transactions/tags
 Authorization: Bearer {{token}}
 
 ### Get por id
 GET {{baseUrl}}/transactions/{{txId}}
 Authorization: Bearer {{token}}
 
-### Update — cambia monto (revierte y reaplica balance)
+### Update — cambia monto (revierte y reaplica balance; guarda revisión interna)
 PUT {{baseUrl}}/transactions/{{txId}}
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "amount": 60, "note": "editada" }
 
-### Delete (soft) — revierte el efecto en el balance
+### Update solo nota/tags — NO toca balances (funciona aunque la cuenta esté archivada)
+PUT {{baseUrl}}/transactions/{{txId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "note": "solo metadatos" }
+
+### Delete (soft) — revierte el efecto en el balance. SIN restore: si se
+### necesita de nuevo, se crea otra.
 DELETE {{baseUrl}}/transactions/{{txId}}
 Authorization: Bearer {{token}}
 
 ### ---------- Casos de error ----------
+
+### Fecha futura >24h (400 FUTURE_DATE)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 10, "date": "2030-01-01T00:00:00.000Z", "fromAccountId": "{{accA}}" }
+
+### Idempotencia — misma clave con BODY DISTINTO (422 IDEMPOTENCY_PAYLOAD_MISMATCH)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Idempotency-Key: demo-key-001
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 777, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+
+### Idempotency-Key inválida — charset/longitud (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Idempotency-Key: clave con espacios!!
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 1, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+
+### ADJUSTMENT con ambos lados (400: exactamente uno)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "ADJUSTMENT", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accA}}", "toAccountId": "{{accB}}" }
+
+### ADJUSTMENT con categoría (400: no admite categoryId)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "ADJUSTMENT", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accA}}", "categoryId": "{{catId}}" }
+
+### Quick-add con type ADJUSTMENT (400: no permitido en quick)
+POST {{baseUrl}}/transactions/quick
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "amount": 10, "type": "ADJUSTMENT" }
+
+### Categoría inexistente/ajena (404 Category not found)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accA}}", "categoryId": "00000000-0000-0000-0000-000000000000" }
+
+### Categoría de tipo contrario (400 CATEGORY_TYPE_MISMATCH) — catId es EXPENSE
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "INCOME", "amount": 10, "date": "{{date}}", "toAccountId": "{{accB}}", "categoryId": "{{catId}}" }
 
 ### EXPENSE con toAccountId (no permitido) (400)
 POST {{baseUrl}}/transactions
@@ -171,9 +276,13 @@ Content-Type: application/json
 
 { "type": "EXPENSE", "amount": 10.555, "date": "{{date}}", "fromAccountId": "{{accA}}" }
 
-### fromAccountId de otro usuario / inexistente (404)
+### fromAccountId de otro usuario / inexistente (404 uniforme)
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "type": "EXPENSE", "amount": 10, "date": "{{date}}", "fromAccountId": "00000000-0000-0000-0000-000000000000" }
+
+### Cursor de paginación inválido (400 INVALID_CURSOR)
+GET {{baseUrl}}/transactions?cursor=00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{token}}

@@ -1,6 +1,7 @@
 ### ==========================================================
-### CATEGORIES — CRUD, filtros, archivar/restaurar
-### (el registro ya siembra categorías por defecto)
+### CATEGORIES — CRUD, filtros, archivar/restaurar (idempotentes),
+### restaurar defaults (seedKey)
+### (el registro ya siembra 10 categorías por defecto)
 ### ==========================================================
 @baseUrl = http://localhost:3000
 @email = tester@test.com
@@ -14,7 +15,7 @@ Content-Type: application/json
 
 @token = {{login.response.body.accessToken}}
 
-### Listar todas (éxito) — incluye las sembradas al registrarse
+### Listar todas (éxito) — las sembradas traen seedKey; todas traen createdAt/updatedAt
 GET {{baseUrl}}/categories
 Authorization: Bearer {{token}}
 
@@ -22,7 +23,7 @@ Authorization: Bearer {{token}}
 GET {{baseUrl}}/categories?type=EXPENSE
 Authorization: Bearer {{token}}
 
-### Crear categoría (éxito)
+### Crear categoría (éxito) — emoji admite secuencias ZWJ (👨‍👩‍👧‍👦)
 # @name createCat
 POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}
@@ -36,7 +37,7 @@ Content-Type: application/json
 GET {{baseUrl}}/categories/{{catId}}
 Authorization: Bearer {{token}}
 
-### Update (éxito)
+### Update (éxito) — nombre/color/emoji; el TYPE solo si no tiene transacciones
 PUT {{baseUrl}}/categories/{{catId}}
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -45,6 +46,14 @@ Content-Type: application/json
 
 ### Archivar (soft delete) — libera el nombre para reuso
 DELETE {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+
+### Archivar de nuevo — IDEMPOTENTE (200)
+DELETE {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+
+### Get de la archivada por id — SÍ responde (archivedAt la distingue)
+GET {{baseUrl}}/categories/{{catId}}
 Authorization: Bearer {{token}}
 
 ### Reusar el nombre archivado (éxito, no choca con el archivado)
@@ -59,11 +68,38 @@ GET {{baseUrl}}/categories?includeArchived=true
 Authorization: Bearer {{token}}
 
 ### Restaurar la archivada
-### (si el nombre ya lo tomó otra activa, fallará por el índice único — probar)
+### (si otra activa ya tomó el nombre → 409: renombrar antes de restaurar)
 POST {{baseUrl}}/categories/{{catId}}/restore
 Authorization: Bearer {{token}}
 
+### Restaurar defaults — recrea SOLO las categorías por defecto que falten
+### (idempotente por seedKey; las archivadas cuentan como presentes)
+POST {{baseUrl}}/categories/restore-defaults
+Authorization: Bearer {{token}}
+
 ### ---------- Casos de error ----------
+
+### Duplicado case-insensitive — "CAFÉ Y SNACKS" ya existe como "Café y snacks" (409 DUPLICATE)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "CAFÉ Y SNACKS", "type": "EXPENSE" }
+
+### Cambiar el TYPE de una categoría CON transacciones (400 CATEGORY_TYPE_LOCKED)
+### (crea una transacción con esta categoría primero — ver transactions.http)
+# PUT {{baseUrl}}/categories/{{catId}}
+# Authorization: Bearer {{token}}
+# Content-Type: application/json
+#
+# { "type": "INCOME" }
+
+### Update de una categoría ARCHIVADA (400 RESOURCE_ARCHIVED)
+# PUT {{baseUrl}}/categories/{{catId}}
+# Authorization: Bearer {{token}}
+# Content-Type: application/json
+#
+# { "name": "no se puede" }
 
 ### Crear — color inválido (400)
 POST {{baseUrl}}/categories
