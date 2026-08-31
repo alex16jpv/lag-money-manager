@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+
 import { ENVIRONMENT } from "../shared/constants";
 import logger from "../shared/logger";
 
@@ -24,7 +25,17 @@ export function connectMongo(): Promise<void> {
   if (!connecting) {
     const uri = (ENVIRONMENT as { MONGO_URI: string }).MONGO_URI;
     connecting = mongoose
-      .connect(uri, { serverSelectionTimeoutMS: SERVER_SELECTION_TIMEOUT_MS })
+      .connect(uri, {
+        serverSelectionTimeoutMS: SERVER_SELECTION_TIMEOUT_MS,
+        // Build indexes automatically on connect in every environment, the same
+        // way collections are created on first write — no manual step. Mongoose
+        // only creates missing indexes, so this is cheap and idempotent at this
+        // scale. (`npm run db:sync-indexes` stays available as an optional
+        // maintenance tool: unlike autoIndex, it also DROPS indexes you removed
+        // from the schemas. If a collection ever grows huge, revisit turning
+        // autoIndex off in production to avoid index builds under live traffic.)
+        autoIndex: true,
+      })
       .then(() => {
         logger.info("Connected to MongoDB");
       })
