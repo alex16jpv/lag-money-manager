@@ -225,7 +225,7 @@ export const updateAccountSchema = z.object({
 export const createCategorySchema = z.object({
   body: z.object({
     name: z.string().min(1, "Name is required").max(255),
-    emoji: z.string().max(8, "Emoji must be at most 8 characters").optional(),
+    emoji: z.string().max(16, "Emoji must be at most 16 characters").optional(),
     color: z
       .enum(colorValues, {
         error: `Invalid color. Available: ${colorValues.join(", ")}`,
@@ -246,7 +246,7 @@ export const updateCategorySchema = z.object({
   body: z
     .object({
       name: z.string().min(1).max(255).optional(),
-      emoji: z.string().max(8, "Emoji must be at most 8 characters").optional(),
+      emoji: z.string().max(16, "Emoji must be at most 16 characters").optional(),
       color: z
         .enum(colorValues, {
           error: `Invalid color. Available: ${colorValues.join(", ")}`,

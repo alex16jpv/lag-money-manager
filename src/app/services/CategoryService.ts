@@ -5,6 +5,9 @@ import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { CreateCategoryDTO, UpdateCategoryDTO } from "../dtos/CategoryDTO";
 
+// Soft cap: protects the shared Atlas M0 tier from runaway creation.
+const MAX_CATEGORIES_PER_USER = 200;
+
 export class CategoryService {
   constructor(private repo: ICategoryRepository) {}
 
@@ -32,6 +35,13 @@ export class CategoryService {
   }
 
   async createCategory(dto: CreateCategoryDTO): Promise<Category> {
+    if ((await this.repo.countByUserId(dto.userId)) >= MAX_CATEGORIES_PER_USER) {
+      throw new ApiError(
+        "BadRequest",
+        `Category limit reached (${MAX_CATEGORIES_PER_USER})`,
+        "CATEGORY_LIMIT_REACHED",
+      );
+    }
     const category = new Category(dto);
     return new Category(await this.repo.create(category));
   }

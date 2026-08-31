@@ -4,6 +4,9 @@ import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
 
+// Soft cap: protects the shared Atlas M0 tier from runaway creation.
+const MAX_ACCOUNTS_PER_USER = 100;
+
 export class AccountService {
   constructor(private repo: IAccountRepository) {}
 
@@ -28,8 +31,15 @@ export class AccountService {
   }
 
   async createAccount(dto: CreateAccountDTO): Promise<Account> {
-    const isFirst = (await this.repo.countByUserId(dto.userId)) === 0;
-    const account = new Account({ ...dto, isDefault: isFirst });
+    const count = await this.repo.countByUserId(dto.userId);
+    if (count >= MAX_ACCOUNTS_PER_USER) {
+      throw new ApiError(
+        "BadRequest",
+        `Account limit reached (${MAX_ACCOUNTS_PER_USER})`,
+        "ACCOUNT_LIMIT_REACHED",
+      );
+    }
+    const account = new Account({ ...dto, isDefault: count === 0 });
     return new Account(await this.repo.create(account));
   }
 

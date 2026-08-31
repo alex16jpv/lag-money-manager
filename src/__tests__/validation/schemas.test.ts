@@ -513,11 +513,18 @@ describe("Validation Schemas", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should reject emoji exceeding 8 characters", () => {
+    it("should reject emoji exceeding 16 characters", () => {
       const result = createCategorySchema.safeParse({
-        body: { name: "Food", emoji: "a".repeat(9) },
+        body: { name: "Food", emoji: "a".repeat(17) },
       });
       expect(result.success).toBe(false);
+    });
+
+    it("should accept ZWJ emoji sequences (family emoji is 11 UTF-16 units)", () => {
+      const result = createCategorySchema.safeParse({
+        body: { name: "Family", emoji: "👨‍👩‍👧‍👦" },
+      });
+      expect(result.success).toBe(true);
     });
 
     it("should reject empty name", () => {
