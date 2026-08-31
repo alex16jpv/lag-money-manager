@@ -16,6 +16,8 @@ const mockUserRepo: jest.Mocked<IUserRepository> = {
   getById: jest.fn(),
   getByEmail: jest.fn(),
   getDeletedByEmail: jest.fn().mockResolvedValue(null),
+  getByIdWithPassword: jest.fn().mockResolvedValue(null),
+  bumpTokenVersion: jest.fn().mockResolvedValue(undefined),
   reactivate: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
@@ -78,6 +80,14 @@ const mockBudgetRepo = {
 const mockIdempotencyRepo = {
   find: jest.fn().mockResolvedValue(null),
   record: jest.fn().mockResolvedValue(undefined),
+};
+
+const mockRefreshSessionRepo = {
+  create: jest.fn().mockResolvedValue(undefined),
+  findById: jest.fn().mockResolvedValue(null),
+  rotate: jest.fn().mockResolvedValue(null),
+  revokeFamily: jest.fn().mockResolvedValue(undefined),
+  revokeAllForUser: jest.fn().mockResolvedValue(undefined),
 };
 
 // --- Mock modules before importing app ---
@@ -177,6 +187,7 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getTransactionRepository: () => mockTransactionRepo,
     getIdempotencyRepository: () => mockIdempotencyRepo,
     getBudgetRepository: () => mockBudgetRepo,
+    getRefreshSessionRepository: () => mockRefreshSessionRepo,
   },
   RepositoryFactory: jest.fn(),
 }));
@@ -337,8 +348,16 @@ describe("Integration Tests", () => {
   describe("POST /auth/refresh [M3]", () => {
     it("issues a new token pair for a valid refresh token", async () => {
       mockUserRepo.getById.mockResolvedValue(testUser);
+      mockRefreshSessionRepo.rotate.mockResolvedValue({
+        jti: "jti-1",
+        userId: testUser.id,
+        familyId: "fam-1",
+        expiresAt: new Date(Date.now() + 86_400_000),
+        replacedBy: null,
+        revokedAt: null,
+      });
       const refreshToken = jwt.sign(
-        { userId: testUser.id, tokenVersion: testUser.tokenVersion, type: "refresh" },
+        { userId: testUser.id, tokenVersion: testUser.tokenVersion, type: "refresh", jti: "jti-1" },
         "test-secret-for-integration",
         { expiresIn: "30d" },
       );
@@ -355,7 +374,7 @@ describe("Integration Tests", () => {
     it("returns 401 for a revoked (stale tokenVersion) refresh token", async () => {
       mockUserRepo.getById.mockResolvedValue(testUser); // tokenVersion 0
       const refreshToken = jwt.sign(
-        { userId: testUser.id, tokenVersion: 99, type: "refresh" },
+        { userId: testUser.id, tokenVersion: 99, type: "refresh", jti: "jti-1" },
         "test-secret-for-integration",
         { expiresIn: "30d" },
       );

@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 
 import { AuthService } from "../../app/services/AuthService";
 import { CategoryService } from "../../app/services/CategoryService";
+import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { User } from "../../domain/entities/User";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
@@ -35,6 +36,8 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   getById: jest.fn(),
   getByEmail: jest.fn(),
   getDeletedByEmail: jest.fn().mockResolvedValue(null),
+  getByIdWithPassword: jest.fn().mockResolvedValue(null),
+  bumpTokenVersion: jest.fn().mockResolvedValue(undefined),
   reactivate: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
@@ -45,15 +48,29 @@ const createMockCategoryService = (): jest.Mocked<Pick<CategoryService, "seedDef
   seedDefaultCategories: jest.fn().mockResolvedValue([]),
 });
 
+const createMockSessionRepo = (): jest.Mocked<IRefreshSessionRepository> => ({
+  create: jest.fn().mockResolvedValue(undefined),
+  findById: jest.fn().mockResolvedValue(null),
+  rotate: jest.fn().mockResolvedValue(null),
+  revokeFamily: jest.fn().mockResolvedValue(undefined),
+  revokeAllForUser: jest.fn().mockResolvedValue(undefined),
+});
+
 describe("AuthService", () => {
   let service: AuthService;
   let repo: jest.Mocked<IUserRepository>;
   let categoryService: jest.Mocked<Pick<CategoryService, "seedDefaultCategories">>;
+  let sessions: jest.Mocked<IRefreshSessionRepository>;
 
   beforeEach(() => {
     repo = createMockRepo();
     categoryService = createMockCategoryService();
-    service = new AuthService(repo, categoryService as unknown as CategoryService);
+    sessions = createMockSessionRepo();
+    service = new AuthService(
+      repo,
+      categoryService as unknown as CategoryService,
+      sessions,
+    );
   });
 
   describe("register", () => {
@@ -234,20 +251,63 @@ describe("AuthService", () => {
       tokenVersion: 2,
     });
 
-    const signRefresh = (tokenVersion: number) =>
+    const signRefresh = (tokenVersion: number, jti = "jti-1") =>
       jwt.sign(
-        { userId: user.id, tokenVersion, type: "refresh" },
+        { userId: user.id, tokenVersion, type: "refresh", jti },
         "test-secret-key",
         { algorithm: "HS256", expiresIn: "30d" },
       );
 
-    it("issues a new token pair for a valid refresh token", async () => {
+    const activeSession = () => ({
+      jti: "jti-1",
+      userId: user.id,
+      familyId: "fam-1",
+      expiresAt: new Date(Date.now() + 86_400_000),
+      replacedBy: null,
+      revokedAt: null,
+    });
+
+    it("issues a new token pair and rotates the session [R2-08]", async () => {
       repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue(activeSession());
 
       const result = await service.refresh(signRefresh(2));
 
       expect(typeof result.accessToken).toBe("string");
       expect(typeof result.refreshToken).toBe("string");
+      // The new session joins the same family with the same absolute expiry.
+      expect(sessions.create).toHaveBeenCalledWith(
+        expect.objectContaining({ familyId: "fam-1", userId: user.id }),
+      );
+      const rotated = jwt.verify(result.refreshToken, "test-secret-key") as {
+        jti: string;
+      };
+      expect(rotated.jti).not.toBe("jti-1");
+    });
+
+    it("revokes the whole family when a rotated token is reused [R2-08]", async () => {
+      repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue(null);
+      sessions.findById.mockResolvedValue({
+        ...activeSession(),
+        replacedBy: "jti-2",
+      });
+
+      await expect(service.refresh(signRefresh(2))).rejects.toThrow("revoked");
+      expect(sessions.revokeFamily).toHaveBeenCalledWith("fam-1");
+    });
+
+    it("rejects a refresh token without jti (pre-session token)", async () => {
+      repo.getById.mockResolvedValue(user);
+      const legacy = jwt.sign(
+        { userId: user.id, tokenVersion: 2, type: "refresh" },
+        "test-secret-key",
+        { algorithm: "HS256", expiresIn: "30d" },
+      );
+
+      await expect(service.refresh(legacy)).rejects.toThrow(
+        "Invalid refresh token",
+      );
     });
 
     it("rejects a refresh token whose tokenVersion is stale (revoked)", async () => {
@@ -274,6 +334,43 @@ describe("AuthService", () => {
       await expect(service.refresh("not-a-jwt")).rejects.toThrow(
         "Invalid or expired refresh token",
       );
+    });
+  });
+
+  describe("logout [R2-08]", () => {
+    const user = new User({
+      id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      name: "John",
+      email: "john@example.com",
+      password: "hash",
+      tokenVersion: 2,
+    });
+
+    it("revokes the token's session family", async () => {
+      const token = jwt.sign(
+        { userId: user.id, tokenVersion: 2, type: "refresh", jti: "jti-1" },
+        "test-secret-key",
+        { algorithm: "HS256", expiresIn: "30d" },
+      );
+      sessions.findById.mockResolvedValue({
+        jti: "jti-1",
+        userId: user.id,
+        familyId: "fam-1",
+        expiresAt: new Date(Date.now() + 1000),
+        replacedBy: null,
+        revokedAt: null,
+      });
+
+      await service.logout(token);
+
+      expect(sessions.revokeFamily).toHaveBeenCalledWith("fam-1");
+    });
+
+    it("logoutAll bumps tokenVersion and revokes every session", async () => {
+      await service.logoutAll(user.id);
+
+      expect(repo.bumpTokenVersion).toHaveBeenCalledWith(user.id);
+      expect(sessions.revokeAllForUser).toHaveBeenCalledWith(user.id);
     });
   });
 });

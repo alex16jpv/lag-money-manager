@@ -10,6 +10,8 @@ export interface UpdateUserDTO {
   name?: string;
   email?: string;
   password?: string;
+  // Verification only; never persisted.
+  currentPassword?: string;
   timezone?: string;
 }
 

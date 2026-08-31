@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { ENVIRONMENT } from "../../shared/constants";
 import { AuthController } from "../controllers/AuthController";
+import { authMiddleware } from "../middlewares/authMiddleware";
 import { authRateLimit } from "../middlewares/authRateLimitMiddleware";
 import {
   loginSchema,
@@ -149,5 +150,34 @@ router.post(
   validate(refreshSchema),
   AuthController.refresh,
 );
+
+/**
+ * @openapi
+ * /auth/logout:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Revoke the refresh token's session family (per-device logout)
+ *     responses:
+ *       200: { description: Session revoked }
+ *       401: { description: Invalid refresh token }
+ */
+router.post(
+  "/logout",
+  refreshLimiter,
+  validate(refreshSchema),
+  AuthController.logout,
+);
+
+/**
+ * @openapi
+ * /auth/logout-all:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Revoke every session of the authenticated user
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: All sessions revoked }
+ */
+router.post("/logout-all", authMiddleware, AuthController.logoutAll);
 
 export default router;

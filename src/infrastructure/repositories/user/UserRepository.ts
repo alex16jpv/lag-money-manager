@@ -47,6 +47,19 @@ export class UserRepository implements IUserRepository {
     return this.toEntity(doc);
   }
 
+  async getByIdWithPassword(id: string): Promise<User | null> {
+    const doc = await UserModel.findOne({ _id: id, deletedAt: null }).lean();
+    if (!doc) return null;
+    return this.toEntity(doc);
+  }
+
+  async bumpTokenVersion(id: string): Promise<void> {
+    await UserModel.updateOne(
+      { _id: id, deletedAt: null },
+      { $inc: { tokenVersion: 1 } },
+    );
+  }
+
   async getDeletedByEmail(email: string): Promise<User | null> {
     const doc = await UserModel.findOne({
       email,

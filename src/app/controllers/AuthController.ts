@@ -10,6 +10,7 @@ const categoryService = new CategoryService(
 const authService = new AuthService(
   repositoryFactory.getUserRepository(),
   categoryService,
+  repositoryFactory.getRefreshSessionRepository(),
 );
 
 export class AuthController {
@@ -20,7 +21,11 @@ export class AuthController {
 
   static login = async (req: Request, res: Response) => {
     const { email, password } = req.body;
-    const result = await authService.login(email, password);
+    const result = await authService.login(
+      email,
+      password,
+      req.get("User-Agent") ?? undefined,
+    );
     res.status(200).json(result);
   };
 
@@ -28,5 +33,15 @@ export class AuthController {
     const { refreshToken } = req.body;
     const result = await authService.refresh(refreshToken);
     res.status(200).json(result);
+  };
+
+  static logout = async (req: Request, res: Response) => {
+    await authService.logout(req.body.refreshToken);
+    res.status(200).json({ message: "Session revoked" });
+  };
+
+  static logoutAll = async (req: Request, res: Response) => {
+    await authService.logoutAll(req.user!.userId);
+    res.status(200).json({ message: "All sessions revoked" });
   };
 }

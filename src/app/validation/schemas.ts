@@ -176,10 +176,17 @@ export const updateUserSchema = z.object({
         .min(8, "Password must be at least 8 characters")
         .max(128)
         .optional(),
+      // Re-authentication: a hijacked access token (15 min) must not be able
+      // to take over the account by swapping the credentials.
+      currentPassword: z.string().min(1).max(128).optional(),
       timezone: timezoneField,
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {
       message: "At least one field must be provided",
+    })
+    .refine((data) => !(data.password || data.email) || data.currentPassword, {
+      message: "currentPassword is required to change email or password",
+      path: ["currentPassword"],
     }),
 });
 

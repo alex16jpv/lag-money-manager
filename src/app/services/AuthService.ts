@@ -1,7 +1,9 @@
 import bcryptjs from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { v7 as uuidv7 } from "uuid";
 
 import { User } from "../../domain/entities/User";
+import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
@@ -21,10 +23,17 @@ interface AuthTokens {
   refreshToken: string;
 }
 
+interface RefreshPayload {
+  userId: string;
+  tokenVersion: number;
+  jti: string;
+}
+
 export class AuthService {
   constructor(
     private repo: IUserRepository,
     private categoryService: CategoryService,
+    private sessions: IRefreshSessionRepository,
   ) {}
 
   private toResponseDTO(user: User): UserResponseDTO {
@@ -38,8 +47,8 @@ export class AuthService {
     };
   }
 
-  private issueTokens(user: User): AuthTokens {
-    const accessToken = jwt.sign(
+  private signAccessToken(user: User): string {
+    return jwt.sign(
       { userId: user.id, email: user.email, timezone: user.timezone },
       ENVIRONMENT.JWT_SECRET,
       {
@@ -47,15 +56,45 @@ export class AuthService {
         expiresIn: ENVIRONMENT.JWT_EXPIRATION as jwt.SignOptions["expiresIn"],
       },
     );
-    const refreshToken = jwt.sign(
-      { userId: user.id, tokenVersion: user.tokenVersion, type: REFRESH_TOKEN_TYPE },
+  }
+
+  private signRefreshToken(
+    user: User,
+    jti: string,
+    expiresInSeconds?: number,
+  ): string {
+    return jwt.sign(
+      {
+        userId: user.id,
+        tokenVersion: user.tokenVersion,
+        type: REFRESH_TOKEN_TYPE,
+        jti,
+      },
       ENVIRONMENT.REFRESH_SECRET ?? ENVIRONMENT.JWT_SECRET,
       {
         algorithm: "HS256",
-        expiresIn: ENVIRONMENT.REFRESH_TOKEN_EXPIRATION as jwt.SignOptions["expiresIn"],
+        expiresIn: (expiresInSeconds ??
+          ENVIRONMENT.REFRESH_TOKEN_EXPIRATION) as jwt.SignOptions["expiresIn"],
       },
     );
-    return { accessToken, refreshToken };
+  }
+
+  // Login path: opens a new session family with the full refresh lifetime.
+  private async openSession(
+    user: User,
+    userAgent?: string,
+  ): Promise<AuthTokens> {
+    const jti = uuidv7();
+    const refreshToken = this.signRefreshToken(user, jti);
+    const { exp } = jwt.decode(refreshToken) as { exp: number };
+    await this.sessions.create({
+      jti,
+      userId: user.id,
+      familyId: jti,
+      expiresAt: new Date(exp * 1000),
+      userAgent,
+    });
+    return { accessToken: this.signAccessToken(user), refreshToken };
   }
 
   async register(dto: CreateUserDTO): Promise<UserResponseDTO> {
@@ -103,6 +142,7 @@ export class AuthService {
   async login(
     email: string,
     password: string,
+    userAgent?: string,
   ): Promise<AuthTokens & { user: UserResponseDTO }> {
     const user = await this.repo.getByEmail(email);
     if (!user || !user.password) {
@@ -115,10 +155,11 @@ export class AuthService {
       throw new ApiError("Unauthorized", "Invalid email or password");
     }
 
-    return { ...this.issueTokens(user), user: this.toResponseDTO(user) };
+    const tokens = await this.openSession(user, userAgent);
+    return { ...tokens, user: this.toResponseDTO(user) };
   }
 
-  async refresh(refreshToken: string): Promise<AuthTokens> {
+  private verifyRefreshToken(refreshToken: string): RefreshPayload {
     let payload: unknown;
     try {
       payload = jwt.verify(
@@ -135,15 +176,17 @@ export class AuthService {
       payload === null ||
       (payload as { type?: unknown }).type !== REFRESH_TOKEN_TYPE ||
       typeof (payload as { userId?: unknown }).userId !== "string" ||
-      typeof (payload as { tokenVersion?: unknown }).tokenVersion !== "number"
+      typeof (payload as { tokenVersion?: unknown }).tokenVersion !== "number" ||
+      typeof (payload as { jti?: unknown }).jti !== "string"
     ) {
       throw new ApiError("Unauthorized", "Invalid refresh token", "REFRESH_INVALID");
     }
 
-    const { userId, tokenVersion } = payload as {
-      userId: string;
-      tokenVersion: number;
-    };
+    return payload as unknown as RefreshPayload;
+  }
+
+  async refresh(refreshToken: string): Promise<AuthTokens> {
+    const { userId, tokenVersion, jti } = this.verifyRefreshToken(refreshToken);
 
     const user = await this.repo.getById(userId);
     if (!user) {
@@ -153,6 +196,57 @@ export class AuthService {
       throw new ApiError("Unauthorized", "Refresh token has been revoked", "REFRESH_REVOKED");
     }
 
-    return this.issueTokens(user);
+    const newJti = uuidv7();
+    const session = await this.sessions.rotate(jti, newJti);
+    if (!session) {
+      const stale = await this.sessions.findById(jti);
+      if (stale) {
+        // Reuse of a rotated/revoked token: someone replayed an old refresh
+        // (theft or a duplicated client). Kill the whole chain.
+        await this.sessions.revokeFamily(stale.familyId);
+        logger.warn(
+          { userId, familyId: stale.familyId },
+          "Refresh token reuse detected; family revoked",
+        );
+        throw new ApiError("Unauthorized", "Refresh token has been revoked", "REFRESH_REVOKED");
+      }
+      throw new ApiError("Unauthorized", "Invalid or expired refresh token", "REFRESH_INVALID");
+    }
+
+    // Absolute cap: rotation never extends the family past its original expiry.
+    const remainingSeconds = Math.floor(
+      (session.expiresAt.getTime() - Date.now()) / 1000,
+    );
+    if (remainingSeconds <= 0) {
+      throw new ApiError("Unauthorized", "Invalid or expired refresh token", "REFRESH_INVALID");
+    }
+
+    await this.sessions.create({
+      jti: newJti,
+      userId: user.id,
+      familyId: session.familyId,
+      expiresAt: session.expiresAt,
+    });
+
+    return {
+      accessToken: this.signAccessToken(user),
+      refreshToken: this.signRefreshToken(user, newJti, remainingSeconds),
+    };
+  }
+
+  // Per-device logout: revokes the presented token's whole rotation family.
+  async logout(refreshToken: string): Promise<void> {
+    const { jti } = this.verifyRefreshToken(refreshToken);
+    const session = await this.sessions.findById(jti);
+    if (session) {
+      await this.sessions.revokeFamily(session.familyId);
+    }
+  }
+
+  // Global logout: kills every refresh token (version mismatch) and marks
+  // the session records revoked for bookkeeping.
+  async logoutAll(userId: string): Promise<void> {
+    await this.repo.bumpTokenVersion(userId);
+    await this.sessions.revokeAllForUser(userId);
   }
 }

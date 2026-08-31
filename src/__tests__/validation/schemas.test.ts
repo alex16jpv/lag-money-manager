@@ -268,7 +268,7 @@ describe("Validation Schemas", () => {
     it("should accept valid update with email", () => {
       const result = updateUserSchema.safeParse({
         params: { id: validUUID },
-        body: { email: "new@example.com" },
+        body: { email: "new@example.com", currentPassword: "oldpassword" },
       });
       expect(result.success).toBe(true);
     });
@@ -276,7 +276,7 @@ describe("Validation Schemas", () => {
     it("should accept valid update with password", () => {
       const result = updateUserSchema.safeParse({
         params: { id: validUUID },
-        body: { password: "newpassword123" },
+        body: { password: "newpassword123", currentPassword: "oldpassword" },
       });
       expect(result.success).toBe(true);
     });

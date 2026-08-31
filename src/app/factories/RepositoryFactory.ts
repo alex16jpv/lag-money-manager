@@ -2,6 +2,7 @@ import { IAccountRepository } from "../../domain/repositories/account/IAccountRe
 import { IBudgetRepository } from "../../domain/repositories/budget/IBudgetRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
+import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT } from "../../shared/constants";
@@ -20,6 +21,7 @@ export const REPO_KEYS = {
   TRANSACTION: "transaction",
   IDEMPOTENCY: "idempotency",
   BUDGET: "budget",
+  REFRESH_SESSION: "refreshSession",
 } as const;
 
 type DbProvider = (factory: RepositoryFactory) => void;
@@ -83,6 +85,12 @@ export class RepositoryFactory {
 
   getBudgetRepository(): IBudgetRepository {
     return this.getRepository<IBudgetRepository>(REPO_KEYS.BUDGET);
+  }
+
+  getRefreshSessionRepository(): IRefreshSessionRepository {
+    return this.getRepository<IRefreshSessionRepository>(
+      REPO_KEYS.REFRESH_SESSION,
+    );
   }
 }
 
