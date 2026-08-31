@@ -73,7 +73,7 @@ const mockBudgetRepo = {
 };
 
 const mockIdempotencyRepo = {
-  findTransactionId: jest.fn().mockResolvedValue(null),
+  find: jest.fn().mockResolvedValue(null),
   record: jest.fn().mockResolvedValue(undefined),
 };
 

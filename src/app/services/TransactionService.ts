@@ -23,6 +23,14 @@ function isDuplicateKeyError(err: unknown): boolean {
   );
 }
 
+// Scope in the stored key keeps future idempotent operations from colliding.
+const TXN_CREATE_SCOPE = "txn-create";
+
+export interface IdempotencyMeta {
+  key: string;
+  requestHash: string;
+}
+
 export class TransactionService {
   constructor(
     private transactionRepo: ITransactionRepository,
@@ -56,10 +64,10 @@ export class TransactionService {
 
   async createTransaction(
     dto: CreateTransactionDTO,
-    idempotencyKey?: string,
+    idempotency?: IdempotencyMeta,
   ): Promise<Transaction> {
-    if (idempotencyKey) {
-      const existing = await this.replayIdempotent(dto.userId, idempotencyKey);
+    if (idempotency) {
+      const existing = await this.replayIdempotent(dto.userId, idempotency);
       if (existing) return existing;
     }
 
@@ -71,19 +79,21 @@ export class TransactionService {
       return await withTransaction(async (session) => {
         await this.adjustBalances(transaction, 1, session);
         const created = await this.transactionRepo.create(transaction, session);
-        if (idempotencyKey) {
+        if (idempotency) {
           await this.idempotencyRepo.record(
             dto.userId,
-            idempotencyKey,
+            TXN_CREATE_SCOPE,
+            idempotency.key,
             created.id,
+            idempotency.requestHash,
             session,
           );
         }
         return created;
       });
     } catch (err) {
-      if (idempotencyKey && isDuplicateKeyError(err)) {
-        const existing = await this.replayIdempotent(dto.userId, idempotencyKey);
+      if (idempotency && isDuplicateKeyError(err)) {
+        const existing = await this.replayIdempotent(dto.userId, idempotency);
         if (existing) return existing;
       }
       throw err;
@@ -92,11 +102,30 @@ export class TransactionService {
 
   private async replayIdempotent(
     userId: string,
-    key: string,
+    idempotency: IdempotencyMeta,
   ): Promise<Transaction | null> {
-    const id = await this.idempotencyRepo.findTransactionId(userId, key);
-    if (!id) return null;
-    return this.transactionRepo.getById(id);
+    const record = await this.idempotencyRepo.find(
+      userId,
+      TXN_CREATE_SCOPE,
+      idempotency.key,
+    );
+    if (!record) return null;
+    if (record.requestHash !== idempotency.requestHash) {
+      throw new ApiError(
+        "UnprocessableEntity",
+        "Idempotency-Key was already used with a different payload",
+      );
+    }
+    const transaction = await this.transactionRepo.getById(
+      record.transactionId,
+    );
+    if (!transaction) {
+      throw new ApiError(
+        "Conflict",
+        "The transaction created with this Idempotency-Key was deleted; retry with a new key",
+      );
+    }
+    return transaction;
   }
 
   // Low-friction create: only amount is required; type defaults to EXPENSE, date
@@ -104,6 +133,7 @@ export class TransactionService {
   // pendingDetails so the client can list these for later detailing.
   async quickAddTransaction(
     dto: QuickAddTransactionDTO,
+    idempotency?: IdempotencyMeta,
   ): Promise<Transaction> {
     const type = dto.type ?? "EXPENSE";
     let fromAccountId = dto.fromAccountId ?? null;
@@ -116,16 +146,19 @@ export class TransactionService {
       toAccountId = await this.resolveDefaultAccountId(dto.userId);
     }
 
-    return this.createTransaction({
-      type,
-      amount: dto.amount,
-      date: dto.date ?? new Date(),
-      categoryId: dto.categoryId ?? null,
-      fromAccountId,
-      toAccountId,
-      userId: dto.userId,
-      pendingDetails: true,
-    });
+    return this.createTransaction(
+      {
+        type,
+        amount: dto.amount,
+        date: dto.date ?? new Date(),
+        categoryId: dto.categoryId ?? null,
+        fromAccountId,
+        toAccountId,
+        userId: dto.userId,
+        pendingDetails: true,
+      },
+      idempotency,
+    );
   }
 
   private async resolveDefaultAccountId(userId: string): Promise<string> {

@@ -74,7 +74,7 @@ const createMockAccountRepo = (): jest.Mocked<IAccountRepository> => ({
 });
 
 const createMockIdempotencyRepo = (): jest.Mocked<IIdempotencyRepository> => ({
-  findTransactionId: jest.fn().mockResolvedValue(null),
+  find: jest.fn().mockResolvedValue(null),
   record: jest.fn().mockResolvedValue(undefined),
 });
 
@@ -310,7 +310,10 @@ describe("TransactionService", () => {
         fromAccountId: ACC_A,
         userId: USER,
       });
-      idempotencyRepo.findTransactionId.mockResolvedValue(TX_ID);
+      idempotencyRepo.find.mockResolvedValue({
+        transactionId: TX_ID,
+        requestHash: "h1",
+      });
       txRepo.getById.mockResolvedValue(stored);
 
       const result = await service.createTransaction(
@@ -321,11 +324,54 @@ describe("TransactionService", () => {
           fromAccountId: ACC_A,
           userId: USER,
         },
-        "key-1",
+        { key: "key-1", requestHash: "h1" },
       );
 
       expect(result.id).toBe(TX_ID);
       expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
+      expect(txRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a reused idempotency key with a different payload (422) [R2-10]", async () => {
+      idempotencyRepo.find.mockResolvedValue({
+        transactionId: TX_ID,
+        requestHash: "hash-of-original",
+      });
+
+      await expect(
+        service.createTransaction(
+          {
+            type: "EXPENSE",
+            amount: 999,
+            date: new Date("2026-03-28"),
+            fromAccountId: ACC_A,
+            userId: USER,
+          },
+          { key: "key-1", requestHash: "hash-of-different-body" },
+        ),
+      ).rejects.toThrow("different payload");
+      expect(txRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("returns 409 when the original transaction of the key was deleted [R2-10]", async () => {
+      idempotencyRepo.find.mockResolvedValue({
+        transactionId: TX_ID,
+        requestHash: "h1",
+      });
+      txRepo.getById.mockResolvedValue(null);
+
+      await expect(
+        service.createTransaction(
+          {
+            type: "EXPENSE",
+            amount: 100,
+            date: new Date("2026-03-28"),
+            fromAccountId: ACC_A,
+            userId: USER,
+          },
+          { key: "key-1", requestHash: "h1" },
+        ),
+      ).rejects.toThrow("was deleted");
       expect(txRepo.create).not.toHaveBeenCalled();
     });
   });

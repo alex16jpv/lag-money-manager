@@ -2,9 +2,29 @@ import { Request, Response } from "express";
 
 import { TransactionFilters } from "../../domain/repositories/transaction/ITransactionRepository";
 import { TransactionType } from "../../shared/constants";
+import { ApiError } from "../../shared/errors";
 import { extractPagination } from "../../shared/pagination";
+import { hashPayload } from "../../shared/requestHash";
 import repositoryFactory from "../factories/RepositoryFactory";
-import { TransactionService } from "../services/TransactionService";
+import {
+  IdempotencyMeta,
+  TransactionService,
+} from "../services/TransactionService";
+
+// Bounded charset/length: the key becomes part of a stored _id.
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]{1,200}$/;
+
+function idempotencyMeta(req: Request): IdempotencyMeta | undefined {
+  const key = req.get("Idempotency-Key");
+  if (!key) return undefined;
+  if (!IDEMPOTENCY_KEY_PATTERN.test(key)) {
+    throw new ApiError(
+      "BadRequest",
+      "Idempotency-Key must be 1-200 characters of [A-Za-z0-9_-]",
+    );
+  }
+  return { key, requestHash: hashPayload(req.body) };
+}
 
 const transactionService = new TransactionService(
   repositoryFactory.getTransactionRepository(),
@@ -48,20 +68,19 @@ export class TransactionController {
 
   static createTransaction = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    const idempotencyKey = req.get("Idempotency-Key") ?? undefined;
     const newTransaction = await transactionService.createTransaction(
       { ...req.body, userId },
-      idempotencyKey,
+      idempotencyMeta(req),
     );
     res.status(201).json(newTransaction);
   };
 
   static quickAddTransaction = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    const newTransaction = await transactionService.quickAddTransaction({
-      ...req.body,
-      userId,
-    });
+    const newTransaction = await transactionService.quickAddTransaction(
+      { ...req.body, userId },
+      idempotencyMeta(req),
+    );
     res.status(201).json(newTransaction);
   };
 
