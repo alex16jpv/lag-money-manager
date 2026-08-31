@@ -61,6 +61,7 @@ const makeBudget = (over: Partial<Budget> = {}): Budget =>
     amount: 100,
     periodType: "MONTHLY",
     userId: USER,
+    createdAt: new Date("2026-08-01T00:00:00Z"),
     ...over,
   });
 
@@ -235,6 +236,48 @@ describe("BudgetService", () => {
           CTX,
         ),
       ).rejects.toThrow("already exists");
+    });
+  });
+
+  describe("effectiveFrom [R2-16a]", () => {
+    const list = (budgets: Budget[]) =>
+      budgetRepo.getAllByUserId.mockResolvedValue({
+        data: budgets,
+        pagination: { limit: 20, offset: 0, total: budgets.length, hasMore: false, nextCursor: null },
+      });
+
+    it("hides a budget for references before it existed", async () => {
+      // Created in October; reference (CTX) is August.
+      list([makeBudget({ createdAt: new Date("2026-10-05T00:00:00Z") })]);
+
+      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+
+      expect(result.data).toHaveLength(0);
+    });
+
+    it("a backdated effectiveFrom overrides createdAt", async () => {
+      list([
+        makeBudget({
+          createdAt: new Date("2026-10-05T00:00:00Z"),
+          effectiveFrom: new Date("2026-07-01T00:00:00Z"),
+        }),
+      ]);
+
+      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].effectiveFrom.toISOString()).toBe(
+        "2026-07-01T00:00:00.000Z",
+      );
+    });
+
+    it("shows the partial first window (created mid-period)", async () => {
+      // Created Aug 20; the August window still lists (full-month spend).
+      list([makeBudget({ createdAt: new Date("2026-08-20T00:00:00Z") })]);
+
+      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+
+      expect(result.data).toHaveLength(1);
     });
   });
 });

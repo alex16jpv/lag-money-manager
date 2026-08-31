@@ -14,9 +14,13 @@ export interface BudgetProps {
   periodType: BudgetPeriodType;
   periodStartDate?: Date | null; // CUSTOM only
   periodEndDate?: Date | null; // CUSTOM only
+  // The budget "exists" from here on: past references before this date don't
+  // list it. Defaults to createdAt; editable for backdating.
+  effectiveFrom?: Date | null;
   note?: string | null;
   userId: string;
   archivedAt?: Date | null;
+  createdAt?: Date;
 }
 
 export class Budget {
@@ -29,9 +33,11 @@ export class Budget {
   periodType: BudgetPeriodType;
   periodStartDate: Date | null;
   periodEndDate: Date | null;
+  effectiveFrom: Date | null;
   note: string | null;
   userId: string;
   archivedAt: Date | null;
+  createdAt: Date;
 
   constructor(props: BudgetProps) {
     this.id = props.id ?? uuidv7();
@@ -43,9 +49,16 @@ export class Budget {
     this.periodType = props.periodType;
     this.periodStartDate = props.periodStartDate ?? null;
     this.periodEndDate = props.periodEndDate ?? null;
+    this.effectiveFrom = props.effectiveFrom ?? null;
     this.note = props.note ?? null;
     this.userId = props.userId;
     this.archivedAt = props.archivedAt ?? null;
+    this.createdAt = props.createdAt ?? new Date();
+  }
+
+  // Windows that end on or before this instant predate the budget.
+  lifetimeFloor(): Date {
+    return this.effectiveFrom ?? this.createdAt;
   }
 
   amountForPeriod(periodKey: string): number {

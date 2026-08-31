@@ -31,7 +31,12 @@ export class BudgetService {
   ): Promise<PaginatedResult<BudgetView>> {
     const result = await this.repo.getAllByUserId(userId, pagination, filters);
     const views = await this.toViews(userId, result.data, ctx);
-    return { data: views, pagination: result.pagination };
+    // A budget doesn't exist before its lifetime floor: past references skip it.
+    const data = views.filter(
+      (view, i) =>
+        view.periodTo.getTime() > result.data[i].lifetimeFloor().getTime(),
+    );
+    return { data, pagination: result.pagination };
   }
 
   async getBudgetById(
@@ -265,6 +270,7 @@ export class BudgetService {
         baseAmount: budget.amount,
         amount,
         spent: fromCents(spentCents),
+        effectiveFrom: budget.lifetimeFloor(),
         note: budget.note,
         archivedAt: budget.archivedAt,
       };

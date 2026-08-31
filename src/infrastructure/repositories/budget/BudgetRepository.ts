@@ -33,9 +33,11 @@ export class BudgetRepository implements IBudgetRepository {
       periodType: doc.periodType,
       periodStartDate: doc.periodStartDate,
       periodEndDate: doc.periodEndDate,
+      effectiveFrom: doc.effectiveFrom ?? null,
       note: doc.note ?? null,
       userId: doc.userId,
       archivedAt: doc.deletedAt,
+      createdAt: doc.createdAt,
     });
   }
 

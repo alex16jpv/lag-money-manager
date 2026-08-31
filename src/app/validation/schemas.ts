@@ -334,6 +334,7 @@ export const createBudgetSchema = z.object({
     }),
     periodStartDate: isoDate.optional(),
     periodEndDate: isoDate.optional(),
+    effectiveFrom: isoDate.optional(),
     note: z.string().max(1000).optional().nullable(),
   }),
 });
@@ -353,6 +354,7 @@ export const updateBudgetSchema = z.object({
       periodType: z.enum(budgetPeriodValues).optional(),
       periodStartDate: isoDate.optional(),
       periodEndDate: isoDate.optional(),
+      effectiveFrom: isoDate.nullable().optional(),
       note: z.string().max(1000).optional().nullable(),
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {

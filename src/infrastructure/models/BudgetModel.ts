@@ -17,6 +17,7 @@ export interface IBudgetDocument {
   periodType: BudgetPeriodType;
   periodStartDate: Date | null;
   periodEndDate: Date | null;
+  effectiveFrom: Date | null;
   note: string | null;
   userId: string;
   deletedAt: Date | null;
@@ -39,6 +40,7 @@ const BudgetSchema = new Schema<IBudgetDocument>(
     },
     periodStartDate: { type: Date, default: null },
     periodEndDate: { type: Date, default: null },
+    effectiveFrom: { type: Date, default: null },
     note: { type: String, default: null },
     userId: { type: String, required: true },
     deletedAt: { type: Date, default: null },

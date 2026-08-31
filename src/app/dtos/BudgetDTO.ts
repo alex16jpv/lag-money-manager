@@ -8,6 +8,7 @@ export interface CreateBudgetDTO {
   periodType: BudgetPeriodType;
   periodStartDate?: Date | null;
   periodEndDate?: Date | null;
+  effectiveFrom?: Date | null;
   note?: string | null;
   userId: string;
 }
@@ -21,6 +22,7 @@ export interface UpdateBudgetDTO {
   periodType?: BudgetPeriodType;
   periodStartDate?: Date | null;
   periodEndDate?: Date | null;
+  effectiveFrom?: Date | null;
   note?: string | null;
 }
 
@@ -39,6 +41,7 @@ export interface BudgetView {
   baseAmount: number;
   amount: number; // resolved for this period (override ?? base)
   spent: number;
+  effectiveFrom: Date;
   note: string | null;
   archivedAt: Date | null;
 }
