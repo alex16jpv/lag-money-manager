@@ -1,5 +1,6 @@
 import mongoose, { Schema } from "mongoose";
-import { TRANSACTION_TYPES, COLORS, MODEL_NAMES, Color, CategoryType } from "../../../shared/constants";
+
+import { CategoryType,Color, COLORS, MODEL_NAMES, TRANSACTION_TYPES } from "../../shared/constants";
 
 export interface ICategoryDocument {
   _id: string;
@@ -8,6 +9,7 @@ export interface ICategoryDocument {
   color?: Color;
   type?: CategoryType;
   userId: string;
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,13 +22,19 @@ const CategorySchema = new Schema<ICategoryDocument>(
     color: { type: String, required: false, enum: Object.keys(COLORS) },
     type: { type: String, required: false, enum: Object.keys(TRANSACTION_TYPES) },
     userId: { type: String, required: true },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
 CategorySchema.index({ userId: 1, _id: 1 });
+// One active category name per user (partial: excludes soft-deleted rows).
+CategorySchema.index(
+  { userId: 1, name: 1 },
+  { unique: true, partialFilterExpression: { deletedAt: null } },
+);
 
-export const CategoryMongoModel = mongoose.model<ICategoryDocument>(
+export const CategoryModel = mongoose.model<ICategoryDocument>(
   MODEL_NAMES.CATEGORY,
   CategorySchema,
 );

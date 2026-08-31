@@ -1,14 +1,15 @@
 import mongoose, { Schema } from "mongoose";
+
 import {
   MODEL_NAMES,
   TRANSACTION_TYPES,
   TransactionType,
-} from "../../../shared/constants";
+} from "../../shared/constants";
 
 export interface ITransactionDocument {
   _id: string;
   type: TransactionType;
-  amount: number;
+  amount: number; // stored as integer cents
   date: Date;
   categoryId: string | null;
   description: string | null;
@@ -17,6 +18,7 @@ export interface ITransactionDocument {
   userId: string;
   tags: string | null;
   note: string | null;
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,7 +31,7 @@ const TransactionSchema = new Schema<ITransactionDocument>(
       required: true,
       enum: Object.keys(TRANSACTION_TYPES),
     },
-    amount: { type: Number, required: true },
+    amount: { type: Number, required: true }, // integer cents
     date: { type: Date, required: true },
     categoryId: { type: String, default: null },
     description: { type: String, default: null },
@@ -38,13 +40,18 @@ const TransactionSchema = new Schema<ITransactionDocument>(
     userId: { type: String, required: true },
     tags: { type: String, default: null },
     note: { type: String, default: null },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
-TransactionSchema.index({ userId: 1, _id: 1 });
+// Covers the primary listing query: filter by userId, sorted by (date DESC,
+// _id DESC). Without this the sort runs in memory (32MB cap on Atlas M0).
+TransactionSchema.index({ userId: 1, date: -1, _id: -1 });
+// Supports per-category aggregation (spending stats) and the category filter.
+TransactionSchema.index({ userId: 1, categoryId: 1, date: -1 });
 
-export const TransactionMongoModel = mongoose.model<ITransactionDocument>(
+export const TransactionModel = mongoose.model<ITransactionDocument>(
   MODEL_NAMES.TRANSACTION,
   TransactionSchema,
 );

@@ -1,18 +1,20 @@
 import mongoose, { Schema } from "mongoose";
+
 import {
   ACCOUNT_TYPES,
   AccountType,
   COLORS,
   MODEL_NAMES,
-} from "../../../shared/constants";
+} from "../../shared/constants";
 
 export interface IAccountDocument {
   _id: string;
   name: string;
   type: AccountType;
-  balance: number;
+  balance: number; // stored as integer cents
   color?: string;
   userId: string;
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,16 +28,17 @@ const AccountSchema = new Schema<IAccountDocument>(
       required: true,
       enum: Object.keys(ACCOUNT_TYPES),
     },
-    balance: { type: Number, required: true },
+    balance: { type: Number, required: true }, // integer cents
     color: { type: String, required: false, enum: Object.keys(COLORS) },
     userId: { type: String, required: true },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
 AccountSchema.index({ userId: 1, _id: 1 });
 
-export const AccountMongoModel = mongoose.model<IAccountDocument>(
+export const AccountModel = mongoose.model<IAccountDocument>(
   MODEL_NAMES.ACCOUNT,
   AccountSchema,
 );

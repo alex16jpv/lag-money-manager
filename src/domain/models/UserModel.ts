@@ -1,11 +1,13 @@
 import mongoose, { Schema } from "mongoose";
-import { MODEL_NAMES } from "../../../shared/constants";
+
+import { MODEL_NAMES } from "../../shared/constants";
 
 export interface IUserDocument {
   _id: string;
   name: string;
   email: string;
   password: string;
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -16,11 +18,12 @@ const UserSchema = new Schema<IUserDocument>(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
-export const UserMongoModel = mongoose.model<IUserDocument>(
+export const UserModel = mongoose.model<IUserDocument>(
   MODEL_NAMES.USER,
   UserSchema,
 );
