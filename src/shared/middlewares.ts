@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express";
-import { ConnectionError as SequelizeConnectionError } from "sequelize";
-import { ApiError } from "./errors";
+
 import { DomainValidationError } from "../domain/errors";
+import { ApiError } from "./errors";
 import logger from "./logger";
 
 const MONGO_UNAVAILABLE_ERROR_NAMES = new Set([
@@ -13,16 +13,10 @@ const MONGO_UNAVAILABLE_ERROR_NAMES = new Set([
 
 function isDatabaseUnavailableError(error: Error): boolean {
   return (
-    error instanceof SequelizeConnectionError ||
     MONGO_UNAVAILABLE_ERROR_NAMES.has(error?.name) ||
     (error?.name === "MongooseError" &&
       /buffering timed out|before initial connection/.test(error.message))
   );
-}
-
-interface ValidationError extends Error {
-  errors: { message: string }[];
-  fields: string[];
 }
 
 interface MongoServerError extends Error {
@@ -50,30 +44,6 @@ export const errorMiddleware = (
       error: "ValidationError",
       message: error.message,
       ...(error.field && { details: { field: error.field } }),
-    });
-    return;
-  }
-
-  // Sequelize unique constraint
-  if (
-    error?.name === "SequelizeUniqueConstraintError" &&
-    (error as ValidationError)?.errors?.length > 0
-  ) {
-    res.status(409).json({
-      error: "ConflictError",
-      message: (error as ValidationError).errors
-        ?.map((err: { message: string }) => err.message)
-        ?.join(", "),
-    });
-    return;
-  }
-
-  // Sequelize foreign key constraint
-  if (error?.name === "SequelizeForeignKeyConstraintError") {
-    res.status(400).json({
-      error: "ValidationError",
-      message: "Foreign key constraint error",
-      details: { fields: (error as ValidationError).fields?.join(", ") },
     });
     return;
   }

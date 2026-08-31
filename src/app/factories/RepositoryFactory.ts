@@ -1,13 +1,9 @@
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
-import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
-import { ENVIRONMENT } from "../../shared/constants";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
+import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { ENVIRONMENT } from "../../shared/constants";
 import logger from "../../shared/logger";
-import {
-  dbType as seqDbType,
-  registerRepositories as registerSeqRepositories,
-} from "./providers/sequelizeProvider";
 import {
   dbType as mongoDbType,
   registerRepositories as registerMongoRepositories,
@@ -79,7 +75,6 @@ export class RepositoryFactory {
 }
 
 // Register providers
-RepositoryFactory.registerProvider(seqDbType, registerSeqRepositories);
 RepositoryFactory.registerProvider(mongoDbType, registerMongoRepositories);
 
 const repositoryFactory = new RepositoryFactory();
