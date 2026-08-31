@@ -48,7 +48,11 @@ export class AccountRepository implements IAccountRepository {
     const { limit, offset, cursor } = pagination;
     const filter = { ...baseFilter };
     if (cursor) {
-      filter._id = { $gt: cursor };
+      // Merge with an ids ($in) filter instead of clobbering it.
+      filter._id =
+        filter._id && typeof filter._id === "object"
+          ? { ...(filter._id as Record<string, unknown>), $gt: cursor }
+          : { $gt: cursor };
     }
 
     const [docs, total] = await Promise.all([
