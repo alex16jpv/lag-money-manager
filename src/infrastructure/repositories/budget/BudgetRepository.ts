@@ -39,6 +39,7 @@ export class BudgetRepository implements IBudgetRepository {
       userId: doc.userId,
       archivedAt: doc.deletedAt,
       createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
     });
   }
 

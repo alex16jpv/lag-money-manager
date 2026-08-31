@@ -21,6 +21,8 @@ export class CategoryRepository implements ICategoryRepository {
       userId: doc.userId,
       seedKey: doc.seedKey,
       archivedAt: doc.deletedAt,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
     });
   }
 

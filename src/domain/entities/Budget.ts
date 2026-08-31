@@ -23,6 +23,7 @@ export interface BudgetProps {
   userId: string;
   archivedAt?: Date | null;
   createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export class Budget {
@@ -41,6 +42,7 @@ export class Budget {
   userId: string;
   archivedAt: Date | null;
   createdAt: Date;
+  updatedAt?: Date;
 
   constructor(props: BudgetProps) {
     this.id = props.id ?? uuidv7();
@@ -58,6 +60,7 @@ export class Budget {
     this.userId = props.userId;
     this.archivedAt = props.archivedAt ?? null;
     this.createdAt = props.createdAt ?? new Date();
+    this.updatedAt = props.updatedAt;
   }
 
   // Windows that end on or before this instant predate the budget.

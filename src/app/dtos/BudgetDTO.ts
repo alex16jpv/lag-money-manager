@@ -51,4 +51,6 @@ export interface BudgetView {
   effectiveFrom: Date;
   note: string | null;
   archivedAt: Date | null;
+  createdAt: Date;
+  updatedAt?: Date;
 }

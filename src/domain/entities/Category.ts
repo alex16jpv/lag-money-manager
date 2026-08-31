@@ -12,6 +12,8 @@ export interface CategoryProps {
   // Stable identity of a seeded default; survives renames (enables re-seed).
   seedKey?: string;
   archivedAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export class Category {
@@ -23,8 +25,10 @@ export class Category {
   userId: string;
   seedKey?: string;
   archivedAt: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 
-  constructor({ id, name, emoji, color, type, userId, seedKey, archivedAt }: CategoryProps) {
+  constructor({ id, name, emoji, color, type, userId, seedKey, archivedAt, createdAt, updatedAt }: CategoryProps) {
     this.id = id ?? uuidv7();
     this.name = name;
     this.emoji = emoji;
@@ -33,5 +37,7 @@ export class Category {
     this.userId = userId;
     this.seedKey = seedKey;
     this.archivedAt = archivedAt ?? null;
+    this.createdAt = createdAt;
+    this.updatedAt = updatedAt;
   }
 }

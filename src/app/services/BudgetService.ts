@@ -332,6 +332,8 @@ export class BudgetService {
         effectiveFrom: budget.lifetimeFloor(),
         note: budget.note,
         archivedAt: budget.archivedAt,
+        createdAt: budget.createdAt,
+        updatedAt: budget.updatedAt,
       };
     });
   }

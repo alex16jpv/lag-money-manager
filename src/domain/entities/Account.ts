@@ -14,6 +14,8 @@ export interface AccountProps {
   userId: string;
   isDefault?: boolean;
   archivedAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export class Account {
@@ -26,6 +28,8 @@ export class Account {
   userId: string;
   isDefault: boolean;
   archivedAt: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 
   constructor({
     id,
@@ -37,6 +41,8 @@ export class Account {
     userId,
     isDefault,
     archivedAt,
+    createdAt,
+    updatedAt,
   }: AccountProps) {
     this.id = id ?? uuidv7();
     this.name = name;
@@ -47,5 +53,7 @@ export class Account {
     this.userId = userId;
     this.isDefault = isDefault ?? false;
     this.archivedAt = archivedAt ?? null;
+    this.createdAt = createdAt;
+    this.updatedAt = updatedAt;
   }
 }

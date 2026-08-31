@@ -27,6 +27,8 @@ export class AccountRepository implements IAccountRepository {
       userId: doc.userId,
       isDefault: doc.isDefault,
       archivedAt: doc.deletedAt,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
     });
   }
 
