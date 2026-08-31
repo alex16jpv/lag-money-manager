@@ -41,6 +41,8 @@ export interface BudgetView {
   baseAmount: number;
   amount: number; // resolved for this period (override ?? base)
   spent: number;
+  // True when `amount` comes from a per-period override, not the base.
+  hasOverride: boolean;
   effectiveFrom: Date;
   note: string | null;
   archivedAt: Date | null;

@@ -365,7 +365,14 @@ export const updateBudgetSchema = z.object({
 export const budgetAmountOverrideSchema = z.object({
   params: z.object({ id: z.string().uuid("ID must be a valid UUID") }),
   query: budgetReferenceQuery,
-  body: z.object({ amount: moneyAmount }),
+  // 0 is allowed: "this budget doesn't apply this period".
+  body: z.object({
+    amount: z
+      .number()
+      .min(0, "Amount must be at least 0")
+      .multipleOf(0.01, "Amount must have at most 2 decimal places")
+      .max(MAX_AMOUNT, `Amount must be at most ${MAX_AMOUNT}`),
+  }),
 });
 
 export const idParamSchema = z.object({

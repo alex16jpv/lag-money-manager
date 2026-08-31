@@ -56,4 +56,19 @@ router.put(
   BudgetController.setAmountOverride,
 );
 
+/**
+ * @openapi
+ * /budgets/{id}/amount:
+ *   delete:
+ *     tags: [Budgets]
+ *     summary: Remove the override for the reference period (back to baseAmount)
+ *     responses:
+ *       200: { description: Override removed }
+ */
+router.delete(
+  "/:id/amount",
+  validate(budgetIdParamSchema),
+  BudgetController.clearAmountOverride,
+);
+
 export default router;

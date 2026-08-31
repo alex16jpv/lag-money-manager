@@ -65,7 +65,16 @@ export class BudgetService {
     ctx: ViewContext,
   ): Promise<BudgetView> {
     const existing = await this.getOwned(id, userId);
-    const merged = new Budget({ ...existing, ...dto });
+    const patch: Partial<Budget> = { ...dto };
+    if (dto.periodType && dto.periodType !== existing.periodType) {
+      // Override keys are period-type-specific: stale ones would never match.
+      patch.amountOverrides = {};
+      if (dto.periodType !== "CUSTOM") {
+        patch.periodStartDate = null;
+        patch.periodEndDate = null;
+      }
+    }
+    const merged = new Budget({ ...existing, ...patch });
     this.assertValidPeriod(merged);
     if (dto.categoryIds !== undefined) {
       await this.assertCategoriesUsable(
@@ -80,7 +89,7 @@ export class BudgetService {
       merged.categoryIds,
       id,
     );
-    const updated = await this.repo.update(id, dto);
+    const updated = await this.repo.update(id, patch);
     const [view] = await this.toViews(userId, [updated], ctx);
     return view;
   }
@@ -88,6 +97,21 @@ export class BudgetService {
   async deleteBudget(id: string, userId: string): Promise<void> {
     await this.getOwned(id, userId);
     await this.repo.delete(id);
+  }
+
+  async clearAmountOverride(
+    id: string,
+    userId: string,
+    ctx: ViewContext,
+  ): Promise<BudgetView> {
+    const budget = await this.getOwned(id, userId);
+    const { key } = resolvePeriod(this.periodDef(budget), ctx.reference, ctx.timezone);
+    const updated = await this.repo.clearAmountOverride(id, userId, key);
+    if (!updated) {
+      throw new ApiError("NotFound", "Budget not found");
+    }
+    const [view] = await this.toViews(userId, [updated], ctx);
+    return view;
   }
 
   async setAmountOverride(
@@ -140,6 +164,11 @@ export class BudgetService {
       if (budget.periodStartDate >= budget.periodEndDate) {
         throw new ApiError("BadRequest", "startDate must be before endDate");
       }
+    } else if (budget.periodStartDate || budget.periodEndDate) {
+      throw new ApiError(
+        "BadRequest",
+        "periodStartDate/periodEndDate are only allowed for CUSTOM budgets",
+      );
     }
   }
 
@@ -270,6 +299,7 @@ export class BudgetService {
         baseAmount: budget.amount,
         amount,
         spent: fromCents(spentCents),
+        hasOverride: budget.amountOverrides[period.key] !== undefined,
         effectiveFrom: budget.lifetimeFloor(),
         note: budget.note,
         archivedAt: budget.archivedAt,

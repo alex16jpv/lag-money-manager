@@ -76,6 +76,7 @@ const mockBudgetRepo = {
   delete: jest.fn(),
   findOverlapping: jest.fn().mockResolvedValue([]),
   setAmountOverride: jest.fn(),
+  clearAmountOverride: jest.fn(),
 };
 
 const mockIdempotencyRepo = {

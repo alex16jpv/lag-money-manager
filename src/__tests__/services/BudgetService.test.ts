@@ -33,6 +33,7 @@ const createBudgetRepo = (): jest.Mocked<IBudgetRepository> =>
     delete: jest.fn(),
     findOverlapping: jest.fn().mockResolvedValue([]),
     setAmountOverride: jest.fn(),
+    clearAmountOverride: jest.fn(),
   }) as unknown as jest.Mocked<IBudgetRepository>;
 
 const createTxRepo = (): jest.Mocked<ITransactionRepository> =>
@@ -278,6 +279,72 @@ describe("BudgetService", () => {
       const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
 
       expect(result.data).toHaveLength(1);
+    });
+  });
+
+  describe("override management [R2-16b]", () => {
+    it("exposes hasOverride and resolves a 0 override", async () => {
+      const b = makeBudget({ amountOverrides: { "2026-08": 0 } });
+      budgetRepo.getAllByUserId.mockResolvedValue({
+        data: [b],
+        pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
+      });
+
+      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+
+      expect(result.data[0].hasOverride).toBe(true);
+      expect(result.data[0].amount).toBe(0);
+      expect(result.data[0].baseAmount).toBe(100);
+    });
+
+    it("clears the override for the reference period", async () => {
+      const b = makeBudget();
+      budgetRepo.getById.mockResolvedValue(b);
+      budgetRepo.clearAmountOverride.mockResolvedValue(b);
+
+      const view = await service.clearAmountOverride("b1", USER, CTX);
+
+      expect(budgetRepo.clearAmountOverride).toHaveBeenCalledWith(
+        "b1",
+        USER,
+        "2026-08",
+      );
+      expect(view.hasOverride).toBe(false);
+    });
+
+    it("prunes overrides and CUSTOM dates when the period type changes", async () => {
+      const b = makeBudget({
+        periodType: "CUSTOM",
+        periodStartDate: new Date("2026-08-01T00:00:00Z"),
+        periodEndDate: new Date("2026-09-01T00:00:00Z"),
+        amountOverrides: { "1754006400000_1756684800000": 50 },
+      });
+      budgetRepo.getById.mockResolvedValue(b);
+      budgetRepo.update.mockResolvedValue(makeBudget());
+
+      await service.updateBudget("b1", { periodType: "MONTHLY" }, USER, CTX);
+
+      const patch = budgetRepo.update.mock.calls[0][1];
+      expect(patch.amountOverrides).toEqual({});
+      expect(patch.periodStartDate).toBeNull();
+      expect(patch.periodEndDate).toBeNull();
+    });
+
+    it("rejects CUSTOM dates on a non-CUSTOM budget", async () => {
+      await expect(
+        service.createBudget(
+          {
+            name: "Bad",
+            color: "RED",
+            categoryIds: ["c1"],
+            amount: 100,
+            periodType: "MONTHLY",
+            periodStartDate: new Date("2026-08-01T00:00:00Z"),
+            userId: USER,
+          },
+          CTX,
+        ),
+      ).rejects.toThrow("only allowed for CUSTOM");
     });
   });
 });

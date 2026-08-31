@@ -24,6 +24,12 @@ export interface IBudgetRepository extends IRepository<Budget> {
     excludeId?: string,
   ): Promise<Budget[]>;
 
+  clearAmountOverride(
+    id: string,
+    userId: string,
+    periodKey: string,
+  ): Promise<Budget | null>;
+
   setAmountOverride(
     id: string,
     userId: string,

@@ -77,6 +77,16 @@ export class BudgetController {
     res.status(200).json({ message: "Budget archived successfully" });
   };
 
+  static clearAmountOverride = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const budget = await budgetService.clearAmountOverride(
+      req.params.id as string,
+      userId,
+      await resolveContext(req),
+    );
+    res.status(200).json(budget);
+  };
+
   static setAmountOverride = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     const budget = await budgetService.setAmountOverride(

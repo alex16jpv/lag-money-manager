@@ -151,6 +151,19 @@ export class BudgetRepository implements IBudgetRepository {
     return docs.map((doc) => this.toEntity(doc));
   }
 
+  async clearAmountOverride(
+    id: string,
+    userId: string,
+    periodKey: string,
+  ): Promise<Budget | null> {
+    const doc = await BudgetModel.findOneAndUpdate(
+      { _id: id, userId, deletedAt: null },
+      { $unset: { [`amountOverrides.${periodKey}`]: "" } },
+      { new: true },
+    ).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
   async setAmountOverride(
     id: string,
     userId: string,
