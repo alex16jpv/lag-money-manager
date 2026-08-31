@@ -17,7 +17,6 @@ import { UserService } from "../../app/services/UserService";
 import { User } from "../../domain/entities/User";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
-import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 
 const testUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
 

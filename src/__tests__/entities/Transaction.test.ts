@@ -61,20 +61,6 @@ describe("Transaction Entity", () => {
     updatedAt: new Date(),
   };
 
-  const validIncomeProps = {
-    ...validExpenseProps,
-    type: "INCOME" as const,
-    fromAccountId: null,
-    toAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
-  };
-
-  const validTransferProps = {
-    ...validExpenseProps,
-    type: "TRANSFER" as const,
-    fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
-    toAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
-  };
-
   describe("constructor", () => {
     it("should create a transaction with all properties", () => {
       const tx = new Transaction(validExpenseProps);

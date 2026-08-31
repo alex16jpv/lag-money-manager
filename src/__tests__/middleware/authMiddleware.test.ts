@@ -35,7 +35,10 @@ const validPayload = {
 const createValidToken = (
   payload: object = validPayload,
   expiresIn: string = "1h",
-): string => jwt.sign(payload, "test-secret-key", { expiresIn });
+): string =>
+  jwt.sign(payload, "test-secret-key", {
+    expiresIn: expiresIn as jwt.SignOptions["expiresIn"],
+  });
 
 describe("authMiddleware", () => {
   describe("missing or malformed authorization header", () => {

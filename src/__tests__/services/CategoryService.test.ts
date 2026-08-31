@@ -1,4 +1,3 @@
-import { CreateCategoryDTO } from "../../app/dtos/CategoryDTO";
 import { CategoryService } from "../../app/services/CategoryService";
 import { Category } from "../../domain/entities/Category";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
@@ -294,7 +293,7 @@ describe("CategoryService", () => {
       expect(createArg).toHaveLength(DEFAULT_CATEGORIES.length);
       expect(result).toHaveLength(DEFAULT_CATEGORIES.length);
 
-      createArg.forEach((cat: Category) => {
+      createArg.forEach((cat: Partial<Category>) => {
         expect(cat.userId).toBe(testUserId);
         expect(cat.id).toBeDefined();
       });

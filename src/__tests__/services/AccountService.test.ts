@@ -56,7 +56,6 @@ jest.mock("../../shared/constants", () => ({
   },
 }));
 
-import { CreateAccountDTO } from "../../app/dtos/AccountDTO";
 import { AccountService } from "../../app/services/AccountService";
 import { Account } from "../../domain/entities/Account";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
@@ -212,7 +211,7 @@ describe("AccountService", () => {
 
     it("marks the first account as default [F2]", async () => {
       repo.countByUserId.mockResolvedValue(0);
-      repo.create.mockImplementation(async (a) => new Account(a));
+      repo.create.mockImplementation(async (a) => new Account(a as never));
 
       const result = await service.createAccount(validAccountProps);
 
