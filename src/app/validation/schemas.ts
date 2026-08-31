@@ -60,6 +60,13 @@ const normalizedTags = z
   ])
   .optional();
 
+const currencyField = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z]{3}$/, "currency must be a 3-letter ISO 4217 code")
+  .optional();
+
 // Normalized so Foo@x.com and foo@x.com resolve to the same account.
 const emailField = z
   .string()
@@ -182,6 +189,7 @@ export const updateUserSchema = z.object({
       // to take over the account by swapping the credentials.
       currentPassword: z.string().min(1).max(128).optional(),
       timezone: timezoneField,
+      currency: currencyField,
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {
       message: "At least one field must be provided",
@@ -408,6 +416,7 @@ export const registerSchema = z.object({
       .min(8, "Password must be at least 8 characters")
       .max(128),
     timezone: timezoneField,
+    currency: currencyField,
   }),
 });
 

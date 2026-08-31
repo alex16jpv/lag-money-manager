@@ -13,6 +13,8 @@ export interface AccountProps {
   color?: Color;
   userId: string;
   isDefault?: boolean;
+  // ISO 4217; stamped by the server from the owner's currency at creation.
+  currency?: string;
   archivedAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
@@ -27,6 +29,7 @@ export class Account {
   color?: Color;
   userId: string;
   isDefault: boolean;
+  currency?: string;
   archivedAt: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
@@ -40,6 +43,7 @@ export class Account {
     color,
     userId,
     isDefault,
+    currency,
     archivedAt,
     createdAt,
     updatedAt,
@@ -52,6 +56,7 @@ export class Account {
     this.color = color;
     this.userId = userId;
     this.isDefault = isDefault ?? false;
+    this.currency = currency;
     this.archivedAt = archivedAt ?? null;
     this.createdAt = createdAt;
     this.updatedAt = updatedAt;

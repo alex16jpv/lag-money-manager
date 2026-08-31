@@ -29,6 +29,7 @@ export class BudgetRepository implements IBudgetRepository {
       color: doc.color as Budget["color"],
       categoryIds: doc.categoryIds,
       type: doc.type,
+      currency: doc.currency,
       amount: fromCents(doc.amount),
       amountOverrides: overrides,
       periodType: doc.periodType,

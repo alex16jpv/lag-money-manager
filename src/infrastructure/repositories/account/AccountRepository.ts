@@ -26,6 +26,7 @@ export class AccountRepository implements IAccountRepository {
       color: doc.color as Account["color"],
       userId: doc.userId,
       isDefault: doc.isDefault,
+      currency: doc.currency,
       archivedAt: doc.archivedAt,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,

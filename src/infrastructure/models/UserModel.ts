@@ -1,6 +1,7 @@
 import mongoose, { Schema } from "mongoose";
 
 import { MODEL_NAMES } from "../../shared/constants";
+import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { DEFAULT_TIMEZONE } from "../../shared/timezone";
 
 export interface IUserDocument {
@@ -10,6 +11,7 @@ export interface IUserDocument {
   password: string;
   tokenVersion: number;
   timezone: string;
+  currency: string;
   lastLoginAt: Date | null;
   deletedAt: Date | null;
   createdAt: Date;
@@ -24,6 +26,13 @@ const UserSchema = new Schema<IUserDocument>(
     password: { type: String, required: true },
     tokenVersion: { type: Number, required: true, default: 0 },
     timezone: { type: String, required: true, default: DEFAULT_TIMEZONE },
+    currency: {
+      type: String,
+      required: true,
+      default: DEFAULT_CURRENCY,
+      uppercase: true,
+      trim: true,
+    },
     lastLoginAt: { type: Date, default: null },
     deletedAt: { type: Date, default: null },
   },

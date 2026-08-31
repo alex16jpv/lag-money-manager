@@ -6,6 +6,7 @@ import {
   TRANSACTION_TYPES,
   TransactionType,
 } from "../../shared/constants";
+import { DEFAULT_CURRENCY } from "../../shared/currency";
 
 export interface ITransactionDocument {
   _id: string;
@@ -21,6 +22,7 @@ export interface ITransactionDocument {
   note: string | null;
   pendingDetails: boolean;
   source?: string;
+  currency: string;
   revisions?: {
     at: Date;
     amount: number;
@@ -57,6 +59,13 @@ const TransactionSchema = new Schema<ITransactionDocument>(
       required: true,
       enum: Object.keys(TRANSACTION_SOURCES),
       default: "MANUAL",
+    },
+    currency: {
+      type: String,
+      required: true,
+      default: DEFAULT_CURRENCY,
+      uppercase: true,
+      trim: true,
     },
     // Audit trail of monetary edits (amount in cents); capped, internal-only.
     revisions: {

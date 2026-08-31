@@ -10,6 +10,7 @@ const budgetService = new BudgetService(
   repositoryFactory.getBudgetRepository(),
   repositoryFactory.getTransactionRepository(),
   repositoryFactory.getCategoryRepository(),
+  repositoryFactory.getUserRepository(),
 );
 const userRepository = repositoryFactory.getUserRepository();
 

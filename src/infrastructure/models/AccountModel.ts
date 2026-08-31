@@ -6,6 +6,7 @@ import {
   COLORS,
   MODEL_NAMES,
 } from "../../shared/constants";
+import { DEFAULT_CURRENCY } from "../../shared/currency";
 
 export interface IAccountDocument {
   _id: string;
@@ -16,6 +17,7 @@ export interface IAccountDocument {
   color?: string;
   userId: string;
   isDefault: boolean;
+  currency: string;
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -35,6 +37,13 @@ const AccountSchema = new Schema<IAccountDocument>(
     color: { type: String, required: false, enum: Object.keys(COLORS) },
     userId: { type: String, required: true },
     isDefault: { type: Boolean, required: true, default: false },
+    currency: {
+      type: String,
+      required: true,
+      default: DEFAULT_CURRENCY,
+      uppercase: true,
+      trim: true,
+    },
     archivedAt: { type: Date, default: null },
   },
   { timestamps: true },

@@ -18,6 +18,8 @@ export interface TransactionProps {
   note?: string | null;
   pendingDetails?: boolean;
   source?: TransactionSource;
+  // ISO 4217; stamped from the involved account when balances are applied.
+  currency?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -36,6 +38,7 @@ export class Transaction {
   note: string | null;
   pendingDetails: boolean;
   source: TransactionSource;
+  currency?: string;
   createdAt: Date;
   updatedAt: Date;
 
@@ -53,6 +56,7 @@ export class Transaction {
     this.note = props.note ?? null;
     this.pendingDetails = props.pendingDetails ?? false;
     this.source = props.source ?? "MANUAL";
+    this.currency = props.currency;
     this.createdAt = props.createdAt ?? new Date();
     this.updatedAt = props.updatedAt ?? new Date();
   }

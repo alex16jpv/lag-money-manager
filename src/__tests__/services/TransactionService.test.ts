@@ -574,6 +574,43 @@ describe("TransactionService", () => {
     });
   });
 
+  describe("currency [multi-moneda etapa 1]", () => {
+    it("stamps the account's currency on the transaction", async () => {
+      acctRepo.getById.mockResolvedValue(account({ currency: "COP" }));
+      txRepo.create.mockImplementation(async (tx) => tx as Transaction);
+
+      const created = await service.createTransaction({
+        type: "EXPENSE",
+        amount: 10,
+        date: new Date("2026-03-28"),
+        fromAccountId: ACC_A,
+        userId: USER,
+      });
+
+      expect(created.currency).toBe("COP");
+    });
+
+    it("rejects a transfer between accounts of different currencies", async () => {
+      acctRepo.getById.mockImplementation(async (id) =>
+        id === ACC_A
+          ? account({ currency: "COP" })
+          : account({ id: ACC_B, currency: "USD" }),
+      );
+
+      await expect(
+        service.createTransaction({
+          type: "TRANSFER",
+          amount: 10,
+          date: new Date("2026-03-28"),
+          fromAccountId: ACC_A,
+          toAccountId: ACC_B,
+          userId: USER,
+        }),
+      ).rejects.toThrow("different currencies");
+      expect(txRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe("source [R2-27b]", () => {
     it("quick-add marks source QUICK; normal create defaults to MANUAL", async () => {
       acctRepo.getById.mockResolvedValue(account());

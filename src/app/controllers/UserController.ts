@@ -3,7 +3,10 @@ import { Request, Response } from "express";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { UserService } from "../services/UserService";
 
-const userService = new UserService(repositoryFactory.getUserRepository());
+const userService = new UserService(
+  repositoryFactory.getUserRepository(),
+  repositoryFactory.getAccountRepository(),
+);
 
 export class UserController {
   static getUserById = async (req: Request, res: Response) => {

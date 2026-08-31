@@ -45,6 +45,7 @@ export class AuthService {
       name: user.name,
       email: user.email,
       timezone: user.timezone,
+      currency: user.currency,
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

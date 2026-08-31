@@ -3,6 +3,7 @@ export interface CreateUserDTO {
   email: string;
   password: string;
   timezone?: string;
+  currency?: string;
 }
 
 export interface UpdateUserDTO {
@@ -13,6 +14,7 @@ export interface UpdateUserDTO {
   // Verification only; never persisted.
   currentPassword?: string;
   timezone?: string;
+  currency?: string;
 }
 
 export interface UserResponseDTO {
@@ -20,6 +22,7 @@ export interface UserResponseDTO {
   name: string;
   email: string;
   timezone: string;
+  currency: string;
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

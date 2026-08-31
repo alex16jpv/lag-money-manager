@@ -1,13 +1,17 @@
 import bcryptjs from "bcryptjs";
 
 import { User } from "../../domain/entities/User";
+import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
 import { UpdateUserDTO, UserResponseDTO } from "../dtos/UserDTO";
 
 export class UserService {
-  constructor(private repo: IUserRepository) {}
+  constructor(
+    private repo: IUserRepository,
+    private accountRepo: IAccountRepository,
+  ) {}
 
   private toResponseDTO(user: User): UserResponseDTO {
     return {
@@ -15,6 +19,7 @@ export class UserService {
       name: user.name,
       email: user.email,
       timezone: user.timezone,
+      currency: user.currency,
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
@@ -42,6 +47,25 @@ export class UserService {
     }
     if (dto.id && id !== dto.id) {
       throw new ApiError("BadRequest", "User id does not match");
+    }
+
+    // Mono-currency mode: the currency is a pre-data choice. No accounts
+    // implies no transactions (every type requires one), so one count decides.
+    if (dto.currency !== undefined) {
+      const existing = await this.repo.getById(id);
+      if (!existing) {
+        throw new ApiError("NotFound", "User not found");
+      }
+      if (
+        dto.currency !== existing.currency &&
+        (await this.accountRepo.countByUserId(id)) > 0
+      ) {
+        throw new ApiError(
+          "BadRequest",
+          "Currency cannot be changed once accounts exist; multi-currency support will handle this",
+          "CURRENCY_LOCKED",
+        );
+      }
     }
 
     // Credential changes (password OR email) require re-authentication and

@@ -37,6 +37,7 @@ export interface BudgetView {
   // history, but the client should flag them.
   archivedCategoryIds: string[];
   type: BudgetType;
+  currency: string;
   periodType: BudgetPeriodType;
   periodKey: string;
   periodFrom: Date;

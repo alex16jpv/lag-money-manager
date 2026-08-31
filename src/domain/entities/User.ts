@@ -1,5 +1,6 @@
 import { v7 as uuidv7 } from "uuid";
 
+import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { DEFAULT_TIMEZONE } from "../../shared/timezone";
 
 export interface UserProps {
@@ -11,6 +12,9 @@ export interface UserProps {
   tokenVersion?: number;
   // IANA timezone; drives day/period boundaries for stats and budgets.
   timezone?: string;
+  // ISO 4217; the user's (single, for now) money currency. Locked once the
+  // user has accounts — changing it with history arrives with multi-currency.
+  currency?: string;
   // Last session open (login/register); impossible to reconstruct later.
   lastLoginAt?: Date | null;
   createdAt?: Date;
@@ -24,6 +28,7 @@ export class User {
   password?: string;
   tokenVersion: number;
   timezone: string;
+  currency: string;
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -35,6 +40,7 @@ export class User {
     password,
     tokenVersion,
     timezone,
+    currency,
     lastLoginAt,
     createdAt,
     updatedAt,
@@ -45,6 +51,7 @@ export class User {
     this.password = password;
     this.tokenVersion = tokenVersion ?? 0;
     this.timezone = timezone ?? DEFAULT_TIMEZONE;
+    this.currency = currency ?? DEFAULT_CURRENCY;
     this.lastLoginAt = lastLoginAt ?? null;
     this.createdAt = createdAt ?? new Date();
     this.updatedAt = updatedAt ?? new Date();

@@ -5,6 +5,8 @@ import {
 } from "../../domain/repositories/budget/IBudgetRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
+import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { resolvePeriod } from "../../shared/budgetPeriod";
 import { ApiError } from "../../shared/errors";
 import { fromCents } from "../../shared/money";
@@ -21,6 +23,7 @@ export class BudgetService {
     private repo: IBudgetRepository,
     private transactionRepo: ITransactionRepository,
     private categoryRepo: ICategoryRepository,
+    private userRepo: IUserRepository,
   ) {}
 
   async getBudgets(
@@ -57,7 +60,11 @@ export class BudgetService {
     this.assertValidPeriod(dto);
     await this.assertCategoriesUsable(dto.userId, dto.categoryIds, type);
     await this.assertNoOverlap(dto.userId, type, dto.periodType, dto.categoryIds);
-    const created = await this.repo.create(new Budget(dto));
+    // Mono-currency mode: stamped from the owner at creation.
+    const owner = await this.userRepo.getById(dto.userId);
+    const created = await this.repo.create(
+      new Budget({ ...dto, currency: owner?.currency ?? DEFAULT_CURRENCY }),
+    );
     const [view] = await this.toViews(dto.userId, [created], ctx);
     return view;
   }
@@ -317,6 +324,7 @@ export class BudgetService {
           archivedIds.has(c),
         ),
         type: budget.type,
+        currency: budget.currency ?? DEFAULT_CURRENCY,
         periodType: budget.periodType,
         periodKey: period.key,
         periodFrom: period.from,

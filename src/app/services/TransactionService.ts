@@ -305,6 +305,20 @@ export class TransactionService {
               : "Destination account not found",
           );
         }
+        // Mono-currency mode: the transaction carries its account's currency;
+        // cross-currency transfers arrive with the multi-currency feature.
+        if (
+          account.currency &&
+          transaction.currency &&
+          transaction.currency !== account.currency
+        ) {
+          throw new ApiError(
+            "BadRequest",
+            "Transfers between accounts with different currencies are not supported yet",
+            "CURRENCY_MISMATCH",
+          );
+        }
+        transaction.currency = transaction.currency ?? account.currency;
       }
 
       const applied = await this.accountRepo.incrementBalance(

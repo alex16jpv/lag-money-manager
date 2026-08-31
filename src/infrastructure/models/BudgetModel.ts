@@ -8,6 +8,7 @@ import {
   COLORS,
   MODEL_NAMES,
 } from "../../shared/constants";
+import { DEFAULT_CURRENCY } from "../../shared/currency";
 
 export interface IBudgetDocument {
   _id: string;
@@ -15,6 +16,7 @@ export interface IBudgetDocument {
   color: string;
   categoryIds: string[];
   type: BudgetType;
+  currency: string;
   amount: number; // integer cents
   amountOverrides: Map<string, number>; // periodKey -> integer cents
   periodType: BudgetPeriodType;
@@ -39,6 +41,13 @@ const BudgetSchema = new Schema<IBudgetDocument>(
       required: true,
       enum: Object.keys(BUDGET_TYPES),
       default: "EXPENSE",
+    },
+    currency: {
+      type: String,
+      required: true,
+      default: DEFAULT_CURRENCY,
+      uppercase: true,
+      trim: true,
     },
     amount: { type: Number, required: true },
     amountOverrides: { type: Map, of: Number, default: {} },

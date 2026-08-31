@@ -14,6 +14,7 @@ import bcryptjs from "bcryptjs";
 
 import { UpdateUserDTO } from "../../app/dtos/UserDTO";
 import { UserService } from "../../app/services/UserService";
+import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { User } from "../../domain/entities/User";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
@@ -46,10 +47,14 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
 describe("UserService", () => {
   let service: UserService;
   let repo: jest.Mocked<IUserRepository>;
+  let accountRepo: jest.Mocked<IAccountRepository>;
 
   beforeEach(() => {
     repo = createMockRepo();
-    service = new UserService(repo);
+    accountRepo = {
+      countByUserId: jest.fn().mockResolvedValue(0),
+    } as unknown as jest.Mocked<IAccountRepository>;
+    service = new UserService(repo, accountRepo);
   });
 
   describe("getUserById", () => {
@@ -221,6 +226,28 @@ describe("UserService", () => {
       await expect(service.deleteUser(testUserId, testUserId)).rejects.toThrow(
         "DB delete failed",
       );
+    });
+  });
+
+  describe("currency [multi-moneda etapa 1]", () => {
+    it("blocks changing the currency once accounts exist", async () => {
+      repo.getById.mockResolvedValue(mockUser);
+      accountRepo.countByUserId.mockResolvedValue(2);
+
+      await expect(
+        service.updateUser(testUserId, { currency: "USD" }, testUserId),
+      ).rejects.toThrow("Currency cannot be changed");
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it("allows changing the currency while there is no data", async () => {
+      repo.getById.mockResolvedValue(mockUser);
+      accountRepo.countByUserId.mockResolvedValue(0);
+      repo.update.mockResolvedValue(mockUser);
+
+      await expect(
+        service.updateUser(testUserId, { currency: "USD" }, testUserId),
+      ).resolves.toBeDefined();
     });
   });
 });

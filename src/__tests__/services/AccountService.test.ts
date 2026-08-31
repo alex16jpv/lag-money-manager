@@ -59,6 +59,8 @@ jest.mock("../../shared/constants", () => ({
 import { AccountService } from "../../app/services/AccountService";
 import { Account } from "../../domain/entities/Account";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { User } from "../../domain/entities/User";
 import { ApiError } from "../../shared/errors";
 
 const validAccountProps = {
@@ -87,13 +89,27 @@ const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   countByUserId: jest.fn().mockResolvedValue(1),
 });
 
+const createUserRepoMock = () =>
+  ({
+    getById: jest.fn().mockResolvedValue(
+      new User({
+        id: validAccountProps.userId,
+        name: "Owner",
+        email: "owner@test.com",
+        currency: "COP",
+      }),
+    ),
+  }) as unknown as jest.Mocked<IUserRepository>;
+
 describe("AccountService", () => {
   let service: AccountService;
   let repo: jest.Mocked<IAccountRepository>;
+  let userRepo: jest.Mocked<IUserRepository>;
 
   beforeEach(() => {
     repo = createMockRepo();
-    service = new AccountService(repo);
+    userRepo = createUserRepoMock();
+    service = new AccountService(repo, userRepo);
   });
 
   describe("getAllAccounts", () => {
@@ -209,6 +225,14 @@ describe("AccountService", () => {
 
       expect(repo.create).toHaveBeenCalledTimes(1);
       expect(result.name).toBe("Savings");
+    });
+
+    it("stamps the owner's currency on the account [multi-moneda etapa 1]", async () => {
+      repo.create.mockImplementation(async (a) => new Account(a as never));
+
+      const result = await service.createAccount(validAccountProps);
+
+      expect(result.currency).toBe("COP");
     });
 
     it("marks the first account as default [F2]", async () => {

@@ -9,6 +9,8 @@ export interface BudgetProps {
   categoryIds: string[];
   // EXPENSE = spending limit; INCOME = earning goal.
   type?: BudgetType;
+  // ISO 4217; stamped by the server from the owner's currency at creation.
+  currency?: string;
   amount: number;
   // Per-period amount overrides keyed by period key (e.g. "2026-12"): the
   // limit for that specific instance instead of the base amount.
@@ -32,6 +34,7 @@ export class Budget {
   color: Color;
   categoryIds: string[];
   type: BudgetType;
+  currency?: string;
   amount: number;
   amountOverrides: Record<string, number>;
   periodType: BudgetPeriodType;
@@ -50,6 +53,7 @@ export class Budget {
     this.color = props.color;
     this.categoryIds = props.categoryIds;
     this.type = props.type ?? "EXPENSE";
+    this.currency = props.currency;
     this.amount = props.amount;
     this.amountOverrides = props.amountOverrides ?? {};
     this.periodType = props.periodType;

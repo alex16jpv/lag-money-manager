@@ -20,6 +20,7 @@ import { Category } from "../../domain/entities/Category";
 import { IBudgetRepository } from "../../domain/repositories/budget/IBudgetRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
+import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 
 const USER = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
 const CTX = { reference: new Date("2026-08-15T12:00:00Z"), timezone: "America/Bogota" };
@@ -67,17 +68,24 @@ const makeBudget = (over: Partial<Budget> = {}): Budget =>
     ...over,
   });
 
+const createUserRepo = () =>
+  ({
+    getById: jest.fn().mockResolvedValue({ id: USER, currency: "COP" }),
+  }) as unknown as jest.Mocked<IUserRepository>;
+
 describe("BudgetService", () => {
   let service: BudgetService;
   let budgetRepo: jest.Mocked<IBudgetRepository>;
   let txRepo: jest.Mocked<ITransactionRepository>;
   let categoryRepo: jest.Mocked<ICategoryRepository>;
+  let userRepo: jest.Mocked<IUserRepository>;
 
   beforeEach(() => {
     budgetRepo = createBudgetRepo();
     txRepo = createTxRepo();
     categoryRepo = createCategoryRepo();
-    service = new BudgetService(budgetRepo, txRepo, categoryRepo);
+    userRepo = createUserRepo();
+    service = new BudgetService(budgetRepo, txRepo, categoryRepo, userRepo);
   });
 
   it("computes spent for the reference period", async () => {
@@ -138,6 +146,25 @@ describe("BudgetService", () => {
         CTX,
       ),
     ).rejects.toThrow("Custom period requires");
+  });
+
+  it("stamps the owner's currency on the budget [multi-moneda etapa 1]", async () => {
+    budgetRepo.create.mockImplementation(async (b) => new Budget(b as Budget));
+
+    await service.createBudget(
+      {
+        name: "Food",
+        color: "RED",
+        categoryIds: ["c1"],
+        amount: 100,
+        periodType: "MONTHLY",
+        userId: USER,
+      },
+      CTX,
+    );
+
+    const created = budgetRepo.create.mock.calls[0][0];
+    expect((created as Budget).currency).toBe("COP");
   });
 
   describe("category validation [R2-12]", () => {

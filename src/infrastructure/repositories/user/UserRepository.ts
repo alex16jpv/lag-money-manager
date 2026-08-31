@@ -18,6 +18,7 @@ export class UserRepository implements IUserRepository {
     password?: string;
     tokenVersion?: number;
     timezone?: string;
+    currency?: string;
     lastLoginAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
@@ -29,6 +30,7 @@ export class UserRepository implements IUserRepository {
       password: doc.password,
       tokenVersion: doc.tokenVersion,
       timezone: doc.timezone,
+      currency: doc.currency,
       lastLoginAt: doc.lastLoginAt,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,

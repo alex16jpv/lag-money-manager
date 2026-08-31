@@ -1,5 +1,7 @@
 import { Account } from "../../domain/entities/Account";
 import { AccountFilters, IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
@@ -8,7 +10,10 @@ import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
 const MAX_ACCOUNTS_PER_USER = 100;
 
 export class AccountService {
-  constructor(private repo: IAccountRepository) {}
+  constructor(
+    private repo: IAccountRepository,
+    private userRepo: IUserRepository,
+  ) {}
 
   async getAllAccounts(
     userId: string,
@@ -37,7 +42,14 @@ export class AccountService {
         "ACCOUNT_LIMIT_REACHED",
       );
     }
-    const account = new Account({ ...dto, isDefault: count === 0 });
+    // Mono-currency mode: stamped from the owner (fresh read — the currency
+    // is only editable while the user has no accounts, so this is exact).
+    const owner = await this.userRepo.getById(dto.userId);
+    const account = new Account({
+      ...dto,
+      isDefault: count === 0,
+      currency: owner?.currency ?? DEFAULT_CURRENCY,
+    });
     return new Account(await this.repo.create(account));
   }
 
