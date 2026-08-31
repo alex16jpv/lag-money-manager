@@ -75,6 +75,11 @@ const emailField = z
   .email("Invalid email format")
   .max(255);
 
+// Trimmed before the uniqueness check: the index collation folds case and
+// accents, but "Efectivo " and "Efectivo" would still be two accounts, which
+// is exactly the accidental duplicate the unique index exists to prevent.
+const accountName = z.string().trim().min(1, "Name is required").max(255);
+
 export const paginationQuerySchema = z.object({
   query: z.object({
     limit: z.coerce
@@ -222,7 +227,7 @@ export const updateUserSchema = z.object({
 
 export const createAccountSchema = z.object({
   body: z.object({
-    name: z.string().min(1, "Name is required").max(255),
+    name: accountName,
     type: z.enum(accountTypeValues, {
       error: `Invalid account type. Available: ${accountTypeValues.join(", ")}`,
     }),
@@ -241,7 +246,7 @@ export const updateAccountSchema = z.object({
   }),
   body: z
     .object({
-      name: z.string().min(1).max(255).optional(),
+      name: accountName.optional(),
       type: z
         .enum(accountTypeValues, {
           error: `Invalid account type. Available: ${accountTypeValues.join(", ")}`,

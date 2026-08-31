@@ -45,6 +45,8 @@ Create a new account. Requires: `name`, `type`. Optional: `balance` (defaults to
 
 The server sets `currency` from the owner's currency and marks the **first** account as default. A user is capped at 100 accounts (`ACCOUNT_LIMIT_REACHED`).
 
+Active account names are **unique per user**, enforced by a partial unique index on `(userId, name)` with collation `es` strength 2: `"Efectivo"` and `"efectivo"` collide (accents stay distinct), names are trimmed before storing, and the user's capitalisation is preserved. Archiving an account **frees its name**, so the same one can be used again. A collision — on create, on rename, or on restoring an account whose name was taken meanwhile — answers **409 `DUPLICATE`**.
+
 ### `GET /accounts/:id`
 
 Get a single account by ID. Archived accounts stay readable here (`archivedAt` tells them apart); only the listing hides them.
@@ -119,7 +121,7 @@ None specific to this module.
 | `DEFAULT_ACCOUNT_ARCHIVE_BLOCKED`  | 400    | Archiving the default account                                    |
 | `Unauthorized`                     | 401    | Missing, invalid or expired access token                         |
 | `NotFound`                         | 404    | Account missing **or owned by another user**                     |
-| `DUPLICATE`                        | 409    | A concurrent write lost the race to a unique index               |
+| `DUPLICATE`                        | 409    | An active account already uses this name (case-insensitive)      |
 
 > Foreign accounts return **404, not 403** — the response is uniform for "missing" and "not yours" so account ids cannot be probed.
 

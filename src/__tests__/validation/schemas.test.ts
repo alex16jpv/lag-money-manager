@@ -351,6 +351,25 @@ describe("Validation Schemas", () => {
       expect(result.success).toBe(false);
     });
 
+    // The unique index folds case and accents but not whitespace, so an
+    // untrimmed "Savings " would slip past it as a second account.
+    it("trims the name so padding cannot bypass the unique index", () => {
+      const result = createAccountSchema.safeParse({
+        body: { name: "  Savings  ", type: "SAVINGS" },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.body.name).toBe("Savings");
+      }
+    });
+
+    it("should reject a name that is only whitespace", () => {
+      const result = createAccountSchema.safeParse({
+        body: { name: "   ", type: "SAVINGS" },
+      });
+      expect(result.success).toBe(false);
+    });
+
     it("should reject name exceeding 255 characters", () => {
       const result = createAccountSchema.safeParse({
         body: { name: "a".repeat(256), type: "SAVINGS" },

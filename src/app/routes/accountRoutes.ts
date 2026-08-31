@@ -85,7 +85,9 @@ router.get(
  *     summary: Create a new account
  *     description: >
  *       The first account is marked default automatically. Currency is
- *       stamped from the user (mono-currency mode).
+ *       stamped from the user (mono-currency mode). Active account names are
+ *       unique per user, case-insensitively ("Efectivo" = "efectivo"; accents
+ *       still distinct) and trimmed; archiving an account frees its name.
  *     requestBody:
  *       required: true
  *       content:
@@ -107,6 +109,12 @@ router.get(
  *               $ref: '#/components/schemas/ErrorResponse'
  *       401:
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: An active account with this name already exists (code DUPLICATE, case-insensitive)
  *         content:
  *           application/json:
  *             schema:
@@ -208,6 +216,12 @@ router.get("/:id", validate(idParamSchema), AccountController.getAccountById);
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: Another active account already uses this name (code DUPLICATE, case-insensitive)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.put(
   "/:id",
@@ -296,6 +310,12 @@ router.delete("/:id", validate(idParamSchema), AccountController.deleteAccount);
  *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
  *         description: Account not found (uniform for missing and not owned)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: An active account took this name while it was archived (code DUPLICATE) — rename that one first
  *         content:
  *           application/json:
  *             schema:

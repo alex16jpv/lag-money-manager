@@ -50,6 +50,17 @@ const AccountSchema = new Schema<IAccountDocument>(
 );
 
 AccountSchema.index({ userId: 1, _id: 1 });
+// One active account name per user (partial: archiving frees the name, same
+// as categories). Collation strength 2: case-insensitive ("Efectivo" =
+// "efectivo"), accents still distinct; the stored name keeps the user's casing.
+AccountSchema.index(
+  { userId: 1, name: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { archivedAt: null },
+    collation: { locale: "es", strength: 2 },
+  },
+);
 // At most one active default account per user.
 AccountSchema.index(
   { userId: 1 },
