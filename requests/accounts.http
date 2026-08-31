@@ -1,0 +1,104 @@
+### ==========================================================
+### ACCOUNTS — CRUD, cuenta default, archivar/restaurar
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+@token = {{login.response.body.accessToken}}
+
+### Crear cuenta A (éxito) — la primera queda isDefault=true
+# @name createA
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Ahorros", "type": "SAVINGS", "balance": 1000.50, "color": "TEAL" }
+
+@accountA = {{createA.response.body.id}}
+
+### Crear cuenta B (éxito)
+# @name createB
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Efectivo", "type": "CASH", "balance": 200, "color": "AMBER" }
+
+@accountB = {{createB.response.body.id}}
+
+### Listar cuentas (éxito)
+GET {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+
+### Get por id (éxito)
+GET {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+
+### Update nombre/color (éxito)
+PUT {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Ahorros 2", "color": "BLUE" }
+
+### Marcar B como default (éxito) — desmarca la anterior default
+POST {{baseUrl}}/accounts/{{accountB}}/default
+Authorization: Bearer {{token}}
+
+### Verificar que A ya no es default y B sí (mira isDefault en la lista)
+GET {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+
+### Archivar A (soft delete)
+DELETE {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+
+### Listar (A ya no aparece)
+GET {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+
+### Listar incluyendo archivadas (A aparece con archivedAt != null)
+GET {{baseUrl}}/accounts?includeArchived=true
+Authorization: Bearer {{token}}
+
+### Restaurar A
+POST {{baseUrl}}/accounts/{{accountA}}/restore
+Authorization: Bearer {{token}}
+
+### ---------- Casos de error ----------
+
+### Crear — tipo inválido (400)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "X", "type": "NOPE" }
+
+### Crear — balance con 3 decimales (400)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "X", "type": "CASH", "balance": 10.555 }
+
+### Mass assignment — intentar setear balance/userId directo (se ignora)
+PUT {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Hack", "balance": 999999, "userId": "00000000-0000-0000-0000-000000000000" }
+
+### Get inexistente (404)
+GET {{baseUrl}}/accounts/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{token}}
+
+### Restaurar algo no archivado (404)
+POST {{baseUrl}}/accounts/{{accountB}}/restore
+Authorization: Bearer {{token}}

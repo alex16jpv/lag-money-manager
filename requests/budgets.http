@@ -1,0 +1,134 @@
+### ==========================================================
+### BUDGETS — CRUD, períodos, spent, override, archivar
+### spent se calcula sobre las transacciones EXPENSE de la categoría.
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+@token = {{login.response.body.accessToken}}
+
+### Categoría del budget
+# @name cat
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "BudgetCat", "type": "EXPENSE" }
+
+@catId = {{cat.response.body.id}}
+
+### ---------- Éxito ----------
+
+### Crear budget mensual (éxito)
+# @name budget
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Comida",
+  "color": "RED",
+  "categoryIds": ["{{catId}}"],
+  "amount": 500,
+  "periodType": "MONTHLY",
+  "note": "límite mensual"
+}
+
+@budgetId = {{budget.response.body.id}}
+
+### Listar budgets (spent del período actual)
+GET {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+
+### Listar para un mes pasado (reference)
+GET {{baseUrl}}/budgets?reference=2026-07-15T12:00:00.000Z
+Authorization: Bearer {{token}}
+
+### Get por id
+GET {{baseUrl}}/budgets/{{budgetId}}
+Authorization: Bearer {{token}}
+
+### Update (éxito)
+PUT {{baseUrl}}/budgets/{{budgetId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "amount": 600, "color": "AMBER" }
+
+### Override del monto del período actual (éxito)
+PUT {{baseUrl}}/budgets/{{budgetId}}/amount
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "amount": 800 }
+
+### Crear budget semanal (otra categoría distinta requerida si es misma categoría distinto tipo -> permitido)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Comida semanal", "color": "TEAL", "categoryIds": ["{{catId}}"], "amount": 150, "periodType": "WEEKLY" }
+
+### Crear budget con período custom (éxito)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Viaje",
+  "color": "BLUE",
+  "categoryIds": ["{{catId}}"],
+  "amount": 1000,
+  "periodType": "CUSTOM",
+  "periodStartDate": "2026-09-01T00:00:00.000Z",
+  "periodEndDate": "2026-09-15T00:00:00.000Z"
+}
+
+### Archivar
+DELETE {{baseUrl}}/budgets/{{budgetId}}
+Authorization: Bearer {{token}}
+
+### Ver archivados
+GET {{baseUrl}}/budgets?includeArchived=true
+Authorization: Bearer {{token}}
+
+### Restaurar
+POST {{baseUrl}}/budgets/{{budgetId}}/restore
+Authorization: Bearer {{token}}
+
+### ---------- Casos de error ----------
+
+### Duplicado — misma categoría + mismo tipo de período (400)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Comida dup", "color": "GREEN", "categoryIds": ["{{catId}}"], "amount": 400, "periodType": "MONTHLY" }
+
+### Custom sin fechas (400)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Bad custom", "color": "RED", "categoryIds": ["{{catId}}"], "amount": 100, "periodType": "CUSTOM" }
+
+### Color inválido (400)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "X", "color": "amber-200", "categoryIds": ["{{catId}}"], "amount": 100, "periodType": "MONTHLY" }
+
+### Sin categorías (400)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "X", "color": "RED", "categoryIds": [], "amount": 100, "periodType": "MONTHLY" }

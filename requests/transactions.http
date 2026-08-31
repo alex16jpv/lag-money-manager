@@ -1,0 +1,179 @@
+### ==========================================================
+### TRANSACTIONS — crear, quick-add, idempotencia, filtros, update, delete
+### Crea sus propias cuentas/categoría arriba para ser autosuficiente.
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+@date = 2026-08-31T12:00:00.000Z
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+@token = {{login.response.body.accessToken}}
+
+### Cuenta A (queda default si es la primera) — para EXPENSE/quick-add
+# @name accA
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "TxA", "type": "CASH", "balance": 1000 }
+
+@accA = {{accA.response.body.id}}
+
+### Cuenta B — destino de INCOME/TRANSFER
+# @name accB
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "TxB", "type": "SAVINGS", "balance": 500 }
+
+@accB = {{accB.response.body.id}}
+
+### Categoría para clasificar
+# @name cat
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "TxCat", "type": "EXPENSE" }
+
+@catId = {{cat.response.body.id}}
+
+### ---------- Éxito ----------
+
+### Crear EXPENSE (resta de A)
+# @name expense
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "EXPENSE",
+  "amount": 42.50,
+  "date": "{{date}}",
+  "fromAccountId": "{{accA}}",
+  "categoryId": "{{catId}}",
+  "tags": ["café", "hormiga"],
+  "note": "prueba"
+}
+
+@txId = {{expense.response.body.id}}
+
+### Crear INCOME (suma a B)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "INCOME", "amount": 300, "date": "{{date}}", "toAccountId": "{{accB}}" }
+
+### Crear TRANSFER (A -> B)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "TRANSFER", "amount": 100, "date": "{{date}}", "fromAccountId": "{{accA}}", "toAccountId": "{{accB}}" }
+
+### Idempotencia — mismo Idempotency-Key dos veces = una sola transacción
+### Corre esta y la siguiente: deben devolver el MISMO id.
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Idempotency-Key: demo-key-001
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 9.99, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+
+### Idempotencia — reintento con la misma clave (devuelve la existente)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Idempotency-Key: demo-key-001
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 9.99, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+
+### Quick-add — solo amount (usa la cuenta default, marca pendingDetails)
+POST {{baseUrl}}/transactions/quick
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "amount": 5.25 }
+
+### Bandeja de pendientes de detallar
+GET {{baseUrl}}/transactions?pendingDetails=true
+Authorization: Bearer {{token}}
+
+### Listar (todas, orden por fecha desc)
+GET {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+
+### Filtrar por cuenta
+GET {{baseUrl}}/transactions?accountId={{accA}}
+Authorization: Bearer {{token}}
+
+### Filtrar por tipo
+GET {{baseUrl}}/transactions?type=EXPENSE
+Authorization: Bearer {{token}}
+
+### Get por id
+GET {{baseUrl}}/transactions/{{txId}}
+Authorization: Bearer {{token}}
+
+### Update — cambia monto (revierte y reaplica balance)
+PUT {{baseUrl}}/transactions/{{txId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "amount": 60, "note": "editada" }
+
+### Delete (soft) — revierte el efecto en el balance
+DELETE {{baseUrl}}/transactions/{{txId}}
+Authorization: Bearer {{token}}
+
+### ---------- Casos de error ----------
+
+### EXPENSE con toAccountId (no permitido) (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accA}}", "toAccountId": "{{accB}}" }
+
+### INCOME sin toAccountId (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "INCOME", "amount": 10, "date": "{{date}}" }
+
+### TRANSFER misma cuenta (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "TRANSFER", "amount": 10, "date": "{{date}}", "fromAccountId": "{{accA}}", "toAccountId": "{{accA}}" }
+
+### Monto 0 (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 0, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+
+### Monto con 3 decimales (400)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 10.555, "date": "{{date}}", "fromAccountId": "{{accA}}" }
+
+### fromAccountId de otro usuario / inexistente (404)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 10, "date": "{{date}}", "fromAccountId": "00000000-0000-0000-0000-000000000000" }

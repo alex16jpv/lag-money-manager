@@ -1,0 +1,44 @@
+### ==========================================================
+### STATS — gasto agregado (para "gastos hormiga")
+### El agrupamiento por día usa la timezone del usuario.
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+@token = {{login.response.body.accessToken}}
+
+### Gasto por categoría (default)
+GET {{baseUrl}}/stats/spending?groupBy=category
+Authorization: Bearer {{token}}
+
+### Gasto por día (tz-aware)
+GET {{baseUrl}}/stats/spending?groupBy=day
+Authorization: Bearer {{token}}
+
+### Gasto por tag
+GET {{baseUrl}}/stats/spending?groupBy=tag
+Authorization: Bearer {{token}}
+
+### Con rango de fechas
+GET {{baseUrl}}/stats/spending?groupBy=category&from=2026-08-01T00:00:00.000Z&to=2026-09-01T00:00:00.000Z
+Authorization: Bearer {{token}}
+
+### Por tipo INCOME
+GET {{baseUrl}}/stats/spending?groupBy=category&type=INCOME
+Authorization: Bearer {{token}}
+
+### ---------- Casos de error ----------
+
+### groupBy inválido (400)
+GET {{baseUrl}}/stats/spending?groupBy=nope
+Authorization: Bearer {{token}}
+
+### Sin token (401)
+GET {{baseUrl}}/stats/spending?groupBy=category

@@ -1,0 +1,89 @@
+### ==========================================================
+### AUTH — registro, login, refresh
+### Corre "register" una vez, luego "login". El resto encadena.
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+### Register (éxito) — timezone es opcional (default America/Bogota)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Tester",
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "timezone": "America/Bogota"
+}
+
+### Login (éxito) — captura accessToken y refreshToken
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+@accessToken = {{login.response.body.accessToken}}
+@refreshToken = {{login.response.body.refreshToken}}
+
+### Refresh (éxito) — nuevo par de tokens
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### ---------- Casos de error ----------
+
+### Register — email duplicado (409)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "name": "Dup", "email": "{{email}}", "password": "{{password}}" }
+
+### Register — email inválido (400)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "name": "Bad", "email": "not-an-email", "password": "{{password}}" }
+
+### Register — password corta (400)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "name": "Bad", "email": "x@test.com", "password": "short" }
+
+### Register — timezone inválida (400)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "name": "Bad", "email": "tz@test.com", "password": "{{password}}", "timezone": "Mars/Phobos" }
+
+### Login — password incorrecta (401)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "wrongpassword" }
+
+### Login — email inexistente (401)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "nobody@test.com", "password": "{{password}}" }
+
+### Refresh — token basura (401)
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "not-a-jwt" }
+
+### Refresh — falta el campo (400)
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{}

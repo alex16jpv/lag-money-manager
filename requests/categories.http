@@ -1,0 +1,80 @@
+### ==========================================================
+### CATEGORIES — CRUD, filtros, archivar/restaurar
+### (el registro ya siembra categorías por defecto)
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+@token = {{login.response.body.accessToken}}
+
+### Listar todas (éxito) — incluye las sembradas al registrarse
+GET {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+
+### Listar por tipo (éxito)
+GET {{baseUrl}}/categories?type=EXPENSE
+Authorization: Bearer {{token}}
+
+### Crear categoría (éxito)
+# @name createCat
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Café", "emoji": "☕", "color": "BROWN", "type": "EXPENSE" }
+
+@catId = {{createCat.response.body.id}}
+
+### Get por id (éxito)
+GET {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+
+### Update (éxito)
+PUT {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Café y snacks", "color": "AMBER" }
+
+### Archivar (soft delete) — libera el nombre para reuso
+DELETE {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+
+### Reusar el nombre archivado (éxito, no choca con el archivado)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Café y snacks", "type": "EXPENSE" }
+
+### Ver archivadas
+GET {{baseUrl}}/categories?includeArchived=true
+Authorization: Bearer {{token}}
+
+### Restaurar la archivada
+### (si el nombre ya lo tomó otra activa, fallará por el índice único — probar)
+POST {{baseUrl}}/categories/{{catId}}/restore
+Authorization: Bearer {{token}}
+
+### ---------- Casos de error ----------
+
+### Crear — color inválido (400)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "X", "color": "NEON" }
+
+### Crear — sin nombre (400)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "emoji": "X" }

@@ -1,0 +1,79 @@
+### ==========================================================
+### USERS — perfil propio, timezone, cambio de password
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+@token = {{login.response.body.accessToken}}
+@userId = {{login.response.body.user.id}}
+
+### Get propio perfil (éxito) — incluye timezone, sin password
+GET {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+
+### Update nombre (éxito)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Tester Renamed" }
+
+### Update timezone (éxito) — cambia el bucketing de stats/budgets
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "timezone": "America/New_York" }
+
+### Cambio de password (éxito) — revoca refresh tokens vivos
+### Ojo: tras esto, vuelve a login con la nueva password.
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "password": "NewSecureP@ss123" }
+
+### ---------- Casos de error ----------
+
+### Sin token (401)
+GET {{baseUrl}}/users/{{userId}}
+
+### Otro usuario — Forbidden (403)
+GET {{baseUrl}}/users/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{token}}
+
+### Update — timezone inválida (400)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "timezone": "Nope/Nope" }
+
+### Update — body vacío (400)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Mass assignment — intentar setear tokenVersion (se ignora, no error)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "X", "tokenVersion": 999 }
+
+### GET /users (colección) — eliminado (404)
+GET {{baseUrl}}/users
+Authorization: Bearer {{token}}
+
+### Delete (soft) — deja el usuario archivado
+# DELETE {{baseUrl}}/users/{{userId}}
+# Authorization: Bearer {{token}}

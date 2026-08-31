@@ -1,0 +1,8 @@
+### Health check — no requiere auth
+@baseUrl = http://localhost:3000
+
+### Root
+GET {{baseUrl}}/
+
+### DB health
+GET {{baseUrl}}/health/db
