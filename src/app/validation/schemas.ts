@@ -48,6 +48,16 @@ const isoDate = z
   .datetime({ offset: true, message: "Must be a valid ISO 8601 date" })
   .transform((s) => new Date(s));
 
+// Trim + casefold + dedupe: "Café", "café" and "café " must be ONE tag,
+// or the per-tag spending stats fragment into ghost buckets.
+const normalizedTags = z
+  .array(z.string().min(1).max(50))
+  .max(30)
+  .transform((tags) => [
+    ...new Set(tags.map((t) => t.trim().toLowerCase()).filter(Boolean)),
+  ])
+  .optional();
+
 // Normalized so Foo@x.com and foo@x.com resolve to the same account.
 const emailField = z
   .string()
@@ -407,7 +417,7 @@ export const createTransactionSchema = z.object({
         .uuid("toAccountId must be a valid UUID")
         .optional()
         .nullable(),
-      tags: z.array(z.string().min(1).max(50)).max(30).optional(),
+      tags: normalizedTags,
       note: z.string().max(1000).optional().nullable(),
     })
     .superRefine((data, ctx) => {
@@ -505,7 +515,7 @@ export const updateTransactionSchema = z.object({
         .uuid("toAccountId must be a valid UUID")
         .optional()
         .nullable(),
-      tags: z.array(z.string().min(1).max(50)).max(30).optional(),
+      tags: normalizedTags,
       note: z.string().max(1000).optional().nullable(),
       pendingDetails: z.boolean().optional(),
     })

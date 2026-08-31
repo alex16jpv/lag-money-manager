@@ -53,6 +53,9 @@ export interface ITransactionRepository extends IRepository<Transaction> {
     query: SpendingQuery,
   ): Promise<SpendingResult>;
 
+  // Distinct tags of the user's active transactions (autocomplete source).
+  listTags(userId: string): Promise<string[]>;
+
   // Sum of EXPENSE amounts (in integer cents) per category in [from, to),
   // restricted to the given categories. Used to compute budget spend.
   sumExpensesByCategory(

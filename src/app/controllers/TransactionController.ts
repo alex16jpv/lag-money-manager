@@ -72,6 +72,11 @@ export class TransactionController {
     res.status(200).json(result);
   };
 
+  static getTags = async (req: Request, res: Response) => {
+    const tags = await transactionService.getTags(req.user!.userId);
+    res.status(200).json({ data: tags });
+  };
+
   static getTransactionById = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     const transaction = await transactionService.getTransactionById(

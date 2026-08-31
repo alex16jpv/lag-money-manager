@@ -184,6 +184,14 @@ export class TransactionRepository implements ITransactionRepository {
     }
   }
 
+  async listTags(userId: string): Promise<string[]> {
+    const tags = await TransactionModel.distinct("tags", {
+      userId,
+      deletedAt: null,
+    });
+    return (tags as string[]).sort();
+  }
+
   async aggregateSpending(
     userId: string,
     query: SpendingQuery,

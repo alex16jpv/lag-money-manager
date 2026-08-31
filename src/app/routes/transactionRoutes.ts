@@ -162,6 +162,17 @@ router.post(
 
 /**
  * @openapi
+ * /transactions/tags:
+ *   get:
+ *     tags: [Transactions]
+ *     summary: Distinct tags used by the user (autocomplete source)
+ *     responses:
+ *       200: { description: Sorted list of tags }
+ */
+router.get("/tags", TransactionController.getTags);
+
+/**
+ * @openapi
  * /transactions/{id}:
  *   get:
  *     tags: [Transactions]

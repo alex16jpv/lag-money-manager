@@ -51,6 +51,10 @@ export class TransactionService {
     );
   }
 
+  async getTags(userId: string): Promise<string[]> {
+    return this.transactionRepo.listTags(userId);
+  }
+
   async getTransactionById(id: string, userId: string): Promise<Transaction> {
     const transaction = await this.transactionRepo.getById(id);
     if (!transaction) {
