@@ -24,4 +24,10 @@ export class AuthController {
     const result = await authService.login(email, password);
     res.status(200).json(result);
   };
+
+  static refresh = async (req: Request, res: Response) => {
+    const { refreshToken } = req.body;
+    const result = await authService.refresh(refreshToken);
+    res.status(200).json(result);
+  };
 }

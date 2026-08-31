@@ -15,7 +15,8 @@ export class UserRepository implements IUserRepository {
     _id: string;
     name: string;
     email: string;
-    password: string;
+    password?: string;
+    tokenVersion?: number;
     createdAt: Date;
     updatedAt: Date;
   }): User {
@@ -24,6 +25,7 @@ export class UserRepository implements IUserRepository {
       name: doc.name,
       email: doc.email,
       password: doc.password,
+      tokenVersion: doc.tokenVersion,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });

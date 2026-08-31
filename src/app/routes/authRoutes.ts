@@ -3,7 +3,11 @@ import { Router } from "express";
 import { ENVIRONMENT } from "../../shared/constants";
 import { AuthController } from "../controllers/AuthController";
 import { authRateLimit } from "../middlewares/authRateLimitMiddleware";
-import { loginSchema,registerSchema } from "../validation/schemas";
+import {
+  loginSchema,
+  refreshSchema,
+  registerSchema,
+} from "../validation/schemas";
 import { validate } from "../validation/validate";
 
 const router = Router();
@@ -16,6 +20,11 @@ const loginLimiter = authRateLimit({
 });
 const registerLimiter = authRateLimit({
   keyPrefix: "register",
+  max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
+  windowMs: AUTH_WINDOW_MS,
+});
+const refreshLimiter = authRateLimit({
+  keyPrefix: "refresh",
   max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
@@ -92,6 +101,36 @@ router.post(
   loginLimiter,
   validate(loginSchema),
   AuthController.login,
+);
+
+/**
+ * @openapi
+ * /auth/refresh:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Exchange a refresh token for a new access + refresh token pair
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [refreshToken]
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: New token pair issued
+ *       401:
+ *         description: Invalid, expired or revoked refresh token
+ */
+router.post(
+  "/refresh",
+  refreshLimiter,
+  validate(refreshSchema),
+  AuthController.refresh,
 );
 
 export default router;

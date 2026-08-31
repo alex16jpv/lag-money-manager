@@ -11,6 +11,7 @@ jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
     JWT_SECRET: "test-secret-key",
     JWT_EXPIRATION: "24h",
+    REFRESH_TOKEN_EXPIRATION: "30d",
     BCRYPT_SALT_ROUNDS: 12,
     LOG_LEVEL: "info",
     NODE_ENV: "test",
@@ -142,22 +143,29 @@ describe("AuthService", () => {
       updatedAt: new Date(),
     });
 
-    it("should return a token and user on valid login", async () => {
+    it("should return access + refresh tokens and user on valid login", async () => {
       repo.getByEmail.mockResolvedValue(existingUser);
 
       const result = await service.login("john@example.com", "password123");
 
       expect(repo.getByEmail).toHaveBeenCalledWith("john@example.com");
-      expect(result.token).toBeDefined();
-      expect(typeof result.token).toBe("string");
+      expect(typeof result.accessToken).toBe("string");
+      expect(typeof result.refreshToken).toBe("string");
 
-      const decoded = jwt.verify(result.token, "test-secret-key") as {
+      const decoded = jwt.verify(result.accessToken, "test-secret-key") as {
         userId: string;
         email: string;
       };
       expect(decoded.userId).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac70");
       expect(decoded.email).toBe("john@example.com");
+
+      const refresh = jwt.verify(result.refreshToken, "test-secret-key") as {
+        userId: string;
+        type: string;
+      };
+      expect(refresh.type).toBe("refresh");
       expect(result.user).not.toHaveProperty("password");
+      expect(result.user).not.toHaveProperty("tokenVersion");
     });
 
     it("should throw Unauthorized when email is not found", async () => {
@@ -180,6 +188,58 @@ describe("AuthService", () => {
       await expect(
         service.login("john@example.com", "wrongpassword"),
       ).rejects.toThrow("Invalid email or password");
+    });
+  });
+
+  describe("refresh [M3]", () => {
+    const user = new User({
+      id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      name: "John",
+      email: "john@example.com",
+      password: "hash",
+      tokenVersion: 2,
+    });
+
+    const signRefresh = (tokenVersion: number) =>
+      jwt.sign(
+        { userId: user.id, tokenVersion, type: "refresh" },
+        "test-secret-key",
+        { algorithm: "HS256", expiresIn: "30d" },
+      );
+
+    it("issues a new token pair for a valid refresh token", async () => {
+      repo.getById.mockResolvedValue(user);
+
+      const result = await service.refresh(signRefresh(2));
+
+      expect(typeof result.accessToken).toBe("string");
+      expect(typeof result.refreshToken).toBe("string");
+    });
+
+    it("rejects a refresh token whose tokenVersion is stale (revoked)", async () => {
+      repo.getById.mockResolvedValue(user); // current tokenVersion = 2
+
+      await expect(service.refresh(signRefresh(1))).rejects.toThrow(
+        "revoked",
+      );
+    });
+
+    it("rejects an access token used as a refresh token", async () => {
+      const accessToken = jwt.sign(
+        { userId: user.id, email: user.email },
+        "test-secret-key",
+        { algorithm: "HS256", expiresIn: "15m" },
+      );
+
+      await expect(service.refresh(accessToken)).rejects.toThrow(
+        "Invalid refresh token",
+      );
+    });
+
+    it("rejects a garbage/expired token", async () => {
+      await expect(service.refresh("not-a-jwt")).rejects.toThrow(
+        "Invalid or expired refresh token",
+      );
     });
   });
 });

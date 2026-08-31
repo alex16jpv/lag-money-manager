@@ -63,7 +63,10 @@ const baseEnvSchema = z.object({
   DB_TYPE: z.string().default(DB_TYPES.MONGO),
   JWT_SECRET: z.string().min(1, "JWT_SECRET is required"),
   API_SECRET: z.string().optional(),
-  JWT_EXPIRATION: z.string().default("24h"),
+  // Short-lived access token; renew via the refresh token.
+  JWT_EXPIRATION: z.string().default("15m"),
+  // Long-lived refresh token used only at POST /auth/refresh.
+  REFRESH_TOKEN_EXPIRATION: z.string().default("30d"),
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(4).max(20).default(12),
   CORS_ORIGIN: z.string().min(1, "CORS_ORIGIN is required"),
   RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(200),

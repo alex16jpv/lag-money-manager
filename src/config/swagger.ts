@@ -253,7 +253,8 @@ const options: swaggerJsdoc.Options = {
         LoginResponse: {
           type: "object",
           properties: {
-            token: { type: "string" },
+            accessToken: { type: "string" },
+            refreshToken: { type: "string" },
             user: { $ref: "#/components/schemas/User" },
           },
         },

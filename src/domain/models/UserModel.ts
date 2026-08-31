@@ -7,6 +7,7 @@ export interface IUserDocument {
   name: string;
   email: string;
   password: string;
+  tokenVersion: number;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -18,6 +19,7 @@ const UserSchema = new Schema<IUserDocument>(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
+    tokenVersion: { type: Number, required: true, default: 0 },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true },

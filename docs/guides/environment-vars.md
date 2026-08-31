@@ -16,8 +16,9 @@ All environment variables are validated at startup using Zod schemas in `src/sha
 
 | Variable             | Required | Default | Description                                                                                   | How to obtain                              |
 | -------------------- | -------- | ------- | --------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `JWT_SECRET`         | Yes      | —       | Secret key for signing JWT tokens. Must be at least 1 character (use 32+ chars in production) | Generate with `openssl rand -hex 32`       |
-| `JWT_EXPIRATION`     | No       | `24h`   | JWT token lifetime (e.g., `1h`, `7d`, `24h`)                                                  | Choose based on security requirements      |
+| `JWT_SECRET`         | Yes      | —       | Secret key for signing access & refresh tokens (use 32+ chars in production)                  | Generate with `openssl rand -hex 32`       |
+| `JWT_EXPIRATION`     | No       | `15m`   | Access token lifetime (short; renewed via POST /auth/refresh)                                 | e.g. `15m`, `1h`                           |
+| `REFRESH_TOKEN_EXPIRATION` | No | `30d`  | Refresh token lifetime. Revoked early when a user changes their password (tokenVersion bump)  | e.g. `7d`, `30d`                           |
 | `BCRYPT_SALT_ROUNDS` | No       | `12`    | bcrypt hashing rounds (4-20). Higher = slower + more secure                                   | 10-12 for most apps, 14+ for high security |
 
 ## Security / Rate Limiting

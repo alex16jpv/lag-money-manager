@@ -234,6 +234,12 @@ export const loginSchema = z.object({
   }),
 });
 
+export const refreshSchema = z.object({
+  body: z.object({
+    refreshToken: z.string().min(1, "refreshToken is required"),
+  }),
+});
+
 export const registerSchema = z.object({
   body: z.object({
     name: z.string().min(1, "Name is required").max(255),

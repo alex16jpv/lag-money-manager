@@ -43,12 +43,19 @@ export class UserService {
     }
 
     if (dto.password) {
+      const existing = await this.repo.getById(id);
+      if (!existing) {
+        throw new ApiError("NotFound", "User not found");
+      }
       const hashedDto = {
         ...dto,
         password: await bcryptjs.hash(
           dto.password,
           ENVIRONMENT.BCRYPT_SALT_ROUNDS,
         ),
+        // Bump tokenVersion so every refresh token issued before this password
+        // change stops working (a stolen token can no longer be renewed).
+        tokenVersion: existing.tokenVersion + 1,
       };
       const updated = await this.repo.update(id, hashedDto);
       return this.toResponseDTO(updated);

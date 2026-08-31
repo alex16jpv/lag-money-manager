@@ -129,7 +129,8 @@ describe("UserService", () => {
       ).rejects.toThrow("User id does not match");
     });
 
-    it("should hash password when updating with a new password", async () => {
+    it("should hash password and bump tokenVersion on password change", async () => {
+      repo.getById.mockResolvedValue(mockUser);
       repo.update.mockResolvedValue(mockUser);
 
       await service.updateUser(
@@ -145,6 +146,8 @@ describe("UserService", () => {
       expect(await bcryptjs.compare("newpassword", updateArg.password!)).toBe(
         true,
       );
+      // tokenVersion is bumped so outstanding refresh tokens are revoked [M3]
+      expect(updateArg.tokenVersion).toBe(mockUser.tokenVersion + 1);
     });
   });
 

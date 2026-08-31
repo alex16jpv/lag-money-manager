@@ -55,6 +55,7 @@ jest.mock("../../shared/constants", () => ({
     DB_TYPE: "MONGO",
     JWT_SECRET: "test-secret-for-integration",
     JWT_EXPIRATION: "1h",
+    REFRESH_TOKEN_EXPIRATION: "30d",
     BCRYPT_SALT_ROUNDS: 12,
     CORS_ORIGIN: "http://localhost:5173",
     RATE_LIMIT_MAX: 100000,
@@ -257,8 +258,8 @@ describe("Integration Tests", () => {
       });
 
       expect(res.status).toBe(200);
-      expect(res.body.token).toBeDefined();
-      expect(typeof res.body.token).toBe("string");
+      expect(typeof res.body.accessToken).toBe("string");
+      expect(typeof res.body.refreshToken).toBe("string");
     });
 
     it("should return 401 for wrong password", async () => {
@@ -286,6 +287,45 @@ describe("Integration Tests", () => {
     it("should return 400 for missing fields", async () => {
       const res = await request(app).post("/auth/login").send({});
 
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("POST /auth/refresh [M3]", () => {
+    it("issues a new token pair for a valid refresh token", async () => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+      const refreshToken = jwt.sign(
+        { userId: testUser.id, tokenVersion: testUser.tokenVersion, type: "refresh" },
+        "test-secret-for-integration",
+        { expiresIn: "30d" },
+      );
+
+      const res = await request(app)
+        .post("/auth/refresh")
+        .send({ refreshToken });
+
+      expect(res.status).toBe(200);
+      expect(typeof res.body.accessToken).toBe("string");
+      expect(typeof res.body.refreshToken).toBe("string");
+    });
+
+    it("returns 401 for a revoked (stale tokenVersion) refresh token", async () => {
+      mockUserRepo.getById.mockResolvedValue(testUser); // tokenVersion 0
+      const refreshToken = jwt.sign(
+        { userId: testUser.id, tokenVersion: 99, type: "refresh" },
+        "test-secret-for-integration",
+        { expiresIn: "30d" },
+      );
+
+      const res = await request(app)
+        .post("/auth/refresh")
+        .send({ refreshToken });
+
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 400 when refreshToken is missing", async () => {
+      const res = await request(app).post("/auth/refresh").send({});
       expect(res.status).toBe(400);
     });
   });
