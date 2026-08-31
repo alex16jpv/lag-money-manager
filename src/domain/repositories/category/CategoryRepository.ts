@@ -1,15 +1,16 @@
 import { v7 as uuidv7 } from "uuid";
+
+import { ApiError } from "../../../shared/errors";
 import {
   buildPaginatedResult,
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
-import { ApiError } from "../../../shared/errors";
 import { Category } from "../../entities/Category";
-import { CategoryMongoModel, ICategoryDocument } from "../../models/mongoose/CategoryMongoModel";
+import { CategoryModel, ICategoryDocument } from "../../models/CategoryModel";
 import { CategoryFilters, ICategoryRepository } from "./ICategoryRepository";
 
-export class CategoryMongoRepository implements ICategoryRepository {
+export class CategoryRepository implements ICategoryRepository {
   private toEntity(doc: ICategoryDocument): Category {
     return new Category({
       id: doc._id,
@@ -31,16 +32,13 @@ export class CategoryMongoRepository implements ICategoryRepository {
       filter._id = { $gt: cursor };
     }
 
-    const hasFilter = Object.keys(baseFilter).length > 0;
     const [docs, total] = await Promise.all([
-      CategoryMongoModel.find(filter)
+      CategoryModel.find(filter)
         .sort({ _id: 1 })
         .skip(cursor ? 0 : offset)
         .limit(limit)
         .lean(),
-      hasFilter
-        ? CategoryMongoModel.countDocuments(baseFilter)
-        : CategoryMongoModel.estimatedDocumentCount(),
+      CategoryModel.countDocuments(baseFilter),
     ]);
 
     return buildPaginatedResult(
@@ -51,7 +49,10 @@ export class CategoryMongoRepository implements ICategoryRepository {
   }
 
   async getById(id: string): Promise<Category | null> {
-    const doc = await CategoryMongoModel.findById(id).lean();
+    const doc = await CategoryModel.findOne({
+      _id: id,
+      deletedAt: null,
+    }).lean();
     if (!doc) return null;
     return this.toEntity(doc);
   }
@@ -59,7 +60,7 @@ export class CategoryMongoRepository implements ICategoryRepository {
   async getAll(
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Category>> {
-    return this.paginatedFind({}, pagination);
+    return this.paginatedFind({ deletedAt: null }, pagination);
   }
 
   async getAllByUserId(
@@ -67,7 +68,7 @@ export class CategoryMongoRepository implements ICategoryRepository {
     pagination: PaginationParams,
     filters?: CategoryFilters,
   ): Promise<PaginatedResult<Category>> {
-    const filter: Record<string, unknown> = { userId };
+    const filter: Record<string, unknown> = { userId, deletedAt: null };
     if (filters?.ids?.length) {
       filter._id = { $in: filters.ids };
     }
@@ -79,21 +80,23 @@ export class CategoryMongoRepository implements ICategoryRepository {
 
   async create(category: Partial<Category>): Promise<Category> {
     const id = uuidv7();
-    const doc = await CategoryMongoModel.create({ _id: id, ...category });
+    const doc = await CategoryModel.create({ _id: id, ...category });
     return this.toEntity(doc);
   }
 
   async createMany(categories: Partial<Category>[]): Promise<Category[]> {
-    const docs = await CategoryMongoModel.insertMany(
+    const docs = await CategoryModel.insertMany(
       categories.map((c) => ({ _id: uuidv7(), ...c })),
     );
     return docs.map((doc) => this.toEntity(doc as unknown as ICategoryDocument));
   }
 
   async update(id: string, category: Partial<Category>): Promise<Category> {
-    const doc = await CategoryMongoModel.findByIdAndUpdate(id, category, {
-      new: true,
-    }).lean();
+    const doc = await CategoryModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      category,
+      { new: true },
+    ).lean();
     if (!doc) {
       throw new ApiError("NotFound", "Category not found");
     }
@@ -101,7 +104,11 @@ export class CategoryMongoRepository implements ICategoryRepository {
   }
 
   async delete(id: string): Promise<void> {
-    const doc = await CategoryMongoModel.findByIdAndDelete(id);
+    const doc = await CategoryModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      { deletedAt: new Date() },
+      { new: true },
+    ).lean();
     if (!doc) {
       throw new ApiError("NotFound", "Category not found");
     }

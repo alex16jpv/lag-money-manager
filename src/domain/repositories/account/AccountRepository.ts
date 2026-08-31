@@ -1,26 +1,39 @@
 import { v7 as uuidv7 } from "uuid";
+
+import { ApiError } from "../../../shared/errors";
+import { fromCents, toCents } from "../../../shared/money";
 import {
   buildPaginatedResult,
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
-import { ApiError } from "../../../shared/errors";
+import { TxSession } from "../../../shared/unitOfWork";
 import { Account } from "../../entities/Account";
 import {
-  AccountMongoModel,
+  AccountModel,
   IAccountDocument,
-} from "../../models/mongoose/AccountMongoModel";
+} from "../../models/AccountModel";
 import { AccountFilters, IAccountRepository } from "./IAccountRepository";
 
-export class AccountMongoRepository implements IAccountRepository {
+export class AccountRepository implements IAccountRepository {
   private toEntity(doc: IAccountDocument): Account {
     return new Account({
       id: doc._id,
       name: doc.name,
       type: doc.type,
-      balance: doc.balance,
+      balance: fromCents(doc.balance),
+      color: doc.color as Account["color"],
       userId: doc.userId,
     });
+  }
+
+  /** Converts a partial entity's decimal balance to stored cents. */
+  private toStorage(account: Partial<Account>): Record<string, unknown> {
+    const doc: Record<string, unknown> = { ...account };
+    if (account.balance !== undefined) {
+      doc.balance = toCents(account.balance);
+    }
+    return doc;
   }
 
   private async paginatedFind(
@@ -33,16 +46,16 @@ export class AccountMongoRepository implements IAccountRepository {
       filter._id = { $gt: cursor };
     }
 
-    const hasFilter = Object.keys(baseFilter).length > 0;
+    const hasFilter = Object.keys(baseFilter).length > 1; // beyond deletedAt
     const [docs, total] = await Promise.all([
-      AccountMongoModel.find(filter)
+      AccountModel.find(filter)
         .sort({ _id: 1 })
         .skip(cursor ? 0 : offset)
         .limit(limit)
         .lean(),
       hasFilter
-        ? AccountMongoModel.countDocuments(baseFilter)
-        : AccountMongoModel.estimatedDocumentCount(),
+        ? AccountModel.countDocuments(baseFilter)
+        : AccountModel.countDocuments({ deletedAt: null }),
     ]);
 
     return buildPaginatedResult(
@@ -52,8 +65,10 @@ export class AccountMongoRepository implements IAccountRepository {
     );
   }
 
-  async getById(id: string): Promise<Account | null> {
-    const doc = await AccountMongoModel.findById(id).lean();
+  async getById(id: string, session?: TxSession): Promise<Account | null> {
+    const doc = await AccountModel.findOne({ _id: id, deletedAt: null })
+      .session(session ?? null)
+      .lean();
     if (!doc) return null;
     return this.toEntity(doc);
   }
@@ -61,7 +76,7 @@ export class AccountMongoRepository implements IAccountRepository {
   async getAll(
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Account>> {
-    return this.paginatedFind({}, pagination);
+    return this.paginatedFind({ deletedAt: null }, pagination);
   }
 
   async getAllByUserId(
@@ -69,31 +84,60 @@ export class AccountMongoRepository implements IAccountRepository {
     pagination: PaginationParams,
     filters?: AccountFilters,
   ): Promise<PaginatedResult<Account>> {
-    const filter: Record<string, unknown> = { userId };
+    const filter: Record<string, unknown> = { userId, deletedAt: null };
     if (filters?.ids?.length) {
       filter._id = { $in: filters.ids };
     }
     return this.paginatedFind(filter, pagination);
   }
 
-  async create(account: Partial<Account>): Promise<Account> {
+  async create(
+    account: Partial<Account>,
+    session?: TxSession,
+  ): Promise<Account> {
     const id = uuidv7();
-    const doc = await AccountMongoModel.create({ _id: id, ...account });
-    return this.toEntity(doc);
+    const [doc] = await AccountModel.create(
+      [{ _id: id, ...this.toStorage(account) }],
+      { session: session ?? undefined },
+    );
+    return this.toEntity(doc.toObject());
   }
 
-  async update(id: string, account: Partial<Account>): Promise<Account> {
-    const doc = await AccountMongoModel.findByIdAndUpdate(id, account, {
-      new: true,
-    }).lean();
+  async update(
+    id: string,
+    account: Partial<Account>,
+    session?: TxSession,
+  ): Promise<Account> {
+    const doc = await AccountModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      this.toStorage(account),
+      { new: true, session: session ?? undefined },
+    ).lean();
     if (!doc) {
       throw new ApiError("NotFound", "Account not found");
     }
     return this.toEntity(doc);
   }
 
-  async delete(id: string): Promise<void> {
-    const doc = await AccountMongoModel.findByIdAndDelete(id);
+  async incrementBalance(
+    id: string,
+    delta: number,
+    session?: TxSession,
+  ): Promise<Account | null> {
+    const doc = await AccountModel.findOneAndUpdate(
+      { _id: id },
+      { $inc: { balance: toCents(delta) } },
+      { new: true, session: session ?? undefined },
+    ).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async delete(id: string, session?: TxSession): Promise<void> {
+    const doc = await AccountModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      { deletedAt: new Date() },
+      { new: true, session: session ?? undefined },
+    ).lean();
     if (!doc) {
       throw new ApiError("NotFound", "Account not found");
     }

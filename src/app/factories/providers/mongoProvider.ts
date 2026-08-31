@@ -1,9 +1,9 @@
-import { DB_TYPES, IS_LAMBDA } from "../../../shared/constants";
 import { connectMongo } from "../../../config/mongoConnection";
-import { UserMongoRepository } from "../../../domain/repositories/user/UserMongoRepository";
-import { AccountMongoRepository } from "../../../domain/repositories/account/AccountMongoRepository";
-import { CategoryMongoRepository } from "../../../domain/repositories/category/CategoryMongoRepository";
-import { TransactionMongoRepository } from "../../../domain/repositories/transaction/TransactionMongoRepository";
+import { AccountRepository } from "../../../domain/repositories/account/AccountRepository";
+import { CategoryRepository } from "../../../domain/repositories/category/CategoryRepository";
+import { TransactionRepository } from "../../../domain/repositories/transaction/TransactionRepository";
+import { UserRepository } from "../../../domain/repositories/user/UserRepository";
+import { DB_TYPES, IS_LAMBDA } from "../../../shared/constants";
 import logger from "../../../shared/logger";
 
 interface RegistryTarget {
@@ -22,8 +22,8 @@ export function registerRepositories(factory: RegistryTarget): void {
       process.exit(1);
     }
   });
-  factory.register("user", () => new UserMongoRepository());
-  factory.register("account", () => new AccountMongoRepository());
-  factory.register("category", () => new CategoryMongoRepository());
-  factory.register("transaction", () => new TransactionMongoRepository());
+  factory.register("user", () => new UserRepository());
+  factory.register("account", () => new AccountRepository());
+  factory.register("category", () => new CategoryRepository());
+  factory.register("transaction", () => new TransactionRepository());
 }

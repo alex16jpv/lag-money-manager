@@ -1,26 +1,29 @@
 import { v7 as uuidv7 } from "uuid";
+
+import { ApiError } from "../../../shared/errors";
+import { fromCents, toCents } from "../../../shared/money";
 import {
   buildPaginatedResult,
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
-import { ApiError } from "../../../shared/errors";
+import { TxSession } from "../../../shared/unitOfWork";
 import { Transaction } from "../../entities/Transaction";
 import {
   ITransactionDocument,
-  TransactionMongoModel,
-} from "../../models/mongoose/TransactionMongoModel";
+  TransactionModel,
+} from "../../models/TransactionModel";
 import {
   ITransactionRepository,
   TransactionFilters,
 } from "./ITransactionRepository";
 
-export class TransactionMongoRepository implements ITransactionRepository {
+export class TransactionRepository implements ITransactionRepository {
   private toEntity(doc: ITransactionDocument): Transaction {
     return new Transaction({
       id: doc._id,
       type: doc.type,
-      amount: doc.amount,
+      amount: fromCents(doc.amount),
       date: doc.date,
       categoryId: doc.categoryId ?? null,
       description: doc.description ?? null,
@@ -34,6 +37,15 @@ export class TransactionMongoRepository implements ITransactionRepository {
     });
   }
 
+  /** Converts a partial entity's decimal amount to stored cents. */
+  private toStorage(transaction: Partial<Transaction>): Record<string, unknown> {
+    const doc: Record<string, unknown> = { ...transaction };
+    if (transaction.amount !== undefined) {
+      doc.amount = toCents(transaction.amount);
+    }
+    return doc;
+  }
+
   private async paginatedFind(
     baseFilter: Record<string, unknown>,
     pagination: PaginationParams,
@@ -43,8 +55,7 @@ export class TransactionMongoRepository implements ITransactionRepository {
     if (cursor) {
       // Keyset over (date DESC, _id DESC): the id alone is not enough because
       // transactions can be backdated, so fetch the cursor doc's date.
-      // $and keeps this from clashing with a $or already in baseFilter.
-      const cursorDoc = await TransactionMongoModel.findById(cursor)
+      const cursorDoc = await TransactionModel.findById(cursor)
         .select("date")
         .lean();
       if (cursorDoc) {
@@ -62,16 +73,13 @@ export class TransactionMongoRepository implements ITransactionRepository {
       }
     }
 
-    const hasFilter = Object.keys(baseFilter).length > 0;
     const [docs, total] = await Promise.all([
-      TransactionMongoModel.find(filter)
+      TransactionModel.find(filter)
         .sort({ date: -1, _id: -1 })
         .skip(cursor ? 0 : offset)
         .limit(limit)
         .lean(),
-      hasFilter
-        ? TransactionMongoModel.countDocuments(baseFilter)
-        : TransactionMongoModel.estimatedDocumentCount(),
+      TransactionModel.countDocuments(baseFilter),
     ]);
 
     return buildPaginatedResult(
@@ -81,8 +89,10 @@ export class TransactionMongoRepository implements ITransactionRepository {
     );
   }
 
-  async getById(id: string): Promise<Transaction | null> {
-    const doc = await TransactionMongoModel.findById(id).lean();
+  async getById(id: string, session?: TxSession): Promise<Transaction | null> {
+    const doc = await TransactionModel.findOne({ _id: id, deletedAt: null })
+      .session(session ?? null)
+      .lean();
     if (!doc) return null;
     return this.toEntity(doc);
   }
@@ -90,7 +100,7 @@ export class TransactionMongoRepository implements ITransactionRepository {
   async getAll(
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Transaction>> {
-    return this.paginatedFind({}, pagination);
+    return this.paginatedFind({ deletedAt: null }, pagination);
   }
 
   async getAllByUserId(
@@ -98,7 +108,7 @@ export class TransactionMongoRepository implements ITransactionRepository {
     pagination: PaginationParams,
     filters?: TransactionFilters,
   ): Promise<PaginatedResult<Transaction>> {
-    const filter: Record<string, unknown> = { userId };
+    const filter: Record<string, unknown> = { userId, deletedAt: null };
     if (filters?.ids?.length) {
       filter._id = { $in: filters.ids };
     }
@@ -117,27 +127,40 @@ export class TransactionMongoRepository implements ITransactionRepository {
     return this.paginatedFind(filter, pagination);
   }
 
-  async create(transaction: Partial<Transaction>): Promise<Transaction> {
+  async create(
+    transaction: Partial<Transaction>,
+    session?: TxSession,
+  ): Promise<Transaction> {
     const id = uuidv7();
-    const doc = await TransactionMongoModel.create({ _id: id, ...transaction });
+    const [doc] = await TransactionModel.create(
+      [{ _id: id, ...this.toStorage(transaction) }],
+      { session: session ?? undefined },
+    );
     return this.toEntity(doc.toObject());
   }
 
   async update(
     id: string,
     transaction: Partial<Transaction>,
+    session?: TxSession,
   ): Promise<Transaction> {
-    const doc = await TransactionMongoModel.findByIdAndUpdate(id, transaction, {
-      new: true,
-    }).lean();
+    const doc = await TransactionModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      this.toStorage(transaction),
+      { new: true, session: session ?? undefined },
+    ).lean();
     if (!doc) {
       throw new ApiError("NotFound", "Transaction not found");
     }
     return this.toEntity(doc);
   }
 
-  async delete(id: string): Promise<void> {
-    const doc = await TransactionMongoModel.findByIdAndDelete(id);
+  async delete(id: string, session?: TxSession): Promise<void> {
+    const doc = await TransactionModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      { deletedAt: new Date() },
+      { new: true, session: session ?? undefined },
+    ).lean();
     if (!doc) {
       throw new ApiError("NotFound", "Transaction not found");
     }
