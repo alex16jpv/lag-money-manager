@@ -337,7 +337,7 @@ const options: swaggerJsdoc.Options = {
             },
             type: {
               type: "string",
-              enum: ["INCOME", "EXPENSE", "TRANSFER"],
+              enum: ["INCOME", "EXPENSE", "TRANSFER", "ADJUSTMENT"],
               example: "EXPENSE",
             },
             amount: { type: "number", example: 50.0 },
@@ -402,7 +402,7 @@ const options: swaggerJsdoc.Options = {
           properties: {
             type: {
               type: "string",
-              enum: ["INCOME", "EXPENSE", "TRANSFER"],
+              enum: ["INCOME", "EXPENSE", "TRANSFER", "ADJUSTMENT"],
             },
             amount: { type: "number", minimum: 0, exclusiveMinimum: true },
             date: { type: "string", format: "date-time" },
@@ -419,7 +419,7 @@ const options: swaggerJsdoc.Options = {
           properties: {
             type: {
               type: "string",
-              enum: ["INCOME", "EXPENSE", "TRANSFER"],
+              enum: ["INCOME", "EXPENSE", "TRANSFER", "ADJUSTMENT"],
             },
             amount: { type: "number", minimum: 0, exclusiveMinimum: true },
             date: { type: "string", format: "date-time" },

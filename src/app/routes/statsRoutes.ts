@@ -18,7 +18,7 @@ const router = Router();
  *         schema: { type: string, enum: [category, day, tag] }
  *       - in: query
  *         name: type
- *         schema: { type: string, enum: [INCOME, EXPENSE, TRANSFER] }
+ *         schema: { type: string, enum: [INCOME, EXPENSE, TRANSFER, ADJUSTMENT] }
  *       - in: query
  *         name: from
  *         schema: { type: string, format: date-time }

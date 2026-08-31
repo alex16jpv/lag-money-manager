@@ -55,7 +55,7 @@ const router = Router();
  *         name: type
  *         schema:
  *           type: string
- *           enum: [INCOME, EXPENSE, TRANSFER]
+ *           enum: [INCOME, EXPENSE, TRANSFER, ADJUSTMENT]
  *         description: Filter transactions by type
  *     responses:
  *       200:
@@ -84,6 +84,7 @@ router.get(
  *       - **INCOME**: Adds amount to `toAccountId` (required).
  *       - **EXPENSE**: Subtracts amount from `fromAccountId` (required).
  *       - **TRANSFER**: Subtracts from `fromAccountId` and adds to `toAccountId` (both required).
+ *       - **ADJUSTMENT**: Balance reconciliation; exactly one of `fromAccountId` (decrease) or `toAccountId` (increase), no `categoryId`. Excluded from spending stats and budgets.
  *     requestBody:
  *       required: true
  *       content:

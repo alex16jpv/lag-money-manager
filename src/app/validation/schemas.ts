@@ -498,10 +498,16 @@ export const updateTransactionSchema = z.object({
     }),
 });
 
+// Quick capture is for real cash flows; ADJUSTMENT would create an
+// un-detailable pendingDetails entry (it can't take a category).
+const quickAddTypeValues = Object.keys(TRANSACTION_TYPES).filter(
+  (t) => t !== "ADJUSTMENT",
+) as [string, ...string[]];
+
 export const quickAddTransactionSchema = z.object({
   body: z.object({
     amount: moneyAmount,
-    type: z.enum(transactionTypeValues).optional(),
+    type: z.enum(quickAddTypeValues).optional(),
     date: z
       .string()
       .datetime({ message: "Date must be a valid ISO 8601 date" })
