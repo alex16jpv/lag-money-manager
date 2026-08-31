@@ -65,19 +65,25 @@ export class TransactionRepository implements ITransactionRepository {
       })
         .select("date")
         .lean();
-      if (cursorDoc) {
-        filter = {
-          $and: [
-            baseFilter,
-            {
-              $or: [
-                { date: { $lt: cursorDoc.date } },
-                { date: cursorDoc.date, _id: { $lt: cursor } },
-              ],
-            },
-          ],
-        };
+      if (!cursorDoc) {
+        // Silently serving page 1 made infinite scroll duplicate items.
+        throw new ApiError(
+          "BadRequest",
+          "Invalid pagination cursor",
+          "INVALID_CURSOR",
+        );
       }
+      filter = {
+        $and: [
+          baseFilter,
+          {
+            $or: [
+              { date: { $lt: cursorDoc.date } },
+              { date: cursorDoc.date, _id: { $lt: cursor } },
+            ],
+          },
+        ],
+      };
     }
 
     const [docs, total] = await Promise.all([
