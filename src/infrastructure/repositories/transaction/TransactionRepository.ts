@@ -4,8 +4,8 @@ import { v7 as uuidv7 } from "uuid";
 import { Transaction } from "../../../domain/entities/Transaction";
 import {
   ITransactionRepository,
-  SpendingBucket,
   SpendingQuery,
+  SpendingResult,
   TransactionFilters,
 } from "../../../domain/repositories/transaction/ITransactionRepository";
 import { ApiError } from "../../../shared/errors";
@@ -175,7 +175,7 @@ export class TransactionRepository implements ITransactionRepository {
   async aggregateSpending(
     userId: string,
     query: SpendingQuery,
-  ): Promise<SpendingBucket[]> {
+  ): Promise<SpendingResult> {
     const match: Record<string, unknown> = { userId, deletedAt: null };
     // ADJUSTMENT is reconciliation, not real cash flow: hidden unless asked for.
     match.type = query.type ?? { $ne: "ADJUSTMENT" };
@@ -197,14 +197,16 @@ export class TransactionRepository implements ITransactionRepository {
             },
           }
         : query.groupBy === "tag"
-          ? "$tags"
+          ? { $ifNull: ["$tags", "untagged"] }
           : { $ifNull: ["$categoryId", "uncategorized"] };
 
-    const pipeline: PipelineStage[] = [{ $match: match }];
+    const bucketStages: PipelineStage.FacetPipelineStage[] = [];
     if (query.groupBy === "tag") {
-      pipeline.push({ $unwind: "$tags" });
+      bucketStages.push({
+        $unwind: { path: "$tags", preserveNullAndEmptyArrays: true },
+      });
     }
-    pipeline.push(
+    bucketStages.push(
       {
         $group: {
           _id: groupId,
@@ -212,21 +214,34 @@ export class TransactionRepository implements ITransactionRepository {
           count: { $sum: 1 },
         },
       },
-      { $sort: { total: -1 } },
+      // Day buckets are a time series; the rest rank by spend.
+      query.groupBy === "day" ? { $sort: { _id: 1 } } : { $sort: { total: -1 } },
     );
 
-    const rows = await TransactionModel.aggregate<{
-      _id: string;
-      total: number;
-      count: number;
+    const pipeline: PipelineStage[] = [
+      { $match: match },
+      {
+        $facet: {
+          buckets: bucketStages,
+          totals: [{ $group: { _id: null, total: { $sum: "$amount" } } }],
+        },
+      },
+    ];
+
+    const [result] = await TransactionModel.aggregate<{
+      buckets: { _id: string; total: number; count: number }[];
+      totals: { total: number }[];
     }>(pipeline);
 
-    return rows.map((r) => ({
-      key: String(r._id),
-      total: fromCents(r.total),
-      count: r.count,
-      avg: fromCents(Math.round(r.total / r.count)),
-    }));
+    return {
+      buckets: (result?.buckets ?? []).map((r) => ({
+        key: String(r._id),
+        total: fromCents(r.total),
+        count: r.count,
+        avg: fromCents(Math.round(r.total / r.count)),
+      })),
+      totalCents: result?.totals[0]?.total ?? 0,
+    };
   }
 
   async sumExpensesByCategory(

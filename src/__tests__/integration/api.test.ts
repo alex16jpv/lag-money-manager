@@ -925,9 +925,10 @@ describe("Integration Tests", () => {
   // ==================== Stats Routes ====================
   describe("GET /stats/spending [F1]", () => {
     it("returns spending buckets grouped by category", async () => {
-      mockTransactionRepo.aggregateSpending.mockResolvedValue([
-        { key: "cat-1", total: 30.5, count: 3, avg: 10.17 },
-      ]);
+      mockTransactionRepo.aggregateSpending.mockResolvedValue({
+        buckets: [{ key: "cat-1", total: 30.5, count: 3, avg: 10.17 }],
+        totalCents: 3050,
+      });
 
       const res = await request(app)
         .get("/stats/spending?groupBy=category")

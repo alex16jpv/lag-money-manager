@@ -28,6 +28,14 @@ export interface SpendingBucket {
   avg: number;
 }
 
+export interface SpendingResult {
+  buckets: SpendingBucket[];
+  // Grand total in integer cents, computed WITHOUT the tag unwind: for
+  // groupBy=tag the per-bucket totals overlap (multi-tag transactions), so
+  // summing buckets would double-count.
+  totalCents: number;
+}
+
 export interface ITransactionRepository extends IRepository<Transaction> {
   getAllByUserId(
     userId: string,
@@ -38,7 +46,7 @@ export interface ITransactionRepository extends IRepository<Transaction> {
   aggregateSpending(
     userId: string,
     query: SpendingQuery,
-  ): Promise<SpendingBucket[]>;
+  ): Promise<SpendingResult>;
 
   // Sum of EXPENSE amounts (in integer cents) per category in [from, to),
   // restricted to the given categories. Used to compute budget spend.

@@ -45,7 +45,7 @@ const budgetPeriodValues = Object.keys(BUDGET_PERIOD_TYPES) as [
 ];
 const isoDate = z
   .string()
-  .datetime({ message: "Must be a valid ISO 8601 date" })
+  .datetime({ offset: true, message: "Must be a valid ISO 8601 date" })
   .transform((s) => new Date(s));
 
 // Normalized so Foo@x.com and foo@x.com resolve to the same account.
@@ -248,25 +248,30 @@ export const updateCategorySchema = z.object({
 });
 
 export const spendingStatsSchema = z.object({
-  query: z.object({
-    groupBy: z.enum(["category", "day", "tag"]).optional(),
-    type: z.enum(transactionTypeValues).optional(),
-    from: z
-      .string()
-      .datetime({ message: "from must be a valid ISO 8601 date" })
-      .optional(),
-    to: z
-      .string()
-      .datetime({ message: "to must be a valid ISO 8601 date" })
-      .optional(),
-  }),
+  query: z
+    .object({
+      groupBy: z.enum(["category", "day", "tag"]).optional(),
+      type: z.enum(transactionTypeValues).optional(),
+      from: z
+        .string()
+        .datetime({ offset: true, message: "from must be a valid ISO 8601 date" })
+        .optional(),
+      to: z
+        .string()
+        .datetime({ offset: true, message: "to must be a valid ISO 8601 date" })
+        .optional(),
+    })
+    .refine(
+      (q) => !q.from || !q.to || new Date(q.from) <= new Date(q.to),
+      { message: "from must be before or equal to to", path: ["from"] },
+    ),
 });
 
 // Every budget route resolves the period from `reference`, so all must validate it.
 const budgetReferenceQuery = z.object({
   reference: z
     .string()
-    .datetime({ message: "reference must be a valid ISO 8601 date" })
+    .datetime({ offset: true, message: "reference must be a valid ISO 8601 date" })
     .optional(),
 });
 
@@ -374,7 +379,7 @@ export const createTransactionSchema = z.object({
       amount: moneyAmount,
       date: z
         .string()
-        .datetime({ message: "Date must be a valid ISO 8601 date" }),
+        .datetime({ offset: true, message: "Date must be a valid ISO 8601 date" }),
       categoryId: z
         .string()
         .uuid("categoryId must be a valid UUID")
@@ -471,7 +476,7 @@ export const updateTransactionSchema = z.object({
       amount: moneyAmount.optional(),
       date: z
         .string()
-        .datetime({ message: "Date must be a valid ISO 8601 date" })
+        .datetime({ offset: true, message: "Date must be a valid ISO 8601 date" })
         .optional(),
       categoryId: z
         .string()
@@ -510,7 +515,7 @@ export const quickAddTransactionSchema = z.object({
     type: z.enum(quickAddTypeValues).optional(),
     date: z
       .string()
-      .datetime({ message: "Date must be a valid ISO 8601 date" })
+      .datetime({ offset: true, message: "Date must be a valid ISO 8601 date" })
       .optional(),
     categoryId: z.string().uuid("categoryId must be a valid UUID").optional(),
     fromAccountId: z
