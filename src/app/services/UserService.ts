@@ -1,9 +1,9 @@
 import bcryptjs from "bcryptjs";
+
 import { User } from "../../domain/entities/User";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
-import { PaginatedResult, PaginationParams } from "../../shared/pagination";
-import { ApiError } from "../../shared/errors";
 import { ENVIRONMENT } from "../../shared/constants";
+import { ApiError } from "../../shared/errors";
 import { UpdateUserDTO, UserResponseDTO } from "../dtos/UserDTO";
 
 export class UserService {
@@ -16,16 +16,6 @@ export class UserService {
       email: user.email,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
-    };
-  }
-
-  async getAllUsers(
-    pagination: PaginationParams,
-  ): Promise<PaginatedResult<UserResponseDTO>> {
-    const result = await this.repo.getAll(pagination);
-    return {
-      data: result.data.map((user) => this.toResponseDTO(user)),
-      pagination: result.pagination,
     };
   }
 

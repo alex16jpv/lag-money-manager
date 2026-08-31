@@ -1,37 +1,10 @@
 import { Router } from "express";
+
 import { UserController } from "../controllers/UserController";
+import { idParamSchema,updateUserSchema } from "../validation/schemas";
 import { validate } from "../validation/validate";
-import {
-  paginationQuerySchema,
-  updateUserSchema,
-  idParamSchema,
-} from "../validation/schemas";
 
 const router = Router();
-
-/**
- * @openapi
- * /users:
- *   get:
- *     tags: [Users]
- *     summary: Get all users
- *     responses:
- *       200:
- *         description: List of users
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/User'
- *       401:
- *         description: Unauthorized
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- */
-router.get("/", validate(paginationQuerySchema), UserController.getAllUsers);
 
 /**
  * @openapi
