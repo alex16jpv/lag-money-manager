@@ -2,6 +2,12 @@ import { z } from "zod";
 
 import { ACCOUNT_TYPES, COLORS, TRANSACTION_TYPES } from "../../shared/constants";
 import { MAX_AMOUNT } from "../../shared/money";
+import { isValidTimeZone } from "../../shared/timezone";
+
+const timezoneField = z
+  .string()
+  .refine(isValidTimeZone, "Invalid IANA timezone")
+  .optional();
 import { MAX_LIMIT } from "../../shared/pagination";
 
 // Money is decimal in the API but stored as integer cents, so amounts must
@@ -127,16 +133,11 @@ export const updateUserSchema = z.object({
         .min(8, "Password must be at least 8 characters")
         .max(128)
         .optional(),
+      timezone: timezoneField,
     })
-    .refine(
-      (data) =>
-        data.name !== undefined ||
-        data.email !== undefined ||
-        data.password !== undefined,
-      {
-        message: "At least one field (name, email, password) must be provided",
-      },
-    ),
+    .refine((data) => Object.values(data).some((v) => v !== undefined), {
+      message: "At least one field must be provided",
+    }),
 });
 
 export const createAccountSchema = z.object({
@@ -266,6 +267,7 @@ export const registerSchema = z.object({
       .string()
       .min(8, "Password must be at least 8 characters")
       .max(128),
+    timezone: timezoneField,
   }),
 });
 

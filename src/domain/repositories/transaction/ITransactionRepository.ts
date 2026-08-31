@@ -18,6 +18,7 @@ export interface SpendingQuery {
   to?: Date;
   type?: TransactionType;
   groupBy: SpendingGroupBy;
+  timezone: string;
 }
 
 export interface SpendingBucket {

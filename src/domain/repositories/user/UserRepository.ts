@@ -17,6 +17,7 @@ export class UserRepository implements IUserRepository {
     email: string;
     password?: string;
     tokenVersion?: number;
+    timezone?: string;
     createdAt: Date;
     updatedAt: Date;
   }): User {
@@ -26,6 +27,7 @@ export class UserRepository implements IUserRepository {
       email: doc.email,
       password: doc.password,
       tokenVersion: doc.tokenVersion,
+      timezone: doc.timezone,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });

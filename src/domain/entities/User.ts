@@ -1,5 +1,7 @@
 import { v7 as uuidv7 } from "uuid";
 
+import { DEFAULT_TIMEZONE } from "../../shared/timezone";
+
 export interface UserProps {
   id?: string;
   name: string;
@@ -7,6 +9,8 @@ export interface UserProps {
   password?: string;
   // Bumped on password change / logout-all to invalidate outstanding tokens.
   tokenVersion?: number;
+  // IANA timezone; drives day/period boundaries for stats and budgets.
+  timezone?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -17,6 +21,7 @@ export class User {
   email: string;
   password?: string;
   tokenVersion: number;
+  timezone: string;
   createdAt: Date;
   updatedAt: Date;
 
@@ -26,6 +31,7 @@ export class User {
     email,
     password,
     tokenVersion,
+    timezone,
     createdAt,
     updatedAt,
   }: UserProps) {
@@ -34,6 +40,7 @@ export class User {
     this.email = email;
     this.password = password;
     this.tokenVersion = tokenVersion ?? 0;
+    this.timezone = timezone ?? DEFAULT_TIMEZONE;
     this.createdAt = createdAt ?? new Date();
     this.updatedAt = updatedAt ?? new Date();
   }

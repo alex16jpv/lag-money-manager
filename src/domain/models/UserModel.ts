@@ -1,6 +1,7 @@
 import mongoose, { Schema } from "mongoose";
 
 import { MODEL_NAMES } from "../../shared/constants";
+import { DEFAULT_TIMEZONE } from "../../shared/timezone";
 
 export interface IUserDocument {
   _id: string;
@@ -8,6 +9,7 @@ export interface IUserDocument {
   email: string;
   password: string;
   tokenVersion: number;
+  timezone: string;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -20,6 +22,7 @@ const UserSchema = new Schema<IUserDocument>(
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     tokenVersion: { type: Number, required: true, default: 0 },
+    timezone: { type: String, required: true, default: DEFAULT_TIMEZONE },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true },

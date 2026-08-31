@@ -189,7 +189,13 @@ export class TransactionRepository implements ITransactionRepository {
 
     const groupId =
       query.groupBy === "day"
-        ? { $dateToString: { format: "%Y-%m-%d", date: "$date" } }
+        ? {
+            $dateToString: {
+              format: "%Y-%m-%d",
+              date: "$date",
+              timezone: query.timezone,
+            },
+          }
         : query.groupBy === "tag"
           ? "$tags"
           : { $ifNull: ["$categoryId", "uncategorized"] };
