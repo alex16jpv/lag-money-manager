@@ -7,6 +7,9 @@ export interface AccountProps {
   name: string;
   type: AccountType;
   balance?: number;
+  // Balance at creation; fixed thereafter. Enables a future integrity check
+  // (stored balance vs openingBalance + aggregated transaction effects).
+  openingBalance?: number;
   color?: Color;
   userId: string;
   isDefault?: boolean;
@@ -18,6 +21,7 @@ export class Account {
   name: string;
   type: AccountType;
   balance: number;
+  openingBalance: number;
   color?: Color;
   userId: string;
   isDefault: boolean;
@@ -28,6 +32,7 @@ export class Account {
     name,
     type,
     balance,
+    openingBalance,
     color,
     userId,
     isDefault,
@@ -37,6 +42,7 @@ export class Account {
     this.name = name;
     this.type = type;
     this.balance = balance ?? 0;
+    this.openingBalance = openingBalance ?? this.balance;
     this.color = color;
     this.userId = userId;
     this.isDefault = isDefault ?? false;

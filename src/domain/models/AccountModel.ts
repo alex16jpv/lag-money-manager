@@ -12,6 +12,7 @@ export interface IAccountDocument {
   name: string;
   type: AccountType;
   balance: number; // integer cents
+  openingBalance: number; // integer cents
   color?: string;
   userId: string;
   isDefault: boolean;
@@ -30,6 +31,7 @@ const AccountSchema = new Schema<IAccountDocument>(
       enum: Object.keys(ACCOUNT_TYPES),
     },
     balance: { type: Number, required: true },
+    openingBalance: { type: Number, required: true, default: 0 },
     color: { type: String, required: false, enum: Object.keys(COLORS) },
     userId: { type: String, required: true },
     isDefault: { type: Boolean, required: true, default: false },

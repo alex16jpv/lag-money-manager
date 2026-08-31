@@ -22,6 +22,7 @@ export class AccountRepository implements IAccountRepository {
       name: doc.name,
       type: doc.type,
       balance: fromCents(doc.balance),
+      openingBalance: fromCents(doc.openingBalance),
       color: doc.color as Account["color"],
       userId: doc.userId,
       isDefault: doc.isDefault,
@@ -33,6 +34,9 @@ export class AccountRepository implements IAccountRepository {
     const doc: Record<string, unknown> = { ...account };
     if (account.balance !== undefined) {
       doc.balance = toCents(account.balance);
+    }
+    if (account.openingBalance !== undefined) {
+      doc.openingBalance = toCents(account.openingBalance);
     }
     return doc;
   }
