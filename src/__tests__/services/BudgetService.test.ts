@@ -49,6 +49,7 @@ const createCategoryRepo = (): jest.Mocked<ICategoryRepository> =>
       .mockImplementation(async (id: string) =>
         new Category({ id, name: "Cat", userId: USER }),
       ),
+    listArchivedIds: jest.fn().mockResolvedValue([]),
   }) as unknown as jest.Mocked<ICategoryRepository>;
 
 const makeBudget = (over: Partial<Budget> = {}): Budget =>

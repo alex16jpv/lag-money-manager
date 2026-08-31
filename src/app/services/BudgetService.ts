@@ -213,6 +213,13 @@ export class BudgetService {
       windows.set(wk, w);
     }
 
+    const allCategoryIds = [
+      ...new Set(budgets.flatMap((b) => b.categoryIds)),
+    ];
+    const archivedIds = new Set(
+      await this.categoryRepo.listArchivedIds(userId, allCategoryIds),
+    );
+
     const sums = new Map<string, Record<string, number>>();
     const totals = new Map<string, number>();
     await Promise.all(
@@ -248,6 +255,9 @@ export class BudgetService {
         name: budget.name,
         color: budget.color,
         categoryIds: budget.categoryIds,
+        archivedCategoryIds: budget.categoryIds.filter((c) =>
+          archivedIds.has(c),
+        ),
         periodType: budget.periodType,
         periodKey: period.key,
         periodFrom: period.from,

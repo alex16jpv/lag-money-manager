@@ -129,6 +129,18 @@ export class CategoryRepository implements ICategoryRepository {
     return CategoryModel.countDocuments({ userId, deletedAt: null });
   }
 
+  async listArchivedIds(userId: string, ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const docs = await CategoryModel.find({
+      userId,
+      _id: { $in: ids },
+      deletedAt: { $ne: null },
+    })
+      .select("_id")
+      .lean();
+    return docs.map((d) => d._id);
+  }
+
   async listSeedKeys(userId: string): Promise<string[]> {
     // Includes archived: an archived seed category counts as existing
     // (the user chose to remove it; restore-defaults must not resurrect it).

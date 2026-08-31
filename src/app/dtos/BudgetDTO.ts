@@ -29,6 +29,9 @@ export interface BudgetView {
   name: string;
   color: Color;
   categoryIds: string[];
+  // Subset of categoryIds the user archived: the budget still tracks their
+  // history, but the client should flag them.
+  archivedCategoryIds: string[];
   periodType: BudgetPeriodType;
   periodKey: string;
   periodFrom: Date;
