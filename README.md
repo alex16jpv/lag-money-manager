@@ -11,10 +11,11 @@ docker compose up -d    # Start MongoDB (single-node replica set) + Mongoku UI
 npm run start:dev       # Start development server
 ```
 
-> Indexes are created automatically on connect (Mongoose `autoIndex`), and
-> collections are created on first write, so there is no schema/migration step.
-> `npm run db:sync-indexes` exists only as an optional maintenance tool (it also
-> drops indexes removed from the schemas).
+> Collections are created on first write (no schema/migration step). Indexes are
+> built automatically on connect in development (`autoIndex`), but in production
+> they are created by `npm run db:sync-indexes`, run automatically as a deploy
+> step (see `scripts/deploy-lambda.sh`) so index builds never run under live
+> traffic.
 
 > Money is stored as integer cents and balance adjustments run inside MongoDB
 > transactions, so the database must be a **replica set** (the docker-compose
