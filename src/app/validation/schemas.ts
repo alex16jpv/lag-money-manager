@@ -311,6 +311,7 @@ export const getBudgetsSchema = z.object({
     offset: z.coerce.number().int().min(0).optional(),
     cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
     includeArchived: z.enum(["true", "false"]).optional(),
+    includeExpired: z.enum(["true", "false"]).optional(),
   }),
 });
 

@@ -46,6 +46,8 @@ export interface BudgetView {
   spent: number;
   // True when `amount` comes from a per-period override, not the base.
   hasOverride: boolean;
+  // CUSTOM only: the fixed window already ended relative to the reference.
+  expired: boolean;
   effectiveFrom: Date;
   note: string | null;
   archivedAt: Date | null;

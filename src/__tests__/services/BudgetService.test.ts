@@ -416,4 +416,60 @@ describe("BudgetService", () => {
       ).rejects.toThrow("does not match budget type");
     });
   });
+
+  describe("CUSTOM expiry [R2-17a]", () => {
+    const expiredCustom = () =>
+      makeBudget({
+        id: "bc",
+        periodType: "CUSTOM",
+        periodStartDate: new Date("2026-06-01T00:00:00Z"),
+        periodEndDate: new Date("2026-07-01T00:00:00Z"),
+        createdAt: new Date("2026-05-20T00:00:00Z"),
+      });
+    const list = (budgets: Budget[]) =>
+      budgetRepo.getAllByUserId.mockResolvedValue({
+        data: budgets,
+        pagination: { limit: 20, offset: 0, total: budgets.length, hasMore: false, nextCursor: null },
+      });
+
+    it("hides an expired CUSTOM budget from the default listing", async () => {
+      list([expiredCustom(), makeBudget()]);
+
+      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].periodType).toBe("MONTHLY");
+      expect(result.data[0].expired).toBe(false);
+    });
+
+    it("lists it flagged when includeExpired=true", async () => {
+      list([expiredCustom()]);
+
+      const result = await service.getBudgets(
+        USER,
+        { limit: 20, offset: 0 },
+        { includeExpired: true },
+        CTX,
+      );
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].expired).toBe(true);
+    });
+
+    it("a live CUSTOM budget lists normally", async () => {
+      list([
+        makeBudget({
+          id: "bc2",
+          periodType: "CUSTOM",
+          periodStartDate: new Date("2026-08-01T00:00:00Z"),
+          periodEndDate: new Date("2026-09-01T00:00:00Z"),
+        }),
+      ]);
+
+      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].expired).toBe(false);
+    });
+  });
 });

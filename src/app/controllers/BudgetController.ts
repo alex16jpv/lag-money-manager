@@ -32,6 +32,9 @@ export class BudgetController {
     if (req.query.includeArchived === "true") {
       filters.includeArchived = true;
     }
+    if (req.query.includeExpired === "true") {
+      filters.includeExpired = true;
+    }
     const result = await budgetService.getBudgets(
       userId,
       extractPagination(req),

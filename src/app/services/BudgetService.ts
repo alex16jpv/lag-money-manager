@@ -31,11 +31,14 @@ export class BudgetService {
   ): Promise<PaginatedResult<BudgetView>> {
     const result = await this.repo.getAllByUserId(userId, pagination, filters);
     const views = await this.toViews(userId, result.data, ctx);
-    // A budget doesn't exist before its lifetime floor: past references skip it.
-    const data = views.filter(
-      (view, i) =>
-        view.periodTo.getTime() > result.data[i].lifetimeFloor().getTime(),
-    );
+    // A budget doesn't exist before its lifetime floor, and an expired CUSTOM
+    // one-shot leaves the default listing (recurring types roll forward).
+    const data = views.filter((view, i) => {
+      if (view.periodTo.getTime() <= result.data[i].lifetimeFloor().getTime()) {
+        return false;
+      }
+      return filters.includeExpired || !view.expired;
+    });
     return { data, pagination: result.pagination };
   }
 
@@ -322,6 +325,10 @@ export class BudgetService {
         amount,
         spent: fromCents(spentCents),
         hasOverride: budget.amountOverrides[period.key] !== undefined,
+        expired:
+          budget.periodType === "CUSTOM" &&
+          budget.periodEndDate !== null &&
+          ctx.reference.getTime() >= budget.periodEndDate.getTime(),
         effectiveFrom: budget.lifetimeFloor(),
         note: budget.note,
         archivedAt: budget.archivedAt,

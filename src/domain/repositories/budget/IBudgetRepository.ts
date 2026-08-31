@@ -5,6 +5,8 @@ import { IRepository } from "../IRepository";
 
 export interface BudgetFilters {
   includeArchived?: boolean;
+  // View-level: expiry depends on the reference date, the repo ignores it.
+  includeExpired?: boolean;
 }
 
 export interface IBudgetRepository extends IRepository<Budget> {
