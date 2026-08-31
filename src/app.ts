@@ -8,6 +8,7 @@ import swaggerUi from "swagger-ui-express";
 import { authMiddleware } from "./app/middlewares/authMiddleware";
 import { dbReadinessMiddleware } from "./app/middlewares/dbReadinessMiddleware";
 import { gatewaySecretMiddleware } from "./app/middlewares/gatewaySecretMiddleware";
+import { requestLogMiddleware } from "./app/middlewares/requestLogMiddleware";
 import accountRoutes from "./app/routes/accountRoutes";
 import authRoutes from "./app/routes/authRoutes";
 import budgetRoutes from "./app/routes/budgetRoutes";
@@ -36,6 +37,7 @@ if (ENVIRONMENT.NODE_ENV === "production") {
 }
 
 app.use(requestIdMiddleware);
+app.use(requestLogMiddleware);
 app.use(helmet());
 app.use(compression());
 app.use(

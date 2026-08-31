@@ -12,7 +12,7 @@ jest.mock("../../shared/logger", () => ({
 }));
 
 const createMockRes = (): jest.Mocked<Response> => {
-  const res = {} as jest.Mocked<Response>;
+  const res = { locals: {} } as unknown as jest.Mocked<Response>;
   res.status = jest.fn().mockReturnThis();
   res.json = jest.fn().mockReturnThis();
   return res;

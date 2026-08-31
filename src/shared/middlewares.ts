@@ -30,7 +30,13 @@ export const errorMiddleware = (
   res: Response,
   _next: NextFunction,
 ): void => {
+  // Picked up by requestLogMiddleware so the completion line says WHY.
+  const logWhy = (code: string | undefined, message: string): void => {
+    res.locals.errorCode = code;
+    res.locals.errorMessage = message;
+  };
   if (error instanceof ApiError) {
+    logWhy(error.code, error.message);
     res.status(error.statusCode).json({
       error: error.name,
       message: error.message,
@@ -41,6 +47,7 @@ export const errorMiddleware = (
   }
 
   if (error instanceof DomainValidationError) {
+    logWhy(error.code ?? "VALIDATION", error.message);
     // Same shape as the Zod path: details is always [{field, message}].
     res.status(400).json({
       error: "ValidationError",
@@ -58,6 +65,7 @@ export const errorMiddleware = (
   ) {
     const keyValue = (error as MongoServerError).keyValue;
     const fields = keyValue ? Object.keys(keyValue).join(", ") : "unknown";
+    logWhy("DUPLICATE", `Duplicate value for: ${fields}`);
     res.status(409).json({
       error: "ConflictError",
       message: `Duplicate value for: ${fields}`,
@@ -68,6 +76,7 @@ export const errorMiddleware = (
 
   // Mongoose CastError (invalid ObjectId / type mismatch)
   if (error?.name === "CastError") {
+    logWhy("INVALID_ID", "Invalid ID format");
     res.status(400).json({
       error: "ValidationError",
       message: "Invalid ID format",
@@ -77,6 +86,7 @@ export const errorMiddleware = (
   }
 
   if (isDatabaseUnavailableError(error)) {
+    logWhy("DB_UNAVAILABLE", error.message);
     logger.error(
       { err: error, requestId: req.headers["x-request-id"] },
       "Database unavailable",
@@ -89,6 +99,7 @@ export const errorMiddleware = (
     return;
   }
 
+  logWhy("INTERNAL", error.message);
   logger.error(
     { err: error, requestId: req.headers["x-request-id"] },
     "Unhandled error",
