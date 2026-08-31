@@ -48,6 +48,14 @@ const isoDate = z
   .datetime({ message: "Must be a valid ISO 8601 date" })
   .transform((s) => new Date(s));
 
+// Normalized so Foo@x.com and foo@x.com resolve to the same account.
+const emailField = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .email("Invalid email format")
+  .max(255);
+
 export const paginationQuerySchema = z.object({
   query: z.object({
     limit: z.coerce
@@ -141,7 +149,7 @@ export const updateUserSchema = z.object({
   body: z
     .object({
       name: z.string().min(1).max(255).optional(),
-      email: z.string().email("Invalid email format").max(255).optional(),
+      email: emailField.optional(),
       password: z
         .string()
         .min(8, "Password must be at least 8 characters")
@@ -334,7 +342,7 @@ export const idParamSchema = z.object({
 
 export const loginSchema = z.object({
   body: z.object({
-    email: z.string().email("Invalid email format"),
+    email: emailField,
     password: z.string().min(1, "Password is required"),
   }),
 });
@@ -348,7 +356,7 @@ export const refreshSchema = z.object({
 export const registerSchema = z.object({
   body: z.object({
     name: z.string().min(1, "Name is required").max(255),
-    email: z.string().email("Invalid email format").max(255),
+    email: emailField,
     password: z
       .string()
       .min(8, "Password must be at least 8 characters")

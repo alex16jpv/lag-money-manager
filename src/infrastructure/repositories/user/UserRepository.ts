@@ -47,6 +47,28 @@ export class UserRepository implements IUserRepository {
     return this.toEntity(doc);
   }
 
+  async getDeletedByEmail(email: string): Promise<User | null> {
+    const doc = await UserModel.findOne({
+      email,
+      deletedAt: { $ne: null },
+    }).lean();
+    if (!doc) return null;
+    return this.toEntity(doc);
+  }
+
+  async reactivate(id: string, updates: Partial<User>): Promise<User> {
+    // tokenVersion bump keeps any pre-deletion refresh tokens revoked.
+    const doc = await UserModel.findOneAndUpdate(
+      { _id: id, deletedAt: { $ne: null } },
+      { $set: { ...updates, deletedAt: null }, $inc: { tokenVersion: 1 } },
+      { new: true },
+    ).lean();
+    if (!doc) {
+      throw new ApiError("NotFound", "User not found");
+    }
+    return this.toEntity(doc);
+  }
+
   async getAll(pagination: PaginationParams): Promise<PaginatedResult<User>> {
     const { limit, offset, cursor } = pagination;
     const filter: Record<string, unknown> = { deletedAt: null };

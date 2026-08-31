@@ -33,6 +33,8 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   getAll: jest.fn(),
   getById: jest.fn(),
   getByEmail: jest.fn(),
+  getDeletedByEmail: jest.fn().mockResolvedValue(null),
+  reactivate: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),

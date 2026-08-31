@@ -58,6 +58,19 @@ export class AuthService {
       dto.password,
       ENVIRONMENT.BCRYPT_SALT_ROUNDS,
     );
+
+    // Owner decision (R2-09): registering with a soft-deleted email reactivates
+    // that account, keeping its financial history (categories included).
+    const deleted = await this.repo.getDeletedByEmail(dto.email);
+    if (deleted) {
+      const reactivated = await this.repo.reactivate(deleted.id, {
+        name: dto.name,
+        password: hashedPassword,
+        ...(dto.timezone ? { timezone: dto.timezone } : {}),
+      });
+      return this.toResponseDTO(reactivated);
+    }
+
     const user = new User({ ...dto, password: hashedPassword });
 
     const created = await this.repo.create(user);

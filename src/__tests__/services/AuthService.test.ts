@@ -34,6 +34,8 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   getAll: jest.fn(),
   getById: jest.fn(),
   getByEmail: jest.fn(),
+  getDeletedByEmail: jest.fn().mockResolvedValue(null),
+  reactivate: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -55,6 +57,37 @@ describe("AuthService", () => {
   });
 
   describe("register", () => {
+    it("reactivates a soft-deleted account instead of creating a new one [R2-09]", async () => {
+      const deletedUser = new User({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        name: "Old Name",
+        email: "john@example.com",
+        password: "old-hash",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      repo.getDeletedByEmail.mockResolvedValue(deletedUser);
+      repo.reactivate.mockResolvedValue(
+        new User({ ...deletedUser, name: "John" }),
+      );
+
+      const result = await service.register({
+        name: "John",
+        email: "john@example.com",
+        password: "newpassword123",
+      });
+
+      expect(repo.reactivate).toHaveBeenCalledTimes(1);
+      const [id, updates] = repo.reactivate.mock.calls[0];
+      expect(id).toBe(deletedUser.id);
+      expect(updates.name).toBe("John");
+      expect(updates.password).not.toBe("newpassword123");
+      expect(repo.create).not.toHaveBeenCalled();
+      // Existing categories are kept: no re-seed on reactivation.
+      expect(categoryService.seedDefaultCategories).not.toHaveBeenCalled();
+      expect(result.name).toBe("John");
+    });
+
     it("should hash the password and create a user", async () => {
       const input = {
         name: "John",
