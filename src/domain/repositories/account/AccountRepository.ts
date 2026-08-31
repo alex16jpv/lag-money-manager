@@ -95,7 +95,7 @@ export class AccountRepository implements IAccountRepository {
     account: Partial<Account>,
     session?: TxSession,
   ): Promise<Account> {
-    const id = uuidv7();
+    const id = account.id ?? uuidv7();
     const [doc] = await AccountModel.create(
       [{ _id: id, ...this.toStorage(account) }],
       { session: session ?? undefined },

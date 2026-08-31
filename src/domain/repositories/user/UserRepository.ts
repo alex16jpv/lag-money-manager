@@ -30,10 +30,11 @@ export class UserRepository implements IUserRepository {
   }
 
   async getById(id: string): Promise<User | null> {
-    const doc = await UserModel.findOne({
-      _id: id,
-      deletedAt: null,
-    }).lean();
+    // Exclude the password hash: no getById caller needs it (login uses
+    // getByEmail), so we keep it out of the read to shrink its exposure.
+    const doc = await UserModel.findOne({ _id: id, deletedAt: null })
+      .select("-password")
+      .lean();
     if (!doc) return null;
     return this.toEntity(doc);
   }
@@ -68,7 +69,7 @@ export class UserRepository implements IUserRepository {
   }
 
   async create(user: Partial<User>): Promise<User> {
-    const id = uuidv7();
+    const id = user.id ?? uuidv7();
     const doc = await UserModel.create({ _id: id, ...user });
     return this.toEntity(doc);
   }

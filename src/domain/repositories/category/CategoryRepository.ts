@@ -79,14 +79,14 @@ export class CategoryRepository implements ICategoryRepository {
   }
 
   async create(category: Partial<Category>): Promise<Category> {
-    const id = uuidv7();
+    const id = category.id ?? uuidv7();
     const doc = await CategoryModel.create({ _id: id, ...category });
     return this.toEntity(doc);
   }
 
   async createMany(categories: Partial<Category>[]): Promise<Category[]> {
     const docs = await CategoryModel.insertMany(
-      categories.map((c) => ({ _id: uuidv7(), ...c })),
+      categories.map((c) => ({ _id: c.id ?? uuidv7(), ...c })),
     );
     return docs.map((doc) => this.toEntity(doc as unknown as ICategoryDocument));
   }

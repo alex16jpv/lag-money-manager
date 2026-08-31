@@ -131,7 +131,7 @@ export class TransactionRepository implements ITransactionRepository {
     transaction: Partial<Transaction>,
     session?: TxSession,
   ): Promise<Transaction> {
-    const id = uuidv7();
+    const id = transaction.id ?? uuidv7();
     const [doc] = await TransactionModel.create(
       [{ _id: id, ...this.toStorage(transaction) }],
       { session: session ?? undefined },
