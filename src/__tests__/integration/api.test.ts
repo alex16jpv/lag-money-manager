@@ -50,6 +50,11 @@ const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   delete: jest.fn(),
 };
 
+const mockIdempotencyRepo = {
+  findTransactionId: jest.fn().mockResolvedValue(null),
+  record: jest.fn().mockResolvedValue(undefined),
+};
+
 // --- Mock modules before importing app ---
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
@@ -136,6 +141,7 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getAccountRepository: () => mockAccountRepo,
     getCategoryRepository: () => mockCategoryRepo,
     getTransactionRepository: () => mockTransactionRepo,
+    getIdempotencyRepository: () => mockIdempotencyRepo,
   },
   RepositoryFactory: jest.fn(),
 }));

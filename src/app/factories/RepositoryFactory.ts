@@ -1,5 +1,6 @@
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT } from "../../shared/constants";
@@ -16,6 +17,7 @@ export const REPO_KEYS = {
   ACCOUNT: "account",
   CATEGORY: "category",
   TRANSACTION: "transaction",
+  IDEMPOTENCY: "idempotency",
 } as const;
 
 type DbProvider = (factory: RepositoryFactory) => void;
@@ -71,6 +73,10 @@ export class RepositoryFactory {
 
   getTransactionRepository(): ITransactionRepository {
     return this.getRepository<ITransactionRepository>(REPO_KEYS.TRANSACTION);
+  }
+
+  getIdempotencyRepository(): IIdempotencyRepository {
+    return this.getRepository<IIdempotencyRepository>(REPO_KEYS.IDEMPOTENCY);
   }
 }
 

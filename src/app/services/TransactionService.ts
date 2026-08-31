@@ -1,5 +1,6 @@
 import { Transaction } from "../../domain/entities/Transaction";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
 import {
   ITransactionRepository,
   TransactionFilters,
@@ -12,10 +13,19 @@ import {
   UpdateTransactionDTO,
 } from "../dtos/TransactionDTO";
 
+function isDuplicateKeyError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { code?: number }).code === 11000
+  );
+}
+
 export class TransactionService {
   constructor(
     private transactionRepo: ITransactionRepository,
     private accountRepo: IAccountRepository,
+    private idempotencyRepo: IIdempotencyRepository,
   ) {}
 
   async getAllTransactions(
@@ -41,14 +51,48 @@ export class TransactionService {
     return transaction;
   }
 
-  async createTransaction(dto: CreateTransactionDTO): Promise<Transaction> {
+  async createTransaction(
+    dto: CreateTransactionDTO,
+    idempotencyKey?: string,
+  ): Promise<Transaction> {
+    if (idempotencyKey) {
+      const existing = await this.replayIdempotent(dto.userId, idempotencyKey);
+      if (existing) return existing;
+    }
+
     const transaction = new Transaction(dto);
     transaction.assertValid();
 
-    return await withTransaction(async (session) => {
-      await this.adjustBalances(transaction, 1, session);
-      return await this.transactionRepo.create(transaction, session);
-    });
+    try {
+      return await withTransaction(async (session) => {
+        await this.adjustBalances(transaction, 1, session);
+        const created = await this.transactionRepo.create(transaction, session);
+        if (idempotencyKey) {
+          await this.idempotencyRepo.record(
+            dto.userId,
+            idempotencyKey,
+            created.id,
+            session,
+          );
+        }
+        return created;
+      });
+    } catch (err) {
+      if (idempotencyKey && isDuplicateKeyError(err)) {
+        const existing = await this.replayIdempotent(dto.userId, idempotencyKey);
+        if (existing) return existing;
+      }
+      throw err;
+    }
+  }
+
+  private async replayIdempotent(
+    userId: string,
+    key: string,
+  ): Promise<Transaction | null> {
+    const id = await this.idempotencyRepo.findTransactionId(userId, key);
+    if (!id) return null;
+    return this.transactionRepo.getById(id);
   }
 
   async updateTransaction(

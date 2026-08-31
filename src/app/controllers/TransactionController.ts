@@ -9,6 +9,7 @@ import { TransactionService } from "../services/TransactionService";
 const transactionService = new TransactionService(
   repositoryFactory.getTransactionRepository(),
   repositoryFactory.getAccountRepository(),
+  repositoryFactory.getIdempotencyRepository(),
 );
 
 export class TransactionController {
@@ -43,10 +44,11 @@ export class TransactionController {
 
   static createTransaction = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    const newTransaction = await transactionService.createTransaction({
-      ...req.body,
-      userId,
-    });
+    const idempotencyKey = req.get("Idempotency-Key") ?? undefined;
+    const newTransaction = await transactionService.createTransaction(
+      { ...req.body, userId },
+      idempotencyKey,
+    );
     res.status(201).json(newTransaction);
   };
 

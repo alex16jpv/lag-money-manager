@@ -1,6 +1,7 @@
 import { connectMongo } from "../../../config/mongoConnection";
 import { AccountRepository } from "../../../domain/repositories/account/AccountRepository";
 import { CategoryRepository } from "../../../domain/repositories/category/CategoryRepository";
+import { IdempotencyRepository } from "../../../domain/repositories/idempotency/IdempotencyRepository";
 import { TransactionRepository } from "../../../domain/repositories/transaction/TransactionRepository";
 import { UserRepository } from "../../../domain/repositories/user/UserRepository";
 import { DB_TYPES, IS_LAMBDA } from "../../../shared/constants";
@@ -26,4 +27,5 @@ export function registerRepositories(factory: RegistryTarget): void {
   factory.register("account", () => new AccountRepository());
   factory.register("category", () => new CategoryRepository());
   factory.register("transaction", () => new TransactionRepository());
+  factory.register("idempotency", () => new IdempotencyRepository());
 }

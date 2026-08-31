@@ -31,6 +31,7 @@ import { TransactionService } from "../../app/services/TransactionService";
 import { Account } from "../../domain/entities/Account";
 import { Transaction } from "../../domain/entities/Transaction";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 
 const USER = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
@@ -57,6 +58,11 @@ const createMockAccountRepo = (): jest.Mocked<IAccountRepository> => ({
   incrementBalance: jest.fn(),
 });
 
+const createMockIdempotencyRepo = (): jest.Mocked<IIdempotencyRepository> => ({
+  findTransactionId: jest.fn().mockResolvedValue(null),
+  record: jest.fn().mockResolvedValue(undefined),
+});
+
 const account = (overrides: Partial<Account> = {}): Account =>
   new Account({
     id: ACC_A,
@@ -71,11 +77,13 @@ describe("TransactionService", () => {
   let service: TransactionService;
   let txRepo: jest.Mocked<ITransactionRepository>;
   let acctRepo: jest.Mocked<IAccountRepository>;
+  let idempotencyRepo: jest.Mocked<IIdempotencyRepository>;
 
   beforeEach(() => {
     txRepo = createMockTransactionRepo();
     acctRepo = createMockAccountRepo();
-    service = new TransactionService(txRepo, acctRepo);
+    idempotencyRepo = createMockIdempotencyRepo();
+    service = new TransactionService(txRepo, acctRepo, idempotencyRepo);
     acctRepo.incrementBalance.mockResolvedValue(account());
   });
 
@@ -226,6 +234,34 @@ describe("TransactionService", () => {
         }),
       ).rejects.toThrow("toAccountId is not allowed");
       expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
+    });
+
+    it("replays the existing transaction for a repeated idempotency key", async () => {
+      const stored = new Transaction({
+        id: TX_ID,
+        type: "EXPENSE",
+        amount: 100,
+        date: new Date("2026-03-28"),
+        fromAccountId: ACC_A,
+        userId: USER,
+      });
+      idempotencyRepo.findTransactionId.mockResolvedValue(TX_ID);
+      txRepo.getById.mockResolvedValue(stored);
+
+      const result = await service.createTransaction(
+        {
+          type: "EXPENSE",
+          amount: 100,
+          date: new Date("2026-03-28"),
+          fromAccountId: ACC_A,
+          userId: USER,
+        },
+        "key-1",
+      );
+
+      expect(result.id).toBe(TX_ID);
+      expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
+      expect(txRepo.create).not.toHaveBeenCalled();
     });
   });
 
