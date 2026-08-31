@@ -69,7 +69,25 @@ transactions, so the URI **must** point at a replica set:
 - **Local:** `mongodb://localhost:27017/lag_money?replicaSet=rs0&directConnection=true` —
   the `docker-compose.yml` here runs a single-node replica set, and
   `directConnection=true` is required to talk to it.
-- **Production:** MongoDB Atlas (`mongodb+srv://…`) is already a replica set.
+- **Production:** MongoDB Atlas is already a replica set. Its URI has its own
+  rules — the database name before the `?`, no `directConnection`, an encoded
+  password — all covered in
+  [Deployment › The production MONGO_URI](./deployment.md#the-production-mongo-uri).
+
+**Always include the database name** (`/lag_money`) before the query string. A
+URI without one connects to a database called `test`, with no warning.
+
+### Indexes
+
+Outside production the application creates the declared indexes right after
+connecting, so a brand-new database needs no extra step — start the server and
+they are there. Run `npm run db:sync-indexes` by hand only when you have
+**removed** an index from a schema: the startup path only creates missing ones,
+while the script also drops those no longer declared.
+
+With `NODE_ENV=production` the application never touches indexes. They are
+created by the deploy, which requires `MONGO_URI` and aborts if the sync fails —
+see [Deployment › Index creation](./deployment.md#index-creation).
 
 ## Example `.env` for local development
 

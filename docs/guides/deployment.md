@@ -153,13 +153,21 @@ Copy the template into `.env.deploy` (gitignored) and fill it in:
 cp .env.deploy.example .env.deploy
 ```
 
-  | Variable               | Description                                    |
-  | ---------------------- | ---------------------------------------------- |
-  | `AWS_PROFILE`          | Named CLI profile created in step 2            |
-  | `AWS_REGION`           | Region where the function lives                |
-  | `LAMBDA_FUNCTION_NAME` | Exact function name from the Lambda console    |
-  | `KEEPALIVE_RULE_NAME`  | Optional. EventBridge rule name for keepalive  |
-  | `KEEPALIVE_SCHEDULE`   | Optional. Defaults to `rate(1 day)`            |
+  | Variable               | Description                                                                 |
+  | ---------------------- | --------------------------------------------------------------------------- |
+  | `AWS_PROFILE`          | Named CLI profile created in step 2                                           |
+  | `AWS_REGION`           | Region where the function lives                                               |
+  | `LAMBDA_FUNCTION_NAME` | Exact function name from the Lambda console                                   |
+  | `MONGO_URI`            | **Required.** The **production** database — see [The production MONGO_URI](#the-production-mongo-uri) |
+  | `KEEPALIVE_RULE_NAME`  | Optional. EventBridge rule name for keepalive                                 |
+  | `KEEPALIVE_SCHEDULE`   | Optional. Defaults to `rate(1 day)`                                           |
+
+`.env.deploy` is sourced with `set -a`, so everything in it is exported to the
+deploy steps — no `export` needed in your shell, and nothing leaks into normal
+development: `npm run start:dev` keeps reading `.env`. Because `dotenv` never
+overwrites a variable that already exists, the `MONGO_URI` from `.env.deploy`
+wins over the local one in `.env`, so the deploy cannot sync indexes against
+your development database by accident.
 
 ### Deploying
 
@@ -171,7 +179,7 @@ The script (`scripts/deploy-lambda.sh`):
 
 1. Verifies the credentials for `AWS_PROFILE` (access keys are used as-is; an expired `aws login`/SSO session re-opens the browser login; a missing profile fails fast with instructions)
 2. Compiles TypeScript to `dist/`
-3. Syncs MongoDB indexes (`NODE_ENV=production npm run db:sync-indexes`) **when `MONGO_URI` is set** in the environment or in `.env.deploy`; otherwise it warns and skips — see [Index creation](#index-creation) below
+3. Syncs MongoDB indexes (`NODE_ENV=production npm run db:sync-indexes`) — see [Index creation](#index-creation) below. This runs **before** anything is packaged or uploaded, and a failure aborts the deploy
 4. Installs **production-only** dependencies into a clean staging directory (`build/lambda-package/`)
 5. Zips `dist/ + node_modules/ + package.json` into `build/lambda.zip`
 6. Uploads it with `aws lambda update-function-code` and waits for the update to complete
@@ -187,7 +195,65 @@ The zip layout requires the function handler to be **`dist/lambda.handler`**. Ru
 NODE_ENV=production MONGO_URI=<production uri> npm run db:sync-indexes
 ```
 
-`scripts/sync-indexes.ts` calls `syncIndexes()` on every model (User, Account, Category, Transaction, RateLimit, Budget, IdempotencyKey) — it creates the missing ones and **drops indexes that no longer exist in the schema**. Run it before the new code serves traffic; several correctness guarantees depend on indexes rather than application code (the partial unique index for "one default account per user", the case-insensitive unique category name, and the TTL indexes that expire rate-limit, idempotency and refresh-session documents).
+`scripts/sync-indexes.ts` calls `syncIndexes()` on every registered model — it creates the missing ones and **drops indexes that no longer exist in the schema**. The model list comes from the Mongoose registry (populated by `src/infrastructure/models/index.ts`), not from a list kept inside the script: a hand-maintained one had already fallen behind and left `RefreshSession` without its TTL and `familyId` indexes in production.
+
+**`MONGO_URI` is required for the deploy.** It is validated up front, alongside `AWS_PROFILE` and the rest, and the sync runs unconditionally before anything is compiled, packaged or uploaded. If the variable is missing, or the database rejects an index, the deploy aborts and nothing is released.
+
+That strictness is deliberate: several correctness guarantees live in the database, not in application code, so shipping onto an unindexed database silently disables them.
+
+| Index | What it enforces | What its absence costs |
+| ----- | ---------------- | ---------------------- |
+| `users.email` unique | One account per email | The same email registers over and over — `register` deliberately has no application-level check, so the index is the only guard |
+| `accounts.userId` unique, partial on `isDefault` | One default account per user | Two defaults; quick-add picks an arbitrary one |
+| `budgets` unique, partial on `archivedAt` | No overlapping budgets per category and period | Duplicate budgets double-counting the same spending |
+| `categories.(userId, name)` unique, collation `es` strength 2 | Case-insensitive unique names | "Comida" and "comida" coexist |
+| TTL on `ratelimits.expiresAt`, `idempotencykeys.createdAt`, `refreshsessions.expiresAt` | Automatic expiry | The collections grow forever — refresh sessions gain a document per login *and* per rotation |
+
+An index build fails when existing data already violates it (duplicate emails, say). The deploy stops with the driver's `E11000` naming the offending index and value: fix the data, then deploy again.
+
+Outside production the application builds these itself on connect, so a fresh local database needs no manual step. See [Environment Variables](./environment-vars.md).
+
+### The production MONGO_URI
+
+Atlas offers two connection strings for the same cluster. Either works — pick
+whichever your network resolves.
+
+**Standard connection string** (explicit hosts). Use this one if `mongodb+srv://`
+fails for you: the SRV form needs a DNS SRV lookup, which some networks, VPNs
+and WSL setups do not resolve.
+
+```
+mongodb://USER:PASSWORD@ac-xxxxx-shard-00-00.xxxxx.mongodb.net:27017,ac-xxxxx-shard-00-01.xxxxx.mongodb.net:27017,ac-xxxxx-shard-00-02.xxxxx.mongodb.net:27017/lag_money?ssl=true&replicaSet=atlas-xxxxx-shard-0&authSource=admin&retryWrites=true&w=majority
+```
+
+**SRV connection string** (shorter; resolves the hosts, TLS and `authSource` on
+its own, so `ssl`, `authSource` and `replicaSet` can all be dropped):
+
+```
+mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net/lag_money?retryWrites=true&w=majority
+```
+
+What the URI must satisfy, whichever form you use:
+
+| Requirement | Why |
+| ----------- | --- |
+| **The database name goes before the `?`** (`/lag_money?...`) | Atlas copies the string without one. With no database in the path the driver silently uses one called **`test`** — everything appears to work, in the wrong database |
+| **Keep `replicaSet=...`** (standard form only) | Balance updates run in multi-document transactions, which require a replica set. The SRV form discovers it on its own |
+| **Never add `directConnection=true`** | That is a local single-node workaround. Against Atlas it disables replica-set discovery and breaks transactions |
+| **URL-encode the password** | `@ : / ? # [ ] %` must be percent-encoded. An unencoded `@` splits the URI and surfaces as a confusing authentication error |
+| `retryWrites=true&w=majority` | Retries transient write failures and confirms writes against a majority of the replica set |
+
+The credentials are the **database user** created under Atlas's *Database
+Access*, not your Atlas account login. The cluster's *Network Access* list must
+also allow the connecting IP — the deploy machine when syncing indexes, and the
+Lambda's egress address at runtime.
+
+> **The URI goes in two separate places.** `.env.deploy` is read by your machine
+> during the deploy, to sync indexes. The Lambda's own `MONGO_URI` environment
+> variable is what the running application uses, and it is **not** part of the
+> deployment package — set it in the Lambda console or with
+> `aws lambda update-function-configuration`. Both must point at the same
+> database, and both need the database name in the path.
 
 ### Required production configuration
 
@@ -396,10 +462,10 @@ Before deploying, ensure these are set:
 - [ ] `JWT_SECRET` — strong, unique secret (min 32 characters)
 - [ ] `API_SECRET` — required in production; every request must then send `x-api-secret`
 - [ ] `CORS_ORIGIN` — your frontend domain(s), not `*`
-- [ ] `MONGO_URI` — points at a replica set (Atlas `mongodb+srv://...`)
+- [ ] `MONGO_URI` — replica set, **database name in the path**, no `directConnection`, password URL-encoded ([details](#the-production-mongo-uri)). Set in **both** the Lambda's configuration and `.env.deploy`
 - [ ] `LOG_LEVEL` — appropriate for production (`info` or `warn`)
 - [ ] `BCRYPT_SALT_ROUNDS` — 12+ for production
-- [ ] Indexes synced (`npm run db:sync-indexes`) before the new code serves traffic
+- [ ] Indexes synced — the deploy does this and aborts on failure; only run `npm run db:sync-indexes` by hand if you deployed some other way
 
 Optional: `REFRESH_SECRET` (falls back to `JWT_SECRET`; a separate value lets you rotate the access secret without invalidating every session), `RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_MAX`, `REFRESH_RATE_LIMIT_MAX`, `JWT_EXPIRATION`, `REFRESH_TOKEN_EXPIRATION`.
 
