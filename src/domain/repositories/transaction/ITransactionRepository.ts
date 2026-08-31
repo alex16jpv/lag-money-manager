@@ -56,6 +56,8 @@ export interface ITransactionRepository extends IRepository<Transaction> {
   // Distinct tags of the user's active transactions (autocomplete source).
   listTags(userId: string): Promise<string[]>;
 
+  countByCategory(userId: string, categoryId: string): Promise<number>;
+
   // Sum of amounts (integer cents) of the given flow type per category in
   // [from, to), restricted to the given categories. Budget spend/earned.
   sumAmountsByCategory(

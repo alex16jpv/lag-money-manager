@@ -1,4 +1,5 @@
 import { CategoryService } from "../../app/services/CategoryService";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { Category } from "../../domain/entities/Category";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
@@ -27,13 +28,20 @@ const createMockRepo = (): jest.Mocked<ICategoryRepository> => ({
   restore: jest.fn(),
 });
 
+const createTxRepoMock = () =>
+  ({
+    countByCategory: jest.fn().mockResolvedValue(0),
+  }) as unknown as jest.Mocked<ITransactionRepository>;
+
 describe("CategoryService", () => {
   let service: CategoryService;
   let repo: jest.Mocked<ICategoryRepository>;
+  let txRepo: jest.Mocked<ITransactionRepository>;
 
   beforeEach(() => {
     repo = createMockRepo();
-    service = new CategoryService(repo);
+    txRepo = createTxRepoMock();
+    service = new CategoryService(repo, txRepo);
   });
 
   describe("getAllCategories", () => {
@@ -280,6 +288,32 @@ describe("CategoryService", () => {
 
       expect(created).toEqual([]);
       expect(repo.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("type change guard [R2-32]", () => {
+    it("blocks changing the type of a category with transactions", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({ id: mockCategory.id, name: "Food", type: "EXPENSE", userId: testUserId }),
+      );
+      txRepo.countByCategory.mockResolvedValue(3);
+
+      await expect(
+        service.updateCategory(mockCategory.id, { type: "INCOME" }, testUserId),
+      ).rejects.toThrow("Cannot change the type");
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it("allows a type change when the category has no transactions", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({ id: mockCategory.id, name: "Food", type: "EXPENSE", userId: testUserId }),
+      );
+      txRepo.countByCategory.mockResolvedValue(0);
+      repo.update.mockResolvedValue(mockCategory);
+
+      await expect(
+        service.updateCategory(mockCategory.id, { type: "INCOME" }, testUserId),
+      ).resolves.toBeDefined();
     });
   });
 

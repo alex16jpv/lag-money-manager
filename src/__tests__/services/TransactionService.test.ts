@@ -56,6 +56,7 @@ const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   delete: jest.fn(),
   aggregateSpending: jest.fn(),
   listTags: jest.fn().mockResolvedValue([]),
+  countByCategory: jest.fn().mockResolvedValue(0),
   sumAmountsByCategory: jest.fn(),
   sumAmounts: jest.fn().mockResolvedValue(0),
 });

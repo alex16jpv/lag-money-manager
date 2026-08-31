@@ -189,6 +189,14 @@ export class TransactionRepository implements ITransactionRepository {
     }
   }
 
+  async countByCategory(userId: string, categoryId: string): Promise<number> {
+    return TransactionModel.countDocuments({
+      userId,
+      categoryId,
+      deletedAt: null,
+    });
+  }
+
   async listTags(userId: string): Promise<string[]> {
     const tags = await TransactionModel.distinct("tags", {
       userId,

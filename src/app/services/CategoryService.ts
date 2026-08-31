@@ -1,5 +1,6 @@
 import { Category } from "../../domain/entities/Category";
 import { CategoryFilters, ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
@@ -9,7 +10,10 @@ import { CreateCategoryDTO, UpdateCategoryDTO } from "../dtos/CategoryDTO";
 const MAX_CATEGORIES_PER_USER = 200;
 
 export class CategoryService {
-  constructor(private repo: ICategoryRepository) {}
+  constructor(
+    private repo: ICategoryRepository,
+    private transactionRepo: ITransactionRepository,
+  ) {}
 
   async getAllCategories(
     userId: string,
@@ -64,6 +68,21 @@ export class CategoryService {
         "Category is archived; restore it first",
         "RESOURCE_ARCHIVED",
       );
+    }
+
+    // The type of a category with history IS part of that history: changing
+    // it would silently reclassify stats and contradict typed transactions.
+    const typeChanged =
+      dto.type !== undefined && (dto.type ?? null) !== (existing.type ?? null);
+    if (typeChanged) {
+      const linked = await this.transactionRepo.countByCategory(userId, id);
+      if (linked > 0) {
+        throw new ApiError(
+          "BadRequest",
+          "Cannot change the type of a category with transactions; create a new category instead",
+          "CATEGORY_TYPE_LOCKED",
+        );
+      }
     }
 
     return new Category(await this.repo.update(id, dto));
