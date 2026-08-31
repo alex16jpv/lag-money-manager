@@ -64,6 +64,18 @@ export class UserRepository implements IUserRepository {
     );
   }
 
+  async updateWithTokenBump(id: string, fields: Partial<User>): Promise<User> {
+    const doc = await UserModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      { $set: fields, $inc: { tokenVersion: 1 } },
+      { new: true },
+    ).lean();
+    if (!doc) {
+      throw new ApiError("NotFound", "User not found");
+    }
+    return this.toEntity(doc);
+  }
+
   async bumpTokenVersion(id: string): Promise<void> {
     await UserModel.updateOne(
       { _id: id, deletedAt: null },

@@ -9,12 +9,16 @@ interface AuthRateLimitOptions {
   windowMs: number;
   // Defaults to the client IP; return null to skip limiting this request.
   keyFrom?: (req: Request) => string | null;
+  // Refund the increment when the request succeeds (<400): the budget then
+  // only burns on failures — a per-account login counter must not let a
+  // third party lock the real owner out, nor punish legitimate logins.
+  refundOnSuccess?: boolean;
 }
 
 // Per-key auth limiter backed by MongoDB so the limit holds across Lambda
 // instances (the in-memory limiter counts per instance). Fails open on store errors.
 export function authRateLimit(options: AuthRateLimitOptions) {
-  const { keyPrefix, max, windowMs, keyFrom } = options;
+  const { keyPrefix, max, windowMs, keyFrom, refundOnSuccess } = options;
 
   return async (
     req: Request,
@@ -56,6 +60,19 @@ export function authRateLimit(options: AuthRateLimitOptions) {
         ],
         { upsert: true, new: true },
       ).lean();
+
+      if (refundOnSuccess) {
+        res.on("finish", () => {
+          if (res.statusCode < 400) {
+            RateLimitModel.updateOne(
+              { _id: key },
+              { $inc: { count: -1 } },
+            ).catch(() => {
+              /* best-effort refund */
+            });
+          }
+        });
+      }
 
       if (doc && doc.count > max) {
         const retryAfter = Math.max(

@@ -37,6 +37,7 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   getDeletedByEmail: jest.fn().mockResolvedValue(null),
   getByIdWithPassword: jest.fn().mockResolvedValue(null),
   bumpTokenVersion: jest.fn().mockResolvedValue(undefined),
+  updateWithTokenBump: jest.fn(),
   recordLogin: jest.fn().mockResolvedValue(undefined),
   reactivate: jest.fn(),
   create: jest.fn(),
@@ -144,7 +145,7 @@ describe("UserService", () => {
         password: bcryptjs.hashSync("oldpassword", 12),
       });
       repo.getByIdWithPassword.mockResolvedValue(withHash);
-      repo.update.mockResolvedValue(mockUser);
+      repo.updateWithTokenBump.mockResolvedValue(mockUser);
 
       await service.updateUser(
         testUserId,
@@ -155,15 +156,17 @@ describe("UserService", () => {
         testUserId,
       );
 
-      const updateArg = repo.update.mock.calls[0][1];
+      // Credential changes go through the atomic $set + $inc(tokenVersion)
+      // write so outstanding refresh tokens are revoked without races [M3].
+      expect(repo.update).not.toHaveBeenCalled();
+      const updateArg = repo.updateWithTokenBump.mock.calls[0][1];
       expect(updateArg.password).not.toBe("newpassword");
       expect(await bcryptjs.compare("newpassword", updateArg.password!)).toBe(
         true,
       );
       // currentPassword is verification-only: never persisted.
       expect(updateArg).not.toHaveProperty("currentPassword");
-      // tokenVersion is bumped so outstanding refresh tokens are revoked [M3]
-      expect(updateArg.tokenVersion).toBe(mockUser.tokenVersion + 1);
+      expect(updateArg).not.toHaveProperty("tokenVersion");
     });
 
     it("rejects a credential change with a wrong currentPassword [R2-08]", async () => {

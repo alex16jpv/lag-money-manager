@@ -26,6 +26,9 @@ const loginEmailLimiter = authRateLimit({
   keyPrefix: "login-email",
   max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
+  // Only failed logins burn the per-account budget (no lockout-DoS by a
+  // third party spamming the victim's email, no cost for real logins).
+  refundOnSuccess: true,
   // Runs before Zod: normalize the same way the schema will.
   keyFrom: (req) => {
     const email = (req.body as { email?: unknown } | undefined)?.email;

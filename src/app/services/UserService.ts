@@ -98,9 +98,9 @@ export class UserService {
               ),
             }
           : {}),
-        tokenVersion: existing.tokenVersion + 1,
       };
-      const updated = await this.repo.update(id, securedDto);
+      // Atomic bump: a concurrent logout-all must never lose a revocation.
+      const updated = await this.repo.updateWithTokenBump(id, securedDto);
       return this.toResponseDTO(updated);
     }
 
