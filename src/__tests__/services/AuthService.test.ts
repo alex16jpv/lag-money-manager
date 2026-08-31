@@ -102,8 +102,11 @@ describe("AuthService", () => {
       expect(repo.create).not.toHaveBeenCalled();
       // Existing categories are kept: no re-seed on reactivation.
       expect(categoryService.seedDefaultCategories).not.toHaveBeenCalled();
-      expect(result.name).toBe("John");
-      expect(result.reactivated).toBe(true);
+      expect(result.user.name).toBe("John");
+      expect(result.user.reactivated).toBe(true);
+      // Register opens a session directly [R2-39].
+      expect(typeof result.accessToken).toBe("string");
+      expect(typeof result.refreshToken).toBe("string");
     });
 
     it("should hash the password and create a user", async () => {
@@ -130,8 +133,10 @@ describe("AuthService", () => {
       expect(await bcryptjs.compare("password123", createArg.password!)).toBe(
         true,
       );
-      expect(result).not.toHaveProperty("password");
-      expect(result.name).toBe("John");
+      expect(result.user).not.toHaveProperty("password");
+      expect(result.user.name).toBe("John");
+      expect(typeof result.accessToken).toBe("string");
+      expect(typeof result.refreshToken).toBe("string");
     });
 
     it("should seed default categories for the new user", async () => {
@@ -178,8 +183,8 @@ describe("AuthService", () => {
 
       const result = await service.register(input);
 
-      expect(result.name).toBe("John");
-      expect(result).not.toHaveProperty("password");
+      expect(result.user.name).toBe("John");
+      expect(result.user).not.toHaveProperty("password");
     });
   });
 

@@ -97,7 +97,12 @@ export class AuthService {
     return { accessToken: this.signAccessToken(user), refreshToken };
   }
 
-  async register(dto: CreateUserDTO): Promise<UserResponseDTO> {
+  // Registers and opens a session in one step: the request just proved
+  // possession of the brand-new password, a follow-up login adds nothing.
+  async register(
+    dto: CreateUserDTO,
+    userAgent?: string,
+  ): Promise<AuthTokens & { user: UserResponseDTO }> {
     const hashedPassword = await bcryptjs.hash(
       dto.password,
       ENVIRONMENT.BCRYPT_SALT_ROUNDS,
@@ -113,7 +118,11 @@ export class AuthService {
           password: hashedPassword,
           ...(dto.timezone ? { timezone: dto.timezone } : {}),
         });
-        return { ...this.toResponseDTO(reactivated), reactivated: true };
+        const tokens = await this.openSession(reactivated, userAgent);
+        return {
+          ...tokens,
+          user: { ...this.toResponseDTO(reactivated), reactivated: true },
+        };
       } catch (err) {
         // Concurrent register already reactivated it: surface as a conflict.
         if (err instanceof ApiError && err.statusCode === 404) {
@@ -136,7 +145,8 @@ export class AuthService {
       );
     }
 
-    return this.toResponseDTO(created);
+    const tokens = await this.openSession(created, userAgent);
+    return { ...tokens, user: this.toResponseDTO(created) };
   }
 
   async login(

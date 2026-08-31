@@ -16,8 +16,11 @@ const authService = new AuthService(
 
 export class AuthController {
   static register = async (req: Request, res: Response) => {
-    const user = await authService.register(req.body);
-    res.status(201).json(user);
+    const result = await authService.register(
+      req.body,
+      req.get("User-Agent") ?? undefined,
+    );
+    res.status(201).json(result);
   };
 
   static login = async (req: Request, res: Response) => {
