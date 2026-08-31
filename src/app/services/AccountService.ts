@@ -106,9 +106,12 @@ export class AccountService {
     const archived = await this.repo.archiveNonDefault(id, userId);
     if (!archived) {
       // Raced with setDefault or another archive since the check above.
-      const current = await this.repo.getById(id);
-      if (!current) {
+      const current = await this.repo.getByIdIncludingArchived(id);
+      if (!current || current.userId !== userId) {
         throw new ApiError("NotFound", "Account not found");
+      }
+      if (current.archivedAt) {
+        return; // lost the race to another archive: idempotent success
       }
       throw new ApiError(
         "BadRequest",

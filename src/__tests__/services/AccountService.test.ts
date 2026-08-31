@@ -336,10 +336,11 @@ describe("AccountService", () => {
     });
 
     it("rejects when the account became default between check and archive (race)", async () => {
-      repo.getByIdIncludingArchived.mockResolvedValue(mockAccount);
-      repo.getById.mockResolvedValue(
-        new Account({ ...validAccountProps, isDefault: true }),
-      );
+      repo.getByIdIncludingArchived
+        .mockResolvedValueOnce(mockAccount)
+        .mockResolvedValueOnce(
+          new Account({ ...validAccountProps, isDefault: true }),
+        );
       repo.archiveNonDefault.mockResolvedValue(false);
 
       await expect(
