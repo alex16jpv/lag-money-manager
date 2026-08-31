@@ -37,7 +37,7 @@ export class BudgetRepository implements IBudgetRepository {
       effectiveFrom: doc.effectiveFrom ?? null,
       note: doc.note ?? null,
       userId: doc.userId,
-      archivedAt: doc.deletedAt,
+      archivedAt: doc.archivedAt,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });
@@ -59,7 +59,7 @@ export class BudgetRepository implements IBudgetRepository {
   }
 
   async getById(id: string): Promise<Budget | null> {
-    const doc = await BudgetModel.findOne({ _id: id, deletedAt: null }).lean();
+    const doc = await BudgetModel.findOne({ _id: id, archivedAt: null }).lean();
     return doc ? this.toEntity(doc) : null;
   }
 
@@ -75,7 +75,7 @@ export class BudgetRepository implements IBudgetRepository {
     const { limit, offset, cursor } = pagination;
     const filter: Record<string, unknown> = { userId };
     if (!filters?.includeArchived) {
-      filter.deletedAt = null;
+      filter.archivedAt = null;
     }
     if (cursor) {
       // Merge with an ids ($in) filter instead of clobbering it.
@@ -91,7 +91,7 @@ export class BudgetRepository implements IBudgetRepository {
         .limit(limit)
         .lean(),
       BudgetModel.countDocuments(
-        filters?.includeArchived ? { userId } : { userId, deletedAt: null },
+        filters?.includeArchived ? { userId } : { userId, archivedAt: null },
       ),
     ]);
     return buildPaginatedResult(
@@ -109,7 +109,7 @@ export class BudgetRepository implements IBudgetRepository {
 
   async update(id: string, budget: Partial<Budget>): Promise<Budget> {
     const doc = await BudgetModel.findOneAndUpdate(
-      { _id: id, deletedAt: null },
+      { _id: id, archivedAt: null },
       this.toStorage(budget),
       { new: true },
     ).lean();
@@ -121,8 +121,8 @@ export class BudgetRepository implements IBudgetRepository {
 
   async delete(id: string): Promise<void> {
     const doc = await BudgetModel.findOneAndUpdate(
-      { _id: id, deletedAt: null },
-      { deletedAt: new Date() },
+      { _id: id, archivedAt: null },
+      { archivedAt: new Date() },
       { new: true },
     ).lean();
     if (!doc) {
@@ -140,7 +140,7 @@ export class BudgetRepository implements IBudgetRepository {
     const filter: Record<string, unknown> = {
       userId,
       type,
-      deletedAt: null,
+      archivedAt: null,
       periodType,
       // A global budget ([]) only conflicts with another global one; it
       // coexists with per-category budgets by design.
@@ -161,7 +161,7 @@ export class BudgetRepository implements IBudgetRepository {
     periodKey: string,
   ): Promise<Budget | null> {
     const doc = await BudgetModel.findOneAndUpdate(
-      { _id: id, userId, deletedAt: null },
+      { _id: id, userId, archivedAt: null },
       { $unset: { [`amountOverrides.${periodKey}`]: "" } },
       { new: true },
     ).lean();
@@ -175,7 +175,7 @@ export class BudgetRepository implements IBudgetRepository {
     amount: number,
   ): Promise<Budget | null> {
     const doc = await BudgetModel.findOneAndUpdate(
-      { _id: id, userId, deletedAt: null },
+      { _id: id, userId, archivedAt: null },
       { $set: { [`amountOverrides.${periodKey}`]: toCents(amount) } },
       { new: true },
     ).lean();

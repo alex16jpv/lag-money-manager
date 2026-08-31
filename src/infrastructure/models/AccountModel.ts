@@ -16,7 +16,7 @@ export interface IAccountDocument {
   color?: string;
   userId: string;
   isDefault: boolean;
-  deletedAt: Date | null;
+  archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,7 +35,7 @@ const AccountSchema = new Schema<IAccountDocument>(
     color: { type: String, required: false, enum: Object.keys(COLORS) },
     userId: { type: String, required: true },
     isDefault: { type: Boolean, required: true, default: false },
-    deletedAt: { type: Date, default: null },
+    archivedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
@@ -44,7 +44,7 @@ AccountSchema.index({ userId: 1, _id: 1 });
 // At most one active default account per user.
 AccountSchema.index(
   { userId: 1 },
-  { unique: true, partialFilterExpression: { isDefault: true, deletedAt: null } },
+  { unique: true, partialFilterExpression: { isDefault: true, archivedAt: null } },
 );
 
 export const AccountModel = mongoose.model<IAccountDocument>(

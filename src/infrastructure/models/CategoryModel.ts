@@ -10,7 +10,7 @@ export interface ICategoryDocument {
   type?: CategoryType;
   userId: string;
   seedKey?: string;
-  deletedAt: Date | null;
+  archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,7 +24,7 @@ const CategorySchema = new Schema<ICategoryDocument>(
     type: { type: String, required: false, enum: Object.keys(CATEGORY_TYPES) },
     userId: { type: String, required: true },
     seedKey: { type: String, required: false },
-    deletedAt: { type: Date, default: null },
+    archivedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
@@ -33,7 +33,7 @@ CategorySchema.index({ userId: 1, _id: 1 });
 // One active category name per user (partial: excludes soft-deleted rows).
 CategorySchema.index(
   { userId: 1, name: 1 },
-  { unique: true, partialFilterExpression: { deletedAt: null } },
+  { unique: true, partialFilterExpression: { archivedAt: null } },
 );
 
 export const CategoryModel = mongoose.model<ICategoryDocument>(

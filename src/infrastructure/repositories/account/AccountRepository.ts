@@ -26,7 +26,7 @@ export class AccountRepository implements IAccountRepository {
       color: doc.color as Account["color"],
       userId: doc.userId,
       isDefault: doc.isDefault,
-      archivedAt: doc.deletedAt,
+      archivedAt: doc.archivedAt,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });
@@ -74,7 +74,7 @@ export class AccountRepository implements IAccountRepository {
   }
 
   async getById(id: string, session?: TxSession): Promise<Account | null> {
-    const doc = await AccountModel.findOne({ _id: id, deletedAt: null })
+    const doc = await AccountModel.findOne({ _id: id, archivedAt: null })
       .session(session ?? null)
       .lean();
     if (!doc) return null;
@@ -89,7 +89,7 @@ export class AccountRepository implements IAccountRepository {
   async getAll(
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Account>> {
-    return this.paginatedFind({ deletedAt: null }, pagination);
+    return this.paginatedFind({ archivedAt: null }, pagination);
   }
 
   async getAllByUserId(
@@ -99,7 +99,7 @@ export class AccountRepository implements IAccountRepository {
   ): Promise<PaginatedResult<Account>> {
     const filter: Record<string, unknown> = { userId };
     if (!filters?.includeArchived) {
-      filter.deletedAt = null;
+      filter.archivedAt = null;
     }
     if (filters?.ids?.length) {
       filter._id = { $in: filters.ids };
@@ -125,7 +125,7 @@ export class AccountRepository implements IAccountRepository {
     session?: TxSession,
   ): Promise<Account> {
     const doc = await AccountModel.findOneAndUpdate(
-      { _id: id, deletedAt: null },
+      { _id: id, archivedAt: null },
       this.toStorage(account),
       { new: true, session: session ?? undefined },
     ).lean();
@@ -140,7 +140,7 @@ export class AccountRepository implements IAccountRepository {
     delta: number,
     session?: TxSession,
   ): Promise<boolean> {
-    // No deletedAt filter: reversals must reach archived accounts too.
+    // No archivedAt filter: reversals must reach archived accounts too.
     const res = await AccountModel.updateOne(
       { _id: id },
       { $inc: { balance: toCents(delta) } },
@@ -151,8 +151,8 @@ export class AccountRepository implements IAccountRepository {
 
   async delete(id: string, session?: TxSession): Promise<void> {
     const doc = await AccountModel.findOneAndUpdate(
-      { _id: id, deletedAt: null },
-      { deletedAt: new Date() },
+      { _id: id, archivedAt: null },
+      { archivedAt: new Date() },
       { new: true, session: session ?? undefined },
     ).lean();
     if (!doc) {
@@ -162,8 +162,8 @@ export class AccountRepository implements IAccountRepository {
 
   async archiveNonDefault(id: string, userId: string): Promise<boolean> {
     const doc = await AccountModel.findOneAndUpdate(
-      { _id: id, userId, deletedAt: null, isDefault: false },
-      { deletedAt: new Date() },
+      { _id: id, userId, archivedAt: null, isDefault: false },
+      { archivedAt: new Date() },
       { new: true },
     ).lean();
     return doc !== null;
@@ -172,8 +172,8 @@ export class AccountRepository implements IAccountRepository {
   async restore(id: string, userId: string): Promise<Account | null> {
     // Never restore as default: another account may have taken the flag.
     const doc = await AccountModel.findOneAndUpdate(
-      { _id: id, userId, deletedAt: { $ne: null } },
-      { deletedAt: null, isDefault: false },
+      { _id: id, userId, archivedAt: { $ne: null } },
+      { archivedAt: null, isDefault: false },
       { new: true },
     ).lean();
     return doc ? this.toEntity(doc) : null;
@@ -183,7 +183,7 @@ export class AccountRepository implements IAccountRepository {
     const doc = await AccountModel.findOne({
       userId,
       isDefault: true,
-      deletedAt: null,
+      archivedAt: null,
     }).lean();
     return doc ? this.toEntity(doc) : null;
   }
@@ -191,7 +191,7 @@ export class AccountRepository implements IAccountRepository {
   async setDefault(id: string, userId: string): Promise<Account | null> {
     return withTransaction(async (session) => {
       const target = await AccountModel.findOneAndUpdate(
-        { _id: id, userId, deletedAt: null },
+        { _id: id, userId, archivedAt: null },
         { isDefault: true },
         { new: true, session },
       ).lean();
@@ -206,6 +206,6 @@ export class AccountRepository implements IAccountRepository {
   }
 
   async countByUserId(userId: string): Promise<number> {
-    return AccountModel.countDocuments({ userId, deletedAt: null });
+    return AccountModel.countDocuments({ userId, archivedAt: null });
   }
 }

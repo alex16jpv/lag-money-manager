@@ -23,7 +23,7 @@ export interface IBudgetDocument {
   effectiveFrom: Date | null;
   note: string | null;
   userId: string;
-  deletedAt: Date | null;
+  archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,17 +52,17 @@ const BudgetSchema = new Schema<IBudgetDocument>(
     effectiveFrom: { type: Date, default: null },
     note: { type: String, default: null },
     userId: { type: String, required: true },
-    deletedAt: { type: Date, default: null },
+    archivedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
-BudgetSchema.index({ userId: 1, deletedAt: 1 });
+BudgetSchema.index({ userId: 1, archivedAt: 1 });
 // Backs the no-overlap rule (same category + same period type) against
 // concurrent creates; multikey over categoryIds, archived budgets free the slot.
 BudgetSchema.index(
   { userId: 1, type: 1, periodType: 1, categoryIds: 1 },
-  { unique: true, partialFilterExpression: { deletedAt: null } },
+  { unique: true, partialFilterExpression: { archivedAt: null } },
 );
 
 export const BudgetModel = mongoose.model<IBudgetDocument>(

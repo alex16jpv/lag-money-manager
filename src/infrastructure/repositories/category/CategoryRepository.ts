@@ -20,7 +20,7 @@ export class CategoryRepository implements ICategoryRepository {
       type: doc.type,
       userId: doc.userId,
       seedKey: doc.seedKey,
-      archivedAt: doc.deletedAt,
+      archivedAt: doc.archivedAt,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });
@@ -59,7 +59,7 @@ export class CategoryRepository implements ICategoryRepository {
   async getById(id: string): Promise<Category | null> {
     const doc = await CategoryModel.findOne({
       _id: id,
-      deletedAt: null,
+      archivedAt: null,
     }).lean();
     if (!doc) return null;
     return this.toEntity(doc);
@@ -74,7 +74,7 @@ export class CategoryRepository implements ICategoryRepository {
   async getAll(
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Category>> {
-    return this.paginatedFind({ deletedAt: null }, pagination);
+    return this.paginatedFind({ archivedAt: null }, pagination);
   }
 
   async getAllByUserId(
@@ -84,7 +84,7 @@ export class CategoryRepository implements ICategoryRepository {
   ): Promise<PaginatedResult<Category>> {
     const filter: Record<string, unknown> = { userId };
     if (!filters?.includeArchived) {
-      filter.deletedAt = null;
+      filter.archivedAt = null;
     }
     if (filters?.ids?.length) {
       filter._id = { $in: filters.ids };
@@ -128,7 +128,7 @@ export class CategoryRepository implements ICategoryRepository {
   }
 
   async countByUserId(userId: string): Promise<number> {
-    return CategoryModel.countDocuments({ userId, deletedAt: null });
+    return CategoryModel.countDocuments({ userId, archivedAt: null });
   }
 
   async listArchivedIds(userId: string, ids: string[]): Promise<string[]> {
@@ -136,7 +136,7 @@ export class CategoryRepository implements ICategoryRepository {
     const docs = await CategoryModel.find({
       userId,
       _id: { $in: ids },
-      deletedAt: { $ne: null },
+      archivedAt: { $ne: null },
     })
       .select("_id")
       .lean();
@@ -155,7 +155,7 @@ export class CategoryRepository implements ICategoryRepository {
 
   async update(id: string, category: Partial<Category>): Promise<Category> {
     const doc = await CategoryModel.findOneAndUpdate(
-      { _id: id, deletedAt: null },
+      { _id: id, archivedAt: null },
       category,
       { new: true },
     ).lean();
@@ -167,8 +167,8 @@ export class CategoryRepository implements ICategoryRepository {
 
   async delete(id: string): Promise<void> {
     const doc = await CategoryModel.findOneAndUpdate(
-      { _id: id, deletedAt: null },
-      { deletedAt: new Date() },
+      { _id: id, archivedAt: null },
+      { archivedAt: new Date() },
       { new: true },
     ).lean();
     if (!doc) {
@@ -178,8 +178,8 @@ export class CategoryRepository implements ICategoryRepository {
 
   async restore(id: string, userId: string): Promise<Category | null> {
     const doc = await CategoryModel.findOneAndUpdate(
-      { _id: id, userId, deletedAt: { $ne: null } },
-      { deletedAt: null },
+      { _id: id, userId, archivedAt: { $ne: null } },
+      { archivedAt: null },
       { new: true },
     ).lean();
     return doc ? this.toEntity(doc) : null;
