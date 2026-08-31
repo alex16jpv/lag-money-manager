@@ -862,7 +862,6 @@ describe("Validation Schemas", () => {
             fromAccountId: validUUID,
             categoryId: null,
             description: null,
-            tags: null,
             note: null,
           },
         });
@@ -882,14 +881,27 @@ describe("Validation Schemas", () => {
         expect(result.success).toBe(false);
       });
 
-      it("should reject tags exceeding 500 characters", () => {
+      it("should accept an array of tags", () => {
         const result = createTransactionSchema.safeParse({
           body: {
             type: "EXPENSE",
             amount: 50,
             date: validDate,
             fromAccountId: validUUID,
-            tags: "a".repeat(501),
+            tags: ["food", "coffee"],
+          },
+        });
+        expect(result.success).toBe(true);
+      });
+
+      it("should reject a tag exceeding 50 characters", () => {
+        const result = createTransactionSchema.safeParse({
+          body: {
+            type: "EXPENSE",
+            amount: 50,
+            date: validDate,
+            fromAccountId: validUUID,
+            tags: ["a".repeat(51)],
           },
         });
         expect(result.success).toBe(false);

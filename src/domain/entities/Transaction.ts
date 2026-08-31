@@ -14,7 +14,7 @@ export interface TransactionProps {
   fromAccountId?: string | null;
   toAccountId?: string | null;
   userId: string;
-  tags?: string | null;
+  tags?: string[];
   note?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
@@ -30,7 +30,7 @@ export class Transaction {
   fromAccountId: string | null;
   toAccountId: string | null;
   userId: string;
-  tags: string | null;
+  tags: string[];
   note: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -45,7 +45,7 @@ export class Transaction {
     this.fromAccountId = props.fromAccountId ?? null;
     this.toAccountId = props.toAccountId ?? null;
     this.userId = props.userId;
-    this.tags = props.tags ?? null;
+    this.tags = props.tags ?? [];
     this.note = props.note ?? null;
     this.createdAt = props.createdAt ?? new Date();
     this.updatedAt = props.updatedAt ?? new Date();

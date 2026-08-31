@@ -16,7 +16,7 @@ export interface ITransactionDocument {
   fromAccountId: string | null;
   toAccountId: string | null;
   userId: string;
-  tags: string | null;
+  tags: string[];
   note: string | null;
   deletedAt: Date | null;
   createdAt: Date;
@@ -38,7 +38,7 @@ const TransactionSchema = new Schema<ITransactionDocument>(
     fromAccountId: { type: String, default: null },
     toAccountId: { type: String, default: null },
     userId: { type: String, required: true },
-    tags: { type: String, default: null },
+    tags: { type: [String], default: [] },
     note: { type: String, default: null },
     deletedAt: { type: Date, default: null },
   },
@@ -48,6 +48,7 @@ const TransactionSchema = new Schema<ITransactionDocument>(
 // Primary listing sort; without it the (date desc) sort runs in memory.
 TransactionSchema.index({ userId: 1, date: -1, _id: -1 });
 TransactionSchema.index({ userId: 1, categoryId: 1, date: -1 });
+TransactionSchema.index({ userId: 1, tags: 1, date: -1 });
 
 export const TransactionModel = mongoose.model<ITransactionDocument>(
   MODEL_NAMES.TRANSACTION,

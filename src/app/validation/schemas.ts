@@ -279,7 +279,7 @@ export const createTransactionSchema = z.object({
         .uuid("toAccountId must be a valid UUID")
         .optional()
         .nullable(),
-      tags: z.string().max(500).optional().nullable(),
+      tags: z.array(z.string().min(1).max(50)).max(30).optional(),
       note: z.string().max(1000).optional().nullable(),
     })
     .superRefine((data, ctx) => {
@@ -359,7 +359,7 @@ export const updateTransactionSchema = z.object({
         .uuid("toAccountId must be a valid UUID")
         .optional()
         .nullable(),
-      tags: z.string().max(500).optional().nullable(),
+      tags: z.array(z.string().min(1).max(50)).max(30).optional(),
       note: z.string().max(1000).optional().nullable(),
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {

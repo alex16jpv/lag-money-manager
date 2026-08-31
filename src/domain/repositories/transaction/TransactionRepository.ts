@@ -30,7 +30,7 @@ export class TransactionRepository implements ITransactionRepository {
       fromAccountId: doc.fromAccountId ?? null,
       toAccountId: doc.toAccountId ?? null,
       userId: doc.userId,
-      tags: doc.tags ?? null,
+      tags: doc.tags ?? [],
       note: doc.note ?? null,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,

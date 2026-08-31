@@ -9,7 +9,7 @@ export interface CreateTransactionDTO {
   fromAccountId?: string | null;
   toAccountId?: string | null;
   userId: string;
-  tags?: string | null;
+  tags?: string[];
   note?: string | null;
 }
 
@@ -22,6 +22,6 @@ export interface UpdateTransactionDTO {
   description?: string | null;
   fromAccountId?: string | null;
   toAccountId?: string | null;
-  tags?: string | null;
+  tags?: string[];
   note?: string | null;
 }

@@ -55,7 +55,7 @@ describe("Transaction Entity", () => {
     fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
     toAccountId: null,
     userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac74",
-    tags: "food",
+    tags: ["food"],
     note: "Weekly shopping",
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -88,7 +88,7 @@ describe("Transaction Entity", () => {
       expect(tx.fromAccountId).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac71");
       expect(tx.toAccountId).toBeNull();
       expect(tx.userId).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac74");
-      expect(tx.tags).toBe("food");
+      expect(tx.tags).toEqual(["food"]);
       expect(tx.note).toBe("Weekly shopping");
     });
 
@@ -104,7 +104,7 @@ describe("Transaction Entity", () => {
       expect(tx.categoryId).toBeNull();
       expect(tx.description).toBeNull();
       expect(tx.toAccountId).toBeNull();
-      expect(tx.tags).toBeNull();
+      expect(tx.tags).toEqual([]);
       expect(tx.note).toBeNull();
     });
 
