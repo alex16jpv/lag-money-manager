@@ -10,6 +10,10 @@ export interface BudgetFilters {
 }
 
 export interface IBudgetRepository extends IRepository<Budget> {
+  // Unlike getById, also resolves archived budgets (uniform semantics:
+  // archived resources stay readable; writes reject with RESOURCE_ARCHIVED).
+  getByIdIncludingArchived(id: string): Promise<Budget | null>;
+
   getAllByUserId(
     userId: string,
     pagination: PaginationParams,

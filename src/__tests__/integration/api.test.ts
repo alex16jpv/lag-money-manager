@@ -75,6 +75,7 @@ const mockBudgetRepo = {
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
+  getByIdIncludingArchived: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),

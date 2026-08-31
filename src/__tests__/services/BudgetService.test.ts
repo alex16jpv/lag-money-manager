@@ -30,6 +30,7 @@ const createBudgetRepo = (): jest.Mocked<IBudgetRepository> =>
     getAll: jest.fn(),
     getAllByUserId: jest.fn(),
     getById: jest.fn(),
+    getByIdIncludingArchived: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
@@ -214,7 +215,7 @@ describe("BudgetService", () => {
 
     it("keeps an archived category on update when it was already on the budget", async () => {
       const existing = makeBudget();
-      budgetRepo.getById.mockResolvedValue(existing);
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(existing);
       budgetRepo.update.mockResolvedValue(existing);
       categoryRepo.getByIdIncludingArchived.mockResolvedValue(
         new Category({
@@ -327,7 +328,7 @@ describe("BudgetService", () => {
 
     it("clears the override for the reference period", async () => {
       const b = makeBudget();
-      budgetRepo.getById.mockResolvedValue(b);
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(b);
       budgetRepo.clearAmountOverride.mockResolvedValue(b);
 
       const view = await service.clearAmountOverride("b1", USER, CTX);
@@ -347,7 +348,7 @@ describe("BudgetService", () => {
         periodEndDate: new Date("2026-09-01T00:00:00Z"),
         amountOverrides: { "1754006400000_1756684800000": 50 },
       });
-      budgetRepo.getById.mockResolvedValue(b);
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(b);
       budgetRepo.update.mockResolvedValue(makeBudget());
 
       await service.updateBudget("b1", { periodType: "MONTHLY" }, USER, CTX);
@@ -497,6 +498,42 @@ describe("BudgetService", () => {
 
       expect(result.data).toHaveLength(1);
       expect(result.data[0].expired).toBe(false);
+    });
+  });
+  describe("uniform archive semantics [rev-final]", () => {
+    it("an archived budget stays readable by id", async () => {
+      const archived = makeBudget({ archivedAt: new Date("2026-08-01") });
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(archived);
+
+      const view = await service.getBudgetById("b1", USER, CTX);
+
+      expect(view.archivedAt).toEqual(archived.archivedAt);
+    });
+
+    it("deleting an already-archived budget is an idempotent no-op", async () => {
+      const archived = makeBudget({ archivedAt: new Date("2026-08-01") });
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(archived);
+
+      await expect(service.deleteBudget("b1", USER)).resolves.toBeUndefined();
+      expect(budgetRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it("writes on an archived budget return RESOURCE_ARCHIVED", async () => {
+      const archived = makeBudget({ archivedAt: new Date("2026-08-01") });
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(archived);
+
+      for (const attempt of [
+        () => service.updateBudget("b1", { name: "x" }, USER, CTX),
+        () => service.setAmountOverride("b1", USER, 10, CTX),
+        () => service.clearAmountOverride("b1", USER, CTX),
+      ]) {
+        await expect(attempt()).rejects.toMatchObject({
+          code: "RESOURCE_ARCHIVED",
+        });
+      }
+      expect(budgetRepo.update).not.toHaveBeenCalled();
+      expect(budgetRepo.setAmountOverride).not.toHaveBeenCalled();
+      expect(budgetRepo.clearAmountOverride).not.toHaveBeenCalled();
     });
   });
 });

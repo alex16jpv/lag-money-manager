@@ -64,6 +64,11 @@ export class BudgetRepository implements IBudgetRepository {
     return doc ? this.toEntity(doc) : null;
   }
 
+  async getByIdIncludingArchived(id: string): Promise<Budget | null> {
+    const doc = await BudgetModel.findOne({ _id: id }).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
   async getAll(pagination: PaginationParams): Promise<PaginatedResult<Budget>> {
     return this.getAllByUserId("", pagination);
   }

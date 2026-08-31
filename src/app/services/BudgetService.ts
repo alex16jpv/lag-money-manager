@@ -76,6 +76,7 @@ export class BudgetService {
     ctx: ViewContext,
   ): Promise<BudgetView> {
     const existing = await this.getOwned(id, userId);
+    this.assertWritable(existing);
     const patch: Partial<Budget> = { ...dto };
     if (dto.periodType && dto.periodType !== existing.periodType) {
       // Override keys are period-type-specific: stale ones would never match.
@@ -107,9 +108,22 @@ export class BudgetService {
     return view;
   }
 
+  // Idempotent: archiving an already-archived budget is a no-op success.
   async deleteBudget(id: string, userId: string): Promise<void> {
-    await this.getOwned(id, userId);
-    await this.repo.delete(id);
+    const existing = await this.getOwned(id, userId);
+    if (existing.archivedAt) {
+      return;
+    }
+    try {
+      await this.repo.delete(id);
+    } catch (err) {
+      // Lost the race to a concurrent archive: still a success.
+      const current = await this.repo.getByIdIncludingArchived(id);
+      if (current?.userId === userId && current.archivedAt) {
+        return;
+      }
+      throw err;
+    }
   }
 
   async clearAmountOverride(
@@ -118,6 +132,7 @@ export class BudgetService {
     ctx: ViewContext,
   ): Promise<BudgetView> {
     const budget = await this.getOwned(id, userId);
+    this.assertWritable(budget);
     const { key } = resolvePeriod(this.periodDef(budget), ctx.reference, ctx.timezone);
     const updated = await this.repo.clearAmountOverride(id, userId, key);
     if (!updated) {
@@ -134,6 +149,7 @@ export class BudgetService {
     ctx: ViewContext,
   ): Promise<BudgetView> {
     const budget = await this.getOwned(id, userId);
+    this.assertWritable(budget);
     const { key } = resolvePeriod(this.periodDef(budget), ctx.reference, ctx.timezone);
     const updated = await this.repo.setAmountOverride(id, userId, key, amount);
     if (!updated) {
@@ -143,15 +159,24 @@ export class BudgetService {
     return view;
   }
 
+  // Uniform semantics: archived budgets stay readable; callers that write
+  // must go through assertWritable.
   private async getOwned(id: string, userId: string): Promise<Budget> {
-    const budget = await this.repo.getById(id);
-    if (!budget) {
-      throw new ApiError("NotFound", "Budget not found");
-    }
-    if (budget.userId !== userId) {
+    const budget = await this.repo.getByIdIncludingArchived(id);
+    if (!budget || budget.userId !== userId) {
       throw new ApiError("NotFound", "Budget not found");
     }
     return budget;
+  }
+
+  private assertWritable(budget: Budget): void {
+    if (budget.archivedAt) {
+      throw new ApiError(
+        "BadRequest",
+        "Budget is archived",
+        "RESOURCE_ARCHIVED",
+      );
+    }
   }
 
   private periodDef(budget: Budget) {
