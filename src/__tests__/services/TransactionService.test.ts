@@ -445,6 +445,33 @@ describe("TransactionService", () => {
       );
     });
 
+    it("a date-only edit records a revision without touching balances", async () => {
+      const existing = new Transaction({
+        id: TX_ID,
+        type: "EXPENSE",
+        amount: 100,
+        date: new Date("2026-03-28"),
+        fromAccountId: ACC_A,
+        userId: USER,
+      });
+      txRepo.getById.mockResolvedValue(existing);
+      txRepo.update.mockResolvedValue(existing);
+
+      await service.updateTransaction(
+        TX_ID,
+        { date: new Date("2026-04-02") },
+        USER,
+      );
+
+      expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
+      expect(txRepo.update).toHaveBeenCalledWith(
+        TX_ID,
+        { date: new Date("2026-04-02") },
+        "test-session",
+        expect.objectContaining({ date: new Date("2026-03-28") }),
+      );
+    });
+
     it("skips balance adjustments when no monetary field changes [R2-19]", async () => {
       const existing = new Transaction({
         id: TX_ID,

@@ -217,7 +217,12 @@ export class TransactionService {
       }
 
       // Monetary edits keep a pre-update snapshot (audit trail, R2-27).
-      const revision = monetaryChanged
+      // The date counts here: moving money between periods reshapes budgets
+      // and stats even though balances don't move.
+      const auditableChange =
+        monetaryChanged ||
+        updated.date.getTime() !== existing.date.getTime();
+      const revision = auditableChange
         ? {
             at: new Date(),
             amount: existing.amount,
