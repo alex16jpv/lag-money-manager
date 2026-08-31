@@ -13,11 +13,15 @@ const budgetService = new BudgetService(
 const userRepository = repositoryFactory.getUserRepository();
 
 async function resolveContext(req: Request) {
-  const user = await userRepository.getById(req.user!.userId);
+  // Token claim first (R2-23); DB fallback covers tokens minted before it.
+  const timezone =
+    req.user!.timezone ??
+    (await userRepository.getById(req.user!.userId))?.timezone ??
+    DEFAULT_TIMEZONE;
   const reference = req.query.reference
     ? new Date(req.query.reference as string)
     : new Date();
-  return { reference, timezone: user?.timezone ?? DEFAULT_TIMEZONE };
+  return { reference, timezone };
 }
 
 export class BudgetController {

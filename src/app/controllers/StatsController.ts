@@ -17,11 +17,15 @@ const userRepository = repositoryFactory.getUserRepository();
 export class StatsController {
   static getSpending = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    const user = await userRepository.getById(userId);
+    // Token claim first (R2-23); DB fallback covers tokens minted before it.
+    const timezone =
+      req.user!.timezone ??
+      (await userRepository.getById(userId))?.timezone ??
+      DEFAULT_TIMEZONE;
     const query: SpendingQuery = {
       groupBy: (req.query.groupBy as SpendingGroupBy) ?? "category",
       type: (req.query.type as TransactionType) ?? "EXPENSE",
-      timezone: user?.timezone ?? DEFAULT_TIMEZONE,
+      timezone,
     };
     if (req.query.from) query.from = new Date(req.query.from as string);
     if (req.query.to) query.to = new Date(req.query.to as string);

@@ -35,7 +35,7 @@ export class AuthService {
 
   private issueTokens(user: User): AuthTokens {
     const accessToken = jwt.sign(
-      { userId: user.id, email: user.email },
+      { userId: user.id, email: user.email, timezone: user.timezone },
       ENVIRONMENT.JWT_SECRET,
       {
         algorithm: "HS256",

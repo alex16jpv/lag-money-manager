@@ -7,6 +7,9 @@ import { ApiError } from "../../shared/errors";
 export interface AuthPayload {
   userId: string;
   email: string;
+  // Carried in the token (~15 min staleness max) so per-request handlers
+  // don't hit the DB just to read the timezone.
+  timezone?: string;
 }
 
 declare global {
