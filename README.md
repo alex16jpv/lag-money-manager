@@ -7,10 +7,18 @@ REST API for personal money management — track accounts, categories, and trans
 ```bash
 npm install
 cp .env.example .env    # Configure environment variables (see docs/guides/environment-vars.md)
-docker compose up -d    # Start MySQL + MongoDB containers
-npm run db:migrate      # Run database migrations (MySQL)
+docker compose up -d    # Start MongoDB (single-node replica set) + Mongoku UI
 npm run start:dev       # Start development server
 ```
+
+> Indexes are created automatically on connect (Mongoose `autoIndex`), and
+> collections are created on first write, so there is no schema/migration step.
+> `npm run db:sync-indexes` exists only as an optional maintenance tool (it also
+> drops indexes removed from the schemas).
+
+> Money is stored as integer cents and balance adjustments run inside MongoDB
+> transactions, so the database must be a **replica set** (the docker-compose
+> service and MongoDB Atlas both are). A standalone `mongod` will reject writes.
 
 ## Lambda Deployment
 
@@ -29,7 +37,6 @@ zip -r function.zip dist/ node_modules package.json
 | TypeScript 6    | Language                 |
 | Express 5       | HTTP framework           |
 | Zod 4           | Request validation       |
-| Sequelize 6     | MySQL ORM                |
 | Mongoose 9      | MongoDB ODM              |
 | JWT + bcryptjs  | Authentication           |
 | Pino            | Structured logging       |

@@ -1,55 +1,42 @@
 services:
-  db:
-    image: mysql
-    restart: no
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${SEQ_DATABASE}
-      MYSQL_USER: ${SEQ_USERNAME}
-      MYSQL_PASSWORD: ${SEQ_PASSWORD}
-    ports:
-      - "3306:3306"
-    networks:
-      - lag
-
-  phpmyadmin:
-    image: phpmyadmin
-    restart: no
-    ports:
-      - "8080:80"
-    environment:
-      PMA_HOST: db
-      PMA_PORT: 3306
-      PMA_USER: ${SEQ_USERNAME}
-      PMA_PASSWORD: ${SEQ_PASSWORD}
-    depends_on:
-      - db
-    networks:
-      - lag
-
+  # Single-node replica set. MongoDB multi-document transactions (used for
+  # atomic balance adjustments) require a replica set — a standalone mongod
+  # rejects them. Production runs on MongoDB Atlas, which is already a replica
+  # set; this mirrors that locally. Auth is left off for local dev so no
+  # inter-node keyfile is needed.
   mongo:
-    image: mongo
-    restart: no
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
-      MONGO_INITDB_DATABASE: ${MONGO_DATABASE}
+    image: mongo:8
+    restart: unless-stopped
+    command: ["--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: >
+        mongosh --quiet --eval
+        "try { rs.status().ok } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]}).ok }"
+      interval: 10s
+      start_period: 5s
+      retries: 10
     networks:
       - lag
 
+  # Lightweight MongoDB web UI (optional).
   mongoku:
     image: huggingface/mongoku
-    restart: no
+    restart: unless-stopped
     ports:
       - "3100:3100"
     environment:
-      MONGOKU_DEFAULT_HOST: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017
+      MONGOKU_DEFAULT_HOST: "mongodb://mongo:27017/?replicaSet=rs0"
     depends_on:
       - mongo
     networks:
       - lag
+
+volumes:
+  mongo_data:
 
 networks:
   lag:

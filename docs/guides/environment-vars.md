@@ -10,6 +10,7 @@ All environment variables are validated at startup using Zod schemas in `src/sha
 | `NODE_ENV`    | No       | `development` | Runtime environment: `development`, `production`, or `test`        | Set based on deployment target  |
 | `LOG_LEVEL`   | No       | `info`        | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` | Choose based on verbosity needs |
 | `CORS_ORIGIN` | Yes      | —             | Comma-separated list of allowed CORS origins                       | Your frontend URL(s)            |
+| `DB_TYPE`     | No       | `MONGO`       | Database backend. Only `MONGO` is supported.                       | Leave as default                |
 
 ## Authentication
 
@@ -19,47 +20,21 @@ All environment variables are validated at startup using Zod schemas in `src/sha
 | `JWT_EXPIRATION`     | No       | `24h`   | JWT token lifetime (e.g., `1h`, `7d`, `24h`)                                                  | Choose based on security requirements      |
 | `BCRYPT_SALT_ROUNDS` | No       | `12`    | bcrypt hashing rounds (4-20). Higher = slower + more secure                                   | 10-12 for most apps, 14+ for high security |
 
-## Database Selection
+## Security / Rate Limiting
 
-| Variable  | Required | Default | Description                                                                    | How to obtain                 |
-| --------- | -------- | ------- | ------------------------------------------------------------------------------ | ----------------------------- |
-| `DB_TYPE` | No       | `SEQ`   | Database backend to use: `SEQ` (MySQL/Sequelize) or `MONGO` (MongoDB/Mongoose) | Choose based on your database |
+| Variable              | Required | Default | Description                                                                                     | How to obtain                       |
+| --------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `API_SECRET`          | No\*     | —       | Shared secret expected in the `x-api-secret` header (`gatewaySecretMiddleware`). If unset, the gateway check is skipped. **Set a strong value in production.** | Generate with `openssl rand -hex 32` |
+| `RATE_LIMIT_MAX`      | No       | `200`   | Global request limit per IP per 15-minute window (in-memory; per-instance under Lambda)         | Tune to expected traffic            |
+| `AUTH_RATE_LIMIT_MAX` | No       | `10`    | Strict limit for `/auth/login` and `/auth/register` per IP per 15-min window (MongoDB-backed, shared across instances) | Keep low (5–10) to resist brute force |
 
-## MySQL / Sequelize (required when `DB_TYPE=SEQ`)
+\* Not required by the schema, but strongly recommended in production — without it the front-door check is disabled.
 
-| Variable       | Required | Default | Description           | How to obtain                                |
-| -------------- | -------- | ------- | --------------------- | -------------------------------------------- |
-| `SEQ_HOST`     | Yes      | —       | MySQL server hostname | `localhost` for Docker, or your DB host      |
-| `SEQ_PORT`     | No       | `3306`  | MySQL server port     | Default MySQL port is 3306                   |
-| `SEQ_DATABASE` | Yes      | —       | MySQL database name   | Create with phpMyAdmin or MySQL CLI          |
-| `SEQ_USERNAME` | Yes      | —       | MySQL username        | Set in `docker-compose.yml` or your DB admin |
-| `SEQ_PASSWORD` | Yes      | —       | MySQL password        | Set in `docker-compose.yml` or your DB admin |
-
-### Sequelize Connection Pool
-
-| Variable           | Required | Default | Description                                           | How to obtain                  |
-| ------------------ | -------- | ------- | ----------------------------------------------------- | ------------------------------ |
-| `SEQ_POOL_MAX`     | No       | `20`    | Maximum number of connections in pool                 | Tune based on workload         |
-| `SEQ_POOL_MIN`     | No       | `5`     | Minimum number of connections in pool                 | Tune based on workload         |
-| `SEQ_POOL_ACQUIRE` | No       | `30000` | Max time (ms) to acquire a connection before error    | Increase for slow DB           |
-| `SEQ_POOL_IDLE`    | No       | `10000` | Max time (ms) a connection can be idle before release | Lower to free resources faster |
-
-## MongoDB / Mongoose (required when `DB_TYPE=MONGO`)
+## MongoDB / Mongoose
 
 | Variable    | Required | Default | Description                 | How to obtain                                               |
 | ----------- | -------- | ------- | --------------------------- | ----------------------------------------------------------- |
-| `MONGO_URI` | Yes      | —       | Full MongoDB connection URI | Format: `mongodb://user:pass@host:port/db?authSource=admin` |
-
-## Docker Compose Only
-
-These variables are used by `docker-compose.yml` and are not read by the application directly:
-
-| Variable              | Required | Default | Description                                 | How to obtain                  |
-| --------------------- | -------- | ------- | ------------------------------------------- | ------------------------------ |
-| `MYSQL_ROOT_PASSWORD` | Yes      | —       | MySQL root password for Docker container    | Choose a secure password       |
-| `MONGO_USERNAME`      | Yes      | —       | MongoDB admin username for Docker container | Choose a username              |
-| `MONGO_PASSWORD`      | Yes      | —       | MongoDB admin password for Docker container | Choose a secure password       |
-| `MONGO_DATABASE`      | Yes      | —       | MongoDB initial database name               | Use same value as in MONGO_URI |
+| `MONGO_URI` | Yes      | —       | Full MongoDB connection URI. Must point at a **replica set** (required for transactions). | Local: `mongodb://localhost:27017/lag?replicaSet=rs0&directConnection=true`. Prod: MongoDB Atlas `mongodb+srv://…` |
 
 ## Example `.env` File
 
@@ -68,27 +43,24 @@ These variables are used by `docker-compose.yml` and are not read by the applica
 PORT=3000
 NODE_ENV=development
 LOG_LEVEL=info
-CORS_ORIGIN=http://localhost:3000
+CORS_ORIGIN=http://localhost:5173
+DB_TYPE=MONGO
 
 # Authentication
 JWT_SECRET=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
 JWT_EXPIRATION=24h
 BCRYPT_SALT_ROUNDS=12
 
-# Database type
-DB_TYPE=SEQ
+# Security / rate limiting
+API_SECRET=change-me-in-production
+RATE_LIMIT_MAX=200
+AUTH_RATE_LIMIT_MAX=10
 
-# MySQL (for DB_TYPE=SEQ)
-SEQ_HOST=localhost
-SEQ_PORT=3306
-SEQ_DATABASE=lag_money_manager
-SEQ_USERNAME=lag_user
-SEQ_PASSWORD=lag_password
-MYSQL_ROOT_PASSWORD=root_password
-
-# MongoDB (for DB_TYPE=MONGO)
-MONGO_URI=mongodb://lag_user:lag_password@localhost:27017/lag_money_manager?authSource=admin
-MONGO_USERNAME=lag_user
-MONGO_PASSWORD=lag_password
-MONGO_DATABASE=lag_money_manager
+# MongoDB (single-node replica set from docker-compose in dev)
+MONGO_URI=mongodb://localhost:27017/lag?replicaSet=rs0&directConnection=true
 ```
+
+> **Note:** Money is stored as integer cents, and balance adjustments run inside
+> MongoDB transactions, so `MONGO_URI` must point at a replica set. The provided
+> `docker-compose.yml` configures a single-node replica set for local development;
+> MongoDB Atlas is a replica set by default.

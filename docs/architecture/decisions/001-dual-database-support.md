@@ -2,6 +2,19 @@
 
 ## Status
 
+**Superseded (2026-08-30).** The dual-database design was removed. The project
+now targets **MongoDB only** (Mongoose). The Sequelize/MySQL implementation, its
+models, migrations, and the `DB_TYPE=SEQ` code path were deleted, because the
+abstraction was pure maintenance cost (duplicated ~14% of the code, caused real
+divergence bugs, and blocked native transactions). Balance adjustments now rely
+on MongoDB transactions + atomic `$inc`, and money is stored as integer cents.
+The `RepositoryFactory` and repository interfaces are kept only as a light seam
+for testing. See the Fase 1 audit deliverables for the full rationale.
+
+The original decision is preserved below for historical context.
+
+## Status (original)
+
 Accepted
 
 ## Context
