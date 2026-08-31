@@ -31,7 +31,7 @@ POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "Café", "emoji": "☕", "color": "BROWN", "type": "EXPENSE" }
+{ "name": "Café {{$randomInt 100 999}}", "emoji": "☕", "color": "BROWN", "type": "EXPENSE" }
 
 ###
 

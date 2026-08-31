@@ -25,7 +25,7 @@ POST {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "TxA", "type": "CASH", "balance": 1000 }
+{ "name": "TxA {{$randomInt 100 999}}", "type": "CASH", "balance": 1000 }
 
 ###
 
@@ -37,7 +37,7 @@ POST {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "TxB", "type": "SAVINGS", "balance": 500 }
+{ "name": "TxB {{$randomInt 100 999}}", "type": "SAVINGS", "balance": 500 }
 
 ###
 
@@ -49,7 +49,7 @@ POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "TxCat", "type": "EXPENSE" }
+{ "name": "TxCat {{$randomInt 100 999}}", "type": "EXPENSE" }
 
 ###
 

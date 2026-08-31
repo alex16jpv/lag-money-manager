@@ -24,7 +24,7 @@ POST {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "Ahorros", "type": "SAVINGS", "balance": 1000.50, "color": "TEAL" }
+{ "name": "Ahorros {{$randomInt 100 999}}", "type": "SAVINGS", "balance": 1000.50, "color": "TEAL" }
 
 ###
 
@@ -36,7 +36,7 @@ POST {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "Efectivo", "type": "CASH", "balance": 200, "color": "AMBER" }
+{ "name": "Efectivo {{$randomInt 100 999}}", "type": "CASH", "balance": 200, "color": "AMBER" }
 
 ###
 
@@ -55,7 +55,7 @@ PUT {{baseUrl}}/accounts/{{accountA}}
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "Ahorros 2", "color": "BLUE" }
+{ "name": "Ahorros 2 {{$randomInt 100 999}}", "color": "BLUE" }
 
 ### Marcar B como default (éxito) — desmarca la anterior default
 POST {{baseUrl}}/accounts/{{accountB}}/default

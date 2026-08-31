@@ -24,7 +24,7 @@ POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "BudgetCat", "type": "EXPENSE" }
+{ "name": "BudgetCat {{$randomInt 100 999}}", "type": "EXPENSE" }
 
 ###
 
