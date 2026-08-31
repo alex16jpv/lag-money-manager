@@ -49,6 +49,21 @@ export class TransactionController {
     if (req.query.pendingDetails !== undefined) {
       filters.pendingDetails = req.query.pendingDetails === "true";
     }
+    if (req.query.categoryId) {
+      filters.categoryId = req.query.categoryId as string;
+    }
+    if (req.query.uncategorized === "true") {
+      filters.uncategorized = true;
+    }
+    if (req.query.from) {
+      filters.from = new Date(req.query.from as string);
+    }
+    if (req.query.to) {
+      filters.to = new Date(req.query.to as string);
+    }
+    if (req.query.tag) {
+      filters.tag = req.query.tag as string;
+    }
     const result = await transactionService.getAllTransactions(
       userId,
       extractPagination(req),

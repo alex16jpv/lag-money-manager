@@ -9,6 +9,11 @@ export interface TransactionFilters {
   categoryId?: string;
   type?: TransactionType;
   pendingDetails?: boolean;
+  // Half-open date range [from, to).
+  from?: Date;
+  to?: Date;
+  tag?: string;
+  uncategorized?: boolean;
 }
 
 export type SpendingGroupBy = "category" | "day" | "tag";

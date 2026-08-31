@@ -124,11 +124,23 @@ export class TransactionRepository implements ITransactionRepository {
     if (filters?.categoryId) {
       filter.categoryId = filters.categoryId;
     }
+    if (filters?.uncategorized) {
+      filter.categoryId = null;
+    }
     if (filters?.type) {
       filter.type = filters.type;
     }
     if (filters?.pendingDetails !== undefined) {
       filter.pendingDetails = filters.pendingDetails;
+    }
+    if (filters?.from || filters?.to) {
+      const range: Record<string, Date> = {};
+      if (filters.from) range.$gte = filters.from;
+      if (filters.to) range.$lt = filters.to;
+      filter.date = range;
+    }
+    if (filters?.tag) {
+      filter.tags = filters.tag;
     }
     return this.paginatedFind(filter, pagination);
   }

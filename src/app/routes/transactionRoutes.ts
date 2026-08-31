@@ -52,6 +52,28 @@ const router = Router();
  *           format: uuid
  *         description: Filter transactions by account ID (matches fromAccountId or toAccountId)
  *       - in: query
+ *         name: categoryId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Filter transactions by category ID
+ *       - in: query
+ *         name: uncategorized
+ *         schema: { type: string, enum: ["true", "false"] }
+ *         description: Only transactions without a category
+ *       - in: query
+ *         name: from
+ *         schema: { type: string, format: date-time }
+ *         description: Start of the date range (inclusive)
+ *       - in: query
+ *         name: to
+ *         schema: { type: string, format: date-time }
+ *         description: End of the date range (exclusive)
+ *       - in: query
+ *         name: tag
+ *         schema: { type: string }
+ *         description: Only transactions carrying this tag
+ *       - in: query
  *         name: type
  *         schema:
  *           type: string

@@ -103,12 +103,23 @@ export const getTransactionsSchema = z.object({
       )
       .optional(),
     accountId: z.string().uuid("accountId must be a valid UUID").optional(),
+    categoryId: z.string().uuid("categoryId must be a valid UUID").optional(),
     type: z
       .enum(transactionTypeValues, {
         error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
       })
       .optional(),
     pendingDetails: z.enum(["true", "false"]).optional(),
+    uncategorized: z.enum(["true", "false"]).optional(),
+    from: z
+      .string()
+      .datetime({ offset: true, message: "from must be a valid ISO 8601 date" })
+      .optional(),
+    to: z
+      .string()
+      .datetime({ offset: true, message: "to must be a valid ISO 8601 date" })
+      .optional(),
+    tag: z.string().min(1).max(50).optional(),
   }),
 });
 
