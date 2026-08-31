@@ -134,21 +134,22 @@ export class AuthService {
       typeof payload !== "object" ||
       payload === null ||
       (payload as { type?: unknown }).type !== REFRESH_TOKEN_TYPE ||
-      typeof (payload as { userId?: unknown }).userId !== "string"
+      typeof (payload as { userId?: unknown }).userId !== "string" ||
+      typeof (payload as { tokenVersion?: unknown }).tokenVersion !== "number"
     ) {
       throw new ApiError("Unauthorized", "Invalid refresh token", "REFRESH_INVALID");
     }
 
     const { userId, tokenVersion } = payload as {
       userId: string;
-      tokenVersion?: number;
+      tokenVersion: number;
     };
 
     const user = await this.repo.getById(userId);
     if (!user) {
       throw new ApiError("Unauthorized", "Invalid refresh token", "REFRESH_INVALID");
     }
-    if (user.tokenVersion !== (tokenVersion ?? 0)) {
+    if (user.tokenVersion !== tokenVersion) {
       throw new ApiError("Unauthorized", "Refresh token has been revoked", "REFRESH_REVOKED");
     }
 

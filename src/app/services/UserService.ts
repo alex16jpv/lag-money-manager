@@ -43,21 +43,26 @@ export class UserService {
       throw new ApiError("BadRequest", "User id does not match");
     }
 
-    if (dto.password) {
+    // Credential changes (password OR email) revoke live refresh tokens:
+    // the email is an identity claim, not just profile data.
+    if (dto.password || dto.email) {
       const existing = await this.repo.getById(id);
       if (!existing) {
         throw new ApiError("NotFound", "User not found");
       }
-      const hashedDto = {
+      const securedDto = {
         ...dto,
-        password: await bcryptjs.hash(
-          dto.password,
-          ENVIRONMENT.BCRYPT_SALT_ROUNDS,
-        ),
-        // Bump so refresh tokens issued before this password change are revoked.
+        ...(dto.password
+          ? {
+              password: await bcryptjs.hash(
+                dto.password,
+                ENVIRONMENT.BCRYPT_SALT_ROUNDS,
+              ),
+            }
+          : {}),
         tokenVersion: existing.tokenVersion + 1,
       };
-      const updated = await this.repo.update(id, hashedDto);
+      const updated = await this.repo.update(id, securedDto);
       return this.toResponseDTO(updated);
     }
 
