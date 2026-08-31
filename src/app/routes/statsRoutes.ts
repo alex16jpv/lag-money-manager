@@ -62,6 +62,10 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get("/spending", validate(spendingStatsSchema), StatsController.getSpending);
+router.get(
+  "/spending",
+  validate(spendingStatsSchema),
+  StatsController.getSpending,
+);
 
 export default router;

@@ -216,9 +216,17 @@ router.post("/", validate(createBudgetSchema), BudgetController.createBudget);
  *       404:
  *         description: Budget not found
  */
-router.get("/:id", validate(budgetIdParamSchema), BudgetController.getBudgetById);
+router.get(
+  "/:id",
+  validate(budgetIdParamSchema),
+  BudgetController.getBudgetById,
+);
 router.put("/:id", validate(updateBudgetSchema), BudgetController.updateBudget);
-router.delete("/:id", validate(budgetIdParamSchema), BudgetController.deleteBudget);
+router.delete(
+  "/:id",
+  validate(budgetIdParamSchema),
+  BudgetController.deleteBudget,
+);
 
 /**
  * @openapi
