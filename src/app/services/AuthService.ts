@@ -11,6 +11,11 @@ import { CategoryService } from "./CategoryService";
 
 const REFRESH_TOKEN_TYPE = "refresh";
 
+// Real cost-12 hash of a throwaway string: login pays the same bcrypt time
+// whether the email exists or not (no user enumeration by timing).
+const TIMING_EQUALIZATION_HASH =
+  "$2b$12$Iwrm4m9Z9FVuf94Eb.bBj.ONOMDcldf0LrANU7WTaaM8xNB4k95W.";
+
 interface AuthTokens {
   accessToken: string;
   refreshToken: string;
@@ -101,6 +106,7 @@ export class AuthService {
   ): Promise<AuthTokens & { user: UserResponseDTO }> {
     const user = await this.repo.getByEmail(email);
     if (!user || !user.password) {
+      await bcryptjs.compare(password, TIMING_EQUALIZATION_HASH);
       throw new ApiError("Unauthorized", "Invalid email or password");
     }
 
