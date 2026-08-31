@@ -56,9 +56,7 @@ export class AccountService {
     return new Account(await this.repo.update(id, dto));
   }
 
-  // Archive (soft delete). Allowed even with linked transactions: the account
-  // document is kept, so those transactions still resolve and their balance
-  // effects remain reversible; it is only hidden from active listings.
+  // Archive (soft delete); allowed even with linked transactions.
   async deleteAccount(id: string, userId: string): Promise<void> {
     const existing = await this.repo.getById(id);
     if (!existing) {

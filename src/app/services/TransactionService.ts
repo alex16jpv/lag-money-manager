@@ -45,8 +45,6 @@ export class TransactionService {
     const transaction = new Transaction(dto);
     transaction.assertValid();
 
-    // The balance adjustment and the transaction insert commit together: if
-    // either fails, the whole thing rolls back and no money is left dangling.
     return await withTransaction(async (session) => {
       await this.adjustBalances(transaction, 1, session);
       return await this.transactionRepo.create(transaction, session);
@@ -74,7 +72,6 @@ export class TransactionService {
       const updated = new Transaction({ ...existing, ...dto });
       updated.assertValid();
 
-      // Reverse the old effect, apply the new one, persist — atomically.
       await this.adjustBalances(existing, -1, session);
       await this.adjustBalances(updated, 1, session);
 
@@ -108,10 +105,8 @@ export class TransactionService {
       accountId: string,
       sign: number,
     ): Promise<void> => {
-      // On apply (direction 1) the account must exist and belong to the user.
-      // On reverse (direction -1) we operate on the account the (already
-      // validated) transaction referenced, without re-checking, so reversals
-      // still work even if the account was archived in the meantime.
+      // Only check existence/ownership on apply; reversals must work even if the
+      // account was archived meanwhile.
       if (direction === 1) {
         const account = await this.accountRepo.getById(accountId, session);
         if (!account) {

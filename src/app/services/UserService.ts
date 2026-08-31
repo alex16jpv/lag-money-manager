@@ -53,8 +53,7 @@ export class UserService {
           dto.password,
           ENVIRONMENT.BCRYPT_SALT_ROUNDS,
         ),
-        // Bump tokenVersion so every refresh token issued before this password
-        // change stops working (a stolen token can no longer be renewed).
+        // Bump so refresh tokens issued before this password change are revoked.
         tokenVersion: existing.tokenVersion + 1,
       };
       const updated = await this.repo.update(id, hashedDto);

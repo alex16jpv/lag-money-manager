@@ -27,10 +27,7 @@ export function connectMongo(): Promise<void> {
     connecting = mongoose
       .connect(uri, {
         serverSelectionTimeoutMS: SERVER_SELECTION_TIMEOUT_MS,
-        // Build indexes automatically on connect in dev (convenient), but NOT
-        // in production: on a growing collection an index build triggered by
-        // live traffic can stall requests. Production indexes are created by
-        // `npm run db:sync-indexes`, run automatically as a deploy step.
+        // Off in production; indexes are built by the db:sync-indexes deploy step.
         autoIndex: ENVIRONMENT.NODE_ENV !== "production",
       })
       .then(() => {

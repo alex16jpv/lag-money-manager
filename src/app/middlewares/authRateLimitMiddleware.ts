@@ -9,20 +9,8 @@ interface AuthRateLimitOptions {
   windowMs: number;
 }
 
-/**
- * Strict, per-IP rate limiter for authentication endpoints, backed by MongoDB.
- *
- * The global in-memory limiter (express-rate-limit) counts per Lambda instance,
- * so under concurrency its effective limit multiplies by the number of warm
- * containers and resets on cold starts — useless against brute force. This
- * limiter keeps the counter in the shared database, so the limit holds across
- * every instance. It is the zero-infrastructure alternative to API Gateway
- * usage plans / AWS WAF (both of which cost money) when serving from a Lambda
- * Function URL.
- *
- * Fails open on database errors: a rate-limit store outage must not take down
- * login itself.
- */
+// Per-IP auth limiter backed by MongoDB so the limit holds across Lambda
+// instances (the in-memory limiter counts per instance). Fails open on store errors.
 export function authRateLimit(options: AuthRateLimitOptions) {
   const { keyPrefix, max, windowMs } = options;
 
@@ -39,7 +27,6 @@ export function authRateLimit(options: AuthRateLimitOptions) {
       const existing = await RateLimitModel.findById(key).lean();
 
       if (!existing || existing.expiresAt.getTime() <= now) {
-        // Start a fresh window.
         await RateLimitModel.findByIdAndUpdate(
           key,
           { count: 1, expiresAt: new Date(now + windowMs) },

@@ -49,9 +49,7 @@ ZIP_FILE="build/lambda.zip"
 echo "==> Compiling TypeScript"
 npm run build
 
-# Create/update MongoDB indexes before the new code serves traffic (autoIndex is
-# off in production). Runs automatically when MONGO_URI is available at deploy
-# time; otherwise it is skipped with a reminder.
+# Build indexes before the new code serves traffic (autoIndex is off in prod).
 if [[ -n "${MONGO_URI:-}" ]]; then
   echo "==> Syncing MongoDB indexes"
   NODE_ENV=production npm run db:sync-indexes

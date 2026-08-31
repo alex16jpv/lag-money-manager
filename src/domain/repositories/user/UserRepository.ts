@@ -32,8 +32,6 @@ export class UserRepository implements IUserRepository {
   }
 
   async getById(id: string): Promise<User | null> {
-    // Exclude the password hash: no getById caller needs it (login uses
-    // getByEmail), so we keep it out of the read to shrink its exposure.
     const doc = await UserModel.findOne({ _id: id, deletedAt: null })
       .select("-password")
       .lean();
@@ -88,9 +86,6 @@ export class UserRepository implements IUserRepository {
     return this.toEntity(doc);
   }
 
-  // Soft delete: the user row is marked deleted (login and reads exclude it)
-  // but their accounts, categories and transactions are left intact, so the
-  // account can be fully restored by clearing deletedAt.
   async delete(id: string): Promise<void> {
     const doc = await UserModel.findOneAndUpdate(
       { _id: id, deletedAt: null },

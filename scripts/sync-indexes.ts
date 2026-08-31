@@ -1,16 +1,5 @@
-/**
- * Creates/updates all MongoDB indexes to match the Mongoose schemas, then exits.
- *
- * Run this once after deploying schema/index changes:
- *   npm run db:sync-indexes
- *
- * Why a script instead of relying on autoIndex: Mongoose builds indexes
- * automatically on first model use when `autoIndex` is on (the default), which
- * is convenient in development but risky in production (index builds triggered
- * by live traffic, and no signal when they finish). Running `syncIndexes()`
- * deliberately — as a deploy step — creates missing indexes, drops ones no
- * longer declared, and lets you see it complete before shifting traffic.
- */
+// Syncs MongoDB indexes to the Mongoose schemas (creates missing, drops removed).
+// Run as a deploy step: npm run db:sync-indexes
 import "dotenv/config";
 import mongoose from "mongoose";
 import { connectMongo } from "../src/config/mongoConnection";

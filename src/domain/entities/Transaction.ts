@@ -51,13 +51,8 @@ export class Transaction {
     this.updatedAt = props.updatedAt ?? new Date();
   }
 
-  /**
-   * Enforces the type/account invariants of a transaction. Called on create and
-   * on the result of an update merge, so a partial update can never leave a
-   * transaction in an inconsistent shape (e.g. an INCOME with no destination
-   * account, or a TRANSFER to the same account) — the bug class that historically
-   * let updates corrupt balances.
-   */
+  // Called on create and on the update merge so a partial update can't leave an
+  // inconsistent shape.
   assertValid(): void {
     if (!(this.amount > 0)) {
       throw new DomainValidationError("Amount must be greater than 0", "amount");
@@ -75,8 +70,6 @@ export class Transaction {
           "fromAccountId",
         );
       }
-      // An expense has no destination; a stray toAccountId would misreport the
-      // transaction against an account it never affected.
       if (this.toAccountId) {
         throw new DomainValidationError(
           "toAccountId is not allowed for expense transactions",

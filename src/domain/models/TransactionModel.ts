@@ -9,7 +9,7 @@ import {
 export interface ITransactionDocument {
   _id: string;
   type: TransactionType;
-  amount: number; // stored as integer cents
+  amount: number; // integer cents
   date: Date;
   categoryId: string | null;
   description: string | null;
@@ -31,7 +31,7 @@ const TransactionSchema = new Schema<ITransactionDocument>(
       required: true,
       enum: Object.keys(TRANSACTION_TYPES),
     },
-    amount: { type: Number, required: true }, // integer cents
+    amount: { type: Number, required: true },
     date: { type: Date, required: true },
     categoryId: { type: String, default: null },
     description: { type: String, default: null },
@@ -45,10 +45,8 @@ const TransactionSchema = new Schema<ITransactionDocument>(
   { timestamps: true },
 );
 
-// Covers the primary listing query: filter by userId, sorted by (date DESC,
-// _id DESC). Without this the sort runs in memory (32MB cap on Atlas M0).
+// Primary listing sort; without it the (date desc) sort runs in memory.
 TransactionSchema.index({ userId: 1, date: -1, _id: -1 });
-// Supports per-category aggregation (spending stats) and the category filter.
 TransactionSchema.index({ userId: 1, categoryId: 1, date: -1 });
 
 export const TransactionModel = mongoose.model<ITransactionDocument>(

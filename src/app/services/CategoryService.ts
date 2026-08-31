@@ -56,9 +56,7 @@ export class CategoryService {
     return new Category(await this.repo.update(id, dto));
   }
 
-  // Archive (soft delete). Allowed even with linked transactions: the category
-  // document is kept, so existing transactions keep resolving it; it is only
-  // hidden from active listings and its name is freed for reuse.
+  // Archive (soft delete); allowed even with linked transactions.
   async deleteCategory(id: string, userId: string): Promise<void> {
     const existing = await this.repo.getById(id);
     if (!existing) {

@@ -43,7 +43,6 @@ app.use(
 );
 app.use(express.json({ limit: "10kb" }));
 
-// Do not expose the API map (Swagger UI) in production.
 if (ENVIRONMENT.NODE_ENV !== "production") {
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 }

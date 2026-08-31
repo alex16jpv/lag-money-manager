@@ -37,7 +37,6 @@ export class TransactionRepository implements ITransactionRepository {
     });
   }
 
-  /** Converts a partial entity's decimal amount to stored cents. */
   private toStorage(transaction: Partial<Transaction>): Record<string, unknown> {
     const doc: Record<string, unknown> = { ...transaction };
     if (transaction.amount !== undefined) {

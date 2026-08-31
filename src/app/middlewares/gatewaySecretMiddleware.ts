@@ -14,9 +14,7 @@ export const gatewaySecretMiddleware = (
   const secret = ENVIRONMENT.API_SECRET;
 
   if (!secret) {
-    // Fail closed in production: a missing gateway secret there is a
-    // misconfiguration, not a reason to drop the front-door check. In
-    // dev/test the check is simply skipped.
+    // Fail closed in production (missing secret = misconfiguration).
     if (ENVIRONMENT.NODE_ENV === "production") {
       throw new ApiError("InternalServerError", "Server misconfiguration");
     }

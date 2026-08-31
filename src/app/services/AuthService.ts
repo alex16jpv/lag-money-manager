@@ -32,12 +32,6 @@ export class AuthService {
     };
   }
 
-  /**
-   * Issues a short-lived access token (used on every request) and a long-lived
-   * refresh token (used only at /auth/refresh). The refresh token carries the
-   * user's tokenVersion; bumping it (on password change / logout-all) makes
-   * every outstanding refresh token stop working.
-   */
   private issueTokens(user: User): AuthTokens {
     const accessToken = jwt.sign(
       { userId: user.id, email: user.email },
@@ -124,13 +118,10 @@ export class AuthService {
     if (!user) {
       throw new ApiError("Unauthorized", "Invalid refresh token");
     }
-    // A bumped tokenVersion (password change / logout-all) revokes every
-    // refresh token issued before it.
     if (user.tokenVersion !== (tokenVersion ?? 0)) {
       throw new ApiError("Unauthorized", "Refresh token has been revoked");
     }
 
-    // Rotate: hand back a fresh refresh token alongside the new access token.
     return this.issueTokens(user);
   }
 }

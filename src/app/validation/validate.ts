@@ -17,13 +17,8 @@ export const validate =
         params: req.params,
       }) as ParsedRequest;
 
-      // Replace the raw request payloads with the parsed (and therefore
-      // whitelisted) values. Zod strips keys not declared in the schema, so
-      // this is what prevents mass assignment: fields like `balance` or
-      // `userId` that no schema declares never reach the services or the ORM.
-      // Note: `req.query` is a read-only getter in Express 5 and cannot be
-      // reassigned; controllers read individual query fields explicitly, so
-      // there is no mass-assignment path through the query string.
+      // Use the parsed (whitelisted) values so undeclared fields can't reach
+      // services/ORM (mass-assignment guard). req.query is read-only in Express 5.
       if (parsed.body !== undefined) {
         req.body = parsed.body;
       }

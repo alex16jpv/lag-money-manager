@@ -15,8 +15,7 @@ const RateLimitSchema = new Schema<IRateLimitDocument>(
   { versionKey: false },
 );
 
-// TTL index: MongoDB removes each counter automatically once its window ends,
-// so the collection never grows and windows self-reset with no cron.
+// TTL: Mongo removes each counter when its window ends.
 RateLimitSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export const RateLimitModel = mongoose.model<IRateLimitDocument>(
