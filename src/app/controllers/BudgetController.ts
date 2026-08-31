@@ -9,6 +9,7 @@ import { BudgetService } from "../services/BudgetService";
 const budgetService = new BudgetService(
   repositoryFactory.getBudgetRepository(),
   repositoryFactory.getTransactionRepository(),
+  repositoryFactory.getCategoryRepository(),
 );
 const userRepository = repositoryFactory.getUserRepository();
 
@@ -74,16 +75,6 @@ export class BudgetController {
     const userId = req.user!.userId;
     await budgetService.deleteBudget(req.params.id as string, userId);
     res.status(200).json({ message: "Budget archived successfully" });
-  };
-
-  static restoreBudget = async (req: Request, res: Response) => {
-    const userId = req.user!.userId;
-    const budget = await budgetService.restoreBudget(
-      req.params.id as string,
-      userId,
-      await resolveContext(req),
-    );
-    res.status(200).json(budget);
   };
 
   static setAmountOverride = async (req: Request, res: Response) => {

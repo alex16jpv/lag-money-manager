@@ -41,12 +41,6 @@ router.get("/:id", validate(budgetIdParamSchema), BudgetController.getBudgetById
 router.put("/:id", validate(updateBudgetSchema), BudgetController.updateBudget);
 router.delete("/:id", validate(budgetIdParamSchema), BudgetController.deleteBudget);
 
-router.post(
-  "/:id/restore",
-  validate(budgetIdParamSchema),
-  BudgetController.restoreBudget,
-);
-
 /**
  * @openapi
  * /budgets/{id}/amount:

@@ -126,15 +126,6 @@ export class BudgetRepository implements IBudgetRepository {
     }
   }
 
-  async restore(id: string, userId: string): Promise<Budget | null> {
-    const doc = await BudgetModel.findOneAndUpdate(
-      { _id: id, userId, deletedAt: { $ne: null } },
-      { deletedAt: null },
-      { new: true },
-    ).lean();
-    return doc ? this.toEntity(doc) : null;
-  }
-
   async findOverlapping(
     userId: string,
     periodType: BudgetPeriodType,

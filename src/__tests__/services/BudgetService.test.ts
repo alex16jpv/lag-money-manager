@@ -15,7 +15,9 @@ jest.mock("../../shared/constants", () => ({
 
 import { BudgetService } from "../../app/services/BudgetService";
 import { Budget } from "../../domain/entities/Budget";
+import { Category } from "../../domain/entities/Category";
 import { IBudgetRepository } from "../../domain/repositories/budget/IBudgetRepository";
+import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 
 const USER = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
@@ -29,7 +31,6 @@ const createBudgetRepo = (): jest.Mocked<IBudgetRepository> =>
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
-    restore: jest.fn(),
     findOverlapping: jest.fn().mockResolvedValue([]),
     setAmountOverride: jest.fn(),
   }) as unknown as jest.Mocked<IBudgetRepository>;
@@ -38,6 +39,16 @@ const createTxRepo = (): jest.Mocked<ITransactionRepository> =>
   ({
     sumExpensesByCategory: jest.fn().mockResolvedValue({}),
   }) as unknown as jest.Mocked<ITransactionRepository>;
+
+const createCategoryRepo = (): jest.Mocked<ICategoryRepository> =>
+  ({
+    // Default: every referenced category exists, is the user's, and is active.
+    getByIdIncludingArchived: jest
+      .fn()
+      .mockImplementation(async (id: string) =>
+        new Category({ id, name: "Cat", userId: USER }),
+      ),
+  }) as unknown as jest.Mocked<ICategoryRepository>;
 
 const makeBudget = (over: Partial<Budget> = {}): Budget =>
   new Budget({
@@ -55,11 +66,13 @@ describe("BudgetService", () => {
   let service: BudgetService;
   let budgetRepo: jest.Mocked<IBudgetRepository>;
   let txRepo: jest.Mocked<ITransactionRepository>;
+  let categoryRepo: jest.Mocked<ICategoryRepository>;
 
   beforeEach(() => {
     budgetRepo = createBudgetRepo();
     txRepo = createTxRepo();
-    service = new BudgetService(budgetRepo, txRepo);
+    categoryRepo = createCategoryRepo();
+    service = new BudgetService(budgetRepo, txRepo, categoryRepo);
   });
 
   it("computes spent for the reference period", async () => {
@@ -120,5 +133,69 @@ describe("BudgetService", () => {
         CTX,
       ),
     ).rejects.toThrow("Custom period requires");
+  });
+
+  describe("category validation [R2-12]", () => {
+    it("rejects a budget over a foreign or nonexistent category", async () => {
+      categoryRepo.getByIdIncludingArchived.mockResolvedValue(null);
+
+      await expect(
+        service.createBudget(
+          {
+            name: "Food",
+            color: "RED",
+            categoryIds: ["c-nope"],
+            amount: 100,
+            periodType: "MONTHLY",
+            userId: USER,
+          },
+          CTX,
+        ),
+      ).rejects.toThrow("Category not found");
+      expect(budgetRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects assigning an archived category", async () => {
+      categoryRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({
+          id: "c1",
+          name: "Cat",
+          userId: USER,
+          archivedAt: new Date(),
+        }),
+      );
+
+      await expect(
+        service.createBudget(
+          {
+            name: "Food",
+            color: "RED",
+            categoryIds: ["c1"],
+            amount: 100,
+            periodType: "MONTHLY",
+            userId: USER,
+          },
+          CTX,
+        ),
+      ).rejects.toThrow("Category is archived");
+    });
+
+    it("keeps an archived category on update when it was already on the budget", async () => {
+      const existing = makeBudget();
+      budgetRepo.getById.mockResolvedValue(existing);
+      budgetRepo.update.mockResolvedValue(existing);
+      categoryRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({
+          id: "c1",
+          name: "Cat",
+          userId: USER,
+          archivedAt: new Date(),
+        }),
+      );
+
+      await expect(
+        service.updateBudget("b1", { categoryIds: ["c1"] }, USER, CTX),
+      ).resolves.toBeDefined();
+    });
   });
 });

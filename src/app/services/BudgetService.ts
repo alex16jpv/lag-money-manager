@@ -3,6 +3,7 @@ import {
   BudgetFilters,
   IBudgetRepository,
 } from "../../domain/repositories/budget/IBudgetRepository";
+import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { resolvePeriod } from "../../shared/budgetPeriod";
 import { ApiError } from "../../shared/errors";
@@ -19,6 +20,7 @@ export class BudgetService {
   constructor(
     private repo: IBudgetRepository,
     private transactionRepo: ITransactionRepository,
+    private categoryRepo: ICategoryRepository,
   ) {}
 
   async getBudgets(
@@ -44,6 +46,7 @@ export class BudgetService {
 
   async createBudget(dto: CreateBudgetDTO, ctx: ViewContext): Promise<BudgetView> {
     this.assertValidPeriod(dto);
+    await this.assertCategoriesUsable(dto.userId, dto.categoryIds);
     await this.assertNoOverlap(dto.userId, dto.periodType, dto.categoryIds);
     const created = await this.repo.create(new Budget(dto));
     const [view] = await this.toViews(dto.userId, [created], ctx);
@@ -59,6 +62,13 @@ export class BudgetService {
     const existing = await this.getOwned(id, userId);
     const merged = new Budget({ ...existing, ...dto });
     this.assertValidPeriod(merged);
+    if (dto.categoryIds !== undefined) {
+      await this.assertCategoriesUsable(
+        userId,
+        merged.categoryIds,
+        existing.categoryIds,
+      );
+    }
     await this.assertNoOverlap(
       userId,
       merged.periodType,
@@ -73,19 +83,6 @@ export class BudgetService {
   async deleteBudget(id: string, userId: string): Promise<void> {
     await this.getOwned(id, userId);
     await this.repo.delete(id);
-  }
-
-  async restoreBudget(
-    id: string,
-    userId: string,
-    ctx: ViewContext,
-  ): Promise<BudgetView> {
-    const restored = await this.repo.restore(id, userId);
-    if (!restored) {
-      throw new ApiError("NotFound", "Archived budget not found");
-    }
-    const [view] = await this.toViews(userId, [restored], ctx);
-    return view;
   }
 
   async setAmountOverride(
@@ -137,6 +134,26 @@ export class BudgetService {
       }
       if (budget.periodStartDate >= budget.periodEndDate) {
         throw new ApiError("BadRequest", "startDate must be before endDate");
+      }
+    }
+  }
+
+  // Same policy as transactions (R2-05): 404 for missing/foreign, archived
+  // rejected unless the budget already carried it.
+  private async assertCategoriesUsable(
+    userId: string,
+    categoryIds: string[],
+    previous: string[] = [],
+  ): Promise<void> {
+    const prev = new Set(previous);
+    for (const categoryId of categoryIds) {
+      const category =
+        await this.categoryRepo.getByIdIncludingArchived(categoryId);
+      if (!category || category.userId !== userId) {
+        throw new ApiError("NotFound", "Category not found");
+      }
+      if (category.archivedAt && !prev.has(categoryId)) {
+        throw new ApiError("BadRequest", "Category is archived", "CATEGORY_ARCHIVED");
       }
     }
   }

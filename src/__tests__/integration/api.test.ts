@@ -72,7 +72,6 @@ const mockBudgetRepo = {
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
-  restore: jest.fn(),
   findOverlapping: jest.fn().mockResolvedValue([]),
   setAmountOverride: jest.fn(),
 };
@@ -1013,6 +1012,7 @@ describe("Integration Tests", () => {
     it("creates a budget", async () => {
       mockBudgetRepo.findOverlapping.mockResolvedValue([]);
       mockBudgetRepo.create.mockResolvedValue(testBudget);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
 
       const res = await request(app)
         .post("/budgets")
@@ -1030,6 +1030,7 @@ describe("Integration Tests", () => {
 
     it("rejects a duplicate budget (same category + period)", async () => {
       mockBudgetRepo.findOverlapping.mockResolvedValue([testBudget]);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
 
       const res = await request(app)
         .post("/budgets")

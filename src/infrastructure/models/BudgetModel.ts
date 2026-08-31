@@ -47,6 +47,12 @@ const BudgetSchema = new Schema<IBudgetDocument>(
 );
 
 BudgetSchema.index({ userId: 1, deletedAt: 1 });
+// Backs the no-overlap rule (same category + same period type) against
+// concurrent creates; multikey over categoryIds, archived budgets free the slot.
+BudgetSchema.index(
+  { userId: 1, periodType: 1, categoryIds: 1 },
+  { unique: true, partialFilterExpression: { deletedAt: null } },
+);
 
 export const BudgetModel = mongoose.model<IBudgetDocument>(
   MODEL_NAMES.BUDGET,

@@ -14,7 +14,6 @@ export interface IBudgetRepository extends IRepository<Budget> {
     filters?: BudgetFilters,
   ): Promise<PaginatedResult<Budget>>;
 
-  restore(id: string, userId: string): Promise<Budget | null>;
 
   // Active budgets of the same period type that share any of the given
   // categories (used to reject duplicates). `excludeId` skips a budget being updated.
