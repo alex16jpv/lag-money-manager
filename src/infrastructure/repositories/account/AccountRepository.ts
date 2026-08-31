@@ -132,13 +132,14 @@ export class AccountRepository implements IAccountRepository {
     id: string,
     delta: number,
     session?: TxSession,
-  ): Promise<Account | null> {
-    const doc = await AccountModel.findOneAndUpdate(
+  ): Promise<boolean> {
+    // No deletedAt filter: reversals must reach archived accounts too.
+    const res = await AccountModel.updateOne(
       { _id: id },
       { $inc: { balance: toCents(delta) } },
-      { new: true, session: session ?? undefined },
-    ).lean();
-    return doc ? this.toEntity(doc) : null;
+      { session: session ?? undefined },
+    );
+    return res.matchedCount === 1;
   }
 
   async delete(id: string, session?: TxSession): Promise<void> {

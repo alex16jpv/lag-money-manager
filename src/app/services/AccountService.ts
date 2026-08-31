@@ -12,11 +12,7 @@ export class AccountService {
     pagination: PaginationParams,
     filters?: AccountFilters,
   ): Promise<PaginatedResult<Account>> {
-    const result = await this.repo.getAllByUserId(userId, pagination, filters);
-    return {
-      data: result.data.map((account) => new Account(account)),
-      pagination: result.pagination,
-    };
+    return this.repo.getAllByUserId(userId, pagination, filters);
   }
 
   async getAccountById(id: string, userId: string): Promise<Account> {

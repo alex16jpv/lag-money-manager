@@ -15,12 +15,13 @@ export interface IAccountRepository extends IRepository<Account> {
     filters?: AccountFilters,
   ): Promise<PaginatedResult<Account>>;
 
-  // Atomic balance change (decimal delta) via $inc; null if not found.
+  // Atomic balance change (decimal delta) via $inc; false when no account
+  // matched — callers must treat that as corruption, never ignore it.
   incrementBalance(
     id: string,
     delta: number,
     session?: TxSession,
-  ): Promise<Account | null>;
+  ): Promise<boolean>;
 
   // Atomic archive that refuses the default account even under races;
   // false when nothing matched (default, archived or missing).

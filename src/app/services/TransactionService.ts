@@ -293,11 +293,19 @@ export class TransactionService {
         }
       }
 
-      await this.accountRepo.incrementBalance(
+      const applied = await this.accountRepo.incrementBalance(
         accountId,
         amount * sign * direction,
         session,
       );
+      if (!applied) {
+        // Aborts the Mongo transaction: a silently skipped increment would
+        // desync the stored balance from the ledger.
+        throw new ApiError(
+          "InternalServerError",
+          "Account missing during balance adjustment",
+        );
+      }
     };
 
     if (type === "EXPENSE" && fromAccountId) {
