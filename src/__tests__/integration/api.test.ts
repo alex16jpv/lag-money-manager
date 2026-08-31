@@ -30,6 +30,7 @@ const mockAccountRepo: jest.Mocked<IAccountRepository> = {
   update: jest.fn(),
   delete: jest.fn(),
   incrementBalance: jest.fn(),
+  archiveNonDefault: jest.fn().mockResolvedValue(true),
   restore: jest.fn(),
   getDefaultByUserId: jest.fn(),
   setDefault: jest.fn(),
@@ -614,7 +615,7 @@ describe("Integration Tests", () => {
   describe("DELETE /accounts/:id", () => {
     it("should delete an account", async () => {
       mockAccountRepo.getById.mockResolvedValue(testAccount);
-      mockAccountRepo.delete.mockResolvedValue();
+      mockAccountRepo.archiveNonDefault.mockResolvedValue(true);
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [],
         pagination: { limit: 1, offset: 0, total: 0, hasMore: false, nextCursor: null },
@@ -625,8 +626,9 @@ describe("Integration Tests", () => {
         .set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(200);
-      expect(mockAccountRepo.delete).toHaveBeenCalledWith(
+      expect(mockAccountRepo.archiveNonDefault).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       );
     });
   });

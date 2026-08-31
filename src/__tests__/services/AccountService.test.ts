@@ -79,6 +79,7 @@ const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   update: jest.fn(),
   delete: jest.fn(),
   incrementBalance: jest.fn(),
+  archiveNonDefault: jest.fn().mockResolvedValue(true),
   restore: jest.fn(),
   getDefaultByUserId: jest.fn(),
   setDefault: jest.fn(),
@@ -291,21 +292,38 @@ describe("AccountService", () => {
           validAccountProps.userId,
         ),
       ).rejects.toThrow("Cannot archive the default account");
-      expect(repo.delete).not.toHaveBeenCalled();
+      expect(repo.archiveNonDefault).not.toHaveBeenCalled();
     });
 
     it("should archive an account (even when it has transactions)", async () => {
       repo.getById.mockResolvedValue(mockAccount);
-      repo.delete.mockResolvedValue();
+      repo.archiveNonDefault.mockResolvedValue(true);
 
       await service.deleteAccount(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         validAccountProps.userId,
       );
 
-      expect(repo.delete).toHaveBeenCalledWith(
+      expect(repo.archiveNonDefault).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        validAccountProps.userId,
       );
+    });
+
+    it("rejects when the account became default between check and archive (race)", async () => {
+      repo.getById
+        .mockResolvedValueOnce(mockAccount)
+        .mockResolvedValueOnce(
+          new Account({ ...validAccountProps, isDefault: true }),
+        );
+      repo.archiveNonDefault.mockResolvedValue(false);
+
+      await expect(
+        service.deleteAccount(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          validAccountProps.userId,
+        ),
+      ).rejects.toThrow("Cannot archive the default account");
     });
 
     it("should throw NotFound when archiving non-existent account", async () => {
@@ -329,7 +347,7 @@ describe("AccountService", () => {
         ),
       ).rejects.toThrow("Access denied");
 
-      expect(repo.delete).not.toHaveBeenCalled();
+      expect(repo.archiveNonDefault).not.toHaveBeenCalled();
     });
   });
 

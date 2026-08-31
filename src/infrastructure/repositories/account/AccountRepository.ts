@@ -148,10 +148,20 @@ export class AccountRepository implements IAccountRepository {
     }
   }
 
+  async archiveNonDefault(id: string, userId: string): Promise<boolean> {
+    const doc = await AccountModel.findOneAndUpdate(
+      { _id: id, userId, deletedAt: null, isDefault: false },
+      { deletedAt: new Date() },
+      { new: true },
+    ).lean();
+    return doc !== null;
+  }
+
   async restore(id: string, userId: string): Promise<Account | null> {
+    // Never restore as default: another account may have taken the flag.
     const doc = await AccountModel.findOneAndUpdate(
       { _id: id, userId, deletedAt: { $ne: null } },
-      { deletedAt: null },
+      { deletedAt: null, isDefault: false },
       { new: true },
     ).lean();
     return doc ? this.toEntity(doc) : null;

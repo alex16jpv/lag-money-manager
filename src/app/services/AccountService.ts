@@ -81,7 +81,18 @@ export class AccountService {
       );
     }
 
-    return await this.repo.delete(id);
+    const archived = await this.repo.archiveNonDefault(id, userId);
+    if (!archived) {
+      // Raced with setDefault or another archive since the check above.
+      const current = await this.repo.getById(id);
+      if (!current) {
+        throw new ApiError("NotFound", "Account not found");
+      }
+      throw new ApiError(
+        "BadRequest",
+        "Cannot archive the default account; set another account as default first",
+      );
+    }
   }
 
   async restoreAccount(id: string, userId: string): Promise<Account> {

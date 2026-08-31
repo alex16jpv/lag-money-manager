@@ -22,6 +22,10 @@ export interface IAccountRepository extends IRepository<Account> {
     session?: TxSession,
   ): Promise<Account | null>;
 
+  // Atomic archive that refuses the default account even under races;
+  // false when nothing matched (default, archived or missing).
+  archiveNonDefault(id: string, userId: string): Promise<boolean>;
+
   // Un-archives the user's own archived account; null if none to restore.
   restore(id: string, userId: string): Promise<Account | null>;
 
