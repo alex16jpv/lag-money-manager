@@ -79,6 +79,11 @@ export class AccountRepository implements IAccountRepository {
     return this.toEntity(doc);
   }
 
+  async getByIdIncludingArchived(id: string): Promise<Account | null> {
+    const doc = await AccountModel.findById(id).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
   async getAll(
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Account>> {

@@ -28,6 +28,7 @@ const mockAccountRepo: jest.Mocked<IAccountRepository> = {
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
+  getByIdIncludingArchived: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -600,7 +601,7 @@ describe("Integration Tests", () => {
 
   describe("GET /accounts/:id", () => {
     it("should return an account by id", async () => {
-      mockAccountRepo.getById.mockResolvedValue(testAccount);
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(testAccount);
 
       const res = await request(app)
         .get("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71")
@@ -611,7 +612,7 @@ describe("Integration Tests", () => {
     });
 
     it("should return 404 for non-existent account", async () => {
-      mockAccountRepo.getById.mockResolvedValue(null);
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(null);
 
       const res = await request(app)
         .get("/accounts/019576a0-d7b6-7d6d-af6a-000000000000")
@@ -624,7 +625,7 @@ describe("Integration Tests", () => {
   describe("PUT /accounts/:id", () => {
     it("should update an account", async () => {
       const updated = new Account({ ...testAccount, name: "Updated" });
-      mockAccountRepo.getById.mockResolvedValue(testAccount);
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(testAccount);
       mockAccountRepo.update.mockResolvedValue(updated);
 
       const res = await request(app)
@@ -639,7 +640,7 @@ describe("Integration Tests", () => {
 
   describe("DELETE /accounts/:id", () => {
     it("should delete an account", async () => {
-      mockAccountRepo.getById.mockResolvedValue(testAccount);
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(testAccount);
       mockAccountRepo.archiveNonDefault.mockResolvedValue(true);
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [],
@@ -675,6 +676,7 @@ describe("Integration Tests", () => {
 
     it("returns 404 when there is nothing to restore", async () => {
       mockAccountRepo.restore.mockResolvedValue(null);
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(null);
 
       const res = await request(app)
         .post("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71/restore")
@@ -732,7 +734,7 @@ describe("Integration Tests", () => {
 
   describe("GET /categories/:id", () => {
     it("should return a category by id", async () => {
-      mockCategoryRepo.getById.mockResolvedValue(testCategory);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
 
       const res = await request(app)
         .get("/categories/019576a0-d7b6-7d6d-af6a-2b7545f5ac73")
@@ -743,7 +745,7 @@ describe("Integration Tests", () => {
     });
 
     it("should return 404 for non-existent category", async () => {
-      mockCategoryRepo.getById.mockResolvedValue(null);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(null);
 
       const res = await request(app)
         .get("/categories/019576a0-d7b6-7d6d-af6a-000000000000")
@@ -761,7 +763,7 @@ describe("Integration Tests", () => {
         emoji: "🚌",
         userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       });
-      mockCategoryRepo.getById.mockResolvedValue(testCategory);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
       mockCategoryRepo.update.mockResolvedValue(updated);
 
       const res = await request(app)
@@ -777,7 +779,7 @@ describe("Integration Tests", () => {
 
   describe("DELETE /categories/:id", () => {
     it("should delete a category", async () => {
-      mockCategoryRepo.getById.mockResolvedValue(testCategory);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
       mockCategoryRepo.delete.mockResolvedValue();
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [],

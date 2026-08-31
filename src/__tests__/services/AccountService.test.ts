@@ -75,6 +75,7 @@ const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
+  getByIdIncludingArchived: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -169,21 +170,21 @@ describe("AccountService", () => {
 
   describe("getAccountById", () => {
     it("should return account when found and owned by user", async () => {
-      repo.getById.mockResolvedValue(mockAccount);
+      repo.getByIdIncludingArchived.mockResolvedValue(mockAccount);
 
       const result = await service.getAccountById(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         validAccountProps.userId,
       );
 
-      expect(repo.getById).toHaveBeenCalledWith(
+      expect(repo.getByIdIncludingArchived).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       );
       expect(result.name).toBe("Savings");
     });
 
     it("should throw NotFound when account does not exist", async () => {
-      repo.getById.mockResolvedValue(null);
+      repo.getByIdIncludingArchived.mockResolvedValue(null);
 
       await expect(
         service.getAccountById(
@@ -242,7 +243,7 @@ describe("AccountService", () => {
   describe("updateAccount", () => {
     it("should update an account", async () => {
       const updated = new Account({ ...validAccountProps, name: "Updated" });
-      repo.getById.mockResolvedValue(mockAccount);
+      repo.getByIdIncludingArchived.mockResolvedValue(mockAccount);
       repo.update.mockResolvedValue(updated);
 
       const result = await service.updateAccount(
@@ -282,7 +283,7 @@ describe("AccountService", () => {
 
   describe("deleteAccount (archive)", () => {
     it("rejects archiving the default account [R2-03]", async () => {
-      repo.getById.mockResolvedValue(
+      repo.getByIdIncludingArchived.mockResolvedValue(
         new Account({ ...validAccountProps, isDefault: true }),
       );
 
@@ -296,7 +297,7 @@ describe("AccountService", () => {
     });
 
     it("should archive an account (even when it has transactions)", async () => {
-      repo.getById.mockResolvedValue(mockAccount);
+      repo.getByIdIncludingArchived.mockResolvedValue(mockAccount);
       repo.archiveNonDefault.mockResolvedValue(true);
 
       await service.deleteAccount(
@@ -311,11 +312,10 @@ describe("AccountService", () => {
     });
 
     it("rejects when the account became default between check and archive (race)", async () => {
-      repo.getById
-        .mockResolvedValueOnce(mockAccount)
-        .mockResolvedValueOnce(
-          new Account({ ...validAccountProps, isDefault: true }),
-        );
+      repo.getByIdIncludingArchived.mockResolvedValue(mockAccount);
+      repo.getById.mockResolvedValue(
+        new Account({ ...validAccountProps, isDefault: true }),
+      );
       repo.archiveNonDefault.mockResolvedValue(false);
 
       await expect(
@@ -327,7 +327,7 @@ describe("AccountService", () => {
     });
 
     it("should throw NotFound when archiving non-existent account", async () => {
-      repo.getById.mockResolvedValue(null);
+      repo.getByIdIncludingArchived.mockResolvedValue(null);
 
       await expect(
         service.deleteAccount(
@@ -338,7 +338,7 @@ describe("AccountService", () => {
     });
 
     it("should throw Forbidden when archiving another user's account", async () => {
-      repo.getById.mockResolvedValue(mockAccount);
+      repo.getByIdIncludingArchived.mockResolvedValue(mockAccount);
 
       await expect(
         service.deleteAccount(
@@ -366,7 +366,7 @@ describe("AccountService", () => {
 
       await expect(
         service.restoreAccount(mockAccount.id, mockAccount.userId),
-      ).rejects.toThrow("Archived account not found");
+      ).rejects.toThrow("Account not found");
     });
   });
 
@@ -391,7 +391,7 @@ describe("AccountService", () => {
     });
 
     it("should throw NotFound on update when account does not exist", async () => {
-      repo.getById.mockResolvedValue(null);
+      repo.getByIdIncludingArchived.mockResolvedValue(null);
 
       await expect(
         service.updateAccount(

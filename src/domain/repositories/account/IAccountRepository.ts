@@ -15,6 +15,9 @@ export interface IAccountRepository extends IRepository<Account> {
     filters?: AccountFilters,
   ): Promise<PaginatedResult<Account>>;
 
+  // Unlike getById, also resolves archived accounts (read paths only).
+  getByIdIncludingArchived(id: string): Promise<Account | null>;
+
   // Atomic balance change (decimal delta) via $inc; false when no account
   // matched — callers must treat that as corruption, never ignore it.
   incrementBalance(

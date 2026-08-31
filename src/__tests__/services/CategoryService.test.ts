@@ -122,21 +122,21 @@ describe("CategoryService", () => {
 
   describe("getCategoryById", () => {
     it("should return category when found and owned by user", async () => {
-      repo.getById.mockResolvedValue(mockCategory);
+      repo.getByIdIncludingArchived.mockResolvedValue(mockCategory);
 
       const result = await service.getCategoryById(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         testUserId,
       );
 
-      expect(repo.getById).toHaveBeenCalledWith(
+      expect(repo.getByIdIncludingArchived).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       );
       expect(result.name).toBe("Food");
     });
 
     it("should throw NotFound when category does not exist", async () => {
-      repo.getById.mockResolvedValue(null);
+      repo.getByIdIncludingArchived.mockResolvedValue(null);
 
       await expect(
         service.getCategoryById(
@@ -174,7 +174,7 @@ describe("CategoryService", () => {
         name: "Transport",
         userId: testUserId,
       });
-      repo.getById.mockResolvedValue(mockCategory);
+      repo.getByIdIncludingArchived.mockResolvedValue(mockCategory);
       repo.update.mockResolvedValue(updated);
 
       const result = await service.updateCategory(
@@ -214,7 +214,7 @@ describe("CategoryService", () => {
 
   describe("deleteCategory (archive)", () => {
     it("should archive a category (even when it has transactions)", async () => {
-      repo.getById.mockResolvedValue(mockCategory);
+      repo.getByIdIncludingArchived.mockResolvedValue(mockCategory);
       repo.delete.mockResolvedValue();
 
       await service.deleteCategory(
@@ -228,7 +228,7 @@ describe("CategoryService", () => {
     });
 
     it("should throw NotFound when archiving non-existent category", async () => {
-      repo.getById.mockResolvedValue(null);
+      repo.getByIdIncludingArchived.mockResolvedValue(null);
 
       await expect(
         service.deleteCategory(
@@ -239,7 +239,7 @@ describe("CategoryService", () => {
     });
 
     it("should throw Forbidden when archiving another user's category", async () => {
-      repo.getById.mockResolvedValue(mockCategory);
+      repo.getByIdIncludingArchived.mockResolvedValue(mockCategory);
 
       await expect(
         service.deleteCategory(
@@ -301,7 +301,7 @@ describe("CategoryService", () => {
     });
 
     it("should throw NotFound on update when category does not exist", async () => {
-      repo.getById.mockResolvedValue(null);
+      repo.getByIdIncludingArchived.mockResolvedValue(null);
 
       await expect(
         service.updateCategory(

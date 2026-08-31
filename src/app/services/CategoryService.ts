@@ -23,12 +23,11 @@ export class CategoryService {
     };
   }
 
+  // Reads resolve archived categories too (archivedAt tells them apart);
+  // only the listing hides them by default.
   async getCategoryById(id: string, userId: string): Promise<Category> {
-    const category = await this.repo.getById(id);
-    if (!category) {
-      throw new ApiError("NotFound", "Category not found");
-    }
-    if (category.userId !== userId) {
+    const category = await this.repo.getByIdIncludingArchived(id);
+    if (!category || category.userId !== userId) {
       throw new ApiError("NotFound", "Category not found");
     }
     return new Category(category);
@@ -55,36 +54,46 @@ export class CategoryService {
       throw new ApiError("BadRequest", "Category id does not match");
     }
 
-    const existing = await this.repo.getById(id);
-    if (!existing) {
+    const existing = await this.repo.getByIdIncludingArchived(id);
+    if (!existing || existing.userId !== userId) {
       throw new ApiError("NotFound", "Category not found");
     }
-    if (existing.userId !== userId) {
-      throw new ApiError("NotFound", "Category not found");
+    if (existing.archivedAt) {
+      throw new ApiError(
+        "BadRequest",
+        "Category is archived; restore it first",
+        "RESOURCE_ARCHIVED",
+      );
     }
 
     return new Category(await this.repo.update(id, dto));
   }
 
   // Archive (soft delete); allowed even with linked transactions.
+  // Idempotent: archiving an already-archived category is a no-op success.
   async deleteCategory(id: string, userId: string): Promise<void> {
-    const existing = await this.repo.getById(id);
-    if (!existing) {
+    const existing = await this.repo.getByIdIncludingArchived(id);
+    if (!existing || existing.userId !== userId) {
       throw new ApiError("NotFound", "Category not found");
     }
-    if (existing.userId !== userId) {
-      throw new ApiError("NotFound", "Category not found");
+    if (existing.archivedAt) {
+      return;
     }
 
     return await this.repo.delete(id);
   }
 
+  // Idempotent: restoring an already-active category returns it unchanged.
   async restoreCategory(id: string, userId: string): Promise<Category> {
     const restored = await this.repo.restore(id, userId);
-    if (!restored) {
-      throw new ApiError("NotFound", "Archived category not found");
+    if (restored) {
+      return new Category(restored);
     }
-    return new Category(restored);
+    const current = await this.repo.getByIdIncludingArchived(id);
+    if (!current || current.userId !== userId) {
+      throw new ApiError("NotFound", "Category not found");
+    }
+    return new Category(current);
   }
 
   async seedDefaultCategories(userId: string): Promise<Category[]> {

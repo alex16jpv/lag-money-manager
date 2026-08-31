@@ -18,13 +18,11 @@ export class AccountService {
     return this.repo.getAllByUserId(userId, pagination, filters);
   }
 
+  // Reads resolve archived accounts too (archivedAt tells them apart);
+  // only the listing hides them by default.
   async getAccountById(id: string, userId: string): Promise<Account> {
-    const account = await this.repo.getById(id);
-
-    if (!account) {
-      throw new ApiError("NotFound", "Account not found");
-    }
-    if (account.userId !== userId) {
+    const account = await this.repo.getByIdIncludingArchived(id);
+    if (!account || account.userId !== userId) {
       throw new ApiError("NotFound", "Account not found");
     }
     return new Account(account);
@@ -60,25 +58,30 @@ export class AccountService {
       throw new ApiError("BadRequest", "Account id does not match");
     }
 
-    const existing = await this.repo.getById(id);
-    if (!existing) {
+    const existing = await this.repo.getByIdIncludingArchived(id);
+    if (!existing || existing.userId !== userId) {
       throw new ApiError("NotFound", "Account not found");
     }
-    if (existing.userId !== userId) {
-      throw new ApiError("NotFound", "Account not found");
+    if (existing.archivedAt) {
+      throw new ApiError(
+        "BadRequest",
+        "Account is archived; restore it first",
+        "RESOURCE_ARCHIVED",
+      );
     }
 
     return new Account(await this.repo.update(id, dto));
   }
 
   // Archive (soft delete); allowed even with linked transactions.
+  // Idempotent: archiving an already-archived account is a no-op success.
   async deleteAccount(id: string, userId: string): Promise<void> {
-    const existing = await this.repo.getById(id);
-    if (!existing) {
+    const existing = await this.repo.getByIdIncludingArchived(id);
+    if (!existing || existing.userId !== userId) {
       throw new ApiError("NotFound", "Account not found");
     }
-    if (existing.userId !== userId) {
-      throw new ApiError("NotFound", "Account not found");
+    if (existing.archivedAt) {
+      return;
     }
     if (existing.isDefault) {
       throw new ApiError(
@@ -103,11 +106,16 @@ export class AccountService {
     }
   }
 
+  // Idempotent: restoring an already-active account returns it unchanged.
   async restoreAccount(id: string, userId: string): Promise<Account> {
     const restored = await this.repo.restore(id, userId);
-    if (!restored) {
-      throw new ApiError("NotFound", "Archived account not found");
+    if (restored) {
+      return new Account(restored);
     }
-    return new Account(restored);
+    const current = await this.repo.getByIdIncludingArchived(id);
+    if (!current || current.userId !== userId) {
+      throw new ApiError("NotFound", "Account not found");
+    }
+    return new Account(current);
   }
 }
