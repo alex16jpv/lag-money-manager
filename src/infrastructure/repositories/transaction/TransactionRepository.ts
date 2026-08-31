@@ -181,9 +181,10 @@ export class TransactionRepository implements ITransactionRepository {
       match.type = query.type;
     }
     if (query.from || query.to) {
+      // Half-open range [from, to), consistent with budget windows.
       const range: Record<string, Date> = {};
       if (query.from) range.$gte = query.from;
-      if (query.to) range.$lte = query.to;
+      if (query.to) range.$lt = query.to;
       match.date = range;
     }
 
