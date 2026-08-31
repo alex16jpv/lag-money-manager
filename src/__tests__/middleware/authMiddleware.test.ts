@@ -4,7 +4,7 @@ jest.mock("../../shared/constants", () => ({
   },
 }));
 
-import { NextFunction,Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 
 import { authMiddleware } from "../../app/middlewares/authMiddleware";
@@ -166,9 +166,7 @@ describe("authMiddleware", () => {
       ).toString("base64url");
       const noneAlgToken = `${header}.${payload}.`;
 
-      const { req, res, next } = createMockReqResNext(
-        `Bearer ${noneAlgToken}`,
-      );
+      const { req, res, next } = createMockReqResNext(`Bearer ${noneAlgToken}`);
 
       expect(() => authMiddleware(req, res, next)).toThrow(ApiError);
       expect(() => authMiddleware(req, res, next)).toThrow(
@@ -177,11 +175,10 @@ describe("authMiddleware", () => {
     });
 
     it("should throw Unauthorized for token with valid signature but invalid payload shape", () => {
-      const token = jwt.sign(
-        { foo: "bar", baz: 123 },
-        "test-secret-key",
-        { algorithm: "HS256", expiresIn: "1h" },
-      );
+      const token = jwt.sign({ foo: "bar", baz: 123 }, "test-secret-key", {
+        algorithm: "HS256",
+        expiresIn: "1h",
+      });
 
       const { req, res, next } = createMockReqResNext(`Bearer ${token}`);
 

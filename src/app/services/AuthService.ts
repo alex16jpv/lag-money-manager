@@ -132,7 +132,11 @@ export class AuthService {
       } catch (err) {
         // Concurrent register already reactivated it: surface as a conflict.
         if (err instanceof ApiError && err.statusCode === 404) {
-          throw new ApiError("Conflict", "Email is already registered", "EMAIL_TAKEN");
+          throw new ApiError(
+            "Conflict",
+            "Email is already registered",
+            "EMAIL_TAKEN",
+          );
         }
         throw err;
       }
@@ -184,7 +188,11 @@ export class AuthService {
         { algorithms: ["HS256"] },
       );
     } catch {
-      throw new ApiError("Unauthorized", "Invalid or expired refresh token", "REFRESH_INVALID");
+      throw new ApiError(
+        "Unauthorized",
+        "Invalid or expired refresh token",
+        "REFRESH_INVALID",
+      );
     }
 
     if (
@@ -192,10 +200,15 @@ export class AuthService {
       payload === null ||
       (payload as { type?: unknown }).type !== REFRESH_TOKEN_TYPE ||
       typeof (payload as { userId?: unknown }).userId !== "string" ||
-      typeof (payload as { tokenVersion?: unknown }).tokenVersion !== "number" ||
+      typeof (payload as { tokenVersion?: unknown }).tokenVersion !==
+        "number" ||
       typeof (payload as { jti?: unknown }).jti !== "string"
     ) {
-      throw new ApiError("Unauthorized", "Invalid refresh token", "REFRESH_INVALID");
+      throw new ApiError(
+        "Unauthorized",
+        "Invalid refresh token",
+        "REFRESH_INVALID",
+      );
     }
 
     return payload as unknown as RefreshPayload;
@@ -206,10 +219,18 @@ export class AuthService {
 
     const user = await this.repo.getById(userId);
     if (!user) {
-      throw new ApiError("Unauthorized", "Invalid refresh token", "REFRESH_INVALID");
+      throw new ApiError(
+        "Unauthorized",
+        "Invalid refresh token",
+        "REFRESH_INVALID",
+      );
     }
     if (user.tokenVersion !== tokenVersion) {
-      throw new ApiError("Unauthorized", "Refresh token has been revoked", "REFRESH_REVOKED");
+      throw new ApiError(
+        "Unauthorized",
+        "Refresh token has been revoked",
+        "REFRESH_REVOKED",
+      );
     }
 
     const newJti = uuidv7();
@@ -224,9 +245,17 @@ export class AuthService {
           { userId, familyId: stale.familyId },
           "Refresh token reuse detected; family revoked",
         );
-        throw new ApiError("Unauthorized", "Refresh token has been revoked", "REFRESH_REVOKED");
+        throw new ApiError(
+          "Unauthorized",
+          "Refresh token has been revoked",
+          "REFRESH_REVOKED",
+        );
       }
-      throw new ApiError("Unauthorized", "Invalid or expired refresh token", "REFRESH_INVALID");
+      throw new ApiError(
+        "Unauthorized",
+        "Invalid or expired refresh token",
+        "REFRESH_INVALID",
+      );
     }
 
     // Absolute cap: rotation never extends the family past its original expiry.
@@ -234,7 +263,11 @@ export class AuthService {
       (session.expiresAt.getTime() - Date.now()) / 1000,
     );
     if (remainingSeconds <= 0) {
-      throw new ApiError("Unauthorized", "Invalid or expired refresh token", "REFRESH_INVALID");
+      throw new ApiError(
+        "Unauthorized",
+        "Invalid or expired refresh token",
+        "REFRESH_INVALID",
+      );
     }
 
     await this.sessions.create({

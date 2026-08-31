@@ -24,10 +24,7 @@ export const gatewaySecretMiddleware = (
 
   const headerValue = req.headers[HEADER_NAME];
 
-  if (
-    typeof headerValue !== "string" ||
-    !safeEqual(headerValue, secret)
-  ) {
+  if (typeof headerValue !== "string" || !safeEqual(headerValue, secret)) {
     throw new ApiError("Forbidden", "Access denied");
   }
 

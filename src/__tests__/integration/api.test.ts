@@ -127,10 +127,22 @@ jest.mock("../../shared/constants", () => ({
     OTHER: "OTHER",
   },
   COLORS: {
-    RED: "RED", ORANGE: "ORANGE", AMBER: "AMBER", YELLOW: "YELLOW",
-    LIME: "LIME", GREEN: "GREEN", TEAL: "TEAL", CYAN: "CYAN",
-    BLUE: "BLUE", INDIGO: "INDIGO", PURPLE: "PURPLE", PINK: "PINK",
-    ROSE: "ROSE", GRAY: "GRAY", BROWN: "BROWN", BLACK: "BLACK",
+    RED: "RED",
+    ORANGE: "ORANGE",
+    AMBER: "AMBER",
+    YELLOW: "YELLOW",
+    LIME: "LIME",
+    GREEN: "GREEN",
+    TEAL: "TEAL",
+    CYAN: "CYAN",
+    BLUE: "BLUE",
+    INDIGO: "INDIGO",
+    PURPLE: "PURPLE",
+    PINK: "PINK",
+    ROSE: "ROSE",
+    GRAY: "GRAY",
+    BROWN: "BROWN",
+    BLACK: "BLACK",
   },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
@@ -367,7 +379,12 @@ describe("Integration Tests", () => {
         revokedAt: null,
       });
       const refreshToken = jwt.sign(
-        { userId: testUser.id, tokenVersion: testUser.tokenVersion, type: "refresh", jti: "jti-1" },
+        {
+          userId: testUser.id,
+          tokenVersion: testUser.tokenVersion,
+          type: "refresh",
+          jti: "jti-1",
+        },
         "test-secret-for-integration",
         { expiresIn: "30d" },
       );
@@ -384,7 +401,12 @@ describe("Integration Tests", () => {
     it("returns 401 for a revoked (stale tokenVersion) refresh token", async () => {
       mockUserRepo.getById.mockResolvedValue(testUser); // tokenVersion 0
       const refreshToken = jwt.sign(
-        { userId: testUser.id, tokenVersion: 99, type: "refresh", jti: "jti-1" },
+        {
+          userId: testUser.id,
+          tokenVersion: 99,
+          type: "refresh",
+          jti: "jti-1",
+        },
         "test-secret-for-integration",
         { expiresIn: "30d" },
       );
@@ -650,7 +672,13 @@ describe("Integration Tests", () => {
       mockAccountRepo.archiveNonDefault.mockResolvedValue(true);
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [],
-        pagination: { limit: 1, offset: 0, total: 0, hasMore: false, nextCursor: null },
+        pagination: {
+          limit: 1,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
       });
 
       const res = await request(app)
@@ -789,7 +817,13 @@ describe("Integration Tests", () => {
       mockCategoryRepo.delete.mockResolvedValue();
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [],
-        pagination: { limit: 1, offset: 0, total: 0, hasMore: false, nextCursor: null },
+        pagination: {
+          limit: 1,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
       });
 
       const res = await request(app)
@@ -1035,7 +1069,13 @@ describe("Integration Tests", () => {
     it("lists budgets with computed spent", async () => {
       mockBudgetRepo.getAllByUserId.mockResolvedValue({
         data: [testBudget],
-        pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
       });
       mockTransactionRepo.sumAmountsByCategory.mockResolvedValue({
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac73": 12000,

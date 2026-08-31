@@ -35,6 +35,8 @@ Content-Type: application/json
   "password": "{{password}}"
 }
 
+###
+
 @accessToken = {{login.response.body.accessToken}}
 @refreshToken = {{login.response.body.refreshToken}}
 
@@ -47,6 +49,8 @@ Content-Type: application/json
 {
   "refreshToken": "{{refreshToken}}"
 }
+
+###
 
 @rotatedRefresh = {{refresh.response.body.refreshToken}}
 
@@ -63,6 +67,8 @@ Content-Type: application/json
 # @name sessions
 GET {{baseUrl}}/auth/sessions
 Authorization: Bearer {{accessToken}}
+
+###
 
 @sessionId = {{sessions.response.body.data.0.id}}
 

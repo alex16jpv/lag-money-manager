@@ -1,7 +1,10 @@
 import { v7 as uuidv7 } from "uuid";
 
 import { Category } from "../../../domain/entities/Category";
-import { CategoryFilters, ICategoryRepository } from "../../../domain/repositories/category/ICategoryRepository";
+import {
+  CategoryFilters,
+  ICategoryRepository,
+} from "../../../domain/repositories/category/ICategoryRepository";
 import { ApiError } from "../../../shared/errors";
 import {
   buildPaginatedResult,

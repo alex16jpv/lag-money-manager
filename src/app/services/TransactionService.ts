@@ -220,8 +220,7 @@ export class TransactionService {
       // The date counts here: moving money between periods reshapes budgets
       // and stats even though balances don't move.
       const auditableChange =
-        monetaryChanged ||
-        updated.date.getTime() !== existing.date.getTime();
+        monetaryChanged || updated.date.getTime() !== existing.date.getTime();
       const revision = auditableChange
         ? {
             at: new Date(),
@@ -267,7 +266,11 @@ export class TransactionService {
       throw new ApiError("NotFound", "Category not found");
     }
     if (category.archivedAt && categoryId !== previousCategoryId) {
-      throw new ApiError("BadRequest", "Category is archived", "CATEGORY_ARCHIVED");
+      throw new ApiError(
+        "BadRequest",
+        "Category is archived",
+        "CATEGORY_ARCHIVED",
+      );
     }
     if (category.type && category.type !== type) {
       throw new ApiError(

@@ -15,7 +15,11 @@ jest.mock("../../shared/constants", () => ({
     TRANSFER: "TRANSFER",
     ADJUSTMENT: "ADJUSTMENT",
   },
-  CATEGORY_TYPES: { INCOME: "INCOME", EXPENSE: "EXPENSE", TRANSFER: "TRANSFER" },
+  CATEGORY_TYPES: {
+    INCOME: "INCOME",
+    EXPENSE: "EXPENSE",
+    TRANSFER: "TRANSFER",
+  },
   MODEL_NAMES: {
     USER: "User",
     ACCOUNT: "Account",
@@ -578,8 +582,8 @@ describe("TransactionService", () => {
     it("uses the default account and flags pendingDetails", async () => {
       acctRepo.getDefaultByUserId.mockResolvedValue(account());
       acctRepo.getById.mockResolvedValue(account());
-      txRepo.create.mockImplementation(async (t) =>
-        new Transaction({ ...(t as object), id: TX_ID } as never),
+      txRepo.create.mockImplementation(
+        async (t) => new Transaction({ ...(t as object), id: TX_ID } as never),
       );
 
       await service.quickAddTransaction({ amount: 20, userId: USER });
@@ -644,7 +648,10 @@ describe("TransactionService", () => {
       acctRepo.getDefaultByUserId.mockResolvedValue(account());
       txRepo.create.mockImplementation(async (tx) => tx as Transaction);
 
-      const quick = await service.quickAddTransaction({ amount: 5, userId: USER });
+      const quick = await service.quickAddTransaction({
+        amount: 5,
+        userId: USER,
+      });
       expect(quick.source).toBe("QUICK");
 
       const manual = await service.createTransaction({
@@ -723,7 +730,9 @@ describe("TransactionService", () => {
         new Category({ id: CAT, name: "Food", type: "EXPENSE", userId: USER }),
       );
 
-      await expect(service.createTransaction(expenseDto())).resolves.toBeDefined();
+      await expect(
+        service.createTransaction(expenseDto()),
+      ).resolves.toBeDefined();
       expect(txRepo.create).toHaveBeenCalled();
     });
 

@@ -28,7 +28,18 @@ export class Category {
   createdAt?: Date;
   updatedAt?: Date;
 
-  constructor({ id, name, emoji, color, type, userId, seedKey, archivedAt, createdAt, updatedAt }: CategoryProps) {
+  constructor({
+    id,
+    name,
+    emoji,
+    color,
+    type,
+    userId,
+    seedKey,
+    archivedAt,
+    createdAt,
+    updatedAt,
+  }: CategoryProps) {
     this.id = id ?? uuidv7();
     this.name = name;
     this.emoji = emoji;

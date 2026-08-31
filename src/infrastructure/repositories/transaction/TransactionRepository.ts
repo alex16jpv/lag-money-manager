@@ -44,7 +44,9 @@ export class TransactionRepository implements ITransactionRepository {
     });
   }
 
-  private toStorage(transaction: Partial<Transaction>): Record<string, unknown> {
+  private toStorage(
+    transaction: Partial<Transaction>,
+  ): Record<string, unknown> {
     const doc: Record<string, unknown> = { ...transaction };
     if (transaction.amount !== undefined) {
       doc.amount = toCents(transaction.amount);
@@ -270,7 +272,9 @@ export class TransactionRepository implements ITransactionRepository {
         },
       },
       // Day buckets are a time series; the rest rank by spend.
-      query.groupBy === "day" ? { $sort: { _id: 1 } } : { $sort: { total: -1 } },
+      query.groupBy === "day"
+        ? { $sort: { _id: 1 } }
+        : { $sort: { total: -1 } },
     );
 
     const pipeline: PipelineStage[] = [

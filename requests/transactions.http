@@ -15,6 +15,8 @@ Content-Type: application/json
 
 { "email": "{{email}}", "password": "{{password}}" }
 
+###
+
 @token = {{login.response.body.accessToken}}
 
 ### Cuenta A (queda default si es la primera) — para EXPENSE/quick-add
@@ -24,6 +26,8 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "name": "TxA", "type": "CASH", "balance": 1000 }
+
+###
 
 @accA = {{accA.response.body.id}}
 
@@ -35,6 +39,8 @@ Content-Type: application/json
 
 { "name": "TxB", "type": "SAVINGS", "balance": 500 }
 
+###
+
 @accB = {{accB.response.body.id}}
 
 ### Categoría para clasificar (el type debe coincidir con el de la transacción)
@@ -44,6 +50,8 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "name": "TxCat", "type": "EXPENSE" }
+
+###
 
 @catId = {{cat.response.body.id}}
 
@@ -64,6 +72,8 @@ Content-Type: application/json
   "tags": ["Café ", "café", "hormiga"],
   "note": "prueba"
 }
+
+###
 
 @txId = {{expense.response.body.id}}
 

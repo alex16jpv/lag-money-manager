@@ -65,7 +65,10 @@ export class Transaction {
   // inconsistent shape.
   assertValid(): void {
     if (!(this.amount > 0)) {
-      throw new DomainValidationError("Amount must be greater than 0", "amount");
+      throw new DomainValidationError(
+        "Amount must be greater than 0",
+        "amount",
+      );
     }
     // Future-dated money would hit today's balance and future budget windows;
     // scheduled transactions will be their own feature, not raw future dates.

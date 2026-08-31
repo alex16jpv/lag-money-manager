@@ -174,7 +174,11 @@ describe("AccountService", () => {
       });
 
       const filters = { ids: ["019576a0-d7b6-7d6d-af6a-2b7545f5ac70"] };
-      await service.getAllAccounts(validAccountProps.userId, pagination, filters);
+      await service.getAllAccounts(
+        validAccountProps.userId,
+        pagination,
+        filters,
+      );
 
       expect(repo.getAllByUserId).toHaveBeenCalledWith(
         validAccountProps.userId,
@@ -247,11 +251,19 @@ describe("AccountService", () => {
 
   describe("setDefaultAccount [F2]", () => {
     it("sets the account as default", async () => {
-      repo.setDefault.mockResolvedValue(new Account({ ...validAccountProps, isDefault: true }));
+      repo.setDefault.mockResolvedValue(
+        new Account({ ...validAccountProps, isDefault: true }),
+      );
 
-      const result = await service.setDefaultAccount(mockAccount.id, mockAccount.userId);
+      const result = await service.setDefaultAccount(
+        mockAccount.id,
+        mockAccount.userId,
+      );
 
-      expect(repo.setDefault).toHaveBeenCalledWith(mockAccount.id, mockAccount.userId);
+      expect(repo.setDefault).toHaveBeenCalledWith(
+        mockAccount.id,
+        mockAccount.userId,
+      );
       expect(result.isDefault).toBe(true);
     });
 
@@ -396,9 +408,15 @@ describe("AccountService", () => {
     it("restores the user's archived account", async () => {
       repo.restore.mockResolvedValue(mockAccount);
 
-      const result = await service.restoreAccount(mockAccount.id, mockAccount.userId);
+      const result = await service.restoreAccount(
+        mockAccount.id,
+        mockAccount.userId,
+      );
 
-      expect(repo.restore).toHaveBeenCalledWith(mockAccount.id, mockAccount.userId);
+      expect(repo.restore).toHaveBeenCalledWith(
+        mockAccount.id,
+        mockAccount.userId,
+      );
       expect(result.id).toBe(mockAccount.id);
     });
 

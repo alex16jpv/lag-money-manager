@@ -128,4 +128,48 @@ describe("errorMiddleware", () => {
       code: "INVALID_ID",
     });
   });
+
+  it("maps a malformed JSON body to 400, not 500", () => {
+    const error = Object.assign(
+      new SyntaxError("Unexpected non-whitespace character after JSON"),
+      { type: "entity.parse.failed", statusCode: 400, expose: true },
+    );
+
+    errorMiddleware(error as Error, req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "BadRequestError",
+      message: "Request body is not valid JSON",
+      code: "MALFORMED_JSON",
+    });
+  });
+
+  it("maps an oversized body to 413", () => {
+    const error = Object.assign(new Error("request entity too large"), {
+      type: "entity.too.large",
+      statusCode: 413,
+      expose: true,
+    });
+
+    errorMiddleware(error as Error, req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(413);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "BadRequestError",
+      message: "request entity too large",
+      code: "PAYLOAD_TOO_LARGE",
+    });
+  });
+
+  it("still reports a genuine server fault as 500", () => {
+    errorMiddleware(new Error("boom"), req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "InternalServerError",
+      message: "An unexpected error occurred",
+      code: "INTERNAL",
+    });
+  });
 });

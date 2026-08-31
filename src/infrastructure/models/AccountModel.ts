@@ -53,7 +53,10 @@ AccountSchema.index({ userId: 1, _id: 1 });
 // At most one active default account per user.
 AccountSchema.index(
   { userId: 1 },
-  { unique: true, partialFilterExpression: { isDefault: true, archivedAt: null } },
+  {
+    unique: true,
+    partialFilterExpression: { isDefault: true, archivedAt: null },
+  },
 );
 
 export const AccountModel = mongoose.model<IAccountDocument>(

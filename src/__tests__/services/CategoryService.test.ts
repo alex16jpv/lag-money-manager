@@ -61,7 +61,11 @@ describe("CategoryService", () => {
 
       const result = await service.getAllCategories(testUserId, pagination);
 
-      expect(repo.getAllByUserId).toHaveBeenCalledWith(testUserId, pagination, undefined);
+      expect(repo.getAllByUserId).toHaveBeenCalledWith(
+        testUserId,
+        pagination,
+        undefined,
+      );
       expect(result.data).toHaveLength(1);
       expect(result.data[0].name).toBe("Food");
     });
@@ -317,7 +321,12 @@ describe("CategoryService", () => {
   describe("type change guard [R2-32]", () => {
     it("blocks changing the type of a category with transactions", async () => {
       repo.getByIdIncludingArchived.mockResolvedValue(
-        new Category({ id: mockCategory.id, name: "Food", type: "EXPENSE", userId: testUserId }),
+        new Category({
+          id: mockCategory.id,
+          name: "Food",
+          type: "EXPENSE",
+          userId: testUserId,
+        }),
       );
       txRepo.countByCategory.mockResolvedValue(3);
 
@@ -329,7 +338,12 @@ describe("CategoryService", () => {
 
     it("allows a type change when the category has no transactions", async () => {
       repo.getByIdIncludingArchived.mockResolvedValue(
-        new Category({ id: mockCategory.id, name: "Food", type: "EXPENSE", userId: testUserId }),
+        new Category({
+          id: mockCategory.id,
+          name: "Food",
+          type: "EXPENSE",
+          userId: testUserId,
+        }),
       );
       txRepo.countByCategory.mockResolvedValue(0);
       repo.update.mockResolvedValue(mockCategory);
@@ -414,9 +428,9 @@ describe("CategoryService", () => {
     it("should propagate error when createMany fails", async () => {
       repo.createMany.mockRejectedValue(new Error("DB write failed"));
 
-      await expect(
-        service.seedDefaultCategories(testUserId),
-      ).rejects.toThrow("DB write failed");
+      await expect(service.seedDefaultCategories(testUserId)).rejects.toThrow(
+        "DB write failed",
+      );
     });
   });
 });

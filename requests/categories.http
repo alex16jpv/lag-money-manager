@@ -13,6 +13,8 @@ Content-Type: application/json
 
 { "email": "{{email}}", "password": "{{password}}" }
 
+###
+
 @token = {{login.response.body.accessToken}}
 
 ### Listar todas (éxito) — las sembradas traen seedKey; todas traen createdAt/updatedAt
@@ -30,6 +32,8 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "name": "Café", "emoji": "☕", "color": "BROWN", "type": "EXPENSE" }
+
+###
 
 @catId = {{createCat.response.body.id}}
 

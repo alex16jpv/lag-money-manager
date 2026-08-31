@@ -93,7 +93,10 @@ export const paginationQuerySchema = z.object({
       .string()
       .transform((val) => val.split(",").map((s) => s.trim()))
       .pipe(
-        z.array(z.string().uuid("Each ID must be a valid UUID")).min(1).max(100),
+        z
+          .array(z.string().uuid("Each ID must be a valid UUID"))
+          .min(1)
+          .max(100),
       )
       .optional(),
     includeArchived: z.enum(["true", "false"]).optional(),
@@ -101,45 +104,52 @@ export const paginationQuerySchema = z.object({
 });
 
 export const getTransactionsSchema = z.object({
-  query: z.object({
-    limit: z.coerce
-      .number()
-      .int("Limit must be an integer")
-      .min(1, "Limit must be at least 1")
-      .max(MAX_LIMIT, `Limit must be at most ${MAX_LIMIT}`)
-      .optional(),
-    offset: z.coerce
-      .number()
-      .int("Offset must be an integer")
-      .min(0, "Offset must be non-negative")
-      .optional(),
-    cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
-    ids: z
-      .string()
-      .transform((val) => val.split(",").map((s) => s.trim()))
-      .pipe(
-        z.array(z.string().uuid("Each ID must be a valid UUID")).min(1).max(100),
-      )
-      .optional(),
-    accountId: z.string().uuid("accountId must be a valid UUID").optional(),
-    categoryId: z.string().uuid("categoryId must be a valid UUID").optional(),
-    type: z
-      .enum(transactionTypeValues, {
-        error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
-      })
-      .optional(),
-    pendingDetails: z.enum(["true", "false"]).optional(),
-    uncategorized: z.enum(["true", "false"]).optional(),
-    from: z
-      .string()
-      .datetime({ offset: true, message: "from must be a valid ISO 8601 date" })
-      .optional(),
-    to: z
-      .string()
-      .datetime({ offset: true, message: "to must be a valid ISO 8601 date" })
-      .optional(),
-    tag: z.string().min(1).max(50).optional(),
-  })
+  query: z
+    .object({
+      limit: z.coerce
+        .number()
+        .int("Limit must be an integer")
+        .min(1, "Limit must be at least 1")
+        .max(MAX_LIMIT, `Limit must be at most ${MAX_LIMIT}`)
+        .optional(),
+      offset: z.coerce
+        .number()
+        .int("Offset must be an integer")
+        .min(0, "Offset must be non-negative")
+        .optional(),
+      cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
+      ids: z
+        .string()
+        .transform((val) => val.split(",").map((s) => s.trim()))
+        .pipe(
+          z
+            .array(z.string().uuid("Each ID must be a valid UUID"))
+            .min(1)
+            .max(100),
+        )
+        .optional(),
+      accountId: z.string().uuid("accountId must be a valid UUID").optional(),
+      categoryId: z.string().uuid("categoryId must be a valid UUID").optional(),
+      type: z
+        .enum(transactionTypeValues, {
+          error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
+        })
+        .optional(),
+      pendingDetails: z.enum(["true", "false"]).optional(),
+      uncategorized: z.enum(["true", "false"]).optional(),
+      from: z
+        .string()
+        .datetime({
+          offset: true,
+          message: "from must be a valid ISO 8601 date",
+        })
+        .optional(),
+      to: z
+        .string()
+        .datetime({ offset: true, message: "to must be a valid ISO 8601 date" })
+        .optional(),
+      tag: z.string().min(1).max(50).optional(),
+    })
     .refine(
       (q) => !(q.uncategorized === "true" && q.categoryId !== undefined),
       {
@@ -167,7 +177,10 @@ export const getCategoriesSchema = z.object({
       .string()
       .transform((val) => val.split(",").map((s) => s.trim()))
       .pipe(
-        z.array(z.string().uuid("Each ID must be a valid UUID")).min(1).max(100),
+        z
+          .array(z.string().uuid("Each ID must be a valid UUID"))
+          .min(1)
+          .max(100),
       )
       .optional(),
     type: z
@@ -270,7 +283,10 @@ export const updateCategorySchema = z.object({
   body: z
     .object({
       name: z.string().min(1).max(255).optional(),
-      emoji: z.string().max(16, "Emoji must be at most 16 characters").optional(),
+      emoji: z
+        .string()
+        .max(16, "Emoji must be at most 16 characters")
+        .optional(),
       color: z
         .enum(colorValues, {
           error: `Invalid color. Available: ${colorValues.join(", ")}`,
@@ -284,12 +300,9 @@ export const updateCategorySchema = z.object({
         .optional()
         .nullable(),
     })
-    .refine(
-      (data) => Object.values(data).some((v) => v !== undefined),
-      {
-        message: "At least one field must be provided",
-      },
-    ),
+    .refine((data) => Object.values(data).some((v) => v !== undefined), {
+      message: "At least one field must be provided",
+    }),
 });
 
 export const spendingStatsSchema = z.object({
@@ -299,24 +312,30 @@ export const spendingStatsSchema = z.object({
       type: z.enum(transactionTypeValues).optional(),
       from: z
         .string()
-        .datetime({ offset: true, message: "from must be a valid ISO 8601 date" })
+        .datetime({
+          offset: true,
+          message: "from must be a valid ISO 8601 date",
+        })
         .optional(),
       to: z
         .string()
         .datetime({ offset: true, message: "to must be a valid ISO 8601 date" })
         .optional(),
     })
-    .refine(
-      (q) => !q.from || !q.to || new Date(q.from) <= new Date(q.to),
-      { message: "from must be before or equal to to", path: ["from"] },
-    ),
+    .refine((q) => !q.from || !q.to || new Date(q.from) <= new Date(q.to), {
+      message: "from must be before or equal to to",
+      path: ["from"],
+    }),
 });
 
 // Every budget route resolves the period from `reference`, so all must validate it.
 const budgetReferenceQuery = z.object({
   reference: z
     .string()
-    .datetime({ offset: true, message: "reference must be a valid ISO 8601 date" })
+    .datetime({
+      offset: true,
+      message: "reference must be a valid ISO 8601 date",
+    })
     .optional(),
 });
 
@@ -434,9 +453,10 @@ export const createTransactionSchema = z.object({
         error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
       }),
       amount: moneyAmount,
-      date: z
-        .string()
-        .datetime({ offset: true, message: "Date must be a valid ISO 8601 date" }),
+      date: z.string().datetime({
+        offset: true,
+        message: "Date must be a valid ISO 8601 date",
+      }),
       categoryId: z
         .string()
         .uuid("categoryId must be a valid UUID")
@@ -533,7 +553,10 @@ export const updateTransactionSchema = z.object({
       amount: moneyAmount.optional(),
       date: z
         .string()
-        .datetime({ offset: true, message: "Date must be a valid ISO 8601 date" })
+        .datetime({
+          offset: true,
+          message: "Date must be a valid ISO 8601 date",
+        })
         .optional(),
       categoryId: z
         .string()

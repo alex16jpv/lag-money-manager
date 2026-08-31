@@ -11,7 +11,11 @@ import { resolvePeriod } from "../../shared/budgetPeriod";
 import { ApiError } from "../../shared/errors";
 import { fromCents } from "../../shared/money";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
-import { BudgetView, CreateBudgetDTO, UpdateBudgetDTO } from "../dtos/BudgetDTO";
+import {
+  BudgetView,
+  CreateBudgetDTO,
+  UpdateBudgetDTO,
+} from "../dtos/BudgetDTO";
 
 interface ViewContext {
   reference: Date;
@@ -55,11 +59,19 @@ export class BudgetService {
     return view;
   }
 
-  async createBudget(dto: CreateBudgetDTO, ctx: ViewContext): Promise<BudgetView> {
+  async createBudget(
+    dto: CreateBudgetDTO,
+    ctx: ViewContext,
+  ): Promise<BudgetView> {
     const type = dto.type ?? "EXPENSE";
     this.assertValidPeriod(dto);
     await this.assertCategoriesUsable(dto.userId, dto.categoryIds, type);
-    await this.assertNoOverlap(dto.userId, type, dto.periodType, dto.categoryIds);
+    await this.assertNoOverlap(
+      dto.userId,
+      type,
+      dto.periodType,
+      dto.categoryIds,
+    );
     // Mono-currency mode: stamped from the owner at creation.
     const owner = await this.userRepo.getById(dto.userId);
     const created = await this.repo.create(
@@ -88,7 +100,8 @@ export class BudgetService {
     } else if (
       existing.periodType === "CUSTOM" &&
       ((dto.periodStartDate !== undefined &&
-        dto.periodStartDate?.getTime() !== existing.periodStartDate?.getTime()) ||
+        dto.periodStartDate?.getTime() !==
+          existing.periodStartDate?.getTime()) ||
         (dto.periodEndDate !== undefined &&
           dto.periodEndDate?.getTime() !== existing.periodEndDate?.getTime()))
     ) {
@@ -143,7 +156,11 @@ export class BudgetService {
   ): Promise<BudgetView> {
     const budget = await this.getOwned(id, userId);
     this.assertWritable(budget);
-    const { key } = resolvePeriod(this.periodDef(budget), ctx.reference, ctx.timezone);
+    const { key } = resolvePeriod(
+      this.periodDef(budget),
+      ctx.reference,
+      ctx.timezone,
+    );
     const updated = await this.repo.clearAmountOverride(id, userId, key);
     if (!updated) {
       throw new ApiError("NotFound", "Budget not found");
@@ -160,7 +177,11 @@ export class BudgetService {
   ): Promise<BudgetView> {
     const budget = await this.getOwned(id, userId);
     this.assertWritable(budget);
-    const { key } = resolvePeriod(this.periodDef(budget), ctx.reference, ctx.timezone);
+    const { key } = resolvePeriod(
+      this.periodDef(budget),
+      ctx.reference,
+      ctx.timezone,
+    );
     const updated = await this.repo.setAmountOverride(id, userId, key, amount);
     if (!updated) {
       throw new ApiError("NotFound", "Budget not found");
@@ -236,7 +257,11 @@ export class BudgetService {
         throw new ApiError("NotFound", "Category not found");
       }
       if (category.archivedAt && !prev.has(categoryId)) {
-        throw new ApiError("BadRequest", "Category is archived", "CATEGORY_ARCHIVED");
+        throw new ApiError(
+          "BadRequest",
+          "Category is archived",
+          "CATEGORY_ARCHIVED",
+        );
       }
       if (category.type && category.type !== budgetType) {
         throw new ApiError(
@@ -312,9 +337,7 @@ export class BudgetService {
       windows.set(wk, w);
     }
 
-    const allCategoryIds = [
-      ...new Set(budgets.flatMap((b) => b.categoryIds)),
-    ];
+    const allCategoryIds = [...new Set(budgets.flatMap((b) => b.categoryIds))];
     const archivedIds = new Set(
       await this.categoryRepo.listArchivedIds(userId, allCategoryIds),
     );

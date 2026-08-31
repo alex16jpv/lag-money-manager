@@ -1,7 +1,10 @@
 import { v7 as uuidv7 } from "uuid";
 
 import { Budget } from "../../../domain/entities/Budget";
-import { BudgetFilters, IBudgetRepository } from "../../../domain/repositories/budget/IBudgetRepository";
+import {
+  BudgetFilters,
+  IBudgetRepository,
+} from "../../../domain/repositories/budget/IBudgetRepository";
 import { BudgetPeriodType, BudgetType } from "../../../shared/constants";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
@@ -109,7 +112,10 @@ export class BudgetRepository implements IBudgetRepository {
 
   async create(budget: Partial<Budget>): Promise<Budget> {
     const id = budget.id ?? uuidv7();
-    const doc = await BudgetModel.create({ _id: id, ...this.toStorage(budget) });
+    const doc = await BudgetModel.create({
+      _id: id,
+      ...this.toStorage(budget),
+    });
     return this.toEntity(doc.toObject() as IBudgetDocument);
   }
 
@@ -150,9 +156,7 @@ export class BudgetRepository implements IBudgetRepository {
       periodType,
       // A global budget ([]) only conflicts with another global one; it
       // coexists with per-category budgets by design.
-      categoryIds: categoryIds.length
-        ? { $in: categoryIds }
-        : { $size: 0 },
+      categoryIds: categoryIds.length ? { $in: categoryIds } : { $size: 0 },
     };
     if (excludeId) {
       filter._id = { $ne: excludeId };

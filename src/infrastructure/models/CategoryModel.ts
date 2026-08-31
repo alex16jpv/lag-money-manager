@@ -1,6 +1,12 @@
 import mongoose, { Schema } from "mongoose";
 
-import { CATEGORY_TYPES, CategoryType,Color, COLORS, MODEL_NAMES } from "../../shared/constants";
+import {
+  CATEGORY_TYPES,
+  CategoryType,
+  Color,
+  COLORS,
+  MODEL_NAMES,
+} from "../../shared/constants";
 
 export interface ICategoryDocument {
   _id: string;

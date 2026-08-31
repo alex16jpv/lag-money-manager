@@ -23,7 +23,10 @@ import { ITransactionRepository } from "../../domain/repositories/transaction/IT
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 
 const USER = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
-const CTX = { reference: new Date("2026-08-15T12:00:00Z"), timezone: "America/Bogota" };
+const CTX = {
+  reference: new Date("2026-08-15T12:00:00Z"),
+  timezone: "America/Bogota",
+};
 
 const createBudgetRepo = (): jest.Mocked<IBudgetRepository> =>
   ({
@@ -50,8 +53,8 @@ const createCategoryRepo = (): jest.Mocked<ICategoryRepository> =>
     // Default: every referenced category exists, is the user's, and is active.
     getByIdIncludingArchived: jest
       .fn()
-      .mockImplementation(async (id: string) =>
-        new Category({ id, name: "Cat", userId: USER }),
+      .mockImplementation(
+        async (id: string) => new Category({ id, name: "Cat", userId: USER }),
       ),
     listArchivedIds: jest.fn().mockResolvedValue([]),
   }) as unknown as jest.Mocked<ICategoryRepository>;
@@ -92,11 +95,22 @@ describe("BudgetService", () => {
   it("computes spent for the reference period", async () => {
     budgetRepo.getAllByUserId.mockResolvedValue({
       data: [makeBudget()],
-      pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
+      pagination: {
+        limit: 20,
+        offset: 0,
+        total: 1,
+        hasMore: false,
+        nextCursor: null,
+      },
     });
     txRepo.sumAmountsByCategory.mockResolvedValue({ c1: 4200 }); // cents
 
-    const res = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+    const res = await service.getBudgets(
+      USER,
+      { limit: 20, offset: 0 },
+      {},
+      CTX,
+    );
 
     expect(res.data[0].spent).toBe(42);
     expect(res.data[0].amount).toBe(100);
@@ -106,11 +120,22 @@ describe("BudgetService", () => {
   it("uses the per-period override for amount when present", async () => {
     budgetRepo.getAllByUserId.mockResolvedValue({
       data: [makeBudget({ amountOverrides: { "2026-08": 150 } })],
-      pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
+      pagination: {
+        limit: 20,
+        offset: 0,
+        total: 1,
+        hasMore: false,
+        nextCursor: null,
+      },
     });
     txRepo.sumAmountsByCategory.mockResolvedValue({ c1: 1000 });
 
-    const res = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+    const res = await service.getBudgets(
+      USER,
+      { limit: 20, offset: 0 },
+      {},
+      CTX,
+    );
     expect(res.data[0].amount).toBe(150);
   });
 
@@ -237,11 +262,22 @@ describe("BudgetService", () => {
       const globalBudget = makeBudget({ id: "bg", categoryIds: [] });
       budgetRepo.getAllByUserId.mockResolvedValue({
         data: [globalBudget],
-        pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
       });
       txRepo.sumAmounts.mockResolvedValue(12550);
 
-      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+      const result = await service.getBudgets(
+        USER,
+        { limit: 20, offset: 0 },
+        {},
+        CTX,
+      );
 
       expect(result.data[0].spent).toBe(125.5);
       expect(txRepo.sumAmounts).toHaveBeenCalled();
@@ -273,14 +309,25 @@ describe("BudgetService", () => {
     const list = (budgets: Budget[]) =>
       budgetRepo.getAllByUserId.mockResolvedValue({
         data: budgets,
-        pagination: { limit: 20, offset: 0, total: budgets.length, hasMore: false, nextCursor: null },
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: budgets.length,
+          hasMore: false,
+          nextCursor: null,
+        },
       });
 
     it("hides a budget for references before it existed", async () => {
       // Created in October; reference (CTX) is August.
       list([makeBudget({ createdAt: new Date("2026-10-05T00:00:00Z") })]);
 
-      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+      const result = await service.getBudgets(
+        USER,
+        { limit: 20, offset: 0 },
+        {},
+        CTX,
+      );
 
       expect(result.data).toHaveLength(0);
     });
@@ -293,7 +340,12 @@ describe("BudgetService", () => {
         }),
       ]);
 
-      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+      const result = await service.getBudgets(
+        USER,
+        { limit: 20, offset: 0 },
+        {},
+        CTX,
+      );
 
       expect(result.data).toHaveLength(1);
       expect(result.data[0].effectiveFrom.toISOString()).toBe(
@@ -305,7 +357,12 @@ describe("BudgetService", () => {
       // Created Aug 20; the August window still lists (full-month spend).
       list([makeBudget({ createdAt: new Date("2026-08-20T00:00:00Z") })]);
 
-      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+      const result = await service.getBudgets(
+        USER,
+        { limit: 20, offset: 0 },
+        {},
+        CTX,
+      );
 
       expect(result.data).toHaveLength(1);
     });
@@ -316,10 +373,21 @@ describe("BudgetService", () => {
       const b = makeBudget({ amountOverrides: { "2026-08": 0 } });
       budgetRepo.getAllByUserId.mockResolvedValue({
         data: [b],
-        pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
       });
 
-      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+      const result = await service.getBudgets(
+        USER,
+        { limit: 20, offset: 0 },
+        {},
+        CTX,
+      );
 
       expect(result.data[0].hasOverride).toBe(true);
       expect(result.data[0].amount).toBe(0);
@@ -402,11 +470,22 @@ describe("BudgetService", () => {
       const goal = makeBudget({ id: "bi", type: "INCOME", categoryIds: [] });
       budgetRepo.getAllByUserId.mockResolvedValue({
         data: [goal],
-        pagination: { limit: 20, offset: 0, total: 1, hasMore: false, nextCursor: null },
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
       });
       txRepo.sumAmounts.mockResolvedValue(200000);
 
-      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+      const result = await service.getBudgets(
+        USER,
+        { limit: 20, offset: 0 },
+        {},
+        CTX,
+      );
 
       expect(txRepo.sumAmounts).toHaveBeenCalledWith(
         USER,
@@ -420,7 +499,9 @@ describe("BudgetService", () => {
 
     it("EXPENSE and INCOME budgets over the same category do not overlap", async () => {
       budgetRepo.findOverlapping.mockResolvedValue([]);
-      budgetRepo.create.mockImplementation(async (b) => new Budget(b as Budget));
+      budgetRepo.create.mockImplementation(
+        async (b) => new Budget(b as Budget),
+      );
 
       await service.createBudget(
         {
@@ -446,7 +527,12 @@ describe("BudgetService", () => {
 
     it("rejects a category whose type contradicts the budget type", async () => {
       categoryRepo.getByIdIncludingArchived.mockResolvedValue(
-        new Category({ id: "c1", name: "Salary", type: "INCOME", userId: USER }),
+        new Category({
+          id: "c1",
+          name: "Salary",
+          type: "INCOME",
+          userId: USER,
+        }),
       );
 
       await expect(
@@ -477,13 +563,24 @@ describe("BudgetService", () => {
     const list = (budgets: Budget[]) =>
       budgetRepo.getAllByUserId.mockResolvedValue({
         data: budgets,
-        pagination: { limit: 20, offset: 0, total: budgets.length, hasMore: false, nextCursor: null },
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: budgets.length,
+          hasMore: false,
+          nextCursor: null,
+        },
       });
 
     it("hides an expired CUSTOM budget from the default listing", async () => {
       list([expiredCustom(), makeBudget()]);
 
-      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+      const result = await service.getBudgets(
+        USER,
+        { limit: 20, offset: 0 },
+        {},
+        CTX,
+      );
 
       expect(result.data).toHaveLength(1);
       expect(result.data[0].periodType).toBe("MONTHLY");
@@ -537,7 +634,12 @@ describe("BudgetService", () => {
         }),
       ]);
 
-      const result = await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+      const result = await service.getBudgets(
+        USER,
+        { limit: 20, offset: 0 },
+        {},
+        CTX,
+      );
 
       expect(result.data).toHaveLength(1);
       expect(result.data[0].expired).toBe(false);

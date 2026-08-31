@@ -69,7 +69,11 @@ export function resolvePeriod(
 
   const start = ref.startOf(unit);
   const end = start.plus({ [`${unit}s`]: 1 });
-  return { from: start.toJSDate(), to: end.toJSDate(), key: periodKey(period.type, start) };
+  return {
+    from: start.toJSDate(),
+    to: end.toJSDate(),
+    key: periodKey(period.type, start),
+  };
 }
 
 function periodKey(type: BudgetPeriodType, start: DateTime): string {

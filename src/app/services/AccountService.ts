@@ -1,5 +1,8 @@
 import { Account } from "../../domain/entities/Account";
-import { AccountFilters, IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import {
+  AccountFilters,
+  IAccountRepository,
+} from "../../domain/repositories/account/IAccountRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { ApiError } from "../../shared/errors";

@@ -55,10 +55,7 @@ export class AuthController {
   };
 
   static revokeSession = async (req: Request, res: Response) => {
-    await authService.revokeSession(
-      req.user!.userId,
-      req.params.id as string,
-    );
+    await authService.revokeSession(req.user!.userId, req.params.id as string);
     res.status(200).json({ message: "Session revoked" });
   };
 }

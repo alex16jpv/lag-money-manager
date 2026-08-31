@@ -1,5 +1,8 @@
 import { Category } from "../../domain/entities/Category";
-import { CategoryFilters, ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import {
+  CategoryFilters,
+  ICategoryRepository,
+} from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
 import { ApiError } from "../../shared/errors";
@@ -38,7 +41,9 @@ export class CategoryService {
   }
 
   async createCategory(dto: CreateCategoryDTO): Promise<Category> {
-    if ((await this.repo.countByUserId(dto.userId)) >= MAX_CATEGORIES_PER_USER) {
+    if (
+      (await this.repo.countByUserId(dto.userId)) >= MAX_CATEGORIES_PER_USER
+    ) {
       throw new ApiError(
         "BadRequest",
         `Category limit reached (${MAX_CATEGORIES_PER_USER})`,

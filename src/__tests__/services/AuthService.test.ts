@@ -46,7 +46,9 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   delete: jest.fn(),
 });
 
-const createMockCategoryService = (): jest.Mocked<Pick<CategoryService, "seedDefaultCategories">> => ({
+const createMockCategoryService = (): jest.Mocked<
+  Pick<CategoryService, "seedDefaultCategories">
+> => ({
   seedDefaultCategories: jest.fn().mockResolvedValue([]),
 });
 
@@ -63,7 +65,9 @@ const createMockSessionRepo = (): jest.Mocked<IRefreshSessionRepository> => ({
 describe("AuthService", () => {
   let service: AuthService;
   let repo: jest.Mocked<IUserRepository>;
-  let categoryService: jest.Mocked<Pick<CategoryService, "seedDefaultCategories">>;
+  let categoryService: jest.Mocked<
+    Pick<CategoryService, "seedDefaultCategories">
+  >;
   let sessions: jest.Mocked<IRefreshSessionRepository>;
 
   beforeEach(() => {
@@ -322,9 +326,7 @@ describe("AuthService", () => {
     it("rejects a refresh token whose tokenVersion is stale (revoked)", async () => {
       repo.getById.mockResolvedValue(user); // current tokenVersion = 2
 
-      await expect(service.refresh(signRefresh(1))).rejects.toThrow(
-        "revoked",
-      );
+      await expect(service.refresh(signRefresh(1))).rejects.toThrow("revoked");
     });
 
     it("rejects an access token used as a refresh token", async () => {
@@ -402,8 +404,13 @@ describe("AuthService", () => {
 
     it("revokes an owned session and 404s a foreign one", async () => {
       sessions.revokeFamilyForUser.mockResolvedValue(true);
-      await expect(service.revokeSession("user-1", "fam-1")).resolves.toBeUndefined();
-      expect(sessions.revokeFamilyForUser).toHaveBeenCalledWith("user-1", "fam-1");
+      await expect(
+        service.revokeSession("user-1", "fam-1"),
+      ).resolves.toBeUndefined();
+      expect(sessions.revokeFamilyForUser).toHaveBeenCalledWith(
+        "user-1",
+        "fam-1",
+      );
 
       sessions.revokeFamilyForUser.mockResolvedValue(false);
       await expect(service.revokeSession("user-1", "fam-2")).rejects.toThrow(

@@ -1,13 +1,13 @@
-import serverlessExpress from '@codegenie/serverless-express';
-import type { APIGatewayProxyEvent, Context } from 'aws-lambda';
+import serverlessExpress from "@codegenie/serverless-express";
+import type { APIGatewayProxyEvent, Context } from "aws-lambda";
 
-import app from './app';
-import { pingDatabase } from './config/dbHealth';
-import { IS_LAMBDA } from './shared/constants';
+import app from "./app";
+import { pingDatabase } from "./config/dbHealth";
+import { IS_LAMBDA } from "./shared/constants";
 
 const serverlessApp = serverlessExpress({ app });
 
-export const KEEPALIVE_EVENT_SOURCE = 'lag.keepalive';
+export const KEEPALIVE_EVENT_SOURCE = "lag.keepalive";
 
 type KeepaliveEvent = { source?: string };
 

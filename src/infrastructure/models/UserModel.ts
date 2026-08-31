@@ -22,7 +22,13 @@ const UserSchema = new Schema<IUserDocument>(
   {
     _id: { type: String, required: true },
     name: { type: String, required: true },
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
     password: { type: String, required: true },
     tokenVersion: { type: Number, required: true, default: 0 },
     timezone: { type: String, required: true, default: DEFAULT_TIMEZONE },

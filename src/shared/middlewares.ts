@@ -24,6 +24,33 @@ interface MongoServerError extends Error {
   keyValue?: Record<string, unknown>;
 }
 
+// body-parser rejects a malformed or oversized body before any route runs.
+// Its errors carry their own 4xx status, which must not be reported as a 500:
+// the client sent something wrong, the server did not break.
+interface BodyParserError extends Error {
+  type: string;
+  statusCode: number;
+  expose: boolean;
+}
+
+const BODY_PARSER_CODES: Record<string, string> = {
+  "entity.parse.failed": "MALFORMED_JSON",
+  "entity.too.large": "PAYLOAD_TOO_LARGE",
+  "encoding.unsupported": "UNSUPPORTED_ENCODING",
+  "request.aborted": "REQUEST_ABORTED",
+};
+
+function asBodyParserError(error: Error): BodyParserError | null {
+  const candidate = error as Partial<BodyParserError>;
+  return typeof candidate.type === "string" &&
+    candidate.expose === true &&
+    typeof candidate.statusCode === "number" &&
+    candidate.statusCode >= 400 &&
+    candidate.statusCode < 500
+    ? (error as BodyParserError)
+    : null;
+}
+
 export const errorMiddleware = (
   error: Error,
   req: Request,
@@ -95,6 +122,21 @@ export const errorMiddleware = (
       error: "ServiceUnavailableError",
       message: "Database connection unavailable, please try again later",
       code: "DB_UNAVAILABLE",
+    });
+    return;
+  }
+
+  const bodyError = asBodyParserError(error);
+  if (bodyError) {
+    const code = BODY_PARSER_CODES[bodyError.type] ?? "BAD_REQUEST";
+    logWhy(code, bodyError.message);
+    res.status(bodyError.statusCode).json({
+      error: "BadRequestError",
+      message:
+        code === "MALFORMED_JSON"
+          ? "Request body is not valid JSON"
+          : bodyError.message,
+      code,
     });
     return;
   }

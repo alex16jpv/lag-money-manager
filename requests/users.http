@@ -12,6 +12,8 @@ Content-Type: application/json
 
 { "email": "{{email}}", "password": "{{password}}" }
 
+###
+
 @token = {{login.response.body.accessToken}}
 @userId = {{login.response.body.user.id}}
 

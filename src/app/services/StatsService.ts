@@ -12,10 +12,8 @@ export class StatsService {
     userId: string,
     query: SpendingQuery,
   ): Promise<{ groupBy: string; buckets: SpendingBucket[]; total: number }> {
-    const { buckets, totalCents } = await this.transactionRepo.aggregateSpending(
-      userId,
-      query,
-    );
+    const { buckets, totalCents } =
+      await this.transactionRepo.aggregateSpending(userId, query);
     return { groupBy: query.groupBy, buckets, total: fromCents(totalCents) };
   }
 }
