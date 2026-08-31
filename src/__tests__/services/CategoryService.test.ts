@@ -235,6 +235,29 @@ describe("CategoryService", () => {
       );
     });
 
+    it("resolves when a concurrent archive wins the race (idempotent)", async () => {
+      repo.getByIdIncludingArchived
+        .mockResolvedValueOnce(mockCategory)
+        .mockResolvedValueOnce(
+          new Category({
+            id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            name: "Food",
+            userId: testUserId,
+            archivedAt: new Date(),
+          }),
+        );
+      repo.delete.mockRejectedValue(
+        new ApiError("NotFound", "Category not found"),
+      );
+
+      await expect(
+        service.deleteCategory(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          testUserId,
+        ),
+      ).resolves.toBeUndefined();
+    });
+
     it("should throw NotFound when archiving non-existent category", async () => {
       repo.getByIdIncludingArchived.mockResolvedValue(null);
 

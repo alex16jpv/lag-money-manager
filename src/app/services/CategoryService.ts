@@ -98,8 +98,16 @@ export class CategoryService {
     if (existing.archivedAt) {
       return;
     }
-
-    return await this.repo.delete(id);
+    try {
+      await this.repo.delete(id);
+    } catch (err) {
+      // Lost the race to a concurrent archive: still a success.
+      const current = await this.repo.getByIdIncludingArchived(id);
+      if (current?.userId === userId && current.archivedAt) {
+        return;
+      }
+      throw err;
+    }
   }
 
   // Idempotent: restoring an already-active category returns it unchanged.

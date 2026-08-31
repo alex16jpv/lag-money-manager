@@ -351,6 +351,22 @@ describe("AccountService", () => {
       ).rejects.toThrow("Cannot archive the default account");
     });
 
+    it("resolves when a concurrent archive wins the race (idempotent)", async () => {
+      repo.getByIdIncludingArchived
+        .mockResolvedValueOnce(mockAccount)
+        .mockResolvedValueOnce(
+          new Account({ ...validAccountProps, archivedAt: new Date() }),
+        );
+      repo.archiveNonDefault.mockResolvedValue(false);
+
+      await expect(
+        service.deleteAccount(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          validAccountProps.userId,
+        ),
+      ).resolves.toBeUndefined();
+    });
+
     it("should throw NotFound when archiving non-existent account", async () => {
       repo.getByIdIncludingArchived.mockResolvedValue(null);
 
