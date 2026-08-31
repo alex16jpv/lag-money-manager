@@ -74,6 +74,12 @@ export class AccountService {
     if (existing.userId !== userId) {
       throw new ApiError("Forbidden", "Access denied");
     }
+    if (existing.isDefault) {
+      throw new ApiError(
+        "BadRequest",
+        "Cannot archive the default account; set another account as default first",
+      );
+    }
 
     return await this.repo.delete(id);
   }

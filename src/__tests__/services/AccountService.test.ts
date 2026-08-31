@@ -280,6 +280,20 @@ describe("AccountService", () => {
   });
 
   describe("deleteAccount (archive)", () => {
+    it("rejects archiving the default account [R2-03]", async () => {
+      repo.getById.mockResolvedValue(
+        new Account({ ...validAccountProps, isDefault: true }),
+      );
+
+      await expect(
+        service.deleteAccount(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          validAccountProps.userId,
+        ),
+      ).rejects.toThrow("Cannot archive the default account");
+      expect(repo.delete).not.toHaveBeenCalled();
+    });
+
     it("should archive an account (even when it has transactions)", async () => {
       repo.getById.mockResolvedValue(mockAccount);
       repo.delete.mockResolvedValue();
