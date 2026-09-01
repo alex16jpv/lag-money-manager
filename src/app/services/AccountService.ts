@@ -5,6 +5,7 @@ import {
 } from "../../domain/repositories/account/IAccountRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
+import { assertAmountPrecision } from "../../shared/money";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
@@ -48,10 +49,12 @@ export class AccountService {
     // Mono-currency mode: stamped from the owner (fresh read — the currency
     // is only editable while the user has no accounts, so this is exact).
     const owner = await this.userRepo.getById(dto.userId);
+    const currency = owner?.currency ?? DEFAULT_CURRENCY;
+    assertAmountPrecision(dto.balance, currency, "balance");
     const account = new Account({
       ...dto,
       isDefault: count === 0,
-      currency: owner?.currency ?? DEFAULT_CURRENCY,
+      currency,
     });
     return new Account(await this.repo.create(account));
   }

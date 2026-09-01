@@ -1,7 +1,8 @@
 import { v7 as uuidv7 } from "uuid";
 
 import { TransactionSource, TransactionType } from "../../shared/constants";
-import { MAX_AMOUNT } from "../../shared/money";
+import { currencyDecimals } from "../../shared/currency";
+import { hasValidPrecision, MAX_AMOUNT } from "../../shared/money";
 import { DomainValidationError } from "../errors";
 
 export interface TransactionProps {
@@ -61,6 +62,26 @@ export class Transaction {
     this.updatedAt = props.updatedAt ?? new Date();
   }
 
+  /**
+   * Zod caps every amount at 2 decimals; currencies with no minor unit
+   * (JPY, CLP, KRW...) need the stricter rule. Separate from assertValid
+   * because the currency is stamped from the account, which the service only
+   * reads later — at creation time this is a no-op and the service calls it
+   * again once the currency is known.
+   */
+  assertValidPrecision(): void {
+    const decimals = currencyDecimals(this.currency);
+    if (!hasValidPrecision(this.amount, decimals)) {
+      throw new DomainValidationError(
+        decimals === 0
+          ? `${this.currency} amounts cannot have decimals`
+          : `Amount must have at most ${decimals} decimal places`,
+        "amount",
+        "AMOUNT_PRECISION",
+      );
+    }
+  }
+
   // Called on create and on the update merge so a partial update can't leave an
   // inconsistent shape.
   assertValid(): void {
@@ -85,6 +106,7 @@ export class Transaction {
         "amount",
       );
     }
+    this.assertValidPrecision();
     if (this.type === "EXPENSE") {
       if (!this.fromAccountId) {
         throw new DomainValidationError(

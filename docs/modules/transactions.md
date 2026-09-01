@@ -318,7 +318,7 @@ Monetary edits keep a pre-update snapshot in the document's `revisions[]` array:
 
 ## Money Representation
 
-The API speaks **decimals** (max 2 decimal places, capped at `MAX_AMOUNT`); MongoDB stores **integer cents**. `TransactionRepository` converts at the persistence boundary, and integer storage is what keeps the `$inc` balance updates exact.
+The API speaks **decimals** (capped at `MAX_AMOUNT`); MongoDB stores **integer cents**. How many decimals an amount may carry depends on the currency: two for most, **zero** for currencies with no minor unit (JPY, CLP, KRW, VND...), which reject `¥1000.50` with **400 `AMOUNT_PRECISION`**. The three-decimal ISO currencies (KWD, BHD, JOD) are capped at two — integer-cent storage cannot hold a third decimal, and rejecting it beats rounding it away silently. `TransactionRepository` converts at the persistence boundary, and integer storage is what keeps the `$inc` balance updates exact.
 
 ## How to Extend
 

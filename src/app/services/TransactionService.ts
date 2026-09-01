@@ -327,6 +327,12 @@ export class TransactionService {
           );
         }
         transaction.currency = transaction.currency ?? account.currency;
+        // The currency is only known here, once the account is read, so this
+        // is the first point where the minor-unit rule can be applied. Only
+        // when applying: a reversal replays an amount already validated.
+        if (direction === 1) {
+          transaction.assertValidPrecision();
+        }
       }
 
       const applied = await this.accountRepo.incrementBalance(

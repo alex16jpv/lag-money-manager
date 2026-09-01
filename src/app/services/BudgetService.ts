@@ -7,6 +7,7 @@ import { ICategoryRepository } from "../../domain/repositories/category/ICategor
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
+import { assertAmountPrecision } from "../../shared/money";
 import { resolvePeriod } from "../../shared/budgetPeriod";
 import { ApiError } from "../../shared/errors";
 import { fromCents } from "../../shared/money";
@@ -74,9 +75,9 @@ export class BudgetService {
     );
     // Mono-currency mode: stamped from the owner at creation.
     const owner = await this.userRepo.getById(dto.userId);
-    const created = await this.repo.create(
-      new Budget({ ...dto, currency: owner?.currency ?? DEFAULT_CURRENCY }),
-    );
+    const currency = owner?.currency ?? DEFAULT_CURRENCY;
+    assertAmountPrecision(dto.amount, currency, "amount");
+    const created = await this.repo.create(new Budget({ ...dto, currency }));
     const [view] = await this.toViews(dto.userId, [created], ctx);
     return view;
   }
@@ -177,6 +178,11 @@ export class BudgetService {
   ): Promise<BudgetView> {
     const budget = await this.getOwned(id, userId);
     this.assertWritable(budget);
+    assertAmountPrecision(
+      amount,
+      budget.currency ?? DEFAULT_CURRENCY,
+      "amount",
+    );
     const { key } = resolvePeriod(
       this.periodDef(budget),
       ctx.reference,
