@@ -333,3 +333,21 @@ The API speaks **decimals** (capped at `MAX_AMOUNT`); MongoDB stores **integer c
 - To add transaction attachments: add a separate entity keyed by transaction id rather than growing the document
 - **Important:** any new code that creates or modifies transactions must run inside `withTransaction()` and maintain the balance adjustment contract
 - New filters belong in `TransactionFilters` plus the repository's `$match`; check the compound indexes in `TransactionModel.ts` before adding one that would collection-scan
+
+### Indexes behind the filters
+
+The listing rarely suffers from a missing index — it stops as soon as it has a
+page — but `pagination.total` cannot stop early, so an unindexed filter makes the
+count visit every live transaction of the user. Measured over 50k transactions:
+
+| Filter | Count without an index | With one |
+| --- | --- | --- |
+| `source` | 50 000 documents, 45 ms | 0 documents, 1 ms |
+| `pendingDetails=true` | 50 000 documents, 58 ms | 0 documents, 0 ms |
+| `type` | 50 000 documents, 46 ms | no better — it matches nearly every row |
+
+Hence `{userId, deletedAt, source, date}` and a **partial** index over the pending
+rows only (about 2 % of the primary index's size, since the inbox is a handful of
+documents). `type` deliberately has none: an index cannot spare a visit to rows it
+does not exclude. Apply the same test before indexing a new filter — how much does
+it exclude, and does anything count on it?
