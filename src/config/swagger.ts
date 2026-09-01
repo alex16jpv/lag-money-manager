@@ -109,6 +109,7 @@ const responseViews = {
       email: { type: "string", format: "email" },
       timezone: { type: "string", example: "America/Bogota" },
       currency: { type: "string", example: "COP" },
+      locale: { type: "string", enum: ["en", "es"], example: "en" },
       lastLoginAt: nullableDateTime,
       createdAt: dateTime,
       updatedAt: dateTime,
@@ -161,7 +162,12 @@ const responseViews = {
     properties: {
       id: uuid,
       name: { type: "string" },
-      emoji: { type: "string" },
+      icon: {
+        type: "string",
+        nullable: true,
+        description: "Lucide icon key from the curated CATEGORY_ICONS set",
+        example: "utensils",
+      },
       color: { ...enumOf(COLORS), nullable: true },
       type: { ...enumOf(CATEGORY_TYPES), nullable: true },
       userId: uuid,

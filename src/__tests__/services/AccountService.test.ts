@@ -38,6 +38,7 @@ jest.mock("../../shared/constants", () => ({
     BLACK: "BLACK",
   },
   DB_TYPES: { MONGO: "MONGO" },
+  TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",

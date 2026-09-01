@@ -55,6 +55,7 @@ Results are sorted by `date` descending. For infinite scroll use cursor paginati
 | `categoryId`     | string | No       | Filter by category ID                                                          |
 | `uncategorized`  | enum   | No       | `"true"` returns only transactions without a category. Rejected with `categoryId`. |
 | `pendingDetails` | enum   | No       | Filter by the `pendingDetails` flag (`"true"` = quick-adds awaiting detailing) |
+| `source`         | enum   | No       | `MANUAL`, `QUICK` or `IMPORT` — only transactions created through that channel |
 | `from`           | string | No       | Start of the date range, inclusive (half-open `[from, to)`)                   |
 | `to`             | string | No       | End of the date range, exclusive                                              |
 | `tag`            | string | No       | Only transactions carrying this tag (tags are stored trimmed and lowercased)  |

@@ -20,6 +20,7 @@ export class UserService {
       email: user.email,
       timezone: user.timezone,
       currency: user.currency,
+      locale: user.locale,
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

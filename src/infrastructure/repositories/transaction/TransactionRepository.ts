@@ -149,6 +149,9 @@ export class TransactionRepository implements ITransactionRepository {
     if (filters?.pendingDetails !== undefined) {
       filter.pendingDetails = filters.pendingDetails;
     }
+    if (filters?.source) {
+      filter.source = filters.source;
+    }
     if (filters?.from || filters?.to) {
       const range: Record<string, Date> = {};
       if (filters.from) range.$gte = filters.from;

@@ -144,6 +144,7 @@ jest.mock("../../shared/constants", () => ({
     BROWN: "BROWN",
     BLACK: "BLACK",
   },
+  TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
@@ -248,7 +249,7 @@ const testAccount = new Account({
 const testCategory = new Category({
   id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
   name: "Food",
-  emoji: "🍔",
+  icon: "utensils",
   userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
 });
 
@@ -751,7 +752,7 @@ describe("Integration Tests", () => {
       const res = await request(app)
         .post("/categories")
         .set("Authorization", `Bearer ${token}`)
-        .send({ name: "Food", emoji: "🍔" });
+        .send({ name: "Food", icon: "utensils" });
 
       expect(res.status).toBe(201);
     });
@@ -794,7 +795,7 @@ describe("Integration Tests", () => {
       const updated = new Category({
         id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
         name: "Transport",
-        emoji: "🚌",
+        icon: "bus",
         userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       });
       mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
@@ -803,11 +804,11 @@ describe("Integration Tests", () => {
       const res = await request(app)
         .put("/categories/019576a0-d7b6-7d6d-af6a-2b7545f5ac73")
         .set("Authorization", `Bearer ${token}`)
-        .send({ name: "Transport", emoji: "🚌" });
+        .send({ name: "Transport", icon: "bus" });
 
       expect(res.status).toBe(200);
       expect(res.body.name).toBe("Transport");
-      expect(res.body.emoji).toBe("🚌");
+      expect(res.body.icon).toBe("bus");
     });
   });
 
@@ -839,6 +840,32 @@ describe("Integration Tests", () => {
 
   // ==================== Transaction Routes ====================
   describe("GET /transactions", () => {
+    it("passes the source filter through to the repository", async () => {
+      mockTransactionRepo.getAllByUserId.mockResolvedValue({
+        data: [],
+        pagination: { limit: 20, offset: 0, total: 0, hasMore: false, nextCursor: null },
+      });
+
+      const res = await request(app)
+        .get("/transactions?source=QUICK")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(mockTransactionRepo.getAllByUserId).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        expect.anything(),
+        expect.objectContaining({ source: "QUICK" }),
+      );
+    });
+
+    it("rejects an unknown source", async () => {
+      const res = await request(app)
+        .get("/transactions?source=SMS")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+    });
+
     it("should return transactions for the authenticated user", async () => {
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [testTransaction],

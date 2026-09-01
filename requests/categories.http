@@ -25,13 +25,13 @@ Authorization: Bearer {{token}}
 GET {{baseUrl}}/categories?type=EXPENSE
 Authorization: Bearer {{token}}
 
-### Crear categoría (éxito) — emoji admite secuencias ZWJ (👨‍👩‍👧‍👦)
+### Crear categoría (éxito) — icon es una clave Lucide del set curado (shared/icons.ts)
 # @name createCat
 POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "Café {{$randomInt 100 999}}", "emoji": "☕", "color": "BROWN", "type": "EXPENSE" }
+{ "name": "Café {{$randomInt 100 999}}", "icon": "coffee", "color": "BROWN", "type": "EXPENSE" }
 
 ###
 
@@ -41,7 +41,7 @@ Content-Type: application/json
 GET {{baseUrl}}/categories/{{catId}}
 Authorization: Bearer {{token}}
 
-### Update (éxito) — nombre/color/emoji; el TYPE solo si no tiene transacciones
+### Update (éxito) — nombre/color/icon; el TYPE solo si no tiene transacciones
 PUT {{baseUrl}}/categories/{{catId}}
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -117,4 +117,4 @@ POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "emoji": "X" }
+{ "icon": "coffee" }

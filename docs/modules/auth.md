@@ -41,7 +41,8 @@ Register a new user. **Register also logs in** — the response already carries 
   "email": "john@example.com",
   "password": "password123",
   "timezone": "America/Bogota",
-  "currency": "COP"
+  "currency": "COP",
+  "locale": "en"
 }
 ```
 
@@ -49,6 +50,7 @@ Register a new user. **Register also logs in** — the response already carries 
 - `email` — normalized (trimmed + lowercased), so `John@X.com` and `john@x.com` are the same account.
 - `timezone` — optional IANA zone; drives day and period boundaries for stats and budgets. Defaults to `America/Bogota`.
 - `currency` — optional ISO 4217 alpha code; defaults to `COP`. It is the user's single money currency and locks once they have accounts.
+- `locale` — optional UI language, `en` (default) or `es`.
 
 **Response (201):**
 
@@ -62,6 +64,7 @@ Register a new user. **Register also logs in** — the response already carries 
     "email": "john@example.com",
     "timezone": "America/Bogota",
     "currency": "COP",
+    "locale": "en",
     "lastLoginAt": "2026-08-31T...",
     "createdAt": "2026-08-31T...",
     "updatedAt": "2026-08-31T..."
@@ -134,13 +137,13 @@ sequenceDiagram
     participant SESS as RefreshSessionRepository
 
     alt Registration
-        C->>V: POST /auth/register { name, email, password, timezone?, currency? }
+        C->>V: POST /auth/register { name, email, password, timezone?, currency?, locale? }
         V->>CTRL: Validated data (email normalized)
         CTRL->>SVC: register(dto, userAgent)
         SVC->>SVC: Hash password (bcryptjs)
         SVC->>REPO: getDeletedByEmail(email)
         alt Soft-deleted account exists
-            SVC->>REPO: reactivate(id, { name, password, timezone? })
+            SVC->>REPO: reactivate(id, { name, password, timezone?, locale? })
             Note over SVC: user.reactivated = true, currency kept
         else New user
             SVC->>REPO: create(user)
@@ -246,7 +249,7 @@ Login is limited on two dimensions because a distributed attack on one account r
 
 | Error / code                 | Status | Condition                                                                       |
 | ---------------------------- | ------ | ------------------------------------------------------------------------------- |
-| `VALIDATION`                 | 400    | Invalid email format, password shorter than 8 chars, invalid timezone/currency   |
+| `VALIDATION`                 | 400    | Invalid email format, password shorter than 8 chars, invalid timezone/currency/locale   |
 | `Unauthorized`               | 401    | Invalid email or password on login (uniform for unknown email and wrong password) |
 | `REFRESH_INVALID`            | 401    | Refresh token malformed, expired, or its `jti` is unknown                        |
 | `REFRESH_REVOKED`            | 401    | Reuse of a rotated token, or the token predates a logout-all / credential change  |

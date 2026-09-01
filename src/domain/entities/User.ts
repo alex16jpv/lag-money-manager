@@ -1,6 +1,7 @@
 import { v7 as uuidv7 } from "uuid";
 
 import { DEFAULT_CURRENCY } from "../../shared/currency";
+import { DEFAULT_LOCALE, Locale } from "../../shared/locale";
 import { DEFAULT_TIMEZONE } from "../../shared/timezone";
 
 export interface UserProps {
@@ -15,6 +16,8 @@ export interface UserProps {
   // ISO 4217; the user's (single, for now) money currency. Locked once the
   // user has accounts — changing it with history arrives with multi-currency.
   currency?: string;
+  // UI language (en | es). Follows the user across devices.
+  locale?: Locale;
   // Last session open (login/register); impossible to reconstruct later.
   lastLoginAt?: Date | null;
   createdAt?: Date;
@@ -29,6 +32,7 @@ export class User {
   tokenVersion: number;
   timezone: string;
   currency: string;
+  locale: Locale;
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -41,6 +45,7 @@ export class User {
     tokenVersion,
     timezone,
     currency,
+    locale,
     lastLoginAt,
     createdAt,
     updatedAt,
@@ -52,6 +57,7 @@ export class User {
     this.tokenVersion = tokenVersion ?? 0;
     this.timezone = timezone ?? DEFAULT_TIMEZONE;
     this.currency = currency ?? DEFAULT_CURRENCY;
+    this.locale = locale ?? DEFAULT_LOCALE;
     this.lastLoginAt = lastLoginAt ?? null;
     this.createdAt = createdAt ?? new Date();
     this.updatedAt = updatedAt ?? new Date();

@@ -6,16 +6,20 @@ import {
   BUDGET_TYPES,
   CATEGORY_TYPES,
   COLORS,
+  TRANSACTION_SOURCES,
   TRANSACTION_TYPES,
+  TransactionSource,
 } from "../../shared/constants";
+import { CATEGORY_ICONS } from "../../shared/icons";
+import { Locale, LOCALES } from "../../shared/locale";
 import { MAX_AMOUNT } from "../../shared/money";
+import { MAX_LIMIT } from "../../shared/pagination";
 import { isValidTimeZone } from "../../shared/timezone";
 
 const timezoneField = z
   .string()
   .refine(isValidTimeZone, "Invalid IANA timezone")
   .optional();
-import { MAX_LIMIT } from "../../shared/pagination";
 
 // Money is decimal in the API but stored as integer cents, so amounts must
 // have at most 2 decimals and stay within a sane bound (rejects 10.555 and 1e300).
@@ -38,6 +42,10 @@ const transactionTypeValues = Object.keys(TRANSACTION_TYPES) as [
   string,
   ...string[],
 ];
+const transactionSourceValues = Object.keys(TRANSACTION_SOURCES) as [
+  TransactionSource,
+  ...TransactionSource[],
+];
 const categoryTypeValues = Object.keys(CATEGORY_TYPES) as [string, ...string[]];
 const colorValues = Object.keys(COLORS) as [string, ...string[]];
 const budgetPeriodValues = Object.keys(BUDGET_PERIOD_TYPES) as [
@@ -58,6 +66,13 @@ const normalizedTags = z
   .transform((tags) => [
     ...new Set(tags.map((t) => t.trim().toLowerCase()).filter(Boolean)),
   ])
+  .optional();
+
+const localeValues = Object.keys(LOCALES) as [Locale, ...Locale[]];
+const localeField = z
+  .enum(localeValues, {
+    error: `Invalid locale. Available: ${localeValues.join(", ")}`,
+  })
   .optional();
 
 const currencyField = z
@@ -141,6 +156,11 @@ export const getTransactionsSchema = z.object({
         })
         .optional(),
       pendingDetails: z.enum(["true", "false"]).optional(),
+      source: z
+        .enum(transactionSourceValues, {
+          error: `Invalid source. Available: ${transactionSourceValues.join(", ")}`,
+        })
+        .optional(),
       uncategorized: z.enum(["true", "false"]).optional(),
       from: z
         .string()
@@ -215,6 +235,7 @@ export const updateUserSchema = z.object({
       currentPassword: z.string().min(1).max(128).optional(),
       timezone: timezoneField,
       currency: currencyField,
+      locale: localeField,
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {
       message: "At least one field must be provided",
@@ -267,7 +288,11 @@ export const updateAccountSchema = z.object({
 export const createCategorySchema = z.object({
   body: z.object({
     name: z.string().min(1, "Name is required").max(255),
-    emoji: z.string().max(16, "Emoji must be at most 16 characters").optional(),
+    icon: z
+      .enum(CATEGORY_ICONS, {
+        error: "Invalid icon. Must be one of the curated category icons",
+      })
+      .optional(),
     color: z
       .enum(colorValues, {
         error: `Invalid color. Available: ${colorValues.join(", ")}`,
@@ -288,10 +313,12 @@ export const updateCategorySchema = z.object({
   body: z
     .object({
       name: z.string().min(1).max(255).optional(),
-      emoji: z
-        .string()
-        .max(16, "Emoji must be at most 16 characters")
-        .optional(),
+      icon: z
+        .enum(CATEGORY_ICONS, {
+          error: "Invalid icon. Must be one of the curated category icons",
+        })
+        .optional()
+        .nullable(),
       color: z
         .enum(colorValues, {
           error: `Invalid color. Available: ${colorValues.join(", ")}`,
@@ -448,6 +475,7 @@ export const registerSchema = z.object({
       .max(128),
     timezone: timezoneField,
     currency: currencyField,
+    locale: localeField,
   }),
 });
 

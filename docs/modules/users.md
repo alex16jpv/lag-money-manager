@@ -8,6 +8,7 @@ Beyond name/email/password, the profile carries two settings that shape the rest
 
 - **`timezone`** — IANA zone; drives day boundaries in stats and period windows in budgets. Also embedded as a claim in the access token.
 - **`currency`** — ISO 4217 alpha code; the user's single money currency, stamped onto accounts, transactions, and budgets. **Locked once the user has accounts.**
+- **`locale`** — UI language, `en` (default) or `es`. Purely a preference the front reads to pick copy and `Intl` formatting; it follows the user across devices.
 
 ## Files and Responsibilities
 
@@ -37,11 +38,11 @@ Beyond name/email/password, the profile carries two settings that shape the rest
 
 ### `GET /users/:id`
 
-Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `email`, `timezone`, `currency`, `lastLoginAt`, `createdAt`, `updatedAt`. The password is never returned.
+Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `email`, `timezone`, `currency`, `locale`, `lastLoginAt`, `createdAt`, `updatedAt`. The password is never returned.
 
 ### `PUT /users/:id`
 
-Update the profile. Partial updates over `name`, `email`, `password`, `timezone`, `currency`; at least one field must be present.
+Update the profile. Partial updates over `name`, `email`, `password`, `timezone`, `currency`, `locale`; at least one field must be present.
 
 **Changing `email` or `password` requires `currentPassword`** in the same request. This is re-authentication: a hijacked access token (valid for up to 15 minutes) must not be able to take over the account by swapping the credentials. On success, the user's `tokenVersion` is bumped atomically, so **every refresh token is revoked** and other devices must log in again.
 

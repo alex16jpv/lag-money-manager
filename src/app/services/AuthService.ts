@@ -46,6 +46,7 @@ export class AuthService {
       email: user.email,
       timezone: user.timezone,
       currency: user.currency,
+      locale: user.locale,
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
@@ -123,6 +124,7 @@ export class AuthService {
           name: dto.name,
           password: hashedPassword,
           ...(dto.timezone ? { timezone: dto.timezone } : {}),
+          ...(dto.locale ? { locale: dto.locale } : {}),
         });
         const tokens = await this.openSession(reactivated, userAgent);
         return {

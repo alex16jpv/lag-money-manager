@@ -1,11 +1,13 @@
 import { v7 as uuidv7 } from "uuid";
 
 import { CategoryType, Color } from "../../shared/constants";
+import { CategoryIcon } from "../../shared/icons";
 
 export interface CategoryProps {
   id?: string;
   name: string;
-  emoji?: string;
+  // Lucide key from CATEGORY_ICONS (replaced the free-text emoji, 2026-09).
+  icon?: CategoryIcon;
   color?: Color;
   type?: CategoryType;
   userId: string;
@@ -19,7 +21,7 @@ export interface CategoryProps {
 export class Category {
   id: string;
   name: string;
-  emoji?: string;
+  icon?: CategoryIcon;
   color?: Color;
   type?: CategoryType;
   userId: string;
@@ -31,7 +33,7 @@ export class Category {
   constructor({
     id,
     name,
-    emoji,
+    icon,
     color,
     type,
     userId,
@@ -42,7 +44,7 @@ export class Category {
   }: CategoryProps) {
     this.id = id ?? uuidv7();
     this.name = name;
-    this.emoji = emoji;
+    this.icon = icon;
     this.color = color;
     this.type = type;
     this.userId = userId;

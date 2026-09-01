@@ -18,7 +18,7 @@ export class CategoryRepository implements ICategoryRepository {
     return new Category({
       id: doc._id,
       name: doc.name,
-      emoji: doc.emoji,
+      icon: doc.icon,
       color: doc.color,
       type: doc.type,
       userId: doc.userId,

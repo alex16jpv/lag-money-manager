@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from "uuid";
 import { User } from "../../../domain/entities/User";
 import { IUserRepository } from "../../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../../shared/errors";
+import { Locale } from "../../../shared/locale";
 import {
   buildPaginatedResult,
   PaginatedResult,
@@ -19,6 +20,7 @@ export class UserRepository implements IUserRepository {
     tokenVersion?: number;
     timezone?: string;
     currency?: string;
+    locale?: Locale;
     lastLoginAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
@@ -31,6 +33,7 @@ export class UserRepository implements IUserRepository {
       tokenVersion: doc.tokenVersion,
       timezone: doc.timezone,
       currency: doc.currency,
+      locale: doc.locale,
       lastLoginAt: doc.lastLoginAt,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
@@ -94,7 +97,8 @@ export class UserRepository implements IUserRepository {
 
   async reactivate(
     id: string,
-    updates: Pick<User, "name" | "password"> & Partial<Pick<User, "timezone">>,
+    updates: Pick<User, "name" | "password"> &
+      Partial<Pick<User, "timezone" | "locale">>,
   ): Promise<User> {
     // tokenVersion bump keeps any pre-deletion refresh tokens revoked.
     const doc = await UserModel.findOneAndUpdate(

@@ -1,8 +1,9 @@
 import { CategoryType, Color } from "./constants";
+import { CategoryIcon } from "./icons";
 
 interface DefaultCategory {
   name: string;
-  emoji: string;
+  icon: CategoryIcon;
   color: Color;
   type: CategoryType;
   // Stable identity: re-seed matches by seedKey, so renames don't duplicate.
@@ -14,21 +15,21 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   {
     seedKey: "salary",
     name: "Salary",
-    emoji: "💼",
+    icon: "briefcase",
     color: "GREEN",
     type: "INCOME",
   },
   {
     seedKey: "business",
     name: "Business",
-    emoji: "💰",
+    icon: "coins",
     color: "TEAL",
     type: "INCOME",
   },
   {
     seedKey: "other-income",
     name: "Other Income",
-    emoji: "➕",
+    icon: "circle-plus",
     color: "LIME",
     type: "INCOME",
   },
@@ -37,35 +38,35 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   {
     seedKey: "housing",
     name: "Housing",
-    emoji: "🏠",
+    icon: "house",
     color: "RED",
     type: "EXPENSE",
   },
   {
     seedKey: "food",
     name: "Food",
-    emoji: "🍽️",
+    icon: "utensils",
     color: "ORANGE",
     type: "EXPENSE",
   },
   {
     seedKey: "transportation",
     name: "Transportation",
-    emoji: "🚗",
+    icon: "car",
     color: "RED",
     type: "EXPENSE",
   },
   {
     seedKey: "bills-services",
     name: "Bills & Services",
-    emoji: "⚡",
+    icon: "zap",
     color: "AMBER",
     type: "EXPENSE",
   },
   {
     seedKey: "lifestyle",
     name: "Lifestyle",
-    emoji: "🛍️",
+    icon: "shopping-bag",
     color: "PURPLE",
     type: "EXPENSE",
   },
@@ -74,14 +75,14 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   {
     seedKey: "transfer",
     name: "Transfer",
-    emoji: "🔁",
+    icon: "repeat",
     color: "GRAY",
     type: "TRANSFER",
   },
   {
     seedKey: "credit-card-payment",
     name: "Credit Card Payment",
-    emoji: "💳",
+    icon: "credit-card",
     color: "GRAY",
     type: "TRANSFER",
   },

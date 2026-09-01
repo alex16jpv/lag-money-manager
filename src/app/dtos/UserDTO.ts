@@ -1,9 +1,12 @@
+import { Locale } from "../../shared/locale";
+
 export interface CreateUserDTO {
   name: string;
   email: string;
   password: string;
   timezone?: string;
   currency?: string;
+  locale?: Locale;
 }
 
 export interface UpdateUserDTO {
@@ -15,6 +18,7 @@ export interface UpdateUserDTO {
   currentPassword?: string;
   timezone?: string;
   currency?: string;
+  locale?: Locale;
 }
 
 export interface UserResponseDTO {
@@ -23,6 +27,7 @@ export interface UserResponseDTO {
   email: string;
   timezone: string;
   currency: string;
+  locale: Locale;
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

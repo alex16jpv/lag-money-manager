@@ -7,11 +7,12 @@ import {
   COLORS,
   MODEL_NAMES,
 } from "../../shared/constants";
+import { CATEGORY_ICONS, CategoryIcon } from "../../shared/icons";
 
 export interface ICategoryDocument {
   _id: string;
   name: string;
-  emoji?: string;
+  icon?: CategoryIcon;
   color?: Color;
   type?: CategoryType;
   userId: string;
@@ -25,7 +26,7 @@ const CategorySchema = new Schema<ICategoryDocument>(
   {
     _id: { type: String, required: true },
     name: { type: String, required: true },
-    emoji: { type: String, required: false },
+    icon: { type: String, required: false, enum: CATEGORY_ICONS },
     color: { type: String, required: false, enum: Object.keys(COLORS) },
     type: { type: String, required: false, enum: Object.keys(CATEGORY_TYPES) },
     userId: { type: String, required: true },

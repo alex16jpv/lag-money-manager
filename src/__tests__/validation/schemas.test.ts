@@ -38,6 +38,7 @@ jest.mock("../../shared/constants", () => ({
     BLACK: "BLACK",
   },
   DB_TYPES: { MONGO: "MONGO" },
+  TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
@@ -177,6 +178,20 @@ describe("Validation Schemas", () => {
         password: "password123",
       },
     };
+
+    it("should accept a supported locale", () => {
+      const result = registerSchema.safeParse({
+        body: { ...validRegister.body, locale: "es" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject an unsupported locale", () => {
+      const result = registerSchema.safeParse({
+        body: { ...validRegister.body, locale: "fr" },
+      });
+      expect(result.success).toBe(false);
+    });
 
     it("should accept valid registration data", () => {
       const result = registerSchema.safeParse(validRegister);
@@ -526,25 +541,27 @@ describe("Validation Schemas", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should accept valid category with emoji", () => {
+    it("should accept a curated icon key", () => {
       const result = createCategorySchema.safeParse({
-        body: { name: "Food", emoji: "🍔" },
+        body: { name: "Food", icon: "utensils" },
       });
       expect(result.success).toBe(true);
     });
 
-    it("should reject emoji exceeding 16 characters", () => {
+    it("should reject an icon outside the curated set", () => {
       const result = createCategorySchema.safeParse({
-        body: { name: "Food", emoji: "a".repeat(17) },
+        body: { name: "Food", icon: "not-an-icon" },
       });
       expect(result.success).toBe(false);
     });
 
-    it("should accept ZWJ emoji sequences (family emoji is 11 UTF-16 units)", () => {
+    it("should drop the legacy emoji field instead of storing it", () => {
       const result = createCategorySchema.safeParse({
-        body: { name: "Family", emoji: "👨‍👩‍👧‍👦" },
+        body: { name: "Food", emoji: "x" },
       });
       expect(result.success).toBe(true);
+      const body = (result.data as { body: Record<string, unknown> }).body;
+      expect(body).not.toHaveProperty("emoji");
     });
 
     it("should reject empty name", () => {
@@ -611,15 +628,23 @@ describe("Validation Schemas", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should accept update with only emoji", () => {
+    it("should accept update with only icon", () => {
       const result = updateCategorySchema.safeParse({
         params: { id: validUUID },
-        body: { emoji: "🚗" },
+        body: { icon: "car" },
       });
       expect(result.success).toBe(true);
     });
 
-    it("should reject empty body (no name or emoji)", () => {
+    it("should accept update clearing the icon with null", () => {
+      const result = updateCategorySchema.safeParse({
+        params: { id: validUUID },
+        body: { icon: null },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject empty body (no name or icon)", () => {
       const result = updateCategorySchema.safeParse({
         params: { id: validUUID },
         body: {},

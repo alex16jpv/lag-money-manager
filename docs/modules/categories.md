@@ -2,7 +2,7 @@
 
 ## What This Module Does
 
-Manages transaction categories. Categories are user-scoped — each user has their own set. Categories are referenced by transactions (to classify spending/income) and by budgets (to scope a limit). Each category has a `name`, and optionally an `emoji`, a `color`, and a `type` (`INCOME` / `EXPENSE` / `TRANSFER`).
+Manages transaction categories. Categories are user-scoped — each user has their own set. Categories are referenced by transactions (to classify spending/income) and by budgets (to scope a limit). Each category has a `name`, and optionally an `icon` (a Lucide key from the curated `CATEGORY_ICONS` set in `src/shared/icons.ts`), a `color`, and a `type` (`INCOME` / `EXPENSE` / `TRANSFER`).
 
 Two behaviours set this module apart from plain CRUD:
 
@@ -19,6 +19,7 @@ Two behaviours set this module apart from plain CRUD:
 | `src/app/dtos/CategoryDTO.ts`                                   | `CreateCategoryDTO`, `UpdateCategoryDTO`                                         |
 | `src/app/validation/schemas.ts`                                 | `createCategorySchema`, `updateCategorySchema`, `getCategoriesSchema`            |
 | `src/shared/defaultCategories.ts`                               | `DEFAULT_CATEGORIES` — the 10 seeded defaults with their `seedKey`s              |
+| `src/shared/icons.ts`                                           | `CATEGORY_ICONS` — curated Lucide keys a category may use (mirrors the UI design) |
 | `src/domain/entities/Category.ts`                               | Category domain entity                                                           |
 | `src/domain/repositories/category/ICategoryRepository.ts`       | Repository interface                                                             |
 | `src/infrastructure/repositories/category/CategoryRepository.ts` | Mongoose implementation                                                          |
@@ -41,7 +42,7 @@ Get all categories for the authenticated user (paginated, offset + cursor).
 
 ### `POST /categories`
 
-Create a new category. Requires: `name` (1–255 chars). Optional: `emoji` (max 16 chars), `color`, `type`.
+Create a new category. Requires: `name` (1–255 chars). Optional: `icon` (one of `CATEGORY_ICONS`; anything else is `400 VALIDATION`), `color`, `type`. The former free-text `emoji` field was removed in favour of `icon` (2026-09); an `emoji` key in the body is dropped by validation.
 
 Names are unique per user, **case-insensitively** — "Comida" and "comida" collide; accents stay distinct. A user is capped at 200 categories (`CATEGORY_LIMIT_REACHED`).
 
@@ -55,7 +56,7 @@ Get a single category by ID. Archived categories stay readable here (`archivedAt
 
 ### `PUT /categories/:id`
 
-Update a category. Partial updates supported (`name`, `emoji`, `color`, `type`). At least one field must be present. Archived categories are not writable (`RESOURCE_ARCHIVED`).
+Update a category. Partial updates supported (`name`, `icon` — `null` clears it —, `color`, `type`). At least one field must be present. Archived categories are not writable (`RESOURCE_ARCHIVED`).
 
 **`type` is immutable once transactions reference the category** (`CATEGORY_TYPE_LOCKED`): the type of a category with history is part of that history, and changing it would silently reclassify stats. Create a new category instead.
 
@@ -80,7 +81,7 @@ sequenceDiagram
     participant REPO as CategoryRepository
     participant DB as Database
 
-    C->>VAL: POST /categories { name, emoji, color, type }
+    C->>VAL: POST /categories { name, icon, color, type }
     VAL->>CTRL: Validated body
     CTRL->>CTRL: Extract userId, merge into body
     CTRL->>SVC: createCategory({ ...body, userId })
@@ -146,7 +147,7 @@ None specific to this module.
 
 ## Default Categories
 
-`DEFAULT_CATEGORIES` in `src/shared/defaultCategories.ts` holds 10 entries — 3 `INCOME` (Salary, Business, Other Income), 5 `EXPENSE` (Housing, Food, Transportation, Bills & Services, Lifestyle) and 2 `TRANSFER` (Transfer, Credit Card Payment) — each with an emoji, a color, and a stable `seedKey` such as `"salary"` or `"bills-services"`.
+`DEFAULT_CATEGORIES` in `src/shared/defaultCategories.ts` holds 10 entries — 3 `INCOME` (Salary, Business, Other Income), 5 `EXPENSE` (Housing, Food, Transportation, Bills & Services, Lifestyle) and 2 `TRANSFER` (Transfer, Credit Card Payment) — each with an icon, a color, and a stable `seedKey` such as `"salary"` or `"bills-services"`.
 
 The `seedKey` is the category's identity for re-seeding: it survives renames, so `restore-defaults` never duplicates a default the user simply renamed, and archived seeds count as present because their removal was deliberate.
 

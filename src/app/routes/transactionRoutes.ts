@@ -70,6 +70,10 @@ const router = Router();
  *         schema: { type: string, enum: ["true", "false"] }
  *         description: Filter by the pendingDetails flag (true = quick-adds awaiting detailing)
  *       - in: query
+ *         name: source
+ *         schema: { type: string, enum: [MANUAL, QUICK, IMPORT] }
+ *         description: Only transactions created through this channel (QUICK = quick-add)
+ *       - in: query
  *         name: from
  *         schema: { type: string, format: date-time }
  *         description: Start of the date range, inclusive (half-open range [from, to))

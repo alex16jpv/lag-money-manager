@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
 
 import { TransactionFilters } from "../../domain/repositories/transaction/ITransactionRepository";
-import { TransactionType } from "../../shared/constants";
+import {   TransactionSource,
+TransactionType,
+} from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
 import { extractPagination } from "../../shared/pagination";
 import { hashPayload } from "../../shared/requestHash";
@@ -49,6 +51,9 @@ export class TransactionController {
     }
     if (req.query.pendingDetails !== undefined) {
       filters.pendingDetails = req.query.pendingDetails === "true";
+    }
+    if (req.query.source) {
+      filters.source = req.query.source as TransactionSource;
     }
     if (req.query.categoryId) {
       filters.categoryId = req.query.categoryId as string;
