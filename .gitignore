@@ -7,3 +7,4 @@ docs/.vitepress/dist
 docs/.vitepress/cache
 # outDir points at the repo root (see docs/.vitepress/config.mts)
 .vitepress/
+scripts/seed-test.output.json

@@ -21,6 +21,7 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "db:sync-indexes": "tsx scripts/sync-indexes.ts",
+    "seed:test": "tsx scripts/seed-test.ts",
     "docs": "vitepress dev docs --host"
   },
   "keywords": [],

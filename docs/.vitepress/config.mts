@@ -8,9 +8,9 @@ export default withMermaid({
   outDir: "../.vitepress/dist",
 
   // srcDir is the repo root, so every stray .md would become a page.
-  // requests/README.md documents the .http files, whose {{placeholders}}
-  // Vue would evaluate as template interpolation and crash the SSR build.
-  srcExclude: ["requests/**", "build/**"],
+  // requests/README.md and CLAUDE.md both quote .http {{placeholders}}, which
+  // Vue evaluates as template interpolation and which crash the build.
+  srcExclude: ["requests/**", "build/**", "CLAUDE.md"],
 
   themeConfig: {
     search: {
@@ -97,6 +97,10 @@ export default withMermaid({
             },
             { text: "Testing", link: "/docs/guides/testing" },
             { text: "Deployment", link: "/docs/guides/deployment" },
+            {
+              text: "Test Seed",
+              link: "/docs/guides/testing-seed",
+            },
           ],
         },
         {

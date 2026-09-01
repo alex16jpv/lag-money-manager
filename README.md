@@ -70,6 +70,7 @@ zip -r function.zip dist/ node_modules package.json
 - [Adding New Features](docs/guides/adding-new-features.md)
 - [Environment Variables](docs/guides/environment-vars.md)
 - [Testing](docs/guides/testing.md)
+- [Deterministic Test Seed](docs/guides/testing-seed.md) — `npm run seed:test` for the frontend's E2E fixtures
 
 ### Modules
 

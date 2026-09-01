@@ -198,4 +198,5 @@ npm run ci               # gate completo: typecheck x2, lint, formato, tests
 npm test                 # solo la suite
 npm run format           # aplica Prettier
 npm run db:sync-indexes  # crea/borra índices según los esquemas
+npm run seed:test        # semilla determinística para las pruebas del front
 ```
