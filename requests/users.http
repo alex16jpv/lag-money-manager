@@ -36,6 +36,13 @@ Content-Type: application/json
 
 { "timezone": "America/New_York" }
 
+### Update locale (éxito) — idioma de la UI, en | es
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "locale": "es" }
+
 ### Update currency (éxito SOLO si aún no hay cuentas)
 PUT {{baseUrl}}/users/{{userId}}
 Authorization: Bearer {{token}}

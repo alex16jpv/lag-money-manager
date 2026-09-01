@@ -843,7 +843,13 @@ describe("Integration Tests", () => {
     it("passes the source filter through to the repository", async () => {
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [],
-        pagination: { limit: 20, offset: 0, total: 0, hasMore: false, nextCursor: null },
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
       });
 
       const res = await request(app)

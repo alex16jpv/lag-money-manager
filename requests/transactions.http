@@ -156,6 +156,19 @@ Authorization: Bearer {{token}}
 GET {{baseUrl}}/transactions?tag=café
 Authorization: Bearer {{token}}
 
+### Filtrar por origen — "Only quick entries" de la hoja de filtros
+GET {{baseUrl}}/transactions?source=QUICK
+Authorization: Bearer {{token}}
+
+### Filtrar por origen — solo las creadas con el formulario completo
+GET {{baseUrl}}/transactions?source=MANUAL
+Authorization: Bearer {{token}}
+
+### Conteo anticipado del botón de la hoja de filtros: limit=1 y leer pagination.total
+### (total respeta los filtros y NO depende de la página ni del cursor)
+GET {{baseUrl}}/transactions?source=QUICK&limit=1
+Authorization: Bearer {{token}}
+
 ### Sin categoría (drill-down del bucket "uncategorized" de stats)
 GET {{baseUrl}}/transactions?uncategorized=true
 Authorization: Bearer {{token}}

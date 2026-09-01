@@ -18,7 +18,8 @@ Content-Type: application/json
   "email": "{{email}}",
   "password": "{{password}}",
   "timezone": "America/Bogota",
-  "currency": "COP"
+  "currency": "COP",
+  "locale": "en"
 }
 
 ### Register con email de una cuenta borrada (soft delete) — REACTIVA la cuenta

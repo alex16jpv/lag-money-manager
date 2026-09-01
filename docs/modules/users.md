@@ -4,7 +4,7 @@
 
 Manages user profiles after registration. Provides read, update, and delete for the authenticated user's **own** profile — there is no way to reach another user's data, and no endpoint that lists users.
 
-Beyond name/email/password, the profile carries two settings that shape the rest of the API:
+Beyond name/email/password, the profile carries three settings that shape the rest of the API:
 
 - **`timezone`** — IANA zone; drives day boundaries in stats and period windows in budgets. Also embedded as a claim in the access token.
 - **`currency`** — ISO 4217 alpha code; the user's single money currency, stamped onto accounts, transactions, and budgets. **Locked once the user has accounts.**
@@ -19,7 +19,7 @@ Beyond name/email/password, the profile carries two settings that shape the rest
 | `src/app/services/UserService.ts`                       | Self-access enforcement, re-authentication on credential changes, currency lock, password stripping |
 | `src/app/dtos/UserDTO.ts`                               | `CreateUserDTO`, `UpdateUserDTO`, `UserResponseDTO`                                      |
 | `src/app/validation/schemas.ts`                         | `updateUserSchema`, `idParamSchema`                                                      |
-| `src/domain/entities/User.ts`                           | User domain entity (`tokenVersion`, `timezone`, `currency`, `lastLoginAt`)               |
+| `src/domain/entities/User.ts`                           | User domain entity (`tokenVersion`, `timezone`, `currency`, `locale`, `lastLoginAt`)               |
 | `src/domain/repositories/user/IUserRepository.ts`       | Repository interface (adds `getByEmail`, `recordLogin`, `updateWithTokenBump`, `reactivate`, …) |
 | `src/infrastructure/repositories/user/UserRepository.ts` | Mongoose implementation (soft delete, atomic token-version bumps)                        |
 | `src/infrastructure/models/UserModel.ts`                | Mongoose model (unique lowercase `email`)                                                |

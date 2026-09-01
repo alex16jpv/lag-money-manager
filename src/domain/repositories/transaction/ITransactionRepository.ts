@@ -1,7 +1,4 @@
-import {
-  TransactionSource,
-  TransactionType,
-} from "../../../shared/constants";
+import { TransactionSource, TransactionType } from "../../../shared/constants";
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
 import { Transaction } from "../../entities/Transaction";
 import { IRepository } from "../IRepository";

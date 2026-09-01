@@ -105,6 +105,14 @@ Content-Type: application/json
 #
 # { "name": "no se puede" }
 
+### Crear — icono fuera del set curado (400 VALIDATION)
+### Solo se aceptan claves de CATEGORY_ICONS (= DESIGN.md §4.3)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Icono raro", "icon": "taco", "type": "EXPENSE" }
+
 ### Crear — color inválido (400)
 POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}

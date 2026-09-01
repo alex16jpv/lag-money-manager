@@ -11,6 +11,7 @@ import {
   TRANSACTION_SOURCES,
   TRANSACTION_TYPES,
 } from "../shared/constants";
+import { LOCALES } from "../shared/locale";
 
 // ---------------------------------------------------------------------------
 // Request bodies: GENERATED from the Zod validation schemas (single source of
@@ -109,7 +110,7 @@ const responseViews = {
       email: { type: "string", format: "email" },
       timezone: { type: "string", example: "America/Bogota" },
       currency: { type: "string", example: "COP" },
-      locale: { type: "string", enum: ["en", "es"], example: "en" },
+      locale: { ...enumOf(LOCALES), example: "en" },
       lastLoginAt: nullableDateTime,
       createdAt: dateTime,
       updatedAt: dateTime,

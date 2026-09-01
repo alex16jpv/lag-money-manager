@@ -43,6 +43,11 @@ Get all transactions for the authenticated user (paginated, offset + cursor supp
 
 Results are sorted by `date` descending. For infinite scroll use cursor pagination (`cursor` = the previous page's `pagination.nextCursor`); it stays consistent when transactions are backdated, because the cursor is a keyset over `(date, _id)` rather than an offset.
 
+`pagination.total` counts **every transaction matching the filters**, independent of the
+page or cursor position — the count and the page are issued with the same filter, minus
+the cursor's keyset condition. A client can therefore preview a result count without
+fetching the rows: `GET /transactions?<filters>&limit=1` and read `pagination.total`.
+
 **Query parameters:**
 
 | Parameter        | Type   | Required | Description                                                                   |
