@@ -24,7 +24,7 @@ fi
 : "${AWS_PROFILE:?Set AWS_PROFILE in .env.deploy or the environment}"
 : "${AWS_REGION:?Set AWS_REGION in .env.deploy or the environment}"
 : "${LAMBDA_FUNCTION_NAME:?Set LAMBDA_FUNCTION_NAME in .env.deploy or the environment}"
-: "${MONGO_URI:?Set MONGO_URI (the PRODUCTION database) in .env.deploy or the environment — indexes cannot be synced without it}"
+: "${MONGO_URI:?Set MONGO_URI (the PRODUCTION database) in .env.deploy or the environment — indexes cannot be synced without it. If the line IS there, quote the value: this file is sourced, so an unquoted & backgrounds the assignment and the variable arrives empty}"
 
 # Re-authenticates automatically when the session is missing or expired:
 # SSO profiles re-run `aws sso login`, any other existing profile re-runs

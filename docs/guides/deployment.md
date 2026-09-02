@@ -175,6 +175,15 @@ cp .env.deploy.example .env.deploy
   | `KEEPALIVE_RULE_NAME`  | Optional. EventBridge rule name for keepalive                                 |
   | `KEEPALIVE_SCHEDULE`   | Optional. Defaults to `rate(1 day)`                                           |
 
+> **Quote any value containing `&`, `#` or spaces** — the connection URI
+> especially. The file is `source`d, so bash reads it as code: an unquoted `&`
+> ends the assignment and backgrounds it, and the variable reaches the script
+> **empty**, which reads as "you never set it".
+>
+> ```
+> MONGO_URI="mongodb://...?ssl=true&replicaSet=atlas-..."
+> ```
+
 `.env.deploy` is sourced with `set -a`, so everything in it is exported to the
 deploy steps — no `export` needed in your shell, and nothing leaks into normal
 development: `npm run start:dev` keeps reading `.env`. Because `dotenv` never
