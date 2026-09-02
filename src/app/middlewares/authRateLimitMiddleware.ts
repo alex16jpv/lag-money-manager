@@ -58,7 +58,10 @@ export function authRateLimit(options: AuthRateLimitOptions) {
             },
           },
         ],
-        { upsert: true, new: true },
+        // Mongoose 9 refuses an aggregation pipeline unless this says so, and
+        // the limiter fails open on a store error — so without it there was no
+        // auth rate limit at all.
+        { upsert: true, new: true, updatePipeline: true },
       ).lean();
 
       if (refundOnSuccess) {
