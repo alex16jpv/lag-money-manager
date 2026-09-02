@@ -918,6 +918,20 @@ describe("Integration Tests", () => {
       expect(res.body.pagination.total).toBe(3);
     });
 
+    it("names the field without the schema section it came from", async () => {
+      const res = await request(app)
+        .post("/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ type: "EXPENSE", amount: -5, date: "not-a-date" });
+
+      expect(res.status).toBe(400);
+      const fields = res.body.details.map(
+        (d: { field: string }) => d.field,
+      ) as string[];
+      expect(fields).toContain("amount");
+      expect(fields.every((f) => !f.startsWith("body."))).toBe(true);
+    });
+
     it("rejects an unknown source", async () => {
       const res = await request(app)
         .get("/transactions?source=SMS")

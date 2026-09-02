@@ -30,7 +30,10 @@ export const validate =
     } catch (error) {
       if (error instanceof z.ZodError) {
         const details = error.issues.map((issue) => ({
-          field: issue.path.join("."),
+          // Drop the schema section ("body", "query", "params"): the client
+          // knows where it sent the field, and needs the name to map the error
+          // onto its form. `items.0.id` keeps its path within the body.
+          field: issue.path.slice(1).join("."),
           message: issue.message,
         }));
 

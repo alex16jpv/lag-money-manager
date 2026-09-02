@@ -163,7 +163,7 @@ Every response has `error` and `message`. `code` is present whenever the throw s
   "message": "Invalid request data",
   "code": "VALIDATION",
   "details": [
-    { "field": "body.amount", "message": "Amount must be greater than 0" },
+    { "field": "amount", "message": "Amount must be greater than 0" },
     {
       "field": "body.fromAccountId",
       "message": "fromAccountId is required for expense transactions"
