@@ -43,6 +43,32 @@ Get all transactions for the authenticated user (paginated, offset + cursor supp
 
 Results are sorted by `date` descending. For infinite scroll use cursor pagination (`cursor` = the previous page's `pagination.nextCursor`); it stays consistent when transactions are backdated, because the cursor is a keyset over `(date, _id)` rather than an offset.
 
+### Completing the review inbox in one request
+
+`PATCH /transactions/batch` saves the detail of up to 100 transactions at once.
+It accepts only detail fields — `categoryId`, `description`, `pendingDetails` —
+so nothing in a batch can move a balance, which is what makes the per-item
+semantics safe to offer.
+
+**Items are independent.** Each one is validated and saved on its own, in its
+own database transaction, so a failure leaves only that item unsaved. The
+response is `200 { updated, failed }`: the transactions that were saved, and the
+rest with the `code` of why (`NOT_FOUND`, `CATEGORY_ARCHIVED`,
+`CATEGORY_TYPE_MISMATCH`, `RESOURCE_ARCHIVED`...). **The status is 200 even when
+items failed** — read `failed`, not the status. A client can then clear the
+cards that saved and leave the others showing their error.
+
+Each item goes through the same `updateTransaction` a single edit uses, so the
+batch cannot drift from what an update means. Items run in sequence, so a
+hundred cards do not open a hundred concurrent transactions. A real fault — a
+database outage — is not reported as a failed item; it surfaces as a 500, since
+a partial success that never happened would be worse than an error.
+
+`Idempotency-Key` is accepted and validated (400 `IDEMPOTENCY_KEY_INVALID` when
+malformed) but nothing is stored against it: the request sets fields to given
+values, so retrying it lands on the same state. It is idempotent by
+construction rather than by bookkeeping.
+
 `?includeSummary=true` adds `summary.totalAmount`: the sum of `amount` over the
 whole filtered set, on the same terms as the count. It costs one extra
 aggregation, so it is opt-in rather than charged to every listing. It is a plain

@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { TransactionController } from "../controllers/TransactionController";
 import {
+  batchUpdateTransactionsSchema,
   createTransactionSchema,
   getTransactionsSchema,
   idParamSchema,
@@ -273,6 +274,63 @@ router.post(
  *         description: Unauthorized
  */
 router.get("/tags", TransactionController.getTags);
+
+/**
+ * @openapi
+ * /transactions/batch:
+ *   patch:
+ *     tags: [Transactions]
+ *     summary: Complete several quick-adds in one request
+ *     description: |
+ *       Saves the detail of up to 100 transactions at once — the review inbox
+ *       clearing its cards. Only detail fields are accepted (`categoryId`,
+ *       `description`, `pendingDetails`), so nothing here can move a balance.
+ *
+ *       **Items are independent.** Each is validated and saved on its own, and
+ *       a failure leaves only that item unsaved: the response returns the ones
+ *       that were saved in `updated` and the rest in `failed`, each with the
+ *       machine-readable `code` of why. The status is **200** even when some
+ *       items failed — read `failed`, not the status.
+ *
+ *       Accepts `Idempotency-Key` (validated, 400 `IDEMPOTENCY_KEY_INVALID` if
+ *       malformed). Nothing is stored against it: the request sets fields to
+ *       given values, so retrying it lands on the same state.
+ *     parameters:
+ *       - in: header
+ *         name: Idempotency-Key
+ *         schema: { type: string }
+ *         description: Optional; 1-200 characters of [A-Za-z0-9_-]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/BatchUpdateTransactionsInput'
+ *     responses:
+ *       200:
+ *         description: Per-item outcome; some items may have failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BatchUpdateResult'
+ *       400:
+ *         description: Validation error — empty list, over 100 items, a repeated id, an item that changes nothing, or a malformed Idempotency-Key
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.patch(
+  "/batch",
+  validate(batchUpdateTransactionsSchema),
+  TransactionController.batchUpdate,
+);
 
 /**
  * @openapi

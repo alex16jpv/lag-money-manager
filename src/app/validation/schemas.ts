@@ -623,6 +623,43 @@ const quickAddTypeValues = Object.keys(TRANSACTION_TYPES).filter(
   (t) => t !== "ADJUSTMENT",
 ) as [string, ...string[]];
 
+/**
+ * Completing the review inbox: N cards saved in one request, each with its own
+ * detail. Only detail fields — nothing here can move money, which is what makes
+ * the per-item semantics safe.
+ */
+export const batchUpdateTransactionsSchema = z.object({
+  body: z.object({
+    items: z
+      .array(
+        z
+          .object({
+            id: z.string().uuid("id must be a valid UUID"),
+            categoryId: z
+              .string()
+              .uuid("categoryId must be a valid UUID")
+              .nullable()
+              .optional(),
+            description: z.string().max(255).nullable().optional(),
+            pendingDetails: z.boolean().optional(),
+          })
+          .refine(
+            (item) =>
+              item.categoryId !== undefined ||
+              item.description !== undefined ||
+              item.pendingDetails !== undefined,
+            { message: "Each item must change at least one field" },
+          ),
+      )
+      .min(1, "items must not be empty")
+      .max(100, "items must have at most 100 entries")
+      .refine(
+        (items) => new Set(items.map((i) => i.id)).size === items.length,
+        { message: "items must not repeat an id", path: ["items"] },
+      ),
+  }),
+});
+
 export const quickAddTransactionSchema = z.object({
   body: z.object({
     amount: moneyAmount,

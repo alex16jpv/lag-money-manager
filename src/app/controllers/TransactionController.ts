@@ -7,6 +7,7 @@ import { extractPagination } from "../../shared/pagination";
 import { hashPayload } from "../../shared/requestHash";
 import repositoryFactory from "../factories/RepositoryFactory";
 import {
+  BatchDetailUpdate,
   IdempotencyMeta,
   TransactionService,
 } from "../services/TransactionService";
@@ -82,6 +83,20 @@ export class TransactionController {
   static getTags = async (req: Request, res: Response) => {
     const tags = await transactionService.getTags(req.user!.userId);
     res.status(200).json({ data: tags });
+  };
+
+  static batchUpdate = async (req: Request, res: Response) => {
+    // The header is accepted because the client sends it on every mutation,
+    // and validated so a malformed one is not silently ignored. Nothing is
+    // stored against it: this sets fields to given values, so a retry lands on
+    // the same state — it is idempotent by construction, not by bookkeeping.
+    idempotencyMeta(req);
+    const { items } = req.body as { items: BatchDetailUpdate[] };
+    const result = await transactionService.batchUpdateDetails(
+      items,
+      req.user!.userId,
+    );
+    res.status(200).json(result);
   };
 
   static getTransactionById = async (req: Request, res: Response) => {

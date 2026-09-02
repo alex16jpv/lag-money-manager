@@ -15,6 +15,7 @@ export const ERROR_CODES = [
   "INVALID_ID",
   "INVALID_CURSOR",
   "RESOURCE_ARCHIVED",
+  "NOT_FOUND",
   "DB_UNAVAILABLE",
   "RATE_LIMITED",
   // Request body rejected before routing (body-parser)

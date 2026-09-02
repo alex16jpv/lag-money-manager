@@ -136,6 +136,29 @@ Content-Type: application/json
 GET {{baseUrl}}/transactions?pendingDetails=true
 Authorization: Bearer {{token}}
 
+### Completar la bandeja en UNA petición (hasta 100 ítems)
+### Cada ítem es independiente: si uno falla, los demás sí se guardan y el
+### response trae `updated` y `failed` con el code de cada fallo. HTTP 200
+### incluso con fallos: hay que leer `failed`, no el status.
+PATCH {{baseUrl}}/transactions/batch
+Authorization: Bearer {{token}}
+Idempotency-Key: batch-{{$randomInt 1000 9999}}
+Content-Type: application/json
+
+{
+  "items": [
+    { "id": "{{txId}}", "categoryId": "{{catId}}", "description": "Detallado", "pendingDetails": false },
+    { "id": "01920000-0000-7000-8000-999999999999", "description": "id inexistente -> failed" }
+  ]
+}
+
+### Lote inválido — id repetido (400)
+PATCH {{baseUrl}}/transactions/batch
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "items": [ { "id": "{{txId}}", "description": "a" }, { "id": "{{txId}}", "description": "b" } ] }
+
 ### Bandeja + total en una sola petición (Inicio y la bandeja del diseño)
 ### includeSummary añade summary.totalAmount sobre TODO el conjunto filtrado,
 ### no sobre la página: con limit=1 devuelve el conteo y la suma sin traer filas.

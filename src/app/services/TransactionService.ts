@@ -1,4 +1,5 @@
 import { Transaction } from "../../domain/entities/Transaction";
+import { DomainValidationError } from "../../domain/errors";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
@@ -6,6 +7,7 @@ import {
   ITransactionRepository,
   TransactionFilters,
 } from "../../domain/repositories/transaction/ITransactionRepository";
+import { ErrorCode } from "../../shared/errorCodes";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { TxSession, withTransaction } from "../../shared/unitOfWork";
@@ -29,6 +31,40 @@ const TXN_CREATE_SCOPE = "txn-create";
 export interface IdempotencyMeta {
   key: string;
   requestHash: string;
+}
+
+export interface BatchDetailUpdate {
+  id: string;
+  categoryId?: string | null;
+  description?: string | null;
+  pendingDetails?: boolean;
+}
+
+export interface BatchUpdateFailure {
+  id: string;
+  code: ErrorCode;
+  message: string;
+}
+
+export interface BatchUpdateResult {
+  updated: Transaction[];
+  failed: BatchUpdateFailure[];
+}
+
+/** Expected, per-item failures become entries; anything else is a real fault. */
+function describeItemFailure(
+  id: string,
+  err: unknown,
+): BatchUpdateFailure | null {
+  if (err instanceof DomainValidationError) {
+    return { id, code: err.code ?? "VALIDATION", message: err.message };
+  }
+  if (err instanceof ApiError && err.statusCode < 500) {
+    const code =
+      err.code ?? (err.statusCode === 404 ? "NOT_FOUND" : "BAD_REQUEST");
+    return { id, code, message: err.message };
+  }
+  return null;
 }
 
 export class TransactionService {
@@ -178,6 +214,39 @@ export class TransactionService {
       );
     }
     return account.id;
+  }
+
+  /**
+   * Completes several quick-adds in one request. Each item goes through
+   * `updateTransaction`, so the batch cannot drift from what a single update
+   * means — same validation, same audit trail, same refusal to touch balances
+   * when only detail changes.
+   *
+   * Per the owner's decision, items are independent: each runs in its own
+   * database transaction and one failure leaves only that item unsaved. They
+   * run in sequence rather than in parallel, so a hundred cards cannot open a
+   * hundred concurrent transactions.
+   */
+  async batchUpdateDetails(
+    items: BatchDetailUpdate[],
+    userId: string,
+  ): Promise<BatchUpdateResult> {
+    const updated: Transaction[] = [];
+    const failed: BatchUpdateFailure[] = [];
+
+    for (const { id, ...detail } of items) {
+      try {
+        updated.push(await this.updateTransaction(id, detail, userId));
+      } catch (err) {
+        const failure = describeItemFailure(id, err);
+        // Only the failures this endpoint promises to report per item are
+        // swallowed; anything else is a real fault and must surface as one.
+        if (!failure) throw err;
+        failed.push(failure);
+      }
+    }
+
+    return { updated, failed };
   }
 
   async updateTransaction(

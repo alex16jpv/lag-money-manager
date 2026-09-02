@@ -46,6 +46,7 @@ const requestBodies = {
   CreateTransactionInput: bodyOf(v.createTransactionSchema),
   UpdateTransactionInput: bodyOf(v.updateTransactionSchema),
   QuickAddTransactionInput: bodyOf(v.quickAddTransactionSchema),
+  BatchUpdateTransactionsInput: bodyOf(v.batchUpdateTransactionsSchema),
   CreateBudgetInput: bodyOf(v.createBudgetSchema),
   UpdateBudgetInput: bodyOf(v.updateBudgetSchema),
   BudgetAmountOverrideInput: bodyOf(v.budgetAmountOverrideSchema),
@@ -276,6 +277,29 @@ const responseViews = {
       archivedAt: nullableDateTime,
       createdAt: dateTime,
       updatedAt: dateTime,
+    },
+  }),
+  BatchUpdateFailure: withRequired({
+    type: "object",
+    properties: {
+      id: uuid,
+      code: { type: "string", enum: [...ERROR_CODES] },
+      message: { type: "string" },
+    },
+  }),
+  BatchUpdateResult: withRequired({
+    type: "object",
+    description:
+      "Per-item outcome. The status is 200 even when some items failed: read `failed`.",
+    properties: {
+      updated: {
+        type: "array",
+        items: { $ref: "#/components/schemas/Transaction" },
+      },
+      failed: {
+        type: "array",
+        items: { $ref: "#/components/schemas/BatchUpdateFailure" },
+      },
     },
   }),
   StatsBucket: withRequired({
