@@ -8,6 +8,7 @@ import swaggerUi from "swagger-ui-express";
 import { authMiddleware } from "./app/middlewares/authMiddleware";
 import { dbReadinessMiddleware } from "./app/middlewares/dbReadinessMiddleware";
 import { gatewaySecretMiddleware } from "./app/middlewares/gatewaySecretMiddleware";
+import { rateLimitKey } from "./app/middlewares/rateLimitKey";
 import { requestLogMiddleware } from "./app/middlewares/requestLogMiddleware";
 import accountRoutes from "./app/routes/accountRoutes";
 import authRoutes from "./app/routes/authRoutes";
@@ -65,9 +66,11 @@ const apiLimiter = rateLimit({
   max: ENVIRONMENT.RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: rateLimitKey,
   message: {
     error: "TooManyRequests",
     message: "Too many requests, please try again later",
+    code: "RATE_LIMITED",
   },
 });
 

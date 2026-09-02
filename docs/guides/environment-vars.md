@@ -44,7 +44,7 @@ misconfiguration instead of a skipped check.
 | Variable                 | Default | Description                                                                              |
 | ------------------------ | ------- | ----------------------------------------------------------------------------------------- |
 | `API_SECRET`             | —       | Shared secret expected in the `x-api-secret` header. **See the warning below.**            |
-| `RATE_LIMIT_MAX`         | `200`   | Global limit per IP per 15-minute window (in-memory, per-instance under Lambda).           |
+| `RATE_LIMIT_MAX`         | `1000`  | Global limit per 15-minute window (in-memory, per-instance under Lambda). Keyed by **user** once authenticated and by IP only on the public routes — every request from the web client reaches the API from the frontend's server, so an IP-keyed budget would be shared by all of them. |
 | `AUTH_RATE_LIMIT_MAX`    | `10`    | Limit for `/auth/login` and `/auth/register` per 15-minute window (MongoDB-backed, shared across instances). Applied per IP and, on login, per email — the per-email budget only burns on failed attempts. |
 | `REFRESH_RATE_LIMIT_MAX` | `60`    | Separate, higher limit for `POST /auth/refresh` (a legitimate device refreshes every ~15 min). |
 
@@ -101,7 +101,7 @@ MONGO_URI=mongodb://localhost:27017/lag_money?replicaSet=rs0&directConnection=tr
 
 # Everything else has a sane default (PORT=3000, JWT_EXPIRATION=15m,
 # REFRESH_TOKEN_EXPIRATION=30d, BCRYPT_SALT_ROUNDS=12, LOG_LEVEL=info,
-# RATE_LIMIT_MAX=200, AUTH_RATE_LIMIT_MAX=10, REFRESH_RATE_LIMIT_MAX=60).
+# RATE_LIMIT_MAX=1000, AUTH_RATE_LIMIT_MAX=10, REFRESH_RATE_LIMIT_MAX=60).
 
 # Do NOT set API_SECRET locally: with it, every request needs the
 # x-api-secret header or gets 403.
