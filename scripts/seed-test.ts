@@ -339,6 +339,14 @@ export async function seed(): Promise<Record<string, unknown>> {
     reference: month.set({ day: lastDay }).toJSDate(),
     timezone: SEED_USER.timezone,
   };
+  // Budgets default their lifetime floor to createdAt — today — which hides
+  // them when the client browses the month the seeded transactions live in.
+  // Anchoring the floor before the oldest seeded month makes every
+  // `?reference=` inside the dataset show real spend.
+  const effectiveFrom = month
+    .minus({ months: PRIOR_MONTHS.length })
+    .startOf("month")
+    .toJSDate();
   const prevMonth = month.minus({ months: 1 });
   const budgets = [
     {
@@ -348,6 +356,7 @@ export async function seed(): Promise<Record<string, unknown>> {
       categoryIds: [],
       amount: 2_000_000,
       periodType: "MONTHLY",
+      effectiveFrom,
     },
     {
       id: BUDGET_IDS.food,
@@ -356,6 +365,7 @@ export async function seed(): Promise<Record<string, unknown>> {
       categoryIds: [categoryId("food")],
       amount: 600_000,
       periodType: "MONTHLY",
+      effectiveFrom,
     },
     {
       id: BUDGET_IDS.transportation,
@@ -364,6 +374,7 @@ export async function seed(): Promise<Record<string, unknown>> {
       categoryIds: [categoryId("transportation")],
       amount: 200_000,
       periodType: "MONTHLY",
+      effectiveFrom,
     },
     {
       id: BUDGET_IDS.lifestyle,
@@ -372,6 +383,7 @@ export async function seed(): Promise<Record<string, unknown>> {
       categoryIds: [categoryId("lifestyle")],
       amount: 250_000,
       periodType: "MONTHLY",
+      effectiveFrom,
       override: 300_000,
     },
     {
@@ -381,6 +393,7 @@ export async function seed(): Promise<Record<string, unknown>> {
       categoryIds: [categoryId("coffee")],
       amount: 80_000,
       periodType: "WEEKLY",
+      effectiveFrom,
     },
     {
       id: BUDGET_IDS.bills,
@@ -389,6 +402,7 @@ export async function seed(): Promise<Record<string, unknown>> {
       categoryIds: [categoryId("bills-services")],
       amount: 350_000,
       periodType: "BIWEEKLY",
+      effectiveFrom,
     },
     {
       id: BUDGET_IDS.vacation,
@@ -433,6 +447,7 @@ export async function seed(): Promise<Record<string, unknown>> {
       categoryIds: [categoryId("health")],
       amount: 150_000,
       periodType: "MONTHLY",
+      effectiveFrom,
       archived: true,
     },
   ] as const;
@@ -448,6 +463,7 @@ export async function seed(): Promise<Record<string, unknown>> {
         periodType: b.periodType,
         periodStartDate: "periodStartDate" in b ? b.periodStartDate : null,
         periodEndDate: "periodEndDate" in b ? b.periodEndDate : null,
+        effectiveFrom: "effectiveFrom" in b ? b.effectiveFrom : null,
         userId: SEED_USER.id,
       } as never,
       ctx,

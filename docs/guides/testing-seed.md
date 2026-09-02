@@ -32,7 +32,10 @@ database in the same state.
   (`pendingDetails`, `source: QUICK`), a cash `ADJUSTMENT`, a transfer, and a
   salary.
 - **10 budgets** — global, per-category, one with a per-period override, a
-  `CUSTOM` one spanning the month, two expired and one archived.
+  `CUSTOM` one spanning the month, two expired and one archived. The recurring
+  ones carry an `effectiveFrom` before the oldest seeded month: a budget's
+  lifetime floor defaults to its creation date, which would hide it exactly
+  where the seeded transactions live.
 - **2 refresh sessions** with different user agents, for the sessions screen.
 
 Ids are fixed UUIDs, including those of the ten seeded categories: the seed
