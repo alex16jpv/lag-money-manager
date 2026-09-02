@@ -11,6 +11,8 @@ import {
   TRANSACTION_SOURCES,
   TRANSACTION_TYPES,
 } from "../shared/constants";
+import { ERROR_CODES } from "../shared/errorCodes";
+import { CATEGORY_ICONS } from "../shared/icons";
 import { LOCALES } from "../shared/locale";
 
 // ---------------------------------------------------------------------------
@@ -64,6 +66,23 @@ const enumOf = (values: Record<string, string>): object => ({
   enum: Object.keys(values),
 });
 
+/**
+ * Response views describe what the API *always* sends, so every property is
+ * required unless it genuinely may be absent. Without this, generators like
+ * openapi-typescript type the whole payload as optional and every consumer has
+ * to null-check fields that are never missing.
+ *
+ * Derived from the properties rather than listed by hand: a new field is
+ * required by default, which is the safe direction to forget.
+ */
+const withRequired = <T extends { properties: Record<string, unknown> }>(
+  view: T,
+  optional: readonly string[] = [],
+): T & { required: string[] } => ({
+  ...view,
+  required: Object.keys(view.properties).filter((k) => !optional.includes(k)),
+});
+
 const responseViews = {
   ErrorResponse: {
     type: "object",
@@ -72,8 +91,9 @@ const responseViews = {
       message: { type: "string" },
       code: {
         type: "string",
+        enum: [...ERROR_CODES],
         description:
-          "Stable machine-readable code (e.g. RESOURCE_ARCHIVED, CURRENCY_MISMATCH). Branch on this, never on message.",
+          "Stable machine-readable code. Branch on this, never on message.",
       },
       details: {
         type: "array",
@@ -88,11 +108,11 @@ const responseViews = {
     },
     required: ["error", "message"],
   },
-  Message: {
+  Message: withRequired({
     type: "object",
     properties: { message: { type: "string" } },
-  },
-  Pagination: {
+  }),
+  Pagination: withRequired({
     type: "object",
     properties: {
       limit: { type: "integer" },
@@ -101,47 +121,56 @@ const responseViews = {
       hasMore: { type: "boolean" },
       nextCursor: { ...uuid, nullable: true },
     },
-  },
-  User: {
-    type: "object",
-    properties: {
-      id: uuid,
-      name: { type: "string" },
-      email: { type: "string", format: "email" },
-      timezone: { type: "string", example: "America/Bogota" },
-      currency: { type: "string", example: "COP" },
-      locale: { ...enumOf(LOCALES), example: "en" },
-      lastLoginAt: nullableDateTime,
-      createdAt: dateTime,
-      updatedAt: dateTime,
-      reactivated: {
-        type: "boolean",
-        description:
-          "Present (true) only when register revived a soft-deleted account.",
+  }),
+  User: withRequired(
+    {
+      type: "object",
+      properties: {
+        id: uuid,
+        name: { type: "string" },
+        email: { type: "string", format: "email" },
+        timezone: { type: "string", example: "America/Bogota" },
+        currency: { type: "string", example: "COP" },
+        locale: { ...enumOf(LOCALES), example: "en" },
+        lastLoginAt: nullableDateTime,
+        createdAt: dateTime,
+        updatedAt: dateTime,
+        reactivated: {
+          type: "boolean",
+          description:
+            "Present (true) only when register revived a soft-deleted account.",
+        },
       },
     },
-  },
-  AuthTokens: {
-    type: "object",
-    properties: {
-      accessToken: { type: "string" },
-      refreshToken: { type: "string" },
-      user: { $ref: "#/components/schemas/User" },
+    ["reactivated"],
+  ),
+  AuthTokens: withRequired(
+    {
+      type: "object",
+      properties: {
+        accessToken: { type: "string" },
+        refreshToken: { type: "string" },
+        user: { $ref: "#/components/schemas/User" },
+      },
+      required: ["accessToken", "refreshToken"],
     },
-    required: ["accessToken", "refreshToken"],
-  },
-  Session: {
-    type: "object",
-    description: "One logged-in device (refresh-token rotation family).",
-    properties: {
-      id: uuid,
-      createdAt: dateTime,
-      lastUsedAt: dateTime,
-      expiresAt: dateTime,
-      userAgent: { type: "string" },
+    ["user"],
+  ),
+  Session: withRequired(
+    {
+      type: "object",
+      description: "One logged-in device (refresh-token rotation family).",
+      properties: {
+        id: uuid,
+        createdAt: dateTime,
+        lastUsedAt: dateTime,
+        expiresAt: dateTime,
+        userAgent: { type: "string" },
+      },
     },
-  },
-  Account: {
+    ["userAgent"],
+  ),
+  Account: withRequired({
     type: "object",
     properties: {
       id: uuid,
@@ -157,31 +186,35 @@ const responseViews = {
       createdAt: dateTime,
       updatedAt: dateTime,
     },
-  },
-  Category: {
-    type: "object",
-    properties: {
-      id: uuid,
-      name: { type: "string" },
-      icon: {
-        type: "string",
-        nullable: true,
-        description: "Lucide icon key from the curated CATEGORY_ICONS set",
-        example: "utensils",
+  }),
+  Category: withRequired(
+    {
+      type: "object",
+      properties: {
+        id: uuid,
+        name: { type: "string" },
+        icon: {
+          type: "string",
+          enum: [...CATEGORY_ICONS],
+          nullable: true,
+          description: "Lucide icon key from the curated set",
+          example: "utensils",
+        },
+        color: { ...enumOf(COLORS), nullable: true },
+        type: { ...enumOf(CATEGORY_TYPES), nullable: true },
+        userId: uuid,
+        seedKey: {
+          type: "string",
+          description: "Stable identity of a seeded default category.",
+        },
+        archivedAt: nullableDateTime,
+        createdAt: dateTime,
+        updatedAt: dateTime,
       },
-      color: { ...enumOf(COLORS), nullable: true },
-      type: { ...enumOf(CATEGORY_TYPES), nullable: true },
-      userId: uuid,
-      seedKey: {
-        type: "string",
-        description: "Stable identity of a seeded default category.",
-      },
-      archivedAt: nullableDateTime,
-      createdAt: dateTime,
-      updatedAt: dateTime,
     },
-  },
-  Transaction: {
+    ["seedKey"],
+  ),
+  Transaction: withRequired({
     type: "object",
     properties: {
       id: uuid,
@@ -204,8 +237,8 @@ const responseViews = {
       createdAt: dateTime,
       updatedAt: dateTime,
     },
-  },
-  Budget: {
+  }),
+  Budget: withRequired({
     type: "object",
     properties: {
       id: uuid,
@@ -244,8 +277,8 @@ const responseViews = {
       createdAt: dateTime,
       updatedAt: dateTime,
     },
-  },
-  StatsBucket: {
+  }),
+  StatsBucket: withRequired({
     type: "object",
     properties: {
       key: {
@@ -257,8 +290,8 @@ const responseViews = {
       count: { type: "integer" },
       avg: money,
     },
-  },
-  StatsResponse: {
+  }),
+  StatsResponse: withRequired({
     type: "object",
     properties: {
       groupBy: { type: "string", enum: ["category", "day", "tag"] },
@@ -272,7 +305,7 @@ const responseViews = {
           "Real total without double counting (multi-tag buckets can sum higher).",
       },
     },
-  },
+  }),
 };
 
 const listOf = (ref: string): object => ({
