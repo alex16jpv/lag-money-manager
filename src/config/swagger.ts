@@ -308,13 +308,21 @@ const responseViews = {
   }),
 };
 
-const listOf = (ref: string): object => ({
-  type: "object",
-  properties: {
-    data: { type: "array", items: { $ref: `#/components/schemas/${ref}` } },
-    pagination: { $ref: "#/components/schemas/Pagination" },
-  },
-});
+const listOf = (ref: string): object =>
+  withRequired({
+    type: "object",
+    properties: {
+      data: { type: "array", items: { $ref: `#/components/schemas/${ref}` } },
+      pagination: { $ref: "#/components/schemas/Pagination" },
+    },
+  });
+
+/** Envelope for the endpoints that return a whole set, with no pagination. */
+const dataOf = (items: object): object =>
+  withRequired({
+    type: "object",
+    properties: { data: { type: "array", items } },
+  });
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -341,6 +349,11 @@ const options: swaggerJsdoc.Options = {
         CategoryList: listOf("Category"),
         TransactionList: listOf("Transaction"),
         BudgetList: listOf("Budget"),
+        SessionList: dataOf({ $ref: "#/components/schemas/Session" }),
+        TagList: dataOf({ type: "string" }),
+        RestoreDefaultsResponse: dataOf({
+          $ref: "#/components/schemas/Category",
+        }),
       },
     },
     security: [{ bearerAuth: [] }],

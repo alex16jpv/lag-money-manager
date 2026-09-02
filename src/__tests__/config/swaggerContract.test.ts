@@ -60,6 +60,25 @@ describe("OpenAPI response views", () => {
     expect(account.required).toEqual(Object.keys(account.properties));
   });
 
+  // The envelopes were the other half of W-06: a `data` typed as optional makes
+  // every list consumer null-check an array the API always sends.
+  it.each([
+    ["AccountList", ["data", "pagination"]],
+    ["CategoryList", ["data", "pagination"]],
+    ["TransactionList", ["data", "pagination"]],
+    ["BudgetList", ["data", "pagination"]],
+    ["SessionList", ["data"]],
+    ["TagList", ["data"]],
+    ["RestoreDefaultsResponse", ["data"]],
+  ])("%s requires %s", (name, required) => {
+    expect(view(name).required).toEqual(required);
+  });
+
+  it("leaves no list response defined inline in a route", () => {
+    const inline = JSON.stringify(spec.paths).match(/"properties":\{"data":/g);
+    expect(inline).toBeNull();
+  });
+
   it("publishes the error codes as an enum the frontend can derive", () => {
     const code = view("ErrorResponse").properties.code as { enum?: string[] };
     expect(code.enum).toEqual([...ERROR_CODES]);

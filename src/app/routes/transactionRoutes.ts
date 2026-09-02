@@ -264,12 +264,7 @@ router.post(
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 data:
- *                   type: array
- *                   items:
- *                     type: string
+ *               $ref: '#/components/schemas/TagList'
  *       401:
  *         description: Unauthorized
  */

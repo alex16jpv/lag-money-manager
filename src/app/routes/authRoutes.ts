@@ -300,12 +300,7 @@ router.post("/logout-all", authMiddleware, AuthController.logoutAll);
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 data:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Session'
+ *               $ref: '#/components/schemas/SessionList'
  *       401:
  *         description: Missing, invalid or expired access token
  *         content:

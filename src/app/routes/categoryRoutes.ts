@@ -139,12 +139,7 @@ router.get(
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 data:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Category'
+ *               $ref: '#/components/schemas/RestoreDefaultsResponse'
  *       401:
  *         description: Unauthorized
  *         content:
