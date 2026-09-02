@@ -347,7 +347,23 @@ const options: swaggerJsdoc.Options = {
         ...responseViews,
         AccountList: listOf("Account"),
         CategoryList: listOf("Category"),
-        TransactionList: listOf("Transaction"),
+        TransactionList: {
+          ...(listOf("Transaction") as Record<string, unknown>),
+          properties: {
+            data: {
+              type: "array",
+              items: { $ref: "#/components/schemas/Transaction" },
+            },
+            pagination: { $ref: "#/components/schemas/Pagination" },
+            summary: {
+              type: "object",
+              description:
+                "Only when includeSummary=true. Sums the whole filtered set, not the page.",
+              properties: { totalAmount: money },
+              required: ["totalAmount"],
+            },
+          },
+        },
         BudgetList: listOf("Budget"),
         SessionList: dataOf({ $ref: "#/components/schemas/Session" }),
         TagList: dataOf({ type: "string" }),

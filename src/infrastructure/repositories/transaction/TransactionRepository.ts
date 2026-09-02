@@ -7,6 +7,7 @@ import {
   SpendingQuery,
   SpendingResult,
   TransactionFilters,
+  TransactionPage,
   TransactionRevision,
 } from "../../../domain/repositories/transaction/ITransactionRepository";
 import { ApiError } from "../../../shared/errors";
@@ -57,7 +58,8 @@ export class TransactionRepository implements ITransactionRepository {
   private async paginatedFind(
     baseFilter: Record<string, unknown>,
     pagination: PaginationParams,
-  ): Promise<PaginatedResult<Transaction>> {
+    withSummary = false,
+  ): Promise<TransactionPage> {
     const { limit, offset, cursor } = pagination;
     let filter: Record<string, unknown> = baseFilter;
     if (cursor) {
@@ -91,20 +93,34 @@ export class TransactionRepository implements ITransactionRepository {
       };
     }
 
-    const [docs, total] = await Promise.all([
+    const [docs, total, summary] = await Promise.all([
       TransactionModel.find(filter)
         .sort({ date: -1, _id: -1 })
         .skip(cursor ? 0 : offset)
         .limit(limit)
         .lean(),
       TransactionModel.countDocuments(baseFilter),
+      // Same filter as the count, deliberately without the cursor: the sum
+      // describes the filtered set, not the page the caller happens to be on.
+      withSummary
+        ? TransactionModel.aggregate<{ totalAmount: number }>([
+            { $match: baseFilter },
+            { $group: { _id: null, totalAmount: { $sum: "$amount" } } },
+          ])
+        : Promise.resolve(null),
     ]);
 
-    return buildPaginatedResult(
+    const page = buildPaginatedResult(
       docs.map((doc) => this.toEntity(doc)),
       total,
       pagination,
     );
+    if (!summary) return page;
+    // An empty match aggregates to no rows at all, which is a total of zero.
+    return {
+      ...page,
+      summary: { totalAmount: fromCents(summary[0]?.totalAmount ?? 0) },
+    };
   }
 
   async getById(id: string, session?: TxSession): Promise<Transaction | null> {
@@ -125,7 +141,7 @@ export class TransactionRepository implements ITransactionRepository {
     userId: string,
     pagination: PaginationParams,
     filters?: TransactionFilters,
-  ): Promise<PaginatedResult<Transaction>> {
+  ): Promise<TransactionPage> {
     const filter: Record<string, unknown> = { userId, deletedAt: null };
     if (filters?.ids?.length) {
       filter._id = { $in: filters.ids };
@@ -161,7 +177,7 @@ export class TransactionRepository implements ITransactionRepository {
     if (filters?.tag) {
       filter.tags = filters.tag;
     }
-    return this.paginatedFind(filter, pagination);
+    return this.paginatedFind(filter, pagination, filters?.includeSummary);
   }
 
   async create(

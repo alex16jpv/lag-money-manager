@@ -82,6 +82,10 @@ const router = Router();
  *         schema: { type: string, format: date-time }
  *         description: End of the date range, exclusive (half-open range [from, to))
  *       - in: query
+ *         name: includeSummary
+ *         schema: { type: string, enum: ["true", "false"] }
+ *         description: Adds summary.totalAmount, the sum over the whole filtered set (one extra aggregation, so opt-in)
+ *       - in: query
  *         name: tag
  *         schema: { type: string }
  *         description: Only transactions carrying this tag (tags are stored trimmed and lowercased)

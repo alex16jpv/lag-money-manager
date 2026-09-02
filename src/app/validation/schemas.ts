@@ -174,6 +174,7 @@ export const getTransactionsSchema = z.object({
         .datetime({ offset: true, message: "to must be a valid ISO 8601 date" })
         .optional(),
       tag: z.string().min(1).max(50).optional(),
+      includeSummary: z.enum(["true", "false"]).optional(),
     })
     .refine(
       (q) => !(q.uncategorized === "true" && q.categoryId !== undefined),

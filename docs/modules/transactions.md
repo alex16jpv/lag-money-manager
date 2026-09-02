@@ -43,6 +43,14 @@ Get all transactions for the authenticated user (paginated, offset + cursor supp
 
 Results are sorted by `date` descending. For infinite scroll use cursor pagination (`cursor` = the previous page's `pagination.nextCursor`); it stays consistent when transactions are backdated, because the cursor is a keyset over `(date, _id)` rather than an offset.
 
+`?includeSummary=true` adds `summary.totalAmount`: the sum of `amount` over the
+whole filtered set, on the same terms as the count. It costs one extra
+aggregation, so it is opt-in rather than charged to every listing. It is a plain
+sum, so filter by `type` when the set could mix income and expenses — the review
+inbox (`?pendingDetails=true`) cannot, since quick-adds are always expenses. The
+screens that read "3 to review · $47,900" get both numbers from a single
+`limit=1` request.
+
 `pagination.total` counts **every transaction matching the filters**, independent of the
 page or cursor position — the count and the page are issued with the same filter, minus
 the cursor's keyset condition. A client can therefore preview a result count without

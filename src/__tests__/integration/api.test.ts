@@ -864,6 +864,60 @@ describe("Integration Tests", () => {
       );
     });
 
+    it("asks the repository for a summary only when requested", async () => {
+      const empty = {
+        data: [],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
+      };
+      mockTransactionRepo.getAllByUserId.mockResolvedValue(empty);
+
+      await request(app)
+        .get("/transactions?pendingDetails=true")
+        .set("Authorization", `Bearer ${token}`);
+      expect(mockTransactionRepo.getAllByUserId).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.not.objectContaining({ includeSummary: true }),
+      );
+
+      await request(app)
+        .get("/transactions?pendingDetails=true&includeSummary=true")
+        .set("Authorization", `Bearer ${token}`);
+      expect(mockTransactionRepo.getAllByUserId).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ includeSummary: true, pendingDetails: true }),
+      );
+    });
+
+    it("passes the summary through to the client", async () => {
+      mockTransactionRepo.getAllByUserId.mockResolvedValue({
+        data: [],
+        pagination: {
+          limit: 1,
+          offset: 0,
+          total: 3,
+          hasMore: true,
+          nextCursor: null,
+        },
+        summary: { totalAmount: 47_900 },
+      });
+
+      const res = await request(app)
+        .get("/transactions?pendingDetails=true&includeSummary=true&limit=1")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.summary).toEqual({ totalAmount: 47_900 });
+      expect(res.body.pagination.total).toBe(3);
+    });
+
     it("rejects an unknown source", async () => {
       const res = await request(app)
         .get("/transactions?source=SMS")

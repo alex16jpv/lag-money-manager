@@ -56,6 +56,9 @@ export class TransactionController {
     if (req.query.categoryId) {
       filters.categoryId = req.query.categoryId as string;
     }
+    if (req.query.includeSummary === "true") {
+      filters.includeSummary = true;
+    }
     if (req.query.uncategorized === "true") {
       filters.uncategorized = true;
     }

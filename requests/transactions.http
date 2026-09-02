@@ -136,6 +136,12 @@ Content-Type: application/json
 GET {{baseUrl}}/transactions?pendingDetails=true
 Authorization: Bearer {{token}}
 
+### Bandeja + total en una sola petición (Inicio y la bandeja del diseño)
+### includeSummary añade summary.totalAmount sobre TODO el conjunto filtrado,
+### no sobre la página: con limit=1 devuelve el conteo y la suma sin traer filas.
+GET {{baseUrl}}/transactions?pendingDetails=true&includeSummary=true&limit=1
+Authorization: Bearer {{token}}
+
 ### Listar (todas, orden por fecha desc)
 GET {{baseUrl}}/transactions
 Authorization: Bearer {{token}}

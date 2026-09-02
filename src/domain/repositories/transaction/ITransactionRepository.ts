@@ -3,6 +3,16 @@ import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
 import { Transaction } from "../../entities/Transaction";
 import { IRepository } from "../IRepository";
 
+/**
+ * A page of transactions, plus the summary when it was asked for. The sum
+ * covers everything matching the filters, not the page — the screens that show
+ * "3 to review · $47,900" need the total of the set, and computing it is an
+ * extra aggregation, so it is opt-in rather than paid for on every listing.
+ */
+export interface TransactionPage extends PaginatedResult<Transaction> {
+  summary?: { totalAmount: number };
+}
+
 export interface TransactionFilters {
   ids?: string[];
   accountId?: string;
@@ -15,6 +25,8 @@ export interface TransactionFilters {
   to?: Date;
   tag?: string;
   uncategorized?: boolean;
+  // Opt-in: adds the sum over the whole filtered set (one extra aggregation).
+  includeSummary?: boolean;
 }
 
 export type SpendingGroupBy = "category" | "day" | "tag";
@@ -65,7 +77,7 @@ export interface ITransactionRepository extends IRepository<Transaction> {
     userId: string,
     pagination: PaginationParams,
     filters?: TransactionFilters,
-  ): Promise<PaginatedResult<Transaction>>;
+  ): Promise<TransactionPage>;
 
   aggregateSpending(
     userId: string,
