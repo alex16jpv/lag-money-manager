@@ -26,12 +26,17 @@ npm run start:dev       # Start development server
 ## Lambda Deployment
 
 ```bash
-npm run build           # Build TypeScript code
-npm ci --omit=dev
-zip -r function.zip dist/ node_modules package.json
-# Upload function.zip to AWS Lambda and set handler to dist/lambda.handler
-# Configure environment variables in Lambda console (see docs/guides/environment-vars.md)
+export MONGO_URI="<production URI>"   # required: the deploy syncs indexes first
+npm run deploy:lambda
 ```
+
+Builds, syncs the indexes, assembles the package in `build/lambda-package/` and
+uploads it. It installs the production dependencies **into that directory**, so
+your working `node_modules` keeps its dev dependencies — pruning them in place
+would leave you without `tsc` for the next build.
+
+See [Deployment](docs/guides/deployment.md) for the one-time AWS setup and the
+Lambda's own environment variables.
 
 ## Stack
 

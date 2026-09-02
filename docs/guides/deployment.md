@@ -12,16 +12,29 @@ The production target is **AWS Lambda + a Function URL**, backed by **MongoDB At
 ## Building for Production
 
 ```bash
-# Install dependencies (production only)
-npm ci --omit=dev
-
-# Compile TypeScript
-npm run build
-
-# Output: dist/ directory
+npm ci          # all dependencies — TypeScript is one of them
+npm run build   # compiles to dist/
 ```
 
-The compiled application entry point is `dist/server.js`.
+The compiled entry point is `dist/server.js`.
+
+> **Build before pruning, never after.** `tsc` is a devDependency, so
+> `npm ci --omit=dev` removes the very compiler the build needs and
+> `npm run build` then fails with `tsc: not found`. Nothing that runs from
+> `dist/` needs the dev dependencies — they are only needed to produce it.
+
+To ship a runtime without them, install the production set into a **separate**
+directory instead of pruning the one you work in:
+
+```bash
+npm ci && npm run build
+npm ci --omit=dev --prefix build/lambda-package
+cp -r dist build/lambda-package/dist
+```
+
+`npm run deploy:lambda` already does exactly this, which is why it never
+disturbs your working `node_modules` — prefer it over assembling the package by
+hand.
 
 ## AWS Lambda Deployment
 
