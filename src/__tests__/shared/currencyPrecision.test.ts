@@ -1,6 +1,10 @@
 import { DomainValidationError } from "../../domain/errors";
 import { currencyDecimals } from "../../shared/currency";
-import { assertAmountPrecision, hasValidPrecision } from "../../shared/money";
+import {
+  assertAmountPrecision,
+  hasValidPrecision,
+  MAX_AMOUNT,
+} from "../../shared/money";
 
 describe("currencyDecimals", () => {
   it.each(["JPY", "CLP", "KRW", "VND", "ISK"])("%s has no minor unit", (c) => {
@@ -71,5 +75,23 @@ describe("assertAmountPrecision", () => {
       expect((err as DomainValidationError).field).toBe("balance");
       expect((err as DomainValidationError).code).toBe("AMOUNT_PRECISION");
     }
+  });
+});
+
+describe("MAX_AMOUNT", () => {
+  // The ceiling exists because cents must stay exactly representable; a value
+  // above this silently loses precision instead of erroring.
+  it("keeps its cents inside the safe integer range", () => {
+    expect(MAX_AMOUNT * 100).toBeLessThan(Number.MAX_SAFE_INTEGER);
+    expect(Number.isSafeInteger(MAX_AMOUNT * 100)).toBe(true);
+  });
+
+  it("leaves room for a balance to accumulate several maximum amounts", () => {
+    expect(MAX_AMOUNT * 100 * 9).toBeLessThan(Number.MAX_SAFE_INTEGER);
+  });
+
+  // COP, IRR, VND and IDR reach these numbers in ordinary use.
+  it("admits an amount a house costs in a low-unit currency", () => {
+    expect(MAX_AMOUNT).toBeGreaterThan(1_000_000_000);
   });
 });

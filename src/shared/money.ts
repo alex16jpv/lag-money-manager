@@ -2,9 +2,16 @@ import { DomainValidationError } from "../domain/errors";
 import { currencyDecimals } from "./currency";
 
 // Money is stored as integer cents and exposed as a decimal amount; convert
-// only at the persistence boundary. Integer storage keeps $inc balance updates exact.
-// Cap keeps accumulated balances far from 2^53, where integer cents lose exactness.
-export const MAX_AMOUNT = 1_000_000_000;
+// only at the persistence boundary. Integer storage keeps $inc balance updates
+// exact.
+//
+// The ceiling is where integer cents stop being exact in JavaScript: a value of
+// 1e13 is 1e15 cents, and Number.MAX_SAFE_INTEGER is ~9.007e15. Single amounts
+// therefore have two orders of magnitude of room, and a *balance* — which
+// accumulates — stays exact up to about 9e13. Currencies with no minor unit and
+// large everyday numbers (COP, IRR, VND, IDR) need this much: a house in COP
+// costs more than the old 1e9 cap allowed.
+export const MAX_AMOUNT = 10_000_000_000_000;
 
 export function toCents(amount: number): number {
   return Math.round(amount * 100);

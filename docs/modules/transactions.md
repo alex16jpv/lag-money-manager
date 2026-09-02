@@ -131,7 +131,7 @@ Create a new transaction. Adjusts affected account balances atomically.
 - `INCOME` requires `toAccountId`; `fromAccountId` is not allowed
 - `TRANSFER` requires both `fromAccountId` and `toAccountId` (must be different)
 - `ADJUSTMENT` requires **exactly one** of `fromAccountId` (decrease) or `toAccountId` (increase), and no `categoryId`
-- `amount` must be positive, have at most 2 decimal places, and stay within `MAX_AMOUNT`
+- `amount` must be positive, respect the currency's decimals, and stay within `MAX_AMOUNT` (10 000 000 000 000 — the point where integer cents stop being exactly representable in JavaScript; a *balance* accumulates, so it stays exact up to about nine times a maximum amount)
 - `date` must be valid ISO 8601 and **not more than 24 hours in the future** (`FUTURE_DATE`)
 - `tags` — up to 30 entries of ≤50 chars, normalized server-side: trimmed, lowercased, and deduplicated
 - `categoryId` must exist, belong to the user, not be archived, and its `type` must match the transaction's
