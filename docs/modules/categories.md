@@ -156,3 +156,14 @@ The `seedKey` is the category's identity for re-seeding: it survives renames, so
 - To add a new default category: append an entry to `DEFAULT_CATEGORIES` with a fresh `seedKey`. Existing users pick it up on their next `POST /categories/restore-defaults` — never reuse or rename an existing `seedKey`
 - To add subcategories: add a `parentCategoryId` field, update entity/model, add validation — and decide how stats should roll children up before touching the aggregation
 - Archiving a category does not cascade to transactions or budgets by design; both keep their reference and surface it (budgets expose `archivedCategoryIds`)
+
+### Restoring under a different name
+
+`POST /categorys/:id/restore` accepts an optional `{ name }`. Archiving frees a
+name, so by the time you restore, another category may hold it — and then restore
+answers **409 `DUPLICATE`** while `PUT` refuses the archived row with
+**400 `RESOURCE_ARCHIVED`**. Without a way to rename on the way out, the only
+escape was to go and rename the *other* category first.
+
+The rename happens in the same write that clears `archivedAt`, so the unique
+index judges the final state and nobody can take the name in between.

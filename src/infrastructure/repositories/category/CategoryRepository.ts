@@ -179,10 +179,14 @@ export class CategoryRepository implements ICategoryRepository {
     }
   }
 
-  async restore(id: string, userId: string): Promise<Category | null> {
+  async restore(
+    id: string,
+    userId: string,
+    name?: string,
+  ): Promise<Category | null> {
     const doc = await CategoryModel.findOneAndUpdate(
       { _id: id, userId, archivedAt: { $ne: null } },
-      { archivedAt: null },
+      { archivedAt: null, ...(name ? { name } : {}) },
       { new: true },
     ).lean();
     return doc ? this.toEntity(doc) : null;

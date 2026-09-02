@@ -5,6 +5,7 @@ import {
   createCategorySchema,
   getCategoriesSchema,
   idParamSchema,
+  restoreSchema,
   updateCategorySchema,
 } from "../validation/schemas";
 import { validate } from "../validation/validate";
@@ -318,7 +319,13 @@ router.delete(
  * /categories/{id}/restore:
  *   post:
  *     tags: [Categories]
- *     summary: Restore an archived category
+ *     summary: Restore an archived category, optionally under a new name
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/RestoreInput'
  *     description: >
  *       Idempotent — restoring an already-active category returns it unchanged.
  *       Fails with 409 when another active category took its name meanwhile.
@@ -362,7 +369,7 @@ router.delete(
  */
 router.post(
   "/:id/restore",
-  validate(idParamSchema),
+  validate(restoreSchema),
   CategoryController.restoreCategory,
 );
 

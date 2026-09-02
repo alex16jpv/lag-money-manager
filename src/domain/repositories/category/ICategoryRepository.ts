@@ -23,5 +23,7 @@ export interface ICategoryRepository extends IRepository<Category> {
   // Which of the given ids are the user's ARCHIVED categories (one query).
   listArchivedIds(userId: string, ids: string[]): Promise<string[]>;
   countByUserId(userId: string): Promise<number>;
-  restore(id: string, userId: string): Promise<Category | null>;
+  // `name` renames as part of the same write, so the unique index sees the
+  // final state and no one can take the name in between.
+  restore(id: string, userId: string, name?: string): Promise<Category | null>;
 }

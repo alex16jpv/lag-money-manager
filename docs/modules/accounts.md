@@ -153,3 +153,14 @@ The API speaks **decimals** (max 2 decimal places); MongoDB stores **integer cen
 - To add account-level limits: add fields to entity/model, add validation in `AccountService`
 - Balance is modified by `TransactionService` via `incrementBalance()` — do not add balance modification logic to this module, and never write `balance` through `update()`
 - Multi-currency: `currency` is already stored per account and asserted on every balance adjustment (`CURRENCY_MISMATCH`); the missing pieces are a minor-units table and FX at transfer time
+
+### Restoring under a different name
+
+`POST /accounts/:id/restore` accepts an optional `{ name }`. Archiving frees a
+name, so by the time you restore, another account may hold it — and then restore
+answers **409 `DUPLICATE`** while `PUT` refuses the archived row with
+**400 `RESOURCE_ARCHIVED`**. Without a way to rename on the way out, the only
+escape was to go and rename the *other* account first.
+
+The rename happens in the same write that clears `archivedAt`, so the unique
+index judges the final state and nobody can take the name in between.

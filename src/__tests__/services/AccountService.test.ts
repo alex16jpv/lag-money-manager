@@ -406,6 +406,27 @@ describe("AccountService", () => {
   });
 
   describe("restoreAccount", () => {
+    // Without this the user is stuck: restore answers 409 because another
+    // account took the name, and renaming the archived one is refused.
+    it("renames as part of the same write when a new name is given", async () => {
+      repo.restore.mockResolvedValue(
+        new Account({ ...validAccountProps, name: "Nequi antiguo" }),
+      );
+
+      const result = await service.restoreAccount(
+        mockAccount.id,
+        mockAccount.userId,
+        "Nequi antiguo",
+      );
+
+      expect(repo.restore).toHaveBeenCalledWith(
+        mockAccount.id,
+        mockAccount.userId,
+        "Nequi antiguo",
+      );
+      expect(result.name).toBe("Nequi antiguo");
+    });
+
     it("restores the user's archived account", async () => {
       repo.restore.mockResolvedValue(mockAccount);
 
@@ -417,6 +438,7 @@ describe("AccountService", () => {
       expect(repo.restore).toHaveBeenCalledWith(
         mockAccount.id,
         mockAccount.userId,
+        undefined,
       );
       expect(result.id).toBe(mockAccount.id);
     });

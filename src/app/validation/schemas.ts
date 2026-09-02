@@ -447,6 +447,18 @@ export const budgetAmountOverrideSchema = z.object({
   }),
 });
 
+/**
+ * Restoring an archived resource whose name was taken meanwhile: renaming it in
+ * the same request is the only way out that does not force the user to go and
+ * edit the *other* resource first.
+ */
+export const restoreSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  body: z.object({ name: accountName.optional() }).optional().default({}),
+});
+
 export const idParamSchema = z.object({
   params: z.object({
     id: z.string().uuid("ID must be a valid UUID"),

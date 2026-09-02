@@ -81,6 +81,15 @@ Authorization: Bearer {{token}}
 GET {{baseUrl}}/accounts?includeArchived=true
 Authorization: Bearer {{token}}
 
+### Restaurar con OTRO nombre — la salida cuando restore da 409 porque
+### otra cuenta activa tomó el nombre mientras esta estaba archivada.
+### Renombra y desarchiva en la misma escritura (atómico).
+POST {{baseUrl}}/accounts/{{accountA}}/restore
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Ahorros recuperada {{$randomInt 100 999}}" }
+
 ### Restaurar A — vuelve SIN isDefault (B conserva el default)
 POST {{baseUrl}}/accounts/{{accountA}}/restore
 Authorization: Bearer {{token}}

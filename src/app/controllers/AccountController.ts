@@ -68,6 +68,7 @@ export class AccountController {
     const account = await accountService.restoreAccount(
       req.params.id as string,
       userId,
+      (req.body as { name?: string } | undefined)?.name,
     );
     res.status(200).json(account);
   };

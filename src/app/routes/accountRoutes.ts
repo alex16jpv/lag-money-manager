@@ -5,6 +5,7 @@ import {
   createAccountSchema,
   idParamSchema,
   paginationQuerySchema,
+  restoreSchema,
   updateAccountSchema,
 } from "../validation/schemas";
 import { validate } from "../validation/validate";
@@ -279,7 +280,13 @@ router.delete("/:id", validate(idParamSchema), AccountController.deleteAccount);
  * /accounts/{id}/restore:
  *   post:
  *     tags: [Accounts]
- *     summary: Restore an archived account
+ *     summary: Restore an archived account, optionally under a new name
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/RestoreInput'
  *     description: >
  *       Idempotent - restoring an already-active account returns it
  *       unchanged.
@@ -323,7 +330,7 @@ router.delete("/:id", validate(idParamSchema), AccountController.deleteAccount);
  */
 router.post(
   "/:id/restore",
-  validate(idParamSchema),
+  validate(restoreSchema),
   AccountController.restoreAccount,
 );
 

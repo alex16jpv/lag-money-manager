@@ -76,6 +76,15 @@ Authorization: Bearer {{token}}
 POST {{baseUrl}}/categories/{{catId}}/restore
 Authorization: Bearer {{token}}
 
+### Restaurar con OTRO nombre — salida al 409 cuando una categoría activa
+### tomó el nombre; renombra y desarchiva en la misma escritura
+POST {{baseUrl}}/categories/{{catId}}/restore
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Café recuperada {{$randomInt 100 999}}" }
+
+
 ### Restaurar defaults — recrea SOLO las categorías por defecto que falten
 ### (idempotente por seedKey; las archivadas cuentan como presentes)
 POST {{baseUrl}}/categories/restore-defaults

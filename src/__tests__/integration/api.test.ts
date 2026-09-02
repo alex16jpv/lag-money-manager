@@ -706,7 +706,35 @@ describe("Integration Tests", () => {
       expect(mockAccountRepo.restore).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
         testUser.id,
+        undefined,
       );
+    });
+
+    // The way out of a restore that 409s because the name was taken while the
+    // account sat archived: rename it on the way out, in the same write.
+    it("restores under a new name when the body carries one", async () => {
+      mockAccountRepo.restore.mockResolvedValue(testAccount);
+
+      const res = await request(app)
+        .post("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71/restore")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ name: "  Nequi antiguo  " });
+
+      expect(res.status).toBe(200);
+      expect(mockAccountRepo.restore).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        testUser.id,
+        "Nequi antiguo",
+      );
+    });
+
+    it("rejects an empty name instead of restoring under it", async () => {
+      const res = await request(app)
+        .post("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71/restore")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ name: "   " });
+
+      expect(res.status).toBe(400);
     });
 
     it("returns 404 when there is nothing to restore", async () => {

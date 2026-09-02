@@ -47,6 +47,7 @@ const requestBodies = {
   UpdateTransactionInput: bodyOf(v.updateTransactionSchema),
   QuickAddTransactionInput: bodyOf(v.quickAddTransactionSchema),
   BatchUpdateTransactionsInput: bodyOf(v.batchUpdateTransactionsSchema),
+  RestoreInput: bodyOf(v.restoreSchema),
   CreateBudgetInput: bodyOf(v.createBudgetSchema),
   UpdateBudgetInput: bodyOf(v.updateBudgetSchema),
   BudgetAmountOverrideInput: bodyOf(v.budgetAmountOverrideSchema),

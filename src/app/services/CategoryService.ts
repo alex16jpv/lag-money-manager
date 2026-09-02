@@ -116,8 +116,12 @@ export class CategoryService {
   }
 
   // Idempotent: restoring an already-active category returns it unchanged.
-  async restoreCategory(id: string, userId: string): Promise<Category> {
-    const restored = await this.repo.restore(id, userId);
+  async restoreCategory(
+    id: string,
+    userId: string,
+    name?: string,
+  ): Promise<Category> {
+    const restored = await this.repo.restore(id, userId, name);
     if (restored) {
       return new Category(restored);
     }

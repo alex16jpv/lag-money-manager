@@ -128,8 +128,12 @@ export class AccountService {
   }
 
   // Idempotent: restoring an already-active account returns it unchanged.
-  async restoreAccount(id: string, userId: string): Promise<Account> {
-    const restored = await this.repo.restore(id, userId);
+  async restoreAccount(
+    id: string,
+    userId: string,
+    name?: string,
+  ): Promise<Account> {
+    const restored = await this.repo.restore(id, userId, name);
     if (restored) {
       return new Account(restored);
     }

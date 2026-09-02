@@ -31,7 +31,9 @@ export interface IAccountRepository extends IRepository<Account> {
   archiveNonDefault(id: string, userId: string): Promise<boolean>;
 
   // Un-archives the user's own archived account; null if none to restore.
-  restore(id: string, userId: string): Promise<Account | null>;
+  // `name` renames as part of the same write, so the unique index sees the
+  // final state and no one can take the name in between.
+  restore(id: string, userId: string, name?: string): Promise<Account | null>;
 
   getDefaultByUserId(userId: string): Promise<Account | null>;
   // Sets this account as the user's only default; null if not found.
