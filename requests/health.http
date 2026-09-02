@@ -6,3 +6,7 @@ GET {{baseUrl}}/
 
 ### DB health
 GET {{baseUrl}}/health/db
+
+### Documento OpenAPI en crudo — sin auth, solo fuera de producción
+### Lo consume `openapi-typescript` del front para generar sus tipos.
+GET {{baseUrl}}/api-docs.json

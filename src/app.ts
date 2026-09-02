@@ -49,6 +49,12 @@ app.use(express.json({ limit: "10kb" }));
 
 if (ENVIRONMENT.NODE_ENV !== "production") {
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+  // The raw document, for `openapi-typescript` and the frontend's contract
+  // test. Mounted here, ahead of the gateway secret and the auth middleware,
+  // because a spec behind a 401 cannot be code-generated from.
+  app.get("/api-docs.json", (_req, res) => {
+    res.json(swaggerSpec);
+  });
 }
 
 // All routes below require the gateway secret header
