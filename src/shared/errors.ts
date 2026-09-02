@@ -1,3 +1,5 @@
+import { ErrorCode } from "./errorCodes";
+
 class BaseError extends Error {
   statusCode: number;
   details?: unknown;
@@ -21,12 +23,12 @@ export class ApiError extends BaseError {
   };
 
   // Stable machine-readable code; clients branch on this, never on `message`.
-  code?: string;
+  code?: ErrorCode;
 
   constructor(
     name: keyof typeof ApiError.errors,
     message?: string,
-    code?: string,
+    code?: ErrorCode,
     details?: unknown,
   ) {
     super(message || name, ApiError.errors[name], details);
