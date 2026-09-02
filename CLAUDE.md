@@ -114,8 +114,11 @@ Según lo que toques:
 
 Los request bodies del OpenAPI se generan desde los schemas Zod
 (`src/config/swagger.ts`); las vistas de respuesta se mantienen a mano pero sus
-enums salen de `constants.ts` para que no puedan derivar. Si añades un enum a
-una vista, usa `enumOf(...)`, no una lista literal.
+enums salen de `constants.ts` para que no puedan derivar. Dos reglas al tocar
+una vista: los enums se referencian (`enumOf(...)`, `ERROR_CODES`,
+`CATEGORY_ICONS`), nunca se copian; y la vista se envuelve en `withRequired(...)`
+declarando solo lo que de verdad puede faltar — el front genera sus tipos desde
+este documento, y un campo sin `required` se vuelve opcional aguas abajo.
 
 ---
 

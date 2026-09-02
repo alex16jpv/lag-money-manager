@@ -11,9 +11,8 @@
  */
 import { execFileSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
-import { join } from "path";
-
 import { MongoClient } from "mongodb";
+import { join } from "path";
 
 const TEST_URI =
   "mongodb://localhost:27017/lag_seed_itest?replicaSet=rs0&directConnection=true";
@@ -81,7 +80,6 @@ describe("seed:test", () => {
 
   const ran = (): boolean => {
     if (!available) {
-      // eslint-disable-next-line no-console -- a check that did not run must say so
       console.warn("SKIPPED: no MongoDB replica set on localhost:27017");
     }
     return available;
