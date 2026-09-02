@@ -150,6 +150,46 @@ export class BudgetService {
     }
   }
 
+  /**
+   * Un-archives a budget. Owner's decision: no body — the overlap rule decides
+   * whether it can come back as it is, and changing its categories or period
+   * would make it a different budget, so the user creates a new one instead.
+   *
+   * Nothing about it is rewritten: overrides, effectiveFrom, note, colour and
+   * categoryIds return untouched, archived categories included. A finished
+   * CUSTOM one comes back `expired`.
+   */
+  async restoreBudget(
+    id: string,
+    userId: string,
+    ctx: ViewContext,
+  ): Promise<BudgetView> {
+    const existing = await this.getOwned(id, userId);
+    // Idempotent, like accounts and categories: an active budget comes back
+    // unchanged rather than erroring.
+    if (existing.archivedAt) {
+      await this.assertNoOverlap(
+        userId,
+        existing.type,
+        existing.periodType,
+        existing.categoryIds,
+        existing.id,
+      );
+      const restored = await this.repo.restore(id, userId);
+      if (restored) {
+        const [view] = await this.toViews(userId, [restored], ctx);
+        return view;
+      }
+      // Lost the race to a concurrent restore: whatever is stored now is the
+      // answer, and it is no longer archived.
+      const current = await this.getOwned(id, userId);
+      const [view] = await this.toViews(userId, [current], ctx);
+      return view;
+    }
+    const [view] = await this.toViews(userId, [existing], ctx);
+    return view;
+  }
+
   async clearAmountOverride(
     id: string,
     userId: string,

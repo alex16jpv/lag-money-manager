@@ -138,6 +138,12 @@ Authorization: Bearer {{token}}
 GET {{baseUrl}}/budgets?includeArchived=true
 Authorization: Bearer {{token}}
 
+### Restaurar un budget archivado — conserva overrides, effectiveFrom y categorías.
+### Idempotente. Si otro activo ya cubre esas categorías en ese período: 400
+### BUDGET_PERIOD_OVERLAP (no se restaura; el usuario crea uno nuevo).
+POST {{baseUrl}}/budgets/{{budgetId}}/restore
+Authorization: Bearer {{token}}
+
 ### ---------- Casos de error ----------
 
 ### Duplicado — misma categoría + mismo tipo de período + mismo type (400 BUDGET_PERIOD_OVERLAP)

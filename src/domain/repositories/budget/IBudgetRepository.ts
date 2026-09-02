@@ -30,6 +30,11 @@ export interface IBudgetRepository extends IRepository<Budget> {
     excludeId?: string,
   ): Promise<Budget[]>;
 
+  // Un-archives the user's own archived budget; null if there was none to
+  // restore. Clearing archivedAt in a single write lets the partial unique
+  // index judge the resulting state and catch a concurrent restore.
+  restore(id: string, userId: string): Promise<Budget | null>;
+
   clearAmountOverride(
     id: string,
     userId: string,

@@ -230,6 +230,67 @@ router.delete(
 
 /**
  * @openapi
+ * /budgets/{id}/restore:
+ *   post:
+ *     tags: [Budgets]
+ *     summary: Restore an archived budget
+ *     description: |
+ *       Brings an archived budget back exactly as it was: its overrides,
+ *       `effectiveFrom`, note, colour and `categoryIds` are untouched, archived
+ *       categories included, and a finished CUSTOM one returns with
+ *       `expired: true`.
+ *
+ *       Idempotent — restoring an active budget returns it unchanged. It takes
+ *       no body: if another active budget of the same type and period already
+ *       covers one of its categories the restore is refused with **400
+ *       `BUDGET_PERIOD_OVERLAP`**, because changing its categories or period
+ *       would make it a different budget; create a new one instead.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *         description: Budget ID
+ *       - in: query
+ *         name: reference
+ *         schema: { type: string, format: date-time }
+ *         description: "Any instant inside the period to resolve (default: now)"
+ *     responses:
+ *       200:
+ *         description: Budget restored (view resolved for the reference period)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Budget'
+ *       400:
+ *         description: Another active budget already covers these categories for this period (code BUDGET_PERIOD_OVERLAP)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Budget not found (uniform for missing and not owned)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: A concurrent restore won the race against the unique index (code DUPLICATE)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/:id/restore",
+  validate(budgetIdParamSchema),
+  BudgetController.restoreBudget,
+);
+
+/**
+ * @openapi
  * /budgets/{id}/amount:
  *   put:
  *     tags: [Budgets]

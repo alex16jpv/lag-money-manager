@@ -9,7 +9,7 @@ Two shapes exist:
 - **Per-category budget** — `categoryIds` lists one or more categories; `spent` is the sum of those categories in the window.
 - **Global budget** — `categoryIds: []`; `spent` is the window's **total** flow of that type, uncategorized transactions and quick-adds included.
 
-Budgets are archived, never hard-deleted, and there is no restore endpoint. All budgets are user-scoped.
+Budgets are archived, never hard-deleted, and can be restored. All budgets are user-scoped.
 
 ## Files and Responsibilities
 
@@ -87,7 +87,15 @@ Override side effects:
 
 ### `DELETE /budgets/:id`
 
-Archives the budget (soft delete, sets `archivedAt`). Idempotent: archiving an already-archived budget is a no-op success. **There is no restore endpoint** — archiving is deliberately final; to recover, create a new budget.
+Archives the budget (soft delete, sets `archivedAt`). Idempotent: archiving an already-archived budget is a no-op success.
+
+### `POST /budgets/:id/restore`
+
+Brings an archived budget back **exactly as it was**: overrides, `effectiveFrom`, note, colour and `categoryIds` return untouched, archived categories still listed in `archivedCategoryIds`. A finished `CUSTOM` one returns with `expired: true`, so it shows among the ended ones rather than in the active list. Accepts `reference` like the rest of the budget routes and answers with the resolved `BudgetView`.
+
+Idempotent — restoring an active budget returns it unchanged.
+
+It takes **no body**. Coming out of the archive has to obey the same overlap rule as creating: if another active budget of the same type and period already covers one of its categories (or both are global), the restore is refused with **400 `BUDGET_PERIOD_OVERLAP`**. Changing its categories or period to make room would make it a different budget, so the user creates a new one instead. The un-archive is a single write, so the partial unique index judges the resulting state and a concurrent restore loses with **409 `DUPLICATE`**.
 
 ### `PUT /budgets/:id/amount`
 
@@ -254,4 +262,4 @@ The API speaks **decimals** (max 2 decimal places, capped at `MAX_AMOUNT`); Mong
 - To add a new period type: add it to `BUDGET_PERIOD_TYPES` in `src/shared/constants.ts`, handle it in `resolvePeriod()`, and **add a key format in `periodKey()`** — the default branch throws on purpose, because a key containing a dot would corrupt `amountOverrides`
 - To add rollover (unspent amount carried to the next period): compute it in `toViews()` from the previous period's window; do not persist a running balance
 - To surface budget progress in stats: reuse `sumAmountsByCategory()` rather than adding a second aggregation path
-- Archiving is final by design. If restore is ever needed, mirror the account/category `restore()` pattern **and** handle the unique-index collision when another budget took the slot meanwhile
+- Restore mirrors the account/category pattern, with the overlap rule applied on the way out and the unique index catching a concurrent restore

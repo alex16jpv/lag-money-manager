@@ -40,6 +40,7 @@ const createBudgetRepo = (): jest.Mocked<IBudgetRepository> =>
     findOverlapping: jest.fn().mockResolvedValue([]),
     setAmountOverride: jest.fn(),
     clearAmountOverride: jest.fn(),
+    restore: jest.fn(),
   }) as unknown as jest.Mocked<IBudgetRepository>;
 
 const createTxRepo = (): jest.Mocked<ITransactionRepository> =>
@@ -679,6 +680,55 @@ describe("BudgetService", () => {
       expect(budgetRepo.update).not.toHaveBeenCalled();
       expect(budgetRepo.setAmountOverride).not.toHaveBeenCalled();
       expect(budgetRepo.clearAmountOverride).not.toHaveBeenCalled();
+    });
+  });
+
+  // Archiving used to be final. It is not any more, but coming back has to obey
+  // the same overlap rule creating one does, or two active budgets would cover
+  // the same categories for the same period.
+  describe("restoreBudget", () => {
+    const archived = () => makeBudget({ archivedAt: new Date() });
+    it("un-archives and returns the view", async () => {
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(archived());
+      budgetRepo.restore.mockResolvedValue(makeBudget());
+      const view = await service.restoreBudget("b1", USER, CTX);
+      expect(budgetRepo.restore).toHaveBeenCalledWith("b1", USER);
+      expect(view.archivedAt).toBeNull();
+    });
+    it("refuses when another active budget already covers its categories", async () => {
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(archived());
+      budgetRepo.findOverlapping.mockResolvedValue([
+        makeBudget({ id: "other" }),
+      ]);
+      await expect(service.restoreBudget("b1", USER, CTX)).rejects.toThrow(
+        "A budget for this category and period type already exists",
+      );
+      expect(budgetRepo.restore).not.toHaveBeenCalled();
+    });
+    it("excludes itself from the overlap check", async () => {
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(archived());
+      budgetRepo.restore.mockResolvedValue(makeBudget());
+      await service.restoreBudget("b1", USER, CTX);
+      expect(budgetRepo.findOverlapping).toHaveBeenCalledWith(
+        USER,
+        "EXPENSE",
+        "MONTHLY",
+        ["c1"],
+        "b1",
+      );
+    });
+    it("is idempotent: an active budget comes back untouched", async () => {
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(makeBudget());
+      const view = await service.restoreBudget("b1", USER, CTX);
+      expect(budgetRepo.restore).not.toHaveBeenCalled();
+      expect(budgetRepo.findOverlapping).not.toHaveBeenCalled();
+      expect(view.id).toBe("b1");
+    });
+    it("404s for a budget that is not the user's", async () => {
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(null);
+      await expect(service.restoreBudget("b1", USER, CTX)).rejects.toThrow(
+        "Budget not found",
+      );
     });
   });
 });
