@@ -9,6 +9,16 @@ export interface BudgetFilters {
   includeExpired?: boolean;
 }
 
+// What a create, update or restore would leave active, as the overlap rule
+// judges it.
+export interface OverlapCandidate {
+  type: BudgetType;
+  periodType: BudgetPeriodType;
+  categoryIds: string[];
+  periodStartDate?: Date | null;
+  periodEndDate?: Date | null;
+}
+
 export interface IBudgetRepository extends IRepository<Budget> {
   // Unlike getById, also resolves archived budgets (uniform semantics:
   // archived resources stay readable; writes reject with RESOURCE_ARCHIVED).
@@ -20,13 +30,12 @@ export interface IBudgetRepository extends IRepository<Budget> {
     filters?: BudgetFilters,
   ): Promise<PaginatedResult<Budget>>;
 
-  // Active budgets of the same period type that share any of the given
-  // categories (used to reject duplicates). `excludeId` skips a budget being updated.
+  // Active budgets the candidate would overlap: same type and period type,
+  // sharing a category (or both global); CUSTOM ones only when their date
+  // windows intersect. `excludeId` skips the budget being updated or restored.
   findOverlapping(
     userId: string,
-    type: BudgetType,
-    periodType: BudgetPeriodType,
-    categoryIds: string[],
+    candidate: OverlapCandidate,
     excludeId?: string,
   ): Promise<Budget[]>;
 

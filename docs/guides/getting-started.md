@@ -58,7 +58,9 @@ docker exec lag-money-manager-mongo-1 mongosh --quiet --eval "rs.status().member
 
 There are no migrations. Collections and indexes are created automatically on
 first write (`autoIndex` is on outside production), and the first registered
-user gets the default categories seeded.
+user gets the default categories seeded. Creation never drops anything, though:
+when a pull changes an index definition, the old index stays on your local
+database until you run `npm run db:sync-indexes`.
 
 Optionally, `docker compose up -d` also starts **Mongoku**, a lightweight
 MongoDB web UI, on `http://localhost:3100`.

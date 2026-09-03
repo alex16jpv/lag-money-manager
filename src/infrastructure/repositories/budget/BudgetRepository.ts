@@ -4,8 +4,8 @@ import { Budget } from "../../../domain/entities/Budget";
 import {
   BudgetFilters,
   IBudgetRepository,
+  OverlapCandidate,
 } from "../../../domain/repositories/budget/IBudgetRepository";
-import { BudgetPeriodType, BudgetType } from "../../../shared/constants";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
 import {
@@ -144,11 +144,10 @@ export class BudgetRepository implements IBudgetRepository {
 
   async findOverlapping(
     userId: string,
-    type: BudgetType,
-    periodType: BudgetPeriodType,
-    categoryIds: string[],
+    candidate: OverlapCandidate,
     excludeId?: string,
   ): Promise<Budget[]> {
+    const { type, periodType, categoryIds } = candidate;
     const filter: Record<string, unknown> = {
       userId,
       type,
@@ -158,6 +157,11 @@ export class BudgetRepository implements IBudgetRepository {
       // coexists with per-category budgets by design.
       categoryIds: categoryIds.length ? { $in: categoryIds } : { $size: 0 },
     };
+    // Half-open windows [start, end): two CUSTOM budgets coexist unless they intersect.
+    if (periodType === "CUSTOM") {
+      filter.periodStartDate = { $lt: candidate.periodEndDate };
+      filter.periodEndDate = { $gt: candidate.periodStartDate };
+    }
     if (excludeId) {
       filter._id = { $ne: excludeId };
     }

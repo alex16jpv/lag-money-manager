@@ -2,6 +2,7 @@ import { Budget } from "../../domain/entities/Budget";
 import {
   BudgetFilters,
   IBudgetRepository,
+  OverlapCandidate,
 } from "../../domain/repositories/budget/IBudgetRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
@@ -67,12 +68,7 @@ export class BudgetService {
     const type = dto.type ?? "EXPENSE";
     this.assertValidPeriod(dto);
     await this.assertCategoriesUsable(dto.userId, dto.categoryIds, type);
-    await this.assertNoOverlap(
-      dto.userId,
-      type,
-      dto.periodType,
-      dto.categoryIds,
-    );
+    await this.assertNoOverlap(dto.userId, { ...dto, type });
     // Mono-currency mode: stamped from the owner at creation.
     const owner = await this.userRepo.getById(dto.userId);
     const currency = owner?.currency ?? DEFAULT_CURRENCY;
@@ -120,13 +116,7 @@ export class BudgetService {
         existing.categoryIds,
       );
     }
-    await this.assertNoOverlap(
-      userId,
-      merged.type,
-      merged.periodType,
-      merged.categoryIds,
-      id,
-    );
+    await this.assertNoOverlap(userId, merged, id);
     const updated = await this.repo.update(id, patch);
     const [view] = await this.toViews(userId, [updated], ctx);
     return view;
@@ -168,13 +158,7 @@ export class BudgetService {
     // Idempotent, like accounts and categories: an active budget comes back
     // unchanged rather than erroring.
     if (existing.archivedAt) {
-      await this.assertNoOverlap(
-        userId,
-        existing.type,
-        existing.periodType,
-        existing.categoryIds,
-        existing.id,
-      );
+      await this.assertNoOverlap(userId, existing, existing.id);
       const restored = await this.repo.restore(id, userId);
       if (restored) {
         const [view] = await this.toViews(userId, [restored], ctx);
@@ -321,22 +305,20 @@ export class BudgetService {
 
   private async assertNoOverlap(
     userId: string,
-    type: string,
-    periodType: string,
-    categoryIds: string[],
+    candidate: OverlapCandidate,
     excludeId?: string,
   ): Promise<void> {
     const overlapping = await this.repo.findOverlapping(
       userId,
-      type as never,
-      periodType as never,
-      categoryIds,
+      candidate,
       excludeId,
     );
     if (overlapping.length > 0) {
       throw new ApiError(
         "BadRequest",
-        "A budget for this category and period type already exists",
+        candidate.periodType === "CUSTOM"
+          ? "A budget for this category already covers part of these dates"
+          : "A budget for this category and period type already exists",
         "BUDGET_PERIOD_OVERLAP",
       );
     }

@@ -67,10 +67,19 @@ const BudgetSchema = new Schema<IBudgetDocument>(
 );
 
 BudgetSchema.index({ userId: 1, archivedAt: 1 });
-// Backs the no-overlap rule (same category + same period type) against
-// concurrent creates; multikey over categoryIds, archived budgets free the slot.
+// Backs the no-overlap rule against concurrent creates; multikey over
+// categoryIds, archived budgets free the slot. Recurring budgets carry null
+// dates, so their key is the period type alone; a CUSTOM budget only collides
+// with an identical window — intersecting windows are the service's check.
 BudgetSchema.index(
-  { userId: 1, type: 1, periodType: 1, categoryIds: 1 },
+  {
+    userId: 1,
+    type: 1,
+    periodType: 1,
+    categoryIds: 1,
+    periodStartDate: 1,
+    periodEndDate: 1,
+  },
   { unique: true, partialFilterExpression: { archivedAt: null } },
 );
 

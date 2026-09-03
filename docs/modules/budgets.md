@@ -95,7 +95,7 @@ Brings an archived budget back **exactly as it was**: overrides, `effectiveFrom`
 
 Idempotent — restoring an active budget returns it unchanged.
 
-It takes **no body**. Coming out of the archive has to obey the same overlap rule as creating: if another active budget of the same type and period already covers one of its categories (or both are global), the restore is refused with **400 `BUDGET_PERIOD_OVERLAP`**. Changing its categories or period to make room would make it a different budget, so the user creates a new one instead. The un-archive is a single write, so the partial unique index judges the resulting state and a concurrent restore loses with **409 `DUPLICATE`**.
+It takes **no body**. Coming out of the archive has to obey the same overlap rule as creating: if another active budget of the same type and period already covers one of its categories (or both are global; for `CUSTOM`, only one whose date window intersects), the restore is refused with **400 `BUDGET_PERIOD_OVERLAP`**. Changing its categories or period to make room would make it a different budget, so the user creates a new one instead. The un-archive is a single write, so the partial unique index judges the resulting state and a concurrent restore loses with **409 `DUPLICATE`**.
 
 ### `PUT /budgets/:id/amount`
 
@@ -238,20 +238,24 @@ None specific to this module.
 | `ValidationError`           | 400    | Invalid body or query (bad color, >20 categories, amount with >2 decimals, …)   |
 | `BadRequest`                | 400    | `CUSTOM` without both dates, or `startDate >= endDate`                          |
 | `BadRequest`                | 400    | `periodStartDate` / `periodEndDate` sent for a non-CUSTOM budget                |
-| `BUDGET_PERIOD_OVERLAP`     | 400    | A budget for this type + period type already covers one of the categories       |
+| `BUDGET_PERIOD_OVERLAP`     | 400    | A budget for this type + period type already covers one of the categories (`CUSTOM`: only when the date windows intersect) |
 | `CATEGORY_ARCHIVED`         | 400    | Assigning an archived category (keeping one the budget already had is allowed)  |
 | `CATEGORY_TYPE_MISMATCH`    | 400    | Category type differs from the budget type                                      |
 | `RESOURCE_ARCHIVED`         | 400    | Writing to (or overriding the amount of) an archived budget                     |
 | `Unauthorized`              | 401    | Missing, invalid or expired access token                                        |
 | `NotFound`                  | 404    | Budget missing **or owned by another user** (uniform, so ids can't be probed)   |
 | `NotFound`                  | 404    | A referenced category is missing or not owned                                   |
-| `DUPLICATE`                 | 409    | A concurrent create lost the race to the unique partial index                   |
+| `DUPLICATE`                 | 409    | A concurrent create lost the race to the unique partial index (`CUSTOM`: identical window) |
 
 ## Overlap Rule
 
 `findOverlapping()` rejects a second **active** budget with the same `userId`, `type`, and `periodType` that shares any category id. A global budget (`categoryIds: []`) only conflicts with another global one — by design it coexists with per-category budgets, since it measures a different thing.
 
-The rule is enforced twice: in the service (readable `BUDGET_PERIOD_OVERLAP`) and by a unique partial index `{ userId, type, periodType, categoryIds }` limited to `archivedAt: null`, which catches concurrent creates as a `409 DUPLICATE`. Archiving a budget frees the slot.
+`CUSTOM` is the exception: two custom budgets over the same category coexist as long as their half-open windows `[periodStartDate, periodEndDate)` do not intersect ("Vacation July" and "Vacation December" are two budgets, not a duplicate). Windows that merely touch (one ends the instant the other starts) do not intersect. Create, update (against the **moved** window) and restore all apply the same check.
+
+The rule is enforced twice: in the service (readable `BUDGET_PERIOD_OVERLAP`) and by a unique partial index `{ userId, type, periodType, categoryIds, periodStartDate, periodEndDate }` limited to `archivedAt: null`, which catches concurrent creates as a `409 DUPLICATE`. Recurring budgets store `null` dates, so for them the key collapses to the period type as before. For `CUSTOM` the index only catches an **identical** window (the double-submit case); two concurrent creates with different but intersecting windows are not caught by it — an interval-intersection constraint cannot be expressed as a unique index, and the service check is the only guard there. Archiving a budget frees the slot.
+
+> The index key changed in W-28. In development, indexes are created on connect but never dropped, so a database that already had the old `{ userId, type, periodType, categoryIds }` index keeps refusing a second `CUSTOM` per category with `409 DUPLICATE` until `npm run db:sync-indexes` drops it. The deploy step runs that sync, so production picks it up on its own.
 
 ## Money Representation
 

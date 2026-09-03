@@ -94,7 +94,7 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/Budget'
  *       400:
- *         description: Validation error. Codes include BUDGET_PERIOD_OVERLAP (a budget for this category and period type already exists), CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH.
+ *         description: Validation error. Codes include BUDGET_PERIOD_OVERLAP (a budget for this category and period type already exists; CUSTOM budgets only conflict when their date windows intersect), CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH.
  *         content:
  *           application/json:
  *             schema:
@@ -242,7 +242,8 @@ router.delete(
  *
  *       Idempotent — restoring an active budget returns it unchanged. It takes
  *       no body: if another active budget of the same type and period already
- *       covers one of its categories the restore is refused with **400
+ *       covers one of its categories (for CUSTOM, one whose date window
+ *       intersects) the restore is refused with **400
  *       `BUDGET_PERIOD_OVERLAP`**, because changing its categories or period
  *       would make it a different budget; create a new one instead.
  *     parameters:

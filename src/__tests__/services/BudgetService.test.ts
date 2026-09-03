@@ -519,9 +519,11 @@ describe("BudgetService", () => {
 
       expect(budgetRepo.findOverlapping).toHaveBeenCalledWith(
         USER,
-        "INCOME",
-        "MONTHLY",
-        ["c1"],
+        expect.objectContaining({
+          type: "INCOME",
+          periodType: "MONTHLY",
+          categoryIds: ["c1"],
+        }),
         undefined,
       );
     });
@@ -549,6 +551,93 @@ describe("BudgetService", () => {
           CTX,
         ),
       ).rejects.toThrow("does not match budget type");
+    });
+  });
+
+  // W-28: two CUSTOM budgets over one category coexist unless their windows
+  // intersect. The intersection itself is the repository's query; the service
+  // must hand it the candidate window and word the refusal accordingly.
+  describe("CUSTOM overlap by dates [W-28]", () => {
+    const window = {
+      periodStartDate: new Date("2026-12-01T00:00:00Z"),
+      periodEndDate: new Date("2026-12-31T00:00:00Z"),
+    };
+    const custom = {
+      name: "Vacation December",
+      color: "TEAL" as const,
+      categoryIds: ["c1"],
+      amount: 500,
+      periodType: "CUSTOM" as const,
+      userId: USER,
+      ...window,
+    };
+
+    it("creates a second CUSTOM budget for the category when the repo finds no intersecting window", async () => {
+      budgetRepo.create.mockImplementation(
+        async (b) => new Budget(b as Budget),
+      );
+      const view = await service.createBudget(custom, CTX);
+      expect(view.periodType).toBe("CUSTOM");
+      expect(budgetRepo.findOverlapping).toHaveBeenCalledWith(
+        USER,
+        expect.objectContaining({
+          type: "EXPENSE",
+          periodType: "CUSTOM",
+          categoryIds: ["c1"],
+          ...window,
+        }),
+        undefined,
+      );
+    });
+
+    it("refuses an intersecting CUSTOM window with BUDGET_PERIOD_OVERLAP", async () => {
+      budgetRepo.findOverlapping.mockResolvedValue([
+        makeBudget({ id: "july", periodType: "CUSTOM" }),
+      ]);
+      await expect(service.createBudget(custom, CTX)).rejects.toMatchObject({
+        code: "BUDGET_PERIOD_OVERLAP",
+        message:
+          "A budget for this category already covers part of these dates",
+      });
+      expect(budgetRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("checks the moved window, not the stored one, when a CUSTOM budget is updated", async () => {
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(
+        makeBudget({
+          periodType: "CUSTOM",
+          periodStartDate: new Date("2026-08-01T00:00:00Z"),
+          periodEndDate: new Date("2026-09-01T00:00:00Z"),
+        }),
+      );
+      budgetRepo.update.mockResolvedValue(makeBudget());
+      const periodEndDate = new Date("2026-09-15T00:00:00Z");
+      await service.updateBudget("b1", { periodEndDate }, USER, CTX);
+      expect(budgetRepo.findOverlapping).toHaveBeenCalledWith(
+        USER,
+        expect.objectContaining({
+          periodStartDate: new Date("2026-08-01T00:00:00Z"),
+          periodEndDate,
+        }),
+        "b1",
+      );
+    });
+
+    it("keeps the recurring wording for recurring period types", async () => {
+      budgetRepo.findOverlapping.mockResolvedValue([makeBudget()]);
+      await expect(
+        service.createBudget(
+          {
+            ...custom,
+            periodType: "MONTHLY",
+            periodStartDate: null,
+            periodEndDate: null,
+          },
+          CTX,
+        ),
+      ).rejects.toThrow(
+        "A budget for this category and period type already exists",
+      );
     });
   });
 
@@ -711,9 +800,27 @@ describe("BudgetService", () => {
       await service.restoreBudget("b1", USER, CTX);
       expect(budgetRepo.findOverlapping).toHaveBeenCalledWith(
         USER,
-        "EXPENSE",
-        "MONTHLY",
-        ["c1"],
+        expect.objectContaining({
+          type: "EXPENSE",
+          periodType: "MONTHLY",
+          categoryIds: ["c1"],
+        }),
+        "b1",
+      );
+    });
+    it("hands the overlap rule the CUSTOM window it is bringing back", async () => {
+      const window = {
+        periodStartDate: new Date("2026-07-01T00:00:00Z"),
+        periodEndDate: new Date("2026-08-01T00:00:00Z"),
+      };
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(
+        makeBudget({ periodType: "CUSTOM", ...window, archivedAt: new Date() }),
+      );
+      budgetRepo.restore.mockResolvedValue(makeBudget());
+      await service.restoreBudget("b1", USER, CTX);
+      expect(budgetRepo.findOverlapping).toHaveBeenCalledWith(
+        USER,
+        expect.objectContaining({ periodType: "CUSTOM", ...window }),
         "b1",
       );
     });
