@@ -14,6 +14,7 @@ database in the same state.
 
 | | |
 | --- | --- |
+| Name | `John Doe` (the neutral example name the owner chose; the front uses the same one) |
 | Email | `seed@ledgerflow.test` |
 | Password | `LedgerFlow!2026` |
 | Timezone / currency / locale | `America/Bogota` · `COP` · `en` |

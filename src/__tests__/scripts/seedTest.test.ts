@@ -46,6 +46,7 @@ describe("seed:test", () => {
   let first: SeedOutput;
   let second: SeedOutput;
   let counts: Record<string, number>;
+  let seededName: string | undefined;
 
   beforeAll(async () => {
     const client = new MongoClient(TEST_URI, {
@@ -64,6 +65,9 @@ describe("seed:test", () => {
 
     const db = client.db();
     const scoped = { userId: second.user.id };
+    seededName = (
+      await db.collection("users").findOne({ email: second.user.email })
+    )?.name as string | undefined;
     counts = {
       users: await db
         .collection("users")
@@ -93,6 +97,13 @@ describe("seed:test", () => {
   it("leaves one user, not one per run", () => {
     if (!ran()) return;
     expect(counts.users).toBe(1);
+  });
+
+  // Owner decision (2026-09-02): the example user is a neutral placeholder,
+  // the same one the front shows.
+  it("names the example user John Doe", () => {
+    if (!ran()) return;
+    expect(seededName).toBe("John Doe");
   });
 
   it("duplicates nothing on the second run", () => {

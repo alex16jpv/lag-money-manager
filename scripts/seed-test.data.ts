@@ -10,7 +10,7 @@ import { DateTime } from "luxon";
 
 export const SEED_USER = {
   id: "01920000-0000-7000-8000-000000000001",
-  name: "Andrés Valencia",
+  name: "John Doe",
   email: "seed@ledgerflow.test",
   password: "LedgerFlow!2026",
   timezone: "America/Bogota",
