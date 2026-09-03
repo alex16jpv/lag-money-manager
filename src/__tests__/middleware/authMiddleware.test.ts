@@ -174,6 +174,35 @@ describe("authMiddleware", () => {
       );
     });
 
+    it("carries sid through to req.user when present [W-30]", () => {
+      const token = createValidToken({ ...validPayload, sid: "fam-1" });
+      const { req, res, next } = createMockReqResNext(`Bearer ${token}`);
+
+      authMiddleware(req, res, next);
+
+      expect(req.user?.sid).toBe("fam-1");
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("still accepts a token without sid (issued before W-30)", () => {
+      const token = createValidToken(validPayload);
+      const { req, res, next } = createMockReqResNext(`Bearer ${token}`);
+
+      authMiddleware(req, res, next);
+
+      expect(req.user?.sid).toBeUndefined();
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("rejects a token whose sid is not a string", () => {
+      const token = createValidToken({ ...validPayload, sid: 42 });
+      const { req, res, next } = createMockReqResNext(`Bearer ${token}`);
+
+      expect(() => authMiddleware(req, res, next)).toThrow(
+        "Invalid token payload",
+      );
+    });
+
     it("should throw Unauthorized for token with valid signature but invalid payload shape", () => {
       const token = jwt.sign({ foo: "bar", baz: 123 }, "test-secret-key", {
         algorithm: "HS256",

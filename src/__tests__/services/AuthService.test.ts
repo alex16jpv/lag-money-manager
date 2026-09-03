@@ -3,7 +3,10 @@ import jwt from "jsonwebtoken";
 
 import { AuthService } from "../../app/services/AuthService";
 import { CategoryService } from "../../app/services/CategoryService";
-import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
+import {
+  IRefreshSessionRepository,
+  SessionSummary,
+} from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { User } from "../../domain/entities/User";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
@@ -219,9 +222,14 @@ describe("AuthService", () => {
       const decoded = jwt.verify(result.accessToken, "test-secret-key") as {
         userId: string;
         email: string;
+        sid: string;
       };
       expect(decoded.userId).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac70");
       expect(decoded.email).toBe("john@example.com");
+      // W-30: the access token names its own session family.
+      const opened = sessions.create.mock.calls[0][0];
+      expect(decoded.sid).toBe(opened.familyId);
+      expect(opened.familyId).toBe(opened.jti);
 
       const refresh = jwt.verify(result.refreshToken, "test-secret-key") as {
         userId: string;
@@ -296,6 +304,11 @@ describe("AuthService", () => {
         jti: string;
       };
       expect(rotated.jti).not.toBe("jti-1");
+      // The renewed access token still points at the same family.
+      const access = jwt.verify(result.accessToken, "test-secret-key") as {
+        sid: string;
+      };
+      expect(access.sid).toBe("fam-1");
     });
 
     it("revokes the whole family when a rotated token is reused [R2-08]", async () => {
@@ -398,8 +411,42 @@ describe("AuthService", () => {
 
       const result = await service.listSessions("user-1");
 
-      expect(result).toEqual([summary]);
+      expect(result).toEqual([{ ...summary, current: false }]);
       expect(sessions.listActiveByUser).toHaveBeenCalledWith("user-1");
+    });
+
+    it("marks the caller's own family as current [W-30]", async () => {
+      const row = (id: string): SessionSummary => ({
+        id,
+        createdAt: new Date(),
+        lastUsedAt: new Date(),
+        expiresAt: new Date(Date.now() + 1000),
+      });
+      sessions.listActiveByUser.mockResolvedValue([row("fam-1"), row("fam-2")]);
+
+      const result = await service.listSessions("user-1", "fam-2");
+
+      expect(result.map((s) => [s.id, s.current])).toEqual([
+        ["fam-1", false],
+        ["fam-2", true],
+      ]);
+    });
+
+    it("marks nothing current for a token without sid or for a revoked family", async () => {
+      const row = {
+        id: "fam-1",
+        createdAt: new Date(),
+        lastUsedAt: new Date(),
+        expiresAt: new Date(Date.now() + 1000),
+      };
+      sessions.listActiveByUser.mockResolvedValue([row]);
+
+      expect(await service.listSessions("user-1", undefined)).toEqual([
+        { ...row, current: false },
+      ]);
+      expect(await service.listSessions("user-1", "fam-gone")).toEqual([
+        { ...row, current: false },
+      ]);
     });
 
     it("revokes an owned session and 404s a foreign one", async () => {

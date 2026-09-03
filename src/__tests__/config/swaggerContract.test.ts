@@ -60,6 +60,15 @@ describe("OpenAPI response views", () => {
     expect(account.required).toEqual(Object.keys(account.properties));
   });
 
+  // W-30: an optional `current` would make the front null-check a flag the
+  // API always sends.
+  it("Session always says whether it is the caller's own", () => {
+    expect(view("Session").required).toContain("current");
+    expect(view("Session").properties.current).toMatchObject({
+      type: "boolean",
+    });
+  });
+
   // The envelopes were the other half of W-06: a `data` typed as optional makes
   // every list consumer null-check an array the API always sends.
   it.each([

@@ -3,14 +3,12 @@ import jwt from "jsonwebtoken";
 import { v7 as uuidv7 } from "uuid";
 
 import { User } from "../../domain/entities/User";
-import {
-  IRefreshSessionRepository,
-  SessionSummary,
-} from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
+import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
 import logger from "../../shared/logger";
+import { SessionView } from "../dtos/SessionDTO";
 import { CreateUserDTO, UserResponseDTO } from "../dtos/UserDTO";
 import { CategoryService } from "./CategoryService";
 
@@ -53,9 +51,16 @@ export class AuthService {
     };
   }
 
-  private signAccessToken(user: User): string {
+  // `sid` is the refresh family the token was issued for, so the sessions
+  // list can point at the caller's own device without a DB lookup.
+  private signAccessToken(user: User, familyId: string): string {
     return jwt.sign(
-      { userId: user.id, email: user.email, timezone: user.timezone },
+      {
+        userId: user.id,
+        email: user.email,
+        timezone: user.timezone,
+        sid: familyId,
+      },
       ENVIRONMENT.JWT_SECRET,
       {
         algorithm: "HS256",
@@ -101,7 +106,7 @@ export class AuthService {
       userAgent,
     });
     await this.repo.recordLogin(user.id);
-    return { accessToken: this.signAccessToken(user), refreshToken };
+    return { accessToken: this.signAccessToken(user, jti), refreshToken };
   }
 
   // Registers and opens a session in one step: the request just proved
@@ -280,7 +285,7 @@ export class AuthService {
     });
 
     return {
-      accessToken: this.signAccessToken(user),
+      accessToken: this.signAccessToken(user, session.familyId),
       refreshToken: this.signRefreshToken(user, newJti, remainingSeconds),
     };
   }
@@ -301,8 +306,14 @@ export class AuthService {
     await this.sessions.revokeAllForUser(userId);
   }
 
-  async listSessions(userId: string): Promise<SessionSummary[]> {
-    return this.sessions.listActiveByUser(userId);
+  // `currentFamilyId` comes from the caller's access token (`sid`); tokens
+  // issued before it existed mark nothing as current until they are renewed.
+  async listSessions(
+    userId: string,
+    currentFamilyId?: string,
+  ): Promise<SessionView[]> {
+    const sessions = await this.sessions.listActiveByUser(userId);
+    return sessions.map((s) => ({ ...s, current: s.id === currentFamilyId }));
   }
 
   // Idempotent: revoking an own, already-revoked session is a no-op success.

@@ -64,7 +64,8 @@ Content-Type: application/json
   "refreshToken": "{{refreshToken}}"
 }
 
-### Sesiones activas (una fila por dispositivo/login) — backend-ready, sin UI en MVP
+### Sesiones activas (una fila por dispositivo/login). current: true en la fila
+### de la familia del access token que hace la petición («This device»)
 # @name sessions
 GET {{baseUrl}}/auth/sessions
 Authorization: Bearer {{accessToken}}

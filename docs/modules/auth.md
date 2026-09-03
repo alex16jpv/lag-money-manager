@@ -6,7 +6,7 @@ Handles registration, login, and the full refresh-token session lifecycle. Regis
 
 Every successful register or login issues a **token pair**:
 
-- **Access token** — short-lived (`JWT_EXPIRATION`, default 15m), carries `{ userId, email, timezone }`, sent as `Authorization: Bearer <token>`.
+- **Access token** — short-lived (`JWT_EXPIRATION`, default 15m), carries `{ userId, email, timezone, sid }`, sent as `Authorization: Bearer <token>`. `sid` is the refresh family the token was issued for; refreshing keeps it, so it identifies the device across rotations.
 - **Refresh token** — long-lived (`REFRESH_TOKEN_EXPIRATION`, default 30d), signed with `REFRESH_SECRET` (falling back to `JWT_SECRET`), carries a `jti` that identifies one row in the sessions collection.
 
 Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the presented token and issues a new pair. Replaying an already-rotated token is treated as theft and revokes the entire device session family.
@@ -118,6 +118,9 @@ List the user's active device sessions — one entry per rotation family. Respon
 | `lastUsedAt` | Last refresh, or the login when it never refreshed      |
 | `expiresAt`  | Absolute expiry of the family                           |
 | `userAgent`  | User-Agent captured at login, when sent                 |
+| `current`    | `true` for the family the requesting access token belongs to (its `sid`); always present |
+
+Access tokens issued before `sid` existed mark no row as current until they are renewed (at most one `JWT_EXPIRATION`). Revoking the current session through `DELETE /auth/sessions/:id` is allowed: it is the same as `POST /auth/logout` for that device.
 
 ### `DELETE /auth/sessions/:id`
 

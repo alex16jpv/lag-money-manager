@@ -168,6 +168,11 @@ const responseViews = {
         lastUsedAt: dateTime,
         expiresAt: dateTime,
         userAgent: { type: "string" },
+        current: {
+          type: "boolean",
+          description:
+            "True for the session the requesting access token belongs to (this device).",
+        },
       },
     },
     ["userAgent"],

@@ -50,7 +50,8 @@ export class AuthController {
   };
 
   static listSessions = async (req: Request, res: Response) => {
-    const sessions = await authService.listSessions(req.user!.userId);
+    const { userId, sid } = req.user!;
+    const sessions = await authService.listSessions(userId, sid);
     res.status(200).json({ data: sessions });
   };
 

@@ -294,6 +294,7 @@ router.post("/logout-all", authMiddleware, AuthController.logoutAll);
  *   get:
  *     tags: [Auth]
  *     summary: List the user's active device sessions
+ *     description: One row per device login. `current` is true for the row the requesting access token belongs to; tokens issued before this claim existed mark none until renewed.
  *     responses:
  *       200:
  *         description: Active sessions (one per device login)

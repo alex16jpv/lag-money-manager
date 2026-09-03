@@ -10,6 +10,8 @@ export interface AuthPayload {
   // Carried in the token (~15 min staleness max) so per-request handlers
   // don't hit the DB just to read the timezone.
   timezone?: string;
+  // Refresh family the token belongs to; absent in tokens issued before W-30.
+  sid?: string;
 }
 
 declare global {
@@ -25,7 +27,9 @@ const isAuthPayload = (payload: unknown): payload is AuthPayload =>
   typeof payload === "object" &&
   payload !== null &&
   typeof (payload as AuthPayload).userId === "string" &&
-  typeof (payload as AuthPayload).email === "string";
+  typeof (payload as AuthPayload).email === "string" &&
+  ((payload as AuthPayload).sid === undefined ||
+    typeof (payload as AuthPayload).sid === "string");
 
 export const authMiddleware = (
   req: Request,
