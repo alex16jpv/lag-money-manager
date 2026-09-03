@@ -1,0 +1,55 @@
+### ==========================================================
+### STATS — gasto agregado (para "gastos hormiga")
+### day usa la timezone del usuario y viene ordenado por fecha;
+### ADJUSTMENT queda excluido salvo que se pida explícito;
+### en groupBy=tag el total es el gasto REAL (sin doble conteo)
+### y las sin tag caen en el bucket "untagged".
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+
+@token = {{login.response.body.accessToken}}
+
+### Gasto por categoría (default) — las sin categoría = bucket "uncategorized"
+GET {{baseUrl}}/stats/spending?groupBy=category
+Authorization: Bearer {{token}}
+
+### Gasto por día (tz-aware, orden cronológico; días sin datos no vienen)
+GET {{baseUrl}}/stats/spending?groupBy=day
+Authorization: Bearer {{token}}
+
+### Gasto por tag (multi-tag cuenta en cada bucket; total = gasto real)
+GET {{baseUrl}}/stats/spending?groupBy=tag
+Authorization: Bearer {{token}}
+
+### Con rango de fechas [from, to) — calcular los límites en la zona del
+### usuario y convertir a UTC (agosto en Bogotá = 05:00Z). Acepta offsets ISO.
+GET {{baseUrl}}/stats/spending?groupBy=category&from=2026-08-01T00:00:00-05:00&to=2026-09-01T00:00:00-05:00
+Authorization: Bearer {{token}}
+
+### Por tipo INCOME
+GET {{baseUrl}}/stats/spending?groupBy=category&type=INCOME
+Authorization: Bearer {{token}}
+
+### Ajustes de saldo (solo si se piden explícitamente)
+GET {{baseUrl}}/stats/spending?groupBy=day&type=ADJUSTMENT
+Authorization: Bearer {{token}}
+
+### ---------- Casos de error ----------
+
+### from > to (400)
+GET {{baseUrl}}/stats/spending?from=2026-09-01T00:00:00.000Z&to=2026-08-01T00:00:00.000Z
+Authorization: Bearer {{token}}
+
+### groupBy inválido (400)
+GET {{baseUrl}}/stats/spending?groupBy=nope
+Authorization: Bearer {{token}}

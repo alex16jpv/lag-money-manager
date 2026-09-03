@@ -7,6 +7,11 @@ export default withMermaid({
   srcDir: "..",
   outDir: "../.vitepress/dist",
 
+  // srcDir is the repo root, so every stray .md would become a page.
+  // requests/README.md and CLAUDE.md both quote .http {{placeholders}}, which
+  // Vue evaluates as template interpolation and which crash the build.
+  srcExclude: ["requests/**", "build/**", "CLAUDE.md"],
+
   themeConfig: {
     search: {
       provider: "local",
@@ -53,6 +58,19 @@ export default withMermaid({
               collapsed: true,
               items: [
                 {
+                  text: "001 — Dual Database Support (superseded)",
+                  link: "/docs/architecture/decisions/001-dual-database-support",
+                },
+                {
+                  text: "002 — UUID v7 for Identifiers",
+                  link: "/docs/architecture/decisions/002-uuid-v7-for-identifiers",
+                },
+                { text: "003 — Express 5", link: "/docs/architecture/decisions/003-express-5" },
+                {
+                  text: "004 — Zod for Validation",
+                  link: "/docs/architecture/decisions/004-zod-for-validation",
+                },
+                {
                   text: "Template",
                   link: "/docs/architecture/decisions/_template",
                 },
@@ -78,6 +96,11 @@ export default withMermaid({
               link: "/docs/guides/environment-vars",
             },
             { text: "Testing", link: "/docs/guides/testing" },
+            { text: "Deployment", link: "/docs/guides/deployment" },
+            {
+              text: "Test Seed",
+              link: "/docs/guides/testing-seed",
+            },
           ],
         },
         {
@@ -89,6 +112,8 @@ export default withMermaid({
             { text: "Accounts", link: "/docs/modules/accounts" },
             { text: "Categories", link: "/docs/modules/categories" },
             { text: "Transactions", link: "/docs/modules/transactions" },
+            { text: "Budgets", link: "/docs/modules/budgets" },
+            { text: "Stats", link: "/docs/modules/stats" },
           ],
         },
         {
@@ -129,6 +154,10 @@ export default withMermaid({
             {
               text: "Qa And Docs Update",
               link: "/docs/prompts/qa-and-docs-update",
+            },
+            {
+              text: "Fix Audit Issues",
+              link: "/docs/prompts/fix-audit-issues",
             },
           ],
         },

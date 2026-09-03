@@ -1,0 +1,137 @@
+### ==========================================================
+### CATEGORIES — CRUD, filtros, archivar/restaurar (idempotentes),
+### restaurar defaults (seedKey)
+### (el registro ya siembra 10 categorías por defecto)
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+
+@token = {{login.response.body.accessToken}}
+
+### Listar todas (éxito) — las sembradas traen seedKey; todas traen createdAt/updatedAt
+GET {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+
+### Listar por tipo (éxito)
+GET {{baseUrl}}/categories?type=EXPENSE
+Authorization: Bearer {{token}}
+
+### Crear categoría (éxito) — icon es una clave Lucide del set curado (shared/icons.ts)
+# @name createCat
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Café {{$randomInt 100 999}}", "icon": "coffee", "color": "BROWN", "type": "EXPENSE" }
+
+###
+
+@catId = {{createCat.response.body.id}}
+
+### Get por id (éxito)
+GET {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+
+### Update (éxito) — nombre/color/icon; el TYPE solo si no tiene transacciones
+PUT {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Café y snacks", "color": "AMBER" }
+
+### Archivar (soft delete) — libera el nombre para reuso
+DELETE {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+
+### Archivar de nuevo — IDEMPOTENTE (200)
+DELETE {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+
+### Get de la archivada por id — SÍ responde (archivedAt la distingue)
+GET {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+
+### Reusar el nombre archivado (éxito, no choca con el archivado)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Café y snacks", "type": "EXPENSE" }
+
+### Ver archivadas
+GET {{baseUrl}}/categories?includeArchived=true
+Authorization: Bearer {{token}}
+
+### Restaurar la archivada
+### (si otra activa ya tomó el nombre → 409: renombrar antes de restaurar)
+POST {{baseUrl}}/categories/{{catId}}/restore
+Authorization: Bearer {{token}}
+
+### Restaurar con OTRO nombre — salida al 409 cuando una categoría activa
+### tomó el nombre; renombra y desarchiva en la misma escritura
+POST {{baseUrl}}/categories/{{catId}}/restore
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Café recuperada {{$randomInt 100 999}}" }
+
+
+### Restaurar defaults — recrea SOLO las categorías por defecto que falten
+### (idempotente por seedKey; las archivadas cuentan como presentes)
+POST {{baseUrl}}/categories/restore-defaults
+Authorization: Bearer {{token}}
+
+### ---------- Casos de error ----------
+
+### Duplicado case-insensitive — "CAFÉ Y SNACKS" ya existe como "Café y snacks" (409 DUPLICATE)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "CAFÉ Y SNACKS", "type": "EXPENSE" }
+
+### Cambiar el TYPE de una categoría CON transacciones (400 CATEGORY_TYPE_LOCKED)
+### (crea una transacción con esta categoría primero — ver transactions.http)
+# PUT {{baseUrl}}/categories/{{catId}}
+# Authorization: Bearer {{token}}
+# Content-Type: application/json
+#
+# { "type": "INCOME" }
+
+### Update de una categoría ARCHIVADA (400 RESOURCE_ARCHIVED)
+# PUT {{baseUrl}}/categories/{{catId}}
+# Authorization: Bearer {{token}}
+# Content-Type: application/json
+#
+# { "name": "no se puede" }
+
+### Crear — icono fuera del set curado (400 VALIDATION)
+### Solo se aceptan claves de CATEGORY_ICONS (= DESIGN.md §4.3)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Icono raro", "icon": "taco", "type": "EXPENSE" }
+
+### Crear — color inválido (400)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "X", "color": "NEON" }
+
+### Crear — sin nombre (400)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "icon": "coffee" }

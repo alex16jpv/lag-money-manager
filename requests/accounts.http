@@ -1,0 +1,138 @@
+### ==========================================================
+### ACCOUNTS — CRUD, cuenta default, archivar/restaurar (idempotentes)
+### Las respuestas incluyen currency (estampada del usuario),
+### openingBalance y createdAt/updatedAt.
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+
+@token = {{login.response.body.accessToken}}
+
+### Crear cuenta A (éxito) — la primera queda isDefault=true;
+### currency la estampa el servidor (la del usuario)
+# @name createA
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Ahorros {{$randomInt 100 999}}", "type": "SAVINGS", "balance": 1000.50, "color": "TEAL" }
+
+###
+
+@accountA = {{createA.response.body.id}}
+
+### Crear cuenta B (éxito)
+# @name createB
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Efectivo {{$randomInt 100 999}}", "type": "CASH", "balance": 200, "color": "AMBER" }
+
+###
+
+@accountB = {{createB.response.body.id}}
+
+### Listar cuentas (éxito)
+GET {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+
+### Get por id (éxito)
+GET {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+
+### Update nombre/color (éxito)
+PUT {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Ahorros 2 {{$randomInt 100 999}}", "color": "BLUE" }
+
+### Marcar B como default (éxito) — desmarca la anterior default
+POST {{baseUrl}}/accounts/{{accountB}}/default
+Authorization: Bearer {{token}}
+
+### Archivar A (soft delete) — solo funciona porque A ya NO es default
+DELETE {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+
+### Archivar A de nuevo — IDEMPOTENTE (200, no 404)
+DELETE {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+
+### Get de la archivada por id — SÍ responde (archivedAt la distingue)
+GET {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+
+### Listar (A ya no aparece)
+GET {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+
+### Listar incluyendo archivadas (A aparece con archivedAt != null)
+GET {{baseUrl}}/accounts?includeArchived=true
+Authorization: Bearer {{token}}
+
+### Restaurar con OTRO nombre — la salida cuando restore da 409 porque
+### otra cuenta activa tomó el nombre mientras esta estaba archivada.
+### Renombra y desarchiva en la misma escritura (atómico).
+POST {{baseUrl}}/accounts/{{accountA}}/restore
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Ahorros recuperada {{$randomInt 100 999}}" }
+
+### Restaurar A — vuelve SIN isDefault (B conserva el default)
+POST {{baseUrl}}/accounts/{{accountA}}/restore
+Authorization: Bearer {{token}}
+
+### Restaurar A de nuevo — IDEMPOTENTE (200 con el estado actual)
+POST {{baseUrl}}/accounts/{{accountA}}/restore
+Authorization: Bearer {{token}}
+
+### ---------- Casos de error ----------
+
+### Archivar la cuenta DEFAULT (400 DEFAULT_ACCOUNT_ARCHIVE_BLOCKED)
+### B es la default ahora — hay que marcar otra default primero.
+DELETE {{baseUrl}}/accounts/{{accountB}}
+Authorization: Bearer {{token}}
+
+### Update de una cuenta ARCHIVADA (400 RESOURCE_ARCHIVED) — archívala antes
+# PUT {{baseUrl}}/accounts/{{accountA}}
+# Authorization: Bearer {{token}}
+# Content-Type: application/json
+#
+# { "name": "no se puede" }
+
+### Crear — tipo inválido (400)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "X", "type": "NOPE" }
+
+### Crear — balance con 3 decimales (400)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "X", "type": "CASH", "balance": 10.555 }
+
+### Mass assignment — balance/userId/currency directos (se ignoran)
+PUT {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Hack", "balance": 999999, "userId": "00000000-0000-0000-0000-000000000000", "currency": "USD" }
+
+### Get inexistente o de otro usuario (404 uniforme)
+GET {{baseUrl}}/accounts/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{token}}

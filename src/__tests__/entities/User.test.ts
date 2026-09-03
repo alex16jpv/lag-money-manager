@@ -11,6 +11,11 @@ describe("User Entity", () => {
   };
 
   describe("constructor", () => {
+    it("keeps an explicit locale", () => {
+      const user = new User({ ...validProps, locale: "es" });
+      expect(user.locale).toBe("es");
+    });
+
     it("should create a user with all properties", () => {
       const user = new User(validProps);
 
@@ -24,6 +29,8 @@ describe("User Entity", () => {
 
     it("should create a user without optional fields", () => {
       const user = new User({ name: "Jane", email: "jane@example.com" });
+
+      expect(user.locale).toBe("en");
 
       expect(user.name).toBe("Jane");
       expect(user.email).toBe("jane@example.com");

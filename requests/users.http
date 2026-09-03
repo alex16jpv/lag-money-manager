@@ -1,0 +1,127 @@
+### ==========================================================
+### USERS — perfil propio, timezone, currency (bloqueada con datos),
+### cambio de credenciales con currentPassword
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+
+@token = {{login.response.body.accessToken}}
+@userId = {{login.response.body.user.id}}
+
+### Get propio perfil (éxito) — incluye timezone, currency, lastLoginAt,
+### createdAt/updatedAt; sin password ni tokenVersion
+GET {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+
+### Update nombre (éxito)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Tester Renamed" }
+
+### Update timezone (éxito) — el claim del token se refresca en ~15 min
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "timezone": "America/New_York" }
+
+### Update locale (éxito) — idioma de la UI, en | es
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "locale": "es" }
+
+### Update currency (éxito SOLO si aún no hay cuentas)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "currency": "USD" }
+
+### Cambio de password — requiere currentPassword; revoca refresh tokens vivos
+### Ojo: tras esto, vuelve a login con la nueva password.
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "password": "NewSecureP@ss123", "currentPassword": "{{password}}" }
+
+### Cambio de email — también requiere currentPassword y revoca refresh
+### Ojo: cambia el @email de todos los archivos; descoméntalo solo a propósito.
+# PUT {{baseUrl}}/users/{{userId}}
+# Authorization: Bearer {{token}}
+# Content-Type: application/json
+#
+# { "email": "tester2@test.com", "currentPassword": "{{password}}" }
+
+### ---------- Casos de error ----------
+
+### Sin token (401)
+GET {{baseUrl}}/users/{{userId}}
+
+### Otro usuario — 404 uniforme (no revela existencia; antes era 403)
+GET {{baseUrl}}/users/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{token}}
+
+### Cambio de password SIN currentPassword (400)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "password": "NewSecureP@ss123" }
+
+### Cambio de password con currentPassword INCORRECTA (401 CURRENT_PASSWORD_INVALID)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "password": "NewSecureP@ss123", "currentPassword": "wrong" }
+
+### Cambio de currency TENIENDO cuentas (400 CURRENCY_LOCKED)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "currency": "EUR" }
+
+### Update — timezone inválida (400)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "timezone": "Nope/Nope" }
+
+### Update — body vacío (400)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Mass assignment — intentar setear tokenVersion/lastLoginAt (se ignoran)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "X", "tokenVersion": 999, "lastLoginAt": "2020-01-01T00:00:00.000Z" }
+
+### GET /users (colección) — eliminado (404)
+GET {{baseUrl}}/users
+Authorization: Bearer {{token}}
+
+### Delete (soft) — revoca refresh tokens; el email puede REACTIVARSE
+### registrándose de nuevo con él (ver auth.http)
+# DELETE {{baseUrl}}/users/{{userId}}
+# Authorization: Bearer {{token}}

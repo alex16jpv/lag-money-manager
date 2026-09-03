@@ -1,94 +1,108 @@
 # Environment Variables
 
-All environment variables are validated at startup using Zod schemas in `src/shared/constants.ts`. The application will fail to start if required variables are missing or invalid.
+All environment variables are validated at startup by the Zod schema in
+`src/shared/constants.ts`. The application refuses to start if a required
+variable is missing or invalid — the error names the offending variable.
 
-## Application Configuration
+Only the variables listed here are read. Anything else in your `.env` is
+ignored (the SQL-era `SEQ_*`, `MYSQL_*`, `MONGO_USERNAME`, `MONGO_PASSWORD`
+and `MONGO_DATABASE` variables no longer exist).
 
-| Variable      | Required | Default       | Description                                                        | How to obtain                   |
-| ------------- | -------- | ------------- | ------------------------------------------------------------------ | ------------------------------- |
-| `PORT`        | No       | `3000`        | HTTP server port                                                   | Choose any available port       |
-| `NODE_ENV`    | No       | `development` | Runtime environment: `development`, `production`, or `test`        | Set based on deployment target  |
-| `LOG_LEVEL`   | No       | `info`        | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` | Choose based on verbosity needs |
-| `CORS_ORIGIN` | Yes      | —             | Comma-separated list of allowed CORS origins                       | Your frontend URL(s)            |
+## Required
+
+| Variable      | Description                                                                                      | How to obtain                        |
+| ------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------ |
+| `JWT_SECRET`  | Secret for signing access tokens (and refresh tokens unless `REFRESH_SECRET` is set). 32+ chars in production. | `openssl rand -hex 32`               |
+| `CORS_ORIGIN` | Comma-separated list of allowed CORS origins                                                     | Your frontend URL(s)                 |
+| `MONGO_URI`   | MongoDB connection URI. Must point at a **replica set** — balance adjustments run inside multi-document transactions. | See [MongoDB](#mongodb) below        |
+
+## Application
+
+| Variable    | Default       | Description                                                        |
+| ----------- | ------------- | ------------------------------------------------------------------ |
+| `PORT`      | `3000`        | HTTP server port                                                   |
+| `NODE_ENV`  | `development` | `development`, `production` or `test`                              |
+| `LOG_LEVEL` | `info`        | Pino level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`      |
+| `DB_TYPE`   | `MONGO`       | Database backend. Only `MONGO` is supported.                       |
+
+`NODE_ENV=production` also turns on HTTPS redirection, stops serving Swagger at
+`/api-docs`, disables `autoIndex` (indexes are created by the
+`npm run db:sync-indexes` deploy step) and makes a missing `API_SECRET` a fatal
+misconfiguration instead of a skipped check.
 
 ## Authentication
 
-| Variable             | Required | Default | Description                                                                                   | How to obtain                              |
-| -------------------- | -------- | ------- | --------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `JWT_SECRET`         | Yes      | —       | Secret key for signing JWT tokens. Must be at least 1 character (use 32+ chars in production) | Generate with `openssl rand -hex 32`       |
-| `JWT_EXPIRATION`     | No       | `24h`   | JWT token lifetime (e.g., `1h`, `7d`, `24h`)                                                  | Choose based on security requirements      |
-| `BCRYPT_SALT_ROUNDS` | No       | `12`    | bcrypt hashing rounds (4-20). Higher = slower + more secure                                   | 10-12 for most apps, 14+ for high security |
+| Variable                   | Default | Description                                                                             |
+| -------------------------- | ------- | --------------------------------------------------------------------------------------- |
+| `JWT_EXPIRATION`           | `15m`   | Access token lifetime. Short by design; renew with `POST /auth/refresh`.                 |
+| `REFRESH_TOKEN_EXPIRATION` | `30d`   | Refresh token lifetime, and the absolute cap of a rotation family (rotation never extends it). |
+| `REFRESH_SECRET`           | —       | Optional separate secret for refresh tokens; falls back to `JWT_SECRET`. Lets you rotate the access secret without killing every session. |
+| `BCRYPT_SALT_ROUNDS`       | `12`    | bcrypt cost (4–20). Higher = slower and more resistant to offline cracking.              |
 
-## Database Selection
+## Security and rate limiting
 
-| Variable  | Required | Default | Description                                                                    | How to obtain                 |
-| --------- | -------- | ------- | ------------------------------------------------------------------------------ | ----------------------------- |
-| `DB_TYPE` | No       | `SEQ`   | Database backend to use: `SEQ` (MySQL/Sequelize) or `MONGO` (MongoDB/Mongoose) | Choose based on your database |
+| Variable                 | Default | Description                                                                              |
+| ------------------------ | ------- | ----------------------------------------------------------------------------------------- |
+| `API_SECRET`             | —       | Shared secret expected in the `x-api-secret` header. **See the warning below.**            |
+| `RATE_LIMIT_MAX`         | `1000`  | Global limit per 15-minute window (in-memory, per-instance under Lambda). Keyed by **user** once authenticated and by IP only on the public routes — every request from the web client reaches the API from the frontend's server, so an IP-keyed budget would be shared by all of them. |
+| `AUTH_RATE_LIMIT_MAX`    | `10`    | Limit for `/auth/login` and `/auth/register` per 15-minute window (MongoDB-backed, shared across instances). Applied per IP and, on login, per email — the per-email budget only burns on failed attempts. |
+| `REFRESH_RATE_LIMIT_MAX` | `60`    | Separate, higher limit for `POST /auth/refresh` (a legitimate device refreshes every ~15 min). |
 
-## MySQL / Sequelize (required when `DB_TYPE=SEQ`)
+> **`API_SECRET` is all-or-nothing.** When it is set, **every** request must
+> carry a matching `x-api-secret` header or it gets **403 Forbidden** —
+> including `/`, `/health/db` and the whole `/auth` surface. Leave it unset in
+> local development; set a strong value in production, where a gateway sits in
+> front of the API. A stale `API_SECRET` in a local `.env` is the classic
+> "the API doesn't respond and I can't see why" symptom — the request log now
+> names the reason (`request rejected`, with status and message), so read the
+> server output first.
 
-| Variable       | Required | Default | Description           | How to obtain                                |
-| -------------- | -------- | ------- | --------------------- | -------------------------------------------- |
-| `SEQ_HOST`     | Yes      | —       | MySQL server hostname | `localhost` for Docker, or your DB host      |
-| `SEQ_PORT`     | No       | `3306`  | MySQL server port     | Default MySQL port is 3306                   |
-| `SEQ_DATABASE` | Yes      | —       | MySQL database name   | Create with phpMyAdmin or MySQL CLI          |
-| `SEQ_USERNAME` | Yes      | —       | MySQL username        | Set in `docker-compose.yml` or your DB admin |
-| `SEQ_PASSWORD` | Yes      | —       | MySQL password        | Set in `docker-compose.yml` or your DB admin |
+## MongoDB
 
-### Sequelize Connection Pool
+| Variable    | Description                                                                          |
+| ----------- | ------------------------------------------------------------------------------------ |
+| `MONGO_URI` | Full connection URI, including the database name.                                     |
 
-| Variable           | Required | Default | Description                                           | How to obtain                  |
-| ------------------ | -------- | ------- | ----------------------------------------------------- | ------------------------------ |
-| `SEQ_POOL_MAX`     | No       | `20`    | Maximum number of connections in pool                 | Tune based on workload         |
-| `SEQ_POOL_MIN`     | No       | `5`     | Minimum number of connections in pool                 | Tune based on workload         |
-| `SEQ_POOL_ACQUIRE` | No       | `30000` | Max time (ms) to acquire a connection before error    | Increase for slow DB           |
-| `SEQ_POOL_IDLE`    | No       | `10000` | Max time (ms) a connection can be idle before release | Lower to free resources faster |
+Money is stored as integer cents and balance adjustments run inside MongoDB
+transactions, so the URI **must** point at a replica set:
 
-## MongoDB / Mongoose (required when `DB_TYPE=MONGO`)
+- **Local:** `mongodb://localhost:27017/lag_money?replicaSet=rs0&directConnection=true` —
+  the `docker-compose.yml` here runs a single-node replica set, and
+  `directConnection=true` is required to talk to it.
+- **Production:** MongoDB Atlas is already a replica set. Its URI has its own
+  rules — the database name before the `?`, no `directConnection`, an encoded
+  password — all covered in
+  [Deployment › The production MONGO_URI](./deployment.md#the-production-mongo-uri).
 
-| Variable    | Required | Default | Description                 | How to obtain                                               |
-| ----------- | -------- | ------- | --------------------------- | ----------------------------------------------------------- |
-| `MONGO_URI` | Yes      | —       | Full MongoDB connection URI | Format: `mongodb://user:pass@host:port/db?authSource=admin` |
+**Always include the database name** (`/lag_money`) before the query string. A
+URI without one connects to a database called `test`, with no warning.
 
-## Docker Compose Only
+### Indexes
 
-These variables are used by `docker-compose.yml` and are not read by the application directly:
+Outside production the application creates the declared indexes right after
+connecting, so a brand-new database needs no extra step — start the server and
+they are there. Run `npm run db:sync-indexes` by hand only when you have
+**removed** an index from a schema: the startup path only creates missing ones,
+while the script also drops those no longer declared.
 
-| Variable              | Required | Default | Description                                 | How to obtain                  |
-| --------------------- | -------- | ------- | ------------------------------------------- | ------------------------------ |
-| `MYSQL_ROOT_PASSWORD` | Yes      | —       | MySQL root password for Docker container    | Choose a secure password       |
-| `MONGO_USERNAME`      | Yes      | —       | MongoDB admin username for Docker container | Choose a username              |
-| `MONGO_PASSWORD`      | Yes      | —       | MongoDB admin password for Docker container | Choose a secure password       |
-| `MONGO_DATABASE`      | Yes      | —       | MongoDB initial database name               | Use same value as in MONGO_URI |
+With `NODE_ENV=production` the application never touches indexes. They are
+created by the deploy, which requires `MONGO_URI` and aborts if the sync fails —
+see [Deployment › Index creation](./deployment.md#index-creation).
 
-## Example `.env` File
+## Example `.env` for local development
 
 ```env
-# Application
-PORT=3000
 NODE_ENV=development
-LOG_LEVEL=info
-CORS_ORIGIN=http://localhost:3000
 
-# Authentication
-JWT_SECRET=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
-JWT_EXPIRATION=24h
-BCRYPT_SALT_ROUNDS=12
+# Required
+JWT_SECRET=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6
+CORS_ORIGIN=http://localhost:3001
+MONGO_URI=mongodb://localhost:27017/lag_money?replicaSet=rs0&directConnection=true
 
-# Database type
-DB_TYPE=SEQ
+# Everything else has a sane default (PORT=3000, JWT_EXPIRATION=15m,
+# REFRESH_TOKEN_EXPIRATION=30d, BCRYPT_SALT_ROUNDS=12, LOG_LEVEL=info,
+# RATE_LIMIT_MAX=1000, AUTH_RATE_LIMIT_MAX=10, REFRESH_RATE_LIMIT_MAX=60).
 
-# MySQL (for DB_TYPE=SEQ)
-SEQ_HOST=localhost
-SEQ_PORT=3306
-SEQ_DATABASE=lag_money_manager
-SEQ_USERNAME=lag_user
-SEQ_PASSWORD=lag_password
-MYSQL_ROOT_PASSWORD=root_password
-
-# MongoDB (for DB_TYPE=MONGO)
-MONGO_URI=mongodb://lag_user:lag_password@localhost:27017/lag_money_manager?authSource=admin
-MONGO_USERNAME=lag_user
-MONGO_PASSWORD=lag_password
-MONGO_DATABASE=lag_money_manager
+# Do NOT set API_SECRET locally: with it, every request needs the
+# x-api-secret header or gets 403.
 ```

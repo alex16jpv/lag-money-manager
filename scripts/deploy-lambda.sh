@@ -3,7 +3,11 @@ set -euo pipefail
 
 # Builds the Lambda deployment package and uploads it with the AWS CLI.
 # Configuration comes from .env.deploy (see .env.deploy.example) or from
-# the environment: AWS_PROFILE, AWS_REGION, LAMBDA_FUNCTION_NAME.
+# the environment: AWS_PROFILE, AWS_REGION, LAMBDA_FUNCTION_NAME, MONGO_URI.
+#
+# MONGO_URI is required: production runs with autoIndex off, so this script is
+# the only thing that creates indexes there. Deploying without it would ship
+# code onto an unindexed database, with every unique constraint unenforced.
 #
 # Usage: npm run deploy:lambda
 
@@ -20,6 +24,7 @@ fi
 : "${AWS_PROFILE:?Set AWS_PROFILE in .env.deploy or the environment}"
 : "${AWS_REGION:?Set AWS_REGION in .env.deploy or the environment}"
 : "${LAMBDA_FUNCTION_NAME:?Set LAMBDA_FUNCTION_NAME in .env.deploy or the environment}"
+: "${MONGO_URI:?Set MONGO_URI (the PRODUCTION database) in .env.deploy or the environment — indexes cannot be synced without it. If the line IS there, quote the value: this file is sourced, so an unquoted & backgrounds the assignment and the variable arrives empty}"
 
 # Re-authenticates automatically when the session is missing or expired:
 # SSO profiles re-run `aws sso login`, any other existing profile re-runs
@@ -48,6 +53,13 @@ ZIP_FILE="build/lambda.zip"
 
 echo "==> Compiling TypeScript"
 npm run build
+
+# Build indexes before the new code serves traffic (autoIndex is off in prod).
+# Runs before anything is packaged or uploaded, and set -e aborts the deploy on
+# failure: a database that rejects an index (a duplicate that a unique index
+# would forbid, say) must stop the release, not ship onto it.
+echo "==> Syncing MongoDB indexes"
+NODE_ENV=production npm run db:sync-indexes
 
 echo "==> Installing production dependencies into $STAGE_DIR"
 rm -rf "$STAGE_DIR" "$ZIP_FILE"

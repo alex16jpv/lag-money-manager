@@ -1,0 +1,76 @@
+import mongoose, { Schema } from "mongoose";
+
+import {
+  ACCOUNT_TYPES,
+  AccountType,
+  COLORS,
+  MODEL_NAMES,
+} from "../../shared/constants";
+import { DEFAULT_CURRENCY } from "../../shared/currency";
+
+export interface IAccountDocument {
+  _id: string;
+  name: string;
+  type: AccountType;
+  balance: number; // integer cents
+  openingBalance: number; // integer cents
+  color?: string;
+  userId: string;
+  isDefault: boolean;
+  currency: string;
+  archivedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const AccountSchema = new Schema<IAccountDocument>(
+  {
+    _id: { type: String, required: true },
+    name: { type: String, required: true },
+    type: {
+      type: String,
+      required: true,
+      enum: Object.keys(ACCOUNT_TYPES),
+    },
+    balance: { type: Number, required: true },
+    openingBalance: { type: Number, required: true, default: 0 },
+    color: { type: String, required: false, enum: Object.keys(COLORS) },
+    userId: { type: String, required: true },
+    isDefault: { type: Boolean, required: true, default: false },
+    currency: {
+      type: String,
+      required: true,
+      default: DEFAULT_CURRENCY,
+      uppercase: true,
+      trim: true,
+    },
+    archivedAt: { type: Date, default: null },
+  },
+  { timestamps: true },
+);
+
+AccountSchema.index({ userId: 1, _id: 1 });
+// One active account name per user (partial: archiving frees the name, same
+// as categories). Collation strength 2: case-insensitive ("Efectivo" =
+// "efectivo"), accents still distinct; the stored name keeps the user's casing.
+AccountSchema.index(
+  { userId: 1, name: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { archivedAt: null },
+    collation: { locale: "es", strength: 2 },
+  },
+);
+// At most one active default account per user.
+AccountSchema.index(
+  { userId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { isDefault: true, archivedAt: null },
+  },
+);
+
+export const AccountModel = mongoose.model<IAccountDocument>(
+  MODEL_NAMES.ACCOUNT,
+  AccountSchema,
+);

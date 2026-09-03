@@ -1,22 +1,27 @@
-import express from "express";
 import compression from "compression";
 import cors from "cors";
-import helmet from "helmet";
+import express from "express";
 import rateLimit from "express-rate-limit";
+import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
-import { swaggerSpec } from "./config/swagger";
-import authRoutes from "./app/routes/authRoutes";
-import userRoutes from "./app/routes/userRoutes";
-import accountRoutes from "./app/routes/accountRoutes";
-import categoryRoutes from "./app/routes/categoryRoutes";
-import transactionRoutes from "./app/routes/transactionRoutes";
-import { errorMiddleware } from "./shared/middlewares";
-import { requestIdMiddleware } from "./shared/requestId";
+
 import { authMiddleware } from "./app/middlewares/authMiddleware";
 import { dbReadinessMiddleware } from "./app/middlewares/dbReadinessMiddleware";
-import { ENVIRONMENT } from "./shared/constants";
 import { gatewaySecretMiddleware } from "./app/middlewares/gatewaySecretMiddleware";
+import { rateLimitKey } from "./app/middlewares/rateLimitKey";
+import { requestLogMiddleware } from "./app/middlewares/requestLogMiddleware";
+import accountRoutes from "./app/routes/accountRoutes";
+import authRoutes from "./app/routes/authRoutes";
+import budgetRoutes from "./app/routes/budgetRoutes";
+import categoryRoutes from "./app/routes/categoryRoutes";
+import statsRoutes from "./app/routes/statsRoutes";
+import transactionRoutes from "./app/routes/transactionRoutes";
+import userRoutes from "./app/routes/userRoutes";
 import { pingDatabase } from "./config/dbHealth";
+import { swaggerSpec } from "./config/swagger";
+import { ENVIRONMENT } from "./shared/constants";
+import { errorMiddleware } from "./shared/middlewares";
+import { requestIdMiddleware } from "./shared/requestId";
 
 const app = express();
 
@@ -33,6 +38,7 @@ if (ENVIRONMENT.NODE_ENV === "production") {
 }
 
 app.use(requestIdMiddleware);
+app.use(requestLogMiddleware);
 app.use(helmet());
 app.use(compression());
 app.use(
@@ -42,7 +48,15 @@ app.use(
 );
 app.use(express.json({ limit: "10kb" }));
 
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+if (ENVIRONMENT.NODE_ENV !== "production") {
+  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+  // The raw document, for `openapi-typescript` and the frontend's contract
+  // test. Mounted here, ahead of the gateway secret and the auth middleware,
+  // because a spec behind a 401 cannot be code-generated from.
+  app.get("/api-docs.json", (_req, res) => {
+    res.json(swaggerSpec);
+  });
+}
 
 // All routes below require the gateway secret header
 app.use(gatewaySecretMiddleware);
@@ -52,9 +66,11 @@ const apiLimiter = rateLimit({
   max: ENVIRONMENT.RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: rateLimitKey,
   message: {
     error: "TooManyRequests",
     message: "Too many requests, please try again later",
+    code: "RATE_LIMITED",
   },
 });
 
@@ -77,6 +93,8 @@ app.use("/users", apiLimiter, userRoutes);
 app.use("/accounts", apiLimiter, accountRoutes);
 app.use("/categories", apiLimiter, categoryRoutes);
 app.use("/transactions", apiLimiter, transactionRoutes);
+app.use("/budgets", apiLimiter, budgetRoutes);
+app.use("/stats", apiLimiter, statsRoutes);
 
 app.use(errorMiddleware);
 

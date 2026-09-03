@@ -1,10 +1,9 @@
 import { CategoryService } from "../../app/services/CategoryService";
-import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { Category } from "../../domain/entities/Category";
-import { ApiError } from "../../shared/errors";
-import { CreateCategoryDTO } from "../../app/dtos/CategoryDTO";
+import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
+import { ApiError } from "../../shared/errors";
 
 const testUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac71";
 
@@ -18,30 +17,31 @@ const createMockRepo = (): jest.Mocked<ICategoryRepository> => ({
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
+  getByIdIncludingArchived: jest.fn(),
   create: jest.fn(),
   createMany: jest.fn(),
+  listSeedKeys: jest.fn().mockResolvedValue([]),
+  listArchivedIds: jest.fn().mockResolvedValue([]),
+  countByUserId: jest.fn().mockResolvedValue(0),
   update: jest.fn(),
   delete: jest.fn(),
+  restore: jest.fn(),
 });
 
-const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
-  getAll: jest.fn(),
-  getAllByUserId: jest.fn(),
-  getById: jest.fn(),
-  create: jest.fn(),
-  update: jest.fn(),
-  delete: jest.fn(),
-});
+const createTxRepoMock = () =>
+  ({
+    countByCategory: jest.fn().mockResolvedValue(0),
+  }) as unknown as jest.Mocked<ITransactionRepository>;
 
 describe("CategoryService", () => {
   let service: CategoryService;
   let repo: jest.Mocked<ICategoryRepository>;
-  let transactionRepo: jest.Mocked<ITransactionRepository>;
+  let txRepo: jest.Mocked<ITransactionRepository>;
 
   beforeEach(() => {
     repo = createMockRepo();
-    transactionRepo = createMockTransactionRepo();
-    service = new CategoryService(repo, transactionRepo);
+    txRepo = createTxRepoMock();
+    service = new CategoryService(repo, txRepo);
   });
 
   describe("getAllCategories", () => {
@@ -61,7 +61,11 @@ describe("CategoryService", () => {
 
       const result = await service.getAllCategories(testUserId, pagination);
 
-      expect(repo.getAllByUserId).toHaveBeenCalledWith(testUserId, pagination, undefined);
+      expect(repo.getAllByUserId).toHaveBeenCalledWith(
+        testUserId,
+        pagination,
+        undefined,
+      );
       expect(result.data).toHaveLength(1);
       expect(result.data[0].name).toBe("Food");
     });
@@ -130,21 +134,21 @@ describe("CategoryService", () => {
 
   describe("getCategoryById", () => {
     it("should return category when found and owned by user", async () => {
-      repo.getById.mockResolvedValue(mockCategory);
+      repo.getByIdIncludingArchived.mockResolvedValue(mockCategory);
 
       const result = await service.getCategoryById(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         testUserId,
       );
 
-      expect(repo.getById).toHaveBeenCalledWith(
+      expect(repo.getByIdIncludingArchived).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       );
       expect(result.name).toBe("Food");
     });
 
     it("should throw NotFound when category does not exist", async () => {
-      repo.getById.mockResolvedValue(null);
+      repo.getByIdIncludingArchived.mockResolvedValue(null);
 
       await expect(
         service.getCategoryById(
@@ -182,7 +186,7 @@ describe("CategoryService", () => {
         name: "Transport",
         userId: testUserId,
       });
-      repo.getById.mockResolvedValue(mockCategory);
+      repo.getByIdIncludingArchived.mockResolvedValue(mockCategory);
       repo.update.mockResolvedValue(updated);
 
       const result = await service.updateCategory(
@@ -220,14 +224,10 @@ describe("CategoryService", () => {
     });
   });
 
-  describe("deleteCategory", () => {
-    it("should delete a category", async () => {
-      repo.getById.mockResolvedValue(mockCategory);
+  describe("deleteCategory (archive)", () => {
+    it("should archive a category (even when it has transactions)", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(mockCategory);
       repo.delete.mockResolvedValue();
-      transactionRepo.getAllByUserId.mockResolvedValue({
-        data: [],
-        pagination: { limit: 1, offset: 0, total: 0, hasMore: false, nextCursor: null },
-      });
 
       await service.deleteCategory(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
@@ -239,8 +239,31 @@ describe("CategoryService", () => {
       );
     });
 
-    it("should throw NotFound when deleting non-existent category", async () => {
-      repo.getById.mockResolvedValue(null);
+    it("resolves when a concurrent archive wins the race (idempotent)", async () => {
+      repo.getByIdIncludingArchived
+        .mockResolvedValueOnce(mockCategory)
+        .mockResolvedValueOnce(
+          new Category({
+            id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+            name: "Food",
+            userId: testUserId,
+            archivedAt: new Date(),
+          }),
+        );
+      repo.delete.mockRejectedValue(
+        new ApiError("NotFound", "Category not found"),
+      );
+
+      await expect(
+        service.deleteCategory(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          testUserId,
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    it("should throw NotFound when archiving non-existent category", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(null);
 
       await expect(
         service.deleteCategory(
@@ -250,21 +273,84 @@ describe("CategoryService", () => {
       ).rejects.toThrow("Category not found");
     });
 
-    it("should throw BadRequest when category has associated transactions", async () => {
-      repo.getById.mockResolvedValue(mockCategory);
-      transactionRepo.getAllByUserId.mockResolvedValue({
-        data: [{}] as any,
-        pagination: { limit: 1, offset: 0, total: 1, hasMore: false, nextCursor: null },
-      });
+    it("should throw Forbidden when archiving another user's category", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(mockCategory);
 
       await expect(
         service.deleteCategory(
           "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-          testUserId,
+          "another-user",
         ),
-      ).rejects.toThrow("Cannot delete category with associated transactions");
+      ).rejects.toThrow("Category not found");
 
       expect(repo.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("restoreDefaults [R2-04]", () => {
+    it("creates only the defaults whose seedKey is missing", async () => {
+      const present = DEFAULT_CATEGORIES.slice(0, 7).map((c) => c.seedKey);
+      repo.listSeedKeys.mockResolvedValue(present);
+      repo.createMany.mockImplementation(async (cats) =>
+        cats.map((c) => new Category(c as Category)),
+      );
+
+      const created = await service.restoreDefaults(testUserId);
+
+      expect(created).toHaveLength(DEFAULT_CATEGORIES.length - 7);
+      const sentKeys = repo.createMany.mock.calls[0][0].map(
+        (c) => (c as Category).seedKey,
+      );
+      expect(sentKeys).toEqual(
+        DEFAULT_CATEGORIES.slice(7).map((c) => c.seedKey),
+      );
+    });
+
+    it("is a no-op when every seedKey exists (archived included)", async () => {
+      repo.listSeedKeys.mockResolvedValue(
+        DEFAULT_CATEGORIES.map((c) => c.seedKey),
+      );
+
+      const created = await service.restoreDefaults(testUserId);
+
+      expect(created).toEqual([]);
+      expect(repo.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("type change guard [R2-32]", () => {
+    it("blocks changing the type of a category with transactions", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({
+          id: mockCategory.id,
+          name: "Food",
+          type: "EXPENSE",
+          userId: testUserId,
+        }),
+      );
+      txRepo.countByCategory.mockResolvedValue(3);
+
+      await expect(
+        service.updateCategory(mockCategory.id, { type: "INCOME" }, testUserId),
+      ).rejects.toThrow("Cannot change the type");
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it("allows a type change when the category has no transactions", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({
+          id: mockCategory.id,
+          name: "Food",
+          type: "EXPENSE",
+          userId: testUserId,
+        }),
+      );
+      txRepo.countByCategory.mockResolvedValue(0);
+      repo.update.mockResolvedValue(mockCategory);
+
+      await expect(
+        service.updateCategory(mockCategory.id, { type: "INCOME" }, testUserId),
+      ).resolves.toBeDefined();
     });
   });
 
@@ -286,7 +372,7 @@ describe("CategoryService", () => {
     });
 
     it("should throw NotFound on update when category does not exist", async () => {
-      repo.getById.mockResolvedValue(null);
+      repo.getByIdIncludingArchived.mockResolvedValue(null);
 
       await expect(
         service.updateCategory(
@@ -313,7 +399,7 @@ describe("CategoryService", () => {
       expect(createArg).toHaveLength(DEFAULT_CATEGORIES.length);
       expect(result).toHaveLength(DEFAULT_CATEGORIES.length);
 
-      createArg.forEach((cat: Category) => {
+      createArg.forEach((cat: Partial<Category>) => {
         expect(cat.userId).toBe(testUserId);
         expect(cat.id).toBeDefined();
       });
@@ -332,17 +418,19 @@ describe("CategoryService", () => {
       const expenseCategories = result.filter((c) => c.type === "EXPENSE");
       const transferCategories = result.filter((c) => c.type === "TRANSFER");
 
-      expect(incomeCategories.length).toBe(11);
-      expect(expenseCategories.length).toBe(21);
-      expect(transferCategories.length).toBe(5);
+      const expected = (type: string) =>
+        DEFAULT_CATEGORIES.filter((c) => c.type === type).length;
+      expect(incomeCategories.length).toBe(expected("INCOME"));
+      expect(expenseCategories.length).toBe(expected("EXPENSE"));
+      expect(transferCategories.length).toBe(expected("TRANSFER"));
     });
 
     it("should propagate error when createMany fails", async () => {
       repo.createMany.mockRejectedValue(new Error("DB write failed"));
 
-      await expect(
-        service.seedDefaultCategories(testUserId),
-      ).rejects.toThrow("DB write failed");
+      await expect(service.seedDefaultCategories(testUserId)).rejects.toThrow(
+        "DB write failed",
+      );
     });
   });
 });

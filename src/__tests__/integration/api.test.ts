@@ -1,18 +1,26 @@
-import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import bcryptjs from "bcryptjs";
+
+import { Account } from "../../domain/entities/Account";
+import { Budget } from "../../domain/entities/Budget";
+import { Category } from "../../domain/entities/Category";
+import { Transaction } from "../../domain/entities/Transaction";
+import { User } from "../../domain/entities/User";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
-import { User } from "../../domain/entities/User";
-import { Account } from "../../domain/entities/Account";
-import { Category } from "../../domain/entities/Category";
-import { Transaction } from "../../domain/entities/Transaction";
-import bcryptjs from "bcryptjs";
+import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 
 // --- Mock repositories ---
 const mockUserRepo: jest.Mocked<IUserRepository> = {
   getAll: jest.fn(),
   getById: jest.fn(),
   getByEmail: jest.fn(),
+  getDeletedByEmail: jest.fn().mockResolvedValue(null),
+  getByIdWithPassword: jest.fn().mockResolvedValue(null),
+  bumpTokenVersion: jest.fn().mockResolvedValue(undefined),
+  updateWithTokenBump: jest.fn(),
+  recordLogin: jest.fn().mockResolvedValue(undefined),
+  reactivate: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -22,18 +30,31 @@ const mockAccountRepo: jest.Mocked<IAccountRepository> = {
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
+  getByIdIncludingArchived: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
+  incrementBalance: jest.fn().mockResolvedValue(true),
+  archiveNonDefault: jest.fn().mockResolvedValue(true),
+  restore: jest.fn(),
+  getDefaultByUserId: jest.fn(),
+  setDefault: jest.fn(),
+  countByUserId: jest.fn().mockResolvedValue(1),
 };
 
 const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
+  getByIdIncludingArchived: jest.fn(),
   create: jest.fn(),
+  createMany: jest.fn(),
+  listSeedKeys: jest.fn().mockResolvedValue([]),
+  listArchivedIds: jest.fn().mockResolvedValue([]),
+  countByUserId: jest.fn().mockResolvedValue(0),
   update: jest.fn(),
   delete: jest.fn(),
+  restore: jest.fn(),
 };
 
 const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
@@ -43,21 +64,57 @@ const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
+  aggregateSpending: jest.fn(),
+  listTags: jest.fn().mockResolvedValue([]),
+  countByCategory: jest.fn().mockResolvedValue(0),
+  sumAmountsByCategory: jest.fn().mockResolvedValue({}),
+  sumAmounts: jest.fn().mockResolvedValue(0),
+};
+
+const mockBudgetRepo = {
+  getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
+  getById: jest.fn(),
+  getByIdIncludingArchived: jest.fn(),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+  findOverlapping: jest.fn().mockResolvedValue([]),
+  setAmountOverride: jest.fn(),
+  clearAmountOverride: jest.fn(),
+};
+
+const mockIdempotencyRepo = {
+  find: jest.fn().mockResolvedValue(null),
+  record: jest.fn().mockResolvedValue(undefined),
+};
+
+const mockRefreshSessionRepo = {
+  create: jest.fn().mockResolvedValue(undefined),
+  findById: jest.fn().mockResolvedValue(null),
+  rotate: jest.fn().mockResolvedValue(null),
+  revokeFamily: jest.fn().mockResolvedValue(undefined),
+  revokeAllForUser: jest.fn().mockResolvedValue(undefined),
+  listActiveByUser: jest.fn().mockResolvedValue([]),
+  revokeFamilyForUser: jest.fn().mockResolvedValue(true),
 };
 
 // --- Mock modules before importing app ---
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
     PORT: 3000,
-    DB_TYPE: "SEQ",
+    DB_TYPE: "MONGO",
     JWT_SECRET: "test-secret-for-integration",
     JWT_EXPIRATION: "1h",
+    REFRESH_TOKEN_EXPIRATION: "30d",
     BCRYPT_SALT_ROUNDS: 12,
     CORS_ORIGIN: "http://localhost:5173",
+    RATE_LIMIT_MAX: 100000,
+    AUTH_RATE_LIMIT_MAX: 100000,
     LOG_LEVEL: "info",
     NODE_ENV: "test",
   },
-  DB_TYPES: { SEQ: "SEQ", MONGO: "MONGO", LOCAL_STORAGE: "LOCAL_STORAGE" },
+  DB_TYPES: { MONGO: "MONGO" },
   ACCOUNT_TYPES: {
     CASH: "CASH",
     ACCOUNT: "ACCOUNT",
@@ -70,15 +127,38 @@ jest.mock("../../shared/constants", () => ({
     OTHER: "OTHER",
   },
   COLORS: {
-    RED: "RED", ORANGE: "ORANGE", AMBER: "AMBER", YELLOW: "YELLOW",
-    LIME: "LIME", GREEN: "GREEN", TEAL: "TEAL", CYAN: "CYAN",
-    BLUE: "BLUE", INDIGO: "INDIGO", PURPLE: "PURPLE", PINK: "PINK",
-    ROSE: "ROSE", GRAY: "GRAY", BROWN: "BROWN", BLACK: "BLACK",
+    RED: "RED",
+    ORANGE: "ORANGE",
+    AMBER: "AMBER",
+    YELLOW: "YELLOW",
+    LIME: "LIME",
+    GREEN: "GREEN",
+    TEAL: "TEAL",
+    CYAN: "CYAN",
+    BLUE: "BLUE",
+    INDIGO: "INDIGO",
+    PURPLE: "PURPLE",
+    PINK: "PINK",
+    ROSE: "ROSE",
+    GRAY: "GRAY",
+    BROWN: "BROWN",
+    BLACK: "BLACK",
   },
+  TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
+    ADJUSTMENT: "ADJUSTMENT",
+  },
+  BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
+  BUDGET_PERIOD_TYPES: {
+    WEEKLY: "WEEKLY",
+    BIWEEKLY: "BIWEEKLY",
+    MONTHLY: "MONTHLY",
+    QUARTERLY: "QUARTERLY",
+    YEARLY: "YEARLY",
+    CUSTOM: "CUSTOM",
   },
   CATEGORY_TYPES: {
     INCOME: "INCOME",
@@ -100,12 +180,25 @@ jest.mock("../../shared/logger", () => ({
   warn: jest.fn(),
 }));
 
-jest.mock("../../domain/models/sequelize/index", () => ({
-  loadSequelizeModels: jest.fn(),
-}));
-
 jest.mock("../../config/swagger", () => ({
   swaggerSpec: {},
+}));
+
+// No real MongoDB in these tests: stub the connection and the transaction
+// runner so the service layer runs against the mocked repositories.
+jest.mock("../../config/mongoConnection", () => ({
+  connectMongo: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock("../../shared/unitOfWork", () => ({
+  withTransaction: jest.fn((fn: (session: unknown) => unknown) => fn({})),
+}));
+
+jest.mock("../../app/middlewares/authRateLimitMiddleware", () => ({
+  authRateLimit:
+    () =>
+    (_req: unknown, _res: unknown, next: () => void): void =>
+      next(),
 }));
 
 jest.mock("../../app/factories/RepositoryFactory", () => ({
@@ -115,12 +208,16 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getAccountRepository: () => mockAccountRepo,
     getCategoryRepository: () => mockCategoryRepo,
     getTransactionRepository: () => mockTransactionRepo,
+    getIdempotencyRepository: () => mockIdempotencyRepo,
+    getBudgetRepository: () => mockBudgetRepo,
+    getRefreshSessionRepository: () => mockRefreshSessionRepo,
   },
   RepositoryFactory: jest.fn(),
 }));
 
-import request from "supertest";
 import jwt from "jsonwebtoken";
+import request from "supertest";
+
 import app from "../../app";
 
 const generateToken = (
@@ -152,7 +249,7 @@ const testAccount = new Account({
 const testCategory = new Category({
   id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
   name: "Food",
-  emoji: "🍔",
+  icon: "utensils",
   userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
 });
 
@@ -238,8 +335,8 @@ describe("Integration Tests", () => {
       });
 
       expect(res.status).toBe(200);
-      expect(res.body.token).toBeDefined();
-      expect(typeof res.body.token).toBe("string");
+      expect(typeof res.body.accessToken).toBe("string");
+      expect(typeof res.body.refreshToken).toBe("string");
     });
 
     it("should return 401 for wrong password", async () => {
@@ -267,6 +364,63 @@ describe("Integration Tests", () => {
     it("should return 400 for missing fields", async () => {
       const res = await request(app).post("/auth/login").send({});
 
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("POST /auth/refresh [M3]", () => {
+    it("issues a new token pair for a valid refresh token", async () => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+      mockRefreshSessionRepo.rotate.mockResolvedValue({
+        jti: "jti-1",
+        userId: testUser.id,
+        familyId: "fam-1",
+        expiresAt: new Date(Date.now() + 86_400_000),
+        replacedBy: null,
+        revokedAt: null,
+      });
+      const refreshToken = jwt.sign(
+        {
+          userId: testUser.id,
+          tokenVersion: testUser.tokenVersion,
+          type: "refresh",
+          jti: "jti-1",
+        },
+        "test-secret-for-integration",
+        { expiresIn: "30d" },
+      );
+
+      const res = await request(app)
+        .post("/auth/refresh")
+        .send({ refreshToken });
+
+      expect(res.status).toBe(200);
+      expect(typeof res.body.accessToken).toBe("string");
+      expect(typeof res.body.refreshToken).toBe("string");
+    });
+
+    it("returns 401 for a revoked (stale tokenVersion) refresh token", async () => {
+      mockUserRepo.getById.mockResolvedValue(testUser); // tokenVersion 0
+      const refreshToken = jwt.sign(
+        {
+          userId: testUser.id,
+          tokenVersion: 99,
+          type: "refresh",
+          jti: "jti-1",
+        },
+        "test-secret-for-integration",
+        { expiresIn: "30d" },
+      );
+
+      const res = await request(app)
+        .post("/auth/refresh")
+        .send({ refreshToken });
+
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 400 when refreshToken is missing", async () => {
+      const res = await request(app).post("/auth/refresh").send({});
       expect(res.status).toBe(400);
     });
   });
@@ -332,26 +486,12 @@ describe("Integration Tests", () => {
 
   // ==================== User Routes ====================
   describe("GET /users", () => {
-    it("should return paginated users", async () => {
-      mockUserRepo.getAll.mockResolvedValue({
-        data: [testUser],
-        pagination: {
-          limit: 20,
-          offset: 0,
-          total: 1,
-          hasMore: false,
-          nextCursor: null,
-        },
-      });
-
+    it("should be removed (user enumeration) and return 404", async () => {
       const res = await request(app)
         .get("/users")
         .set("Authorization", `Bearer ${token}`);
 
-      expect(res.status).toBe(200);
-      expect(res.body.data).toHaveLength(1);
-      expect(res.body.data[0].password).toBeUndefined();
-      expect(res.body.pagination).toBeDefined();
+      expect(res.status).toBe(404);
     });
   });
 
@@ -368,12 +508,12 @@ describe("Integration Tests", () => {
       expect(res.body.password).toBeUndefined();
     });
 
-    it("should return 403 for accessing another user", async () => {
+    it("should return 404 for accessing another user (uniform, no id probing) [R2-25a]", async () => {
       const res = await request(app)
         .get("/users/019576a0-d7b6-7d6d-af6a-000000000000")
         .set("Authorization", `Bearer ${token}`);
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
     });
 
     it("should return 400 for non-numeric id", async () => {
@@ -490,7 +630,7 @@ describe("Integration Tests", () => {
 
   describe("GET /accounts/:id", () => {
     it("should return an account by id", async () => {
-      mockAccountRepo.getById.mockResolvedValue(testAccount);
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(testAccount);
 
       const res = await request(app)
         .get("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71")
@@ -501,7 +641,7 @@ describe("Integration Tests", () => {
     });
 
     it("should return 404 for non-existent account", async () => {
-      mockAccountRepo.getById.mockResolvedValue(null);
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(null);
 
       const res = await request(app)
         .get("/accounts/019576a0-d7b6-7d6d-af6a-000000000000")
@@ -514,7 +654,7 @@ describe("Integration Tests", () => {
   describe("PUT /accounts/:id", () => {
     it("should update an account", async () => {
       const updated = new Account({ ...testAccount, name: "Updated" });
-      mockAccountRepo.getById.mockResolvedValue(testAccount);
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(testAccount);
       mockAccountRepo.update.mockResolvedValue(updated);
 
       const res = await request(app)
@@ -529,11 +669,17 @@ describe("Integration Tests", () => {
 
   describe("DELETE /accounts/:id", () => {
     it("should delete an account", async () => {
-      mockAccountRepo.getById.mockResolvedValue(testAccount);
-      mockAccountRepo.delete.mockResolvedValue();
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(testAccount);
+      mockAccountRepo.archiveNonDefault.mockResolvedValue(true);
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [],
-        pagination: { limit: 1, offset: 0, total: 0, hasMore: false, nextCursor: null },
+        pagination: {
+          limit: 1,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
       });
 
       const res = await request(app)
@@ -541,9 +687,65 @@ describe("Integration Tests", () => {
         .set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(200);
-      expect(mockAccountRepo.delete).toHaveBeenCalledWith(
+      expect(mockAccountRepo.archiveNonDefault).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       );
+    });
+  });
+
+  describe("POST /accounts/:id/restore [archive]", () => {
+    it("restores an archived account", async () => {
+      mockAccountRepo.restore.mockResolvedValue(testAccount);
+
+      const res = await request(app)
+        .post("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71/restore")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(mockAccountRepo.restore).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        testUser.id,
+        undefined,
+      );
+    });
+
+    // The way out of a restore that 409s because the name was taken while the
+    // account sat archived: rename it on the way out, in the same write.
+    it("restores under a new name when the body carries one", async () => {
+      mockAccountRepo.restore.mockResolvedValue(testAccount);
+
+      const res = await request(app)
+        .post("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71/restore")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ name: "  Nequi antiguo  " });
+
+      expect(res.status).toBe(200);
+      expect(mockAccountRepo.restore).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        testUser.id,
+        "Nequi antiguo",
+      );
+    });
+
+    it("rejects an empty name instead of restoring under it", async () => {
+      const res = await request(app)
+        .post("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71/restore")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ name: "   " });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 404 when there is nothing to restore", async () => {
+      mockAccountRepo.restore.mockResolvedValue(null);
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(null);
+
+      const res = await request(app)
+        .post("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71/restore")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
     });
   });
 
@@ -578,7 +780,7 @@ describe("Integration Tests", () => {
       const res = await request(app)
         .post("/categories")
         .set("Authorization", `Bearer ${token}`)
-        .send({ name: "Food", emoji: "🍔" });
+        .send({ name: "Food", icon: "utensils" });
 
       expect(res.status).toBe(201);
     });
@@ -595,7 +797,7 @@ describe("Integration Tests", () => {
 
   describe("GET /categories/:id", () => {
     it("should return a category by id", async () => {
-      mockCategoryRepo.getById.mockResolvedValue(testCategory);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
 
       const res = await request(app)
         .get("/categories/019576a0-d7b6-7d6d-af6a-2b7545f5ac73")
@@ -606,7 +808,7 @@ describe("Integration Tests", () => {
     });
 
     it("should return 404 for non-existent category", async () => {
-      mockCategoryRepo.getById.mockResolvedValue(null);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(null);
 
       const res = await request(app)
         .get("/categories/019576a0-d7b6-7d6d-af6a-000000000000")
@@ -621,30 +823,36 @@ describe("Integration Tests", () => {
       const updated = new Category({
         id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
         name: "Transport",
-        emoji: "🚌",
+        icon: "bus",
         userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       });
-      mockCategoryRepo.getById.mockResolvedValue(testCategory);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
       mockCategoryRepo.update.mockResolvedValue(updated);
 
       const res = await request(app)
         .put("/categories/019576a0-d7b6-7d6d-af6a-2b7545f5ac73")
         .set("Authorization", `Bearer ${token}`)
-        .send({ name: "Transport", emoji: "🚌" });
+        .send({ name: "Transport", icon: "bus" });
 
       expect(res.status).toBe(200);
       expect(res.body.name).toBe("Transport");
-      expect(res.body.emoji).toBe("🚌");
+      expect(res.body.icon).toBe("bus");
     });
   });
 
   describe("DELETE /categories/:id", () => {
     it("should delete a category", async () => {
-      mockCategoryRepo.getById.mockResolvedValue(testCategory);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
       mockCategoryRepo.delete.mockResolvedValue();
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [],
-        pagination: { limit: 1, offset: 0, total: 0, hasMore: false, nextCursor: null },
+        pagination: {
+          limit: 1,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
       });
 
       const res = await request(app)
@@ -660,6 +868,106 @@ describe("Integration Tests", () => {
 
   // ==================== Transaction Routes ====================
   describe("GET /transactions", () => {
+    it("passes the source filter through to the repository", async () => {
+      mockTransactionRepo.getAllByUserId.mockResolvedValue({
+        data: [],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+
+      const res = await request(app)
+        .get("/transactions?source=QUICK")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(mockTransactionRepo.getAllByUserId).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        expect.anything(),
+        expect.objectContaining({ source: "QUICK" }),
+      );
+    });
+
+    it("asks the repository for a summary only when requested", async () => {
+      const empty = {
+        data: [],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
+      };
+      mockTransactionRepo.getAllByUserId.mockResolvedValue(empty);
+
+      await request(app)
+        .get("/transactions?pendingDetails=true")
+        .set("Authorization", `Bearer ${token}`);
+      expect(mockTransactionRepo.getAllByUserId).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.not.objectContaining({ includeSummary: true }),
+      );
+
+      await request(app)
+        .get("/transactions?pendingDetails=true&includeSummary=true")
+        .set("Authorization", `Bearer ${token}`);
+      expect(mockTransactionRepo.getAllByUserId).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ includeSummary: true, pendingDetails: true }),
+      );
+    });
+
+    it("passes the summary through to the client", async () => {
+      mockTransactionRepo.getAllByUserId.mockResolvedValue({
+        data: [],
+        pagination: {
+          limit: 1,
+          offset: 0,
+          total: 3,
+          hasMore: true,
+          nextCursor: null,
+        },
+        summary: { totalAmount: 47_900 },
+      });
+
+      const res = await request(app)
+        .get("/transactions?pendingDetails=true&includeSummary=true&limit=1")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.summary).toEqual({ totalAmount: 47_900 });
+      expect(res.body.pagination.total).toBe(3);
+    });
+
+    it("names the field without the schema section it came from", async () => {
+      const res = await request(app)
+        .post("/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ type: "EXPENSE", amount: -5, date: "not-a-date" });
+
+      expect(res.status).toBe(400);
+      const fields = res.body.details.map(
+        (d: { field: string }) => d.field,
+      ) as string[];
+      expect(fields).toContain("amount");
+      expect(fields.every((f) => !f.startsWith("body."))).toBe(true);
+    });
+
+    it("rejects an unknown source", async () => {
+      const res = await request(app)
+        .get("/transactions?source=SMS")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+    });
+
     it("should return transactions for the authenticated user", async () => {
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [testTransaction],
@@ -680,9 +988,38 @@ describe("Integration Tests", () => {
       expect(res.body.data).toHaveLength(1);
       expect(res.body.pagination).toBeDefined();
     });
+
+    it("rejects uncategorized=true combined with categoryId", async () => {
+      const res = await request(app)
+        .get(
+          "/transactions?uncategorized=true&categoryId=019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
+        )
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+    });
   });
 
   describe("POST /transactions", () => {
+    it("rejects a malformed Idempotency-Key with IDEMPOTENCY_KEY_INVALID", async () => {
+      mockAccountRepo.getById.mockResolvedValue(testAccount);
+      mockTransactionRepo.create.mockResolvedValue(testTransaction);
+
+      const res = await request(app)
+        .post("/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", "bad key with spaces!")
+        .send({
+          type: "EXPENSE",
+          amount: 50,
+          date: "2026-03-28T00:00:00.000Z",
+          fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("IDEMPOTENCY_KEY_INVALID");
+    });
+
     it("should create an expense transaction", async () => {
       mockAccountRepo.getById.mockResolvedValue(testAccount);
       mockTransactionRepo.create.mockResolvedValue(testTransaction);
@@ -779,6 +1116,7 @@ describe("Integration Tests", () => {
     it("should update a transaction", async () => {
       mockTransactionRepo.getById.mockResolvedValue(testTransaction);
       mockAccountRepo.getById.mockResolvedValue(testAccount);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
       const updated = new Transaction({ ...testTransaction, amount: 75 });
       mockTransactionRepo.update.mockResolvedValue(updated);
 
@@ -804,7 +1142,118 @@ describe("Integration Tests", () => {
       expect(res.status).toBe(200);
       expect(mockTransactionRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac74",
+        expect.anything(),
       );
+    });
+  });
+
+  // ==================== Stats Routes ====================
+  describe("GET /stats/spending [F1]", () => {
+    it("returns spending buckets grouped by category", async () => {
+      mockTransactionRepo.aggregateSpending.mockResolvedValue({
+        buckets: [{ key: "cat-1", total: 30.5, count: 3, avg: 10.17 }],
+        totalCents: 3050,
+      });
+
+      const res = await request(app)
+        .get("/stats/spending?groupBy=category")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.groupBy).toBe("category");
+      expect(res.body.buckets).toHaveLength(1);
+      expect(res.body.total).toBe(30.5);
+      expect(mockTransactionRepo.aggregateSpending).toHaveBeenCalledWith(
+        testUser.id,
+        expect.objectContaining({ groupBy: "category", type: "EXPENSE" }),
+      );
+    });
+
+    it("rejects an invalid groupBy", async () => {
+      const res = await request(app)
+        .get("/stats/spending?groupBy=nope")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ==================== Budget Routes ====================
+  describe("Budgets [F3]", () => {
+    const testBudget = new Budget({
+      id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac90",
+      name: "Food",
+      color: "RED",
+      categoryIds: ["019576a0-d7b6-7d6d-af6a-2b7545f5ac73"],
+      amount: 500,
+      periodType: "MONTHLY",
+      userId: testUser.id,
+    });
+
+    beforeEach(() => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+      mockTransactionRepo.sumAmountsByCategory.mockResolvedValue({});
+    });
+
+    it("lists budgets with computed spent", async () => {
+      mockBudgetRepo.getAllByUserId.mockResolvedValue({
+        data: [testBudget],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+      mockTransactionRepo.sumAmountsByCategory.mockResolvedValue({
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac73": 12000,
+      });
+
+      const res = await request(app)
+        .get("/budgets")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data[0].spent).toBe(120);
+      expect(res.body.data[0].amount).toBe(500);
+    });
+
+    it("creates a budget", async () => {
+      mockBudgetRepo.findOverlapping.mockResolvedValue([]);
+      mockBudgetRepo.create.mockResolvedValue(testBudget);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
+
+      const res = await request(app)
+        .post("/budgets")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          name: "Food",
+          color: "RED",
+          categoryIds: ["019576a0-d7b6-7d6d-af6a-2b7545f5ac73"],
+          amount: 500,
+          periodType: "MONTHLY",
+        });
+
+      expect(res.status).toBe(201);
+    });
+
+    it("rejects a duplicate budget (same category + period)", async () => {
+      mockBudgetRepo.findOverlapping.mockResolvedValue([testBudget]);
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
+
+      const res = await request(app)
+        .post("/budgets")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          name: "Food 2",
+          color: "TEAL",
+          categoryIds: ["019576a0-d7b6-7d6d-af6a-2b7545f5ac73"],
+          amount: 300,
+          periodType: "MONTHLY",
+        });
+
+      expect(res.status).toBe(400);
     });
   });
 });

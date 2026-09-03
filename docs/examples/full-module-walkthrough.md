@@ -4,16 +4,18 @@
 
 The Transactions module is the most representative module in the project. It was chosen because it demonstrates:
 
-- Full vertical CRUD (entity → model → repository → service → controller → route)
-- Cross-module dependency (TransactionService uses AccountRepository for balance adjustments)
-- Complex validation with Zod `superRefine` (type-dependent required fields)
-- Balance adjustment business logic with reversal on update/delete
-- Dual database implementation (Sequelize + Mongoose)
-- Pagination (offset + cursor)
-- Ownership enforcement
-- Comprehensive test suite with mock repositories
+- Full vertical CRUD (entity → Mongoose model → repository → service → controller → route)
+- Cross-module dependencies (`TransactionService` uses the account, category, and idempotency repositories)
+- Two-stage validation: Zod at the HTTP boundary, `assertValid()` invariants on the entity
+- Atomic balance adjustment inside a MongoDB transaction, with reversal on update/delete
+- Money handled as integer cents at the storage boundary
+- Pagination (offset + keyset cursor) through `buildPaginatedResult`
+- Ownership enforcement that answers **404**, never 403
+- Idempotent creation via the `Idempotency-Key` header
+- Soft delete (`deletedAt`) plus an internal revision audit trail
+- A comprehensive unit test suite built on mock repositories
 
-This walkthrough shows how each file was built and how they connect.
+This walkthrough shows how each file is built and how they connect. Follow the same shape for any new module.
 
 ---
 
@@ -23,12 +25,16 @@ This walkthrough shows how each file was built and how they connect.
 
 **File:** `src/domain/entities/Transaction.ts`
 
-**Why:** The entity is the foundation — a plain TypeScript class representing a financial transaction. No framework dependencies.
+**Why:** The entity is the foundation — a plain TypeScript class representing a financial transaction, plus the invariants that must hold for it to be valid. No framework dependencies.
 
 **Where:** `src/domain/entities/` — all domain entities live here, isolated from HTTP and database concerns.
 
 ```typescript
-import { TransactionType } from "../../shared/constants";
+import { v7 as uuidv7 } from "uuid";
+
+import { TransactionSource, TransactionType } from "../../shared/constants";
+import { MAX_AMOUNT } from "../../shared/money";
+import { DomainValidationError } from "../errors";
 
 export interface TransactionProps {
   id?: string;
@@ -40,8 +46,12 @@ export interface TransactionProps {
   fromAccountId?: string | null;
   toAccountId?: string | null;
   userId: string;
-  tags?: string | null;
+  tags?: string[];
   note?: string | null;
+  pendingDetails?: boolean;
+  source?: TransactionSource;
+  // ISO 4217; stamped from the involved account when balances are applied.
+  currency?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -51,40 +61,53 @@ export class Transaction {
   type: TransactionType;
   amount: number;
   date: Date;
-  categoryId: string | null;
-  description: string | null;
-  fromAccountId: string | null;
-  toAccountId: string | null;
-  userId: string;
-  tags: string | null;
-  note: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+  // ... remaining fields
 
   constructor(props: TransactionProps) {
-    this.id = props.id!;
+    this.id = props.id ?? uuidv7();
     this.type = props.type;
     this.amount = props.amount;
     this.date = props.date instanceof Date ? props.date : new Date(props.date);
-    this.categoryId = props.categoryId ?? null;
-    this.description = props.description ?? null;
-    this.fromAccountId = props.fromAccountId ?? null;
-    this.toAccountId = props.toAccountId ?? null;
-    this.userId = props.userId;
-    this.tags = props.tags ?? null;
-    this.note = props.note ?? null;
-    this.createdAt = props.createdAt!;
-    this.updatedAt = props.updatedAt!;
+    this.tags = props.tags ?? [];
+    this.pendingDetails = props.pendingDetails ?? false;
+    this.source = props.source ?? "MANUAL";
+    this.currency = props.currency;
+    this.createdAt = props.createdAt ?? new Date();
+    this.updatedAt = props.updatedAt ?? new Date();
+    // ... optional fields assigned with ?? null
+  }
+
+  // Called on create AND on the update merge, so a partial update can't leave
+  // an inconsistent shape.
+  assertValid(): void {
+    if (!(this.amount > 0)) {
+      throw new DomainValidationError("Amount must be greater than 0", "amount");
+    }
+    if (this.date.getTime() > Date.now() + 24 * 60 * 60 * 1000) {
+      throw new DomainValidationError(
+        "date cannot be more than 24 hours in the future",
+        "date",
+        "FUTURE_DATE",
+      );
+    }
+    // ... per-type rules: EXPENSE needs fromAccountId only, INCOME needs
+    // toAccountId only, TRANSFER needs both and they must differ, ADJUSTMENT
+    // needs exactly one side and no categoryId.
   }
 }
 ```
 
 **Key decisions:**
 
-- `TransactionProps` interface defines constructor input — `id`, `createdAt`, `updatedAt` are optional because they're assigned by the database
-- `date` accepts both `Date` and `string` for flexibility (API sends ISO strings, DB may return Date objects)
-- Optional fields use `?? null` pattern for consistent null handling
-- The entity only imports from `shared/constants` (type definitions) — no framework dependencies
+- The entity generates its own `id` (UUID v7) when one isn't supplied — ids are not a database concern
+- `amount` is a **decimal amount** everywhere above the repository; cents exist only in storage
+- `date` accepts both `Date` and `string` (the API sends ISO strings, the DB returns `Date`)
+- `tags` is a `string[]` (default `[]`), not a delimited string
+- `currency`, `source` and `pendingDetails` are server-derived; clients never set them
+- `assertValid()` is the single place where per-type invariants live, so the service, the update
+  merge, and the tests all enforce exactly the same rules. It throws `DomainValidationError`,
+  which the error middleware renders as a 400 with the same body shape as a Zod failure
+- The entity only imports `shared/constants`, `shared/money` and `domain/errors` — no framework
 
 ---
 
@@ -94,10 +117,10 @@ export class Transaction {
 
 **Why:** DTOs define the contract for data flowing into the service layer. Separate from the entity to avoid leaking internal fields.
 
-**Where:** `src/app/dtos/` — all DTOs live in the application layer because they're HTTP-boundary concerns.
+**Where:** `src/app/dtos/` — DTOs live in the application layer because they are HTTP-boundary concerns.
 
 ```typescript
-import { TransactionType } from "../../shared/constants";
+import { TransactionSource, TransactionType } from "../../shared/constants";
 
 export interface CreateTransactionDTO {
   type: TransactionType;
@@ -108,136 +131,68 @@ export interface CreateTransactionDTO {
   fromAccountId?: string | null;
   toAccountId?: string | null;
   userId: string;
-  tags?: string | null;
+  tags?: string[];
   note?: string | null;
+  pendingDetails?: boolean;
+  // Server-derived (quick-add sets QUICK); the schema never accepts it.
+  source?: TransactionSource;
 }
 
 export interface UpdateTransactionDTO {
   id?: string;
+  // every other field optional — partial updates are supported
+}
+
+export interface QuickAddTransactionDTO {
+  amount: number;
   type?: TransactionType;
-  amount?: number;
   date?: Date;
   categoryId?: string | null;
-  description?: string | null;
   fromAccountId?: string | null;
   toAccountId?: string | null;
-  tags?: string | null;
-  note?: string | null;
+  userId: string;
 }
 ```
 
 **Key decisions:**
 
-- `CreateTransactionDTO` has `userId` as required — it's injected by the controller from `req.user`
-- `UpdateTransactionDTO` has `id?` for the service to verify URL param matches body
-- All fields in Update are optional — partial updates are supported
+- `userId` is required on create — the controller injects it from `req.user`, never from the body
+- `UpdateTransactionDTO` carries `id?` so the service can verify the URL param matches the body
+- A third DTO models the low-friction quick-add flow, where only `amount` is required
+- When a service returns something richer than an entity (budgets do), the shaped result is a
+  `...View` interface declared next to its DTOs — see `BudgetView` in `src/app/dtos/BudgetDTO.ts`
 
 ---
 
-### Step 3: Sequelize Model
+### Step 3: Mongoose Model
 
-**File:** `src/domain/models/sequelize/TransactionModel.ts`
+**File:** `src/infrastructure/models/TransactionModel.ts`
 
-**Why:** Defines the MySQL table schema and relationships for the Transaction entity.
-
-```typescript
-import { DataTypes, Model, Sequelize } from "sequelize";
-import { MODEL_NAMES, TRANSACTION_TYPES } from "../../../shared/constants";
-import { CategoryModel } from "./CategoryModel";
-import { AccountModel } from "./AccountModel";
-import { UserModel } from "./UserModel";
-import { v7 as uuidv7 } from "uuid";
-
-export class TransactionModel extends Model {
-  id!: string;
-  type!: keyof typeof TRANSACTION_TYPES;
-  amount!: number;
-  date!: Date;
-  categoryId?: string;
-  description?: string;
-  fromAccountId?: string;
-  toAccountId?: string;
-  userId!: string;
-  tags?: string;
-  note?: string;
-
-  static associate() {
-    TransactionModel.belongsTo(CategoryModel, {
-      foreignKey: "categoryId",
-      as: "category",
-    });
-    TransactionModel.belongsTo(AccountModel, {
-      foreignKey: "fromAccountId",
-      as: "fromAccount",
-    });
-    TransactionModel.belongsTo(AccountModel, {
-      foreignKey: "toAccountId",
-      as: "toAccount",
-    });
-    TransactionModel.belongsTo(UserModel, { foreignKey: "userId", as: "user" });
-  }
-}
-
-export default (sequelize: Sequelize) => {
-  TransactionModel.init(
-    {
-      id: {
-        type: DataTypes.CHAR(36),
-        defaultValue: () => uuidv7(),
-        primaryKey: true,
-      },
-      type: { type: DataTypes.STRING, allowNull: false },
-      amount: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
-      date: { type: DataTypes.DATE, allowNull: false },
-      categoryId: { type: DataTypes.CHAR(36) },
-      description: { type: DataTypes.STRING },
-      fromAccountId: { type: DataTypes.CHAR(36) },
-      toAccountId: { type: DataTypes.CHAR(36) },
-      userId: { type: DataTypes.CHAR(36), allowNull: false },
-      tags: { type: DataTypes.STRING(500) },
-      note: { type: DataTypes.STRING(1000) },
-    },
-    { sequelize, modelName: MODEL_NAMES.TRANSACTION },
-  );
-  return TransactionModel;
-};
-```
-
-**Key decisions:**
-
-- UUID v7 default value via function (not a static value)
-- `DECIMAL(15, 2)` for financial amounts — never use `FLOAT` for money
-- `associate()` defines foreign keys to Category, Account (×2), and User
-- The model file exports a default function that receives the Sequelize instance — this is the Sequelize pattern used in `src/domain/models/sequelize/index.ts`
-
----
-
-### Step 4: Mongoose Model
-
-**File:** `src/domain/models/mongoose/TransactionMongoModel.ts`
-
-**Why:** Defines the MongoDB schema for the Transaction entity.
+**Why:** Defines the MongoDB schema and the indexes for the Transaction collection. This is the only file in the module that knows about Mongoose. MongoDB is the only backend; there is no ORM abstraction beyond the repository interface.
 
 ```typescript
 import mongoose, { Schema } from "mongoose";
+
 import {
   MODEL_NAMES,
+  TRANSACTION_SOURCES,
   TRANSACTION_TYPES,
   TransactionType,
-} from "../../../shared/constants";
+} from "../../shared/constants";
+import { DEFAULT_CURRENCY } from "../../shared/currency";
 
 export interface ITransactionDocument {
   _id: string;
   type: TransactionType;
-  amount: number;
+  amount: number; // integer cents
   date: Date;
-  categoryId: string | null;
-  description: string | null;
-  fromAccountId: string | null;
-  toAccountId: string | null;
-  userId: string;
-  tags: string | null;
-  note: string | null;
+  // ... categoryId, description, fromAccountId, toAccountId, userId, note
+  tags: string[];
+  pendingDetails: boolean;
+  source?: string;
+  currency: string;
+  revisions?: { at: Date; amount: number; /* ... */ }[];
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -245,25 +200,41 @@ export interface ITransactionDocument {
 const TransactionSchema = new Schema<ITransactionDocument>(
   {
     _id: { type: String, required: true },
-    type: {
-      type: String,
-      required: true,
-      enum: Object.keys(TRANSACTION_TYPES),
-    },
+    type: { type: String, required: true, enum: Object.keys(TRANSACTION_TYPES) },
     amount: { type: Number, required: true },
     date: { type: Date, required: true },
-    categoryId: { type: String, default: null },
-    description: { type: String, default: null },
-    fromAccountId: { type: String, default: null },
-    toAccountId: { type: String, default: null },
-    userId: { type: String, required: true },
-    tags: { type: String, default: null },
-    note: { type: String, default: null },
+    tags: { type: [String], default: [] },
+    pendingDetails: { type: Boolean, required: true, default: false },
+    source: {
+      type: String,
+      required: true,
+      enum: Object.keys(TRANSACTION_SOURCES),
+      default: "MANUAL",
+    },
+    currency: {
+      type: String,
+      required: true,
+      default: DEFAULT_CURRENCY,
+      uppercase: true,
+      trim: true,
+    },
+    // Audit trail of monetary edits (amount in cents); capped, internal-only.
+    revisions: { type: [/* sub-schema, _id: false */], default: [] },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
-export const TransactionMongoModel = mongoose.model<ITransactionDocument>(
+// Primary listing sort; deletedAt included so the per-page count is
+// resolved from the index instead of fetching every document.
+TransactionSchema.index({ userId: 1, deletedAt: 1, date: -1, _id: -1 });
+TransactionSchema.index({ userId: 1, categoryId: 1, date: -1 });
+TransactionSchema.index({ userId: 1, tags: 1, date: -1 });
+// Each $or branch of the accountId filter needs its own userId-prefixed index.
+TransactionSchema.index({ userId: 1, fromAccountId: 1, date: -1 });
+TransactionSchema.index({ userId: 1, toAccountId: 1, date: -1 });
+
+export const TransactionModel = mongoose.model<ITransactionDocument>(
   MODEL_NAMES.TRANSACTION,
   TransactionSchema,
 );
@@ -272,109 +243,280 @@ export const TransactionMongoModel = mongoose.model<ITransactionDocument>(
 **Key decisions:**
 
 - `_id` is a `String` (UUID v7) — not the default MongoDB ObjectId
-- `timestamps: true` auto-manages `createdAt`/`updatedAt`
-- `ITransactionDocument` interface matches the entity structure for consistent mapping
-- `enum` validates `type` at the database level
+- `amount` is stored as **integer cents**. Never store money as a float
+- `timestamps: true` auto-manages `createdAt`/`updatedAt`, which are returned to clients
+- `deletedAt` implements the soft delete; every query filters on `deletedAt: null`
+- Every index is prefixed with `userId`, because every query is user-scoped
+- There are no migrations. Collections appear on first write; indexes are built by
+  `npm run db:sync-indexes` in production (`autoIndex` handles development)
 
 ---
 
-### Step 5: Repository Interface
+### Step 4: Repository Interface
 
 **File:** `src/domain/repositories/transaction/ITransactionRepository.ts`
 
-**Why:** Defines the data access contract. The service depends on this interface, not on Sequelize or Mongoose.
+**Why:** Defines the data access contract. The service depends on this interface, never on Mongoose.
 
 ```typescript
+import { TransactionType } from "../../../shared/constants";
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
 import { Transaction } from "../../entities/Transaction";
 import { IRepository } from "../IRepository";
 
+export interface TransactionFilters {
+  ids?: string[];
+  accountId?: string;
+  categoryId?: string;
+  type?: TransactionType;
+  pendingDetails?: boolean;
+  // Half-open date range [from, to).
+  from?: Date;
+  to?: Date;
+  tag?: string;
+  uncategorized?: boolean;
+}
+
 export interface ITransactionRepository extends IRepository<Transaction> {
+  update(
+    id: string,
+    entity: Partial<Transaction>,
+    session?: unknown,
+    revision?: TransactionRevision,
+  ): Promise<Transaction>;
+
   getAllByUserId(
     userId: string,
     pagination: PaginationParams,
+    filters?: TransactionFilters,
   ): Promise<PaginatedResult<Transaction>>;
+
+  aggregateSpending(userId: string, query: SpendingQuery): Promise<SpendingResult>;
+  listTags(userId: string): Promise<string[]>;
+  countByCategory(userId: string, categoryId: string): Promise<number>;
+  sumAmountsByCategory(/* ... */): Promise<Record<string, number>>;
+  sumAmounts(/* ... */): Promise<number>;
+}
+```
+
+The base contract it extends (`src/domain/repositories/IRepository.ts`) threads an optional
+transaction session through every operation:
+
+```typescript
+export interface IRepository<T> {
+  getById(id: string, session?: TxSession): Promise<T | null>;
+  getAll(pagination: PaginationParams): Promise<PaginatedResult<T>>;
+  create(entity: Partial<T>, session?: TxSession): Promise<T>;
+  update(id: string, entity: Partial<T>, session?: TxSession): Promise<T>;
+  delete(id: string, session?: TxSession): Promise<void>;
 }
 ```
 
 **Key decisions:**
 
-- Extends `IRepository<Transaction>` for standard CRUD
-- Adds `getAllByUserId()` for user-scoped queries
-- Returns domain `Transaction` entities — never raw DB objects
+- Filters are a **typed** interface, never a raw Mongo query object leaking upward
+- Returns domain `Transaction` entities — never raw documents
+- Aggregations that return cents say so in their type (`totalCents`), so callers can't confuse units
+- `TransactionRevision` is internal (audit trail) and is never exposed through the API
 
 ---
 
-### Step 6: Repository Implementations
+### Step 5: Repository Implementation
 
-Both implementations follow the same contract. The key pattern: map raw DB records to domain entities.
+**File:** `src/infrastructure/repositories/transaction/TransactionRepository.ts`
 
-**Sequelize** (`src/domain/repositories/transaction/TransactionSeqRepository.ts`) — uses `result.toJSON()` → `new Transaction(...)`.
-
-**Mongoose** (`src/domain/repositories/transaction/TransactionMongoRepository.ts`) — uses `.lean()` queries → private `toEntity()` mapper → `new Transaction(...)`. Generates UUID v7 for `_id` on `create()`.
-
-Both include `paginatedFindAll()`/`paginatedFind()` private methods supporting cursor and offset pagination.
-
----
-
-### Step 7: Register in Factory
-
-**Files modified:**
-
-`src/app/factories/providers/sequelizeProvider.ts`:
+**Why:** The only place that translates between Mongoose documents and domain entities, and between integer cents and decimal amounts. Note the name: no `Mongo` suffix — MongoDB is the only backend.
 
 ```typescript
-factory.register("transaction", () => new TransactionSeqRepository());
+export class TransactionRepository implements ITransactionRepository {
+  private toEntity(doc: ITransactionDocument): Transaction {
+    return new Transaction({
+      id: doc._id,
+      type: doc.type,
+      amount: fromCents(doc.amount),
+      // ... remaining fields
+      currency: doc.currency,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+    });
+  }
+
+  private toStorage(transaction: Partial<Transaction>): Record<string, unknown> {
+    const doc: Record<string, unknown> = { ...transaction };
+    if (transaction.amount !== undefined) {
+      doc.amount = toCents(transaction.amount);
+    }
+    return doc;
+  }
+
+  async getById(id: string, session?: TxSession): Promise<Transaction | null> {
+    const doc = await TransactionModel.findOne({ _id: id, deletedAt: null })
+      .session(session ?? null)
+      .lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async delete(id: string, session?: TxSession): Promise<void> {
+    // Soft delete: the row stays for the ledger, hidden from every read.
+    const doc = await TransactionModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      { deletedAt: new Date() },
+      { new: true, session: session ?? undefined },
+    ).lean();
+    if (!doc) {
+      throw new ApiError("NotFound", "Transaction not found");
+    }
+  }
+}
 ```
+
+Listing goes through a private `paginatedFind()` that supports both offset and keyset cursor
+pagination and always returns through the shared helper:
+
+```typescript
+const [docs, total] = await Promise.all([
+  TransactionModel.find(filter)
+    .sort({ date: -1, _id: -1 })
+    .skip(cursor ? 0 : offset)
+    .limit(limit)
+    .lean(),
+  TransactionModel.countDocuments(baseFilter),
+]);
+
+return buildPaginatedResult(docs.map((doc) => this.toEntity(doc)), total, pagination);
+```
+
+`buildPaginatedResult` (`src/shared/pagination.ts`) produces the response envelope every listing
+endpoint returns:
+
+```json
+{
+  "data": [ ... ],
+  "pagination": { "limit": 20, "offset": 0, "total": 128, "hasMore": true, "nextCursor": "0195..." }
+}
+```
+
+**Key decisions:**
+
+- The cursor is keyset over `(date DESC, _id DESC)` — an id alone is not enough because transactions
+  can be backdated, so the cursor document's `date` is fetched first
+- The cursor lookup is scoped to the owner, so a foreign id can't act as a pivot (id oracle), and an
+  unknown cursor is a 400 `INVALID_CURSOR` rather than a silent page 1 (which duplicated items in
+  infinite scroll)
+- `.lean()` everywhere: documents never escape this class
+- Updates can push a capped `revisions` entry in the same `findOneAndUpdate`
+
+---
+
+### Step 6: Register in the Factory
+
+**Files modified:**
 
 `src/app/factories/providers/mongoProvider.ts`:
 
 ```typescript
-factory.register("transaction", () => new TransactionMongoRepository());
+factory.register("transaction", () => new TransactionRepository());
 ```
 
-`src/app/factories/RepositoryFactory.ts`:
+`src/app/factories/RepositoryFactory.ts` — add the key and the typed getter:
 
 ```typescript
+export const REPO_KEYS = { /* ... */ TRANSACTION: "transaction" } as const;
+
 getTransactionRepository(): ITransactionRepository {
   return this.getRepository<ITransactionRepository>(REPO_KEYS.TRANSACTION);
 }
 ```
 
+The factory selects a provider by `ENVIRONMENT.DB_TYPE` and caches one instance per key. `MONGO` is
+the only registered provider, so an unknown `DB_TYPE` fails fast at startup with
+`No database provider registered for DB_TYPE: ...`.
+
 ---
 
-### Step 8: Service
+### Step 7: Service
 
 **File:** `src/app/services/TransactionService.ts`
 
-**Why:** Contains the core business logic — balance adjustments, ownership checks, CRUD orchestration.
+**Why:** Contains the core business logic — balance adjustments, ownership checks, category rules, idempotency, CRUD orchestration.
 
-The unique aspect of this service is the `adjustBalances()` private method:
+```typescript
+export class TransactionService {
+  constructor(
+    private transactionRepo: ITransactionRepository,
+    private accountRepo: IAccountRepository,
+    private idempotencyRepo: IIdempotencyRepository,
+    private categoryRepo: ICategoryRepository,
+  ) {}
+
+  async createTransaction(
+    dto: CreateTransactionDTO,
+    idempotency?: IdempotencyMeta,
+  ): Promise<Transaction> {
+    if (idempotency) {
+      const existing = await this.replayIdempotent(dto.userId, idempotency);
+      if (existing) return existing;
+    }
+
+    const transaction = new Transaction(dto);
+    transaction.assertValid();
+    await this.assertCategoryUsable(transaction);
+
+    return await withTransaction(async (session) => {
+      await this.adjustBalances(transaction, 1, session);
+      const created = await this.transactionRepo.create(transaction, session);
+      if (idempotency) {
+        await this.idempotencyRepo.record(/* ..., session */);
+      }
+      return created;
+    });
+  }
+}
+```
+
+The heart of the module is `adjustBalances()`:
 
 ```typescript
 private async adjustBalances(
   transaction: Transaction,
   direction: 1 | -1,
+  session: TxSession,
 ): Promise<void> {
   const { type, amount, fromAccountId, toAccountId } = transaction;
 
   const adjustAccount = async (accountId: string, sign: number): Promise<void> => {
-    const account = await this.accountRepo.getById(accountId);
-    if (!account) {
-      if (direction === 1) {
+    // Only check existence/ownership on apply; reversals must work even if the
+    // account was archived meanwhile.
+    if (direction === 1) {
+      const account = await this.accountRepo.getById(accountId, session);
+      // 404 for foreign accounts too: ids must not be probeable.
+      if (!account || account.userId !== transaction.userId) {
         throw new ApiError("NotFound",
           sign < 0 ? "Source account not found" : "Destination account not found");
       }
-      return; // On reversal (-1), missing accounts are silently skipped
+      // Mono-currency mode: the transaction carries its account's currency.
+      if (account.currency && transaction.currency &&
+          transaction.currency !== account.currency) {
+        throw new ApiError("BadRequest",
+          "Transfers between accounts with different currencies are not supported yet",
+          "CURRENCY_MISMATCH");
+      }
+      transaction.currency = transaction.currency ?? account.currency;
     }
-    await this.accountRepo.update(accountId, {
-      balance: Number(account.balance) + Number(amount) * sign * direction,
-    });
+
+    const applied = await this.accountRepo.incrementBalance(
+      accountId, amount * sign * direction, session,
+    );
+    if (!applied) {
+      // Aborts the Mongo transaction: a silently skipped increment would
+      // desync the stored balance from the ledger.
+      throw new ApiError("InternalServerError", "Account missing during balance adjustment");
+    }
   };
 
   if (type === "EXPENSE" && fromAccountId) await adjustAccount(fromAccountId, -1);
   if (type === "INCOME" && toAccountId) await adjustAccount(toAccountId, 1);
-  if (type === "TRANSFER") {
+  if (type === "TRANSFER" || type === "ADJUSTMENT") {
     if (fromAccountId) await adjustAccount(fromAccountId, -1);
     if (toAccountId) await adjustAccount(toAccountId, 1);
   }
@@ -383,172 +525,226 @@ private async adjustBalances(
 
 **Key decisions:**
 
-- `direction` parameter: `1` for apply (create), `-1` for reverse (update/delete)
-- On reversal, missing accounts are silently skipped (the account may have been deleted)
-- On apply, missing accounts throw NotFound
-- The service takes **two** repository interfaces: `ITransactionRepository` and `IAccountRepository`
+- `direction`: `1` applies (create), `-1` reverses (update/delete)
+- The balance is moved with an **atomic `$inc`** (`incrementBalance`, which converts the delta to
+  cents), never read-modify-write — two concurrent transactions would otherwise lose an update
+- Everything runs inside `withTransaction`, so the ledger row and both balances commit together or
+  not at all. **This is why MongoDB must be a replica set**
+- A failed increment throws rather than being skipped: aborting the transaction is the only safe
+  outcome when the stored balance would drift from the ledger
+- `currency` is stamped from the involved account here; the client-sent value is ignored
+- Ownership failures return **404**, matching the "no id oracle" rule used across the project
+- `ADJUSTMENT` shares the transfer branch: with exactly one side set, it becomes a signed
+  single-account increment
+
+**Update and delete:**
+
+- `updateTransaction` re-merges into a fresh `Transaction`, calls `assertValid()` again, and
+  reverses + reapplies balances **only when the money movement changed** (type, amount, or
+  accounts). Non-monetary edits therefore still work on transactions of archived accounts
+- A monetary or date change also pushes a pre-update snapshot into the capped `revisions` array
+- `deleteTransaction` reverses the balances and soft-deletes, both in one transaction
+
+**Category rules** (`assertCategoryUsable`): a missing or foreign category is a 404; assigning an
+archived category is `CATEGORY_ARCHIVED` (keeping one it already had is allowed); a category whose
+type doesn't match the transaction type is `CATEGORY_TYPE_MISMATCH`.
+
+**Idempotency** (`replayIdempotent`): the stored key maps to the created transaction id. Same key +
+same payload hash replays the original; a different payload is a 422
+`IDEMPOTENCY_PAYLOAD_MISMATCH`; a replay whose original was deleted is a 409
+`IDEMPOTENCY_ORIGINAL_DELETED`. A duplicate-key error from a concurrent retry is caught and
+resolved into a replay.
+
+**Quick-add** (`quickAddTransaction`): defaults `type` to `EXPENSE`, `date` to now, and the missing
+side to the user's default account (`NO_DEFAULT_ACCOUNT` if there isn't one), then delegates to
+`createTransaction` with `pendingDetails: true` and `source: "QUICK"`.
 
 ---
 
-### Step 9: Controller
+### Step 8: Controller
 
 **File:** `src/app/controllers/TransactionController.ts`
 
 ```typescript
 import { Request, Response } from "express";
-import { TransactionService } from "../services/TransactionService";
-import repositoryFactory from "../factories/RepositoryFactory";
+
+import { TransactionFilters } from "../../domain/repositories/transaction/ITransactionRepository";
+import { ApiError } from "../../shared/errors";
 import { extractPagination } from "../../shared/pagination";
+import { hashPayload } from "../../shared/requestHash";
+import repositoryFactory from "../factories/RepositoryFactory";
+import { IdempotencyMeta, TransactionService } from "../services/TransactionService";
 
 const transactionService = new TransactionService(
   repositoryFactory.getTransactionRepository(),
   repositoryFactory.getAccountRepository(),
+  repositoryFactory.getIdempotencyRepository(),
+  repositoryFactory.getCategoryRepository(),
 );
 
 export class TransactionController {
   static getAllTransactions = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
+    const filters: TransactionFilters = {};
+    if (req.query.accountId) filters.accountId = req.query.accountId as string;
+    if (req.query.type) filters.type = req.query.type as TransactionType;
+    // ... one narrow assignment per supported query parameter
     const result = await transactionService.getAllTransactions(
       userId,
       extractPagination(req),
+      filters,
     );
     res.status(200).json(result);
   };
 
-  static getTransactionById = async (req: Request, res: Response) => {
-    const userId = req.user!.userId;
-    const transaction = await transactionService.getTransactionById(
-      req.params.id as string,
-      userId,
-    );
-    res.status(200).json(transaction);
-  };
-
   static createTransaction = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    const newTransaction = await transactionService.createTransaction({
-      ...req.body,
-      userId,
-    });
-    res.status(201).json(newTransaction);
-  };
-
-  static updateTransaction = async (req: Request, res: Response) => {
-    const userId = req.user!.userId;
-    const id = req.params.id as string;
-    const updatedTransaction = await transactionService.updateTransaction(
-      id,
-      req.body,
-      userId,
+    const newTransaction = await transactionService.createTransaction(
+      { ...req.body, userId },
+      idempotencyMeta(req),
     );
-    res.status(200).json(updatedTransaction);
+    res.status(201).json(newTransaction);
   };
 
   static deleteTransaction = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     await transactionService.deleteTransaction(req.params.id as string, userId);
-    res.status(204).send();
+    res.status(200).json({ message: "Transaction deleted successfully" });
   };
+
+  // getTransactionById, quickAddTransaction, updateTransaction, getTags follow
+  // the same shape.
+}
+```
+
+The `Idempotency-Key` header is parsed and hashed at this level, because it is an HTTP concern:
+
+```typescript
+// Bounded charset/length: the key becomes part of a stored _id.
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]{1,200}$/;
+
+function idempotencyMeta(req: Request): IdempotencyMeta | undefined {
+  const key = req.get("Idempotency-Key");
+  if (!key) return undefined;
+  if (!IDEMPOTENCY_KEY_PATTERN.test(key)) {
+    throw new ApiError("BadRequest", "...", "IDEMPOTENCY_KEY_INVALID");
+  }
+  return { key, requestHash: hashPayload(req.body) };
 }
 ```
 
 **Key decisions:**
 
-- Service is instantiated at module level with factory-provided repositories
-- `userId` is **always** extracted from `req.user!.userId`, never from the request body
-- Controller never adjusts balances or checks ownership — that's the service's job
-- `{ ...req.body, userId }` merges the authenticated user's ID into the request body
+- The service is instantiated once at module level with factory-provided repositories
+- `userId` **always** comes from `req.user!.userId`, never from the request body
+- The controller never adjusts balances or checks ownership — that is the service's job
+- Query parameters become a typed `TransactionFilters`; `req.query` never reaches the service
+- Responses are the entity serialized as-is, so they include `id`, `currency`, `source`,
+  `pendingDetails`, `tags`, `createdAt` and `updatedAt`
+- Delete answers **200 with a message body**, not 204
 
 ---
 
-### Step 10: Validation Schemas
+### Step 9: Validation Schemas
 
 **File:** `src/app/validation/schemas.ts` (additions)
 
-The transaction create schema uses Zod's `superRefine` for type-dependent validation:
+Amounts and dates go through shared building blocks so every module agrees on them:
+
+```typescript
+// Money is decimal in the API but stored as integer cents, so amounts must
+// have at most 2 decimals and stay within a sane bound (rejects 10.555 and 1e300).
+const moneyAmount = z
+  .number()
+  .positive("Amount must be greater than 0")
+  .multipleOf(0.01, "Amount must have at most 2 decimal places")
+  .max(MAX_AMOUNT, `Amount must be at most ${MAX_AMOUNT}`);
+
+// Trim + casefold + dedupe: "Café", "café" and "café " must be ONE tag,
+// or the per-tag spending stats fragment into ghost buckets.
+const normalizedTags = z
+  .array(z.string().min(1).max(50))
+  .max(30)
+  .transform((tags) => [...new Set(tags.map((t) => t.trim().toLowerCase()).filter(Boolean))])
+  .optional();
+```
+
+The create schema uses `superRefine` for type-dependent validation:
 
 ```typescript
 export const createTransactionSchema = z.object({
-  body: z.object({
-    type: z.enum(transactionTypeValues, { ... }),
-    amount: z.number().positive("Amount must be greater than 0"),
-    date: z.string().datetime({ message: "Date must be a valid ISO 8601 date" }),
-    categoryId: z.string().uuid("categoryId must be a valid UUID").optional().nullable(),
-    description: z.string().max(255).optional().nullable(),
-    fromAccountId: z.string().uuid("fromAccountId must be a valid UUID").optional().nullable(),
-    toAccountId: z.string().uuid("toAccountId must be a valid UUID").optional().nullable(),
-    tags: z.string().max(500).optional().nullable(),
-    note: z.string().max(1000).optional().nullable(),
-  }).superRefine((data, ctx) => {
-    if (data.type === "EXPENSE" && !data.fromAccountId) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "fromAccountId is required for expense transactions", path: ["fromAccountId"] });
-    }
-    if (data.type === "INCOME" && !data.toAccountId) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "toAccountId is required for income transactions", path: ["toAccountId"] });
-    }
-    if (data.type === "TRANSFER") {
-      if (!data.fromAccountId) { ctx.addIssue({ ... }); }
-      if (!data.toAccountId) { ctx.addIssue({ ... }); }
-      if (data.fromAccountId && data.toAccountId && data.fromAccountId === data.toAccountId) {
-        ctx.addIssue({ ..., message: "fromAccountId and toAccountId must be different" });
+  body: z
+    .object({
+      type: z.enum(transactionTypeValues, { error: `Invalid transaction type. Available: ...` }),
+      amount: moneyAmount,
+      date: z.string().datetime({ offset: true, message: "Date must be a valid ISO 8601 date" }),
+      categoryId: z.string().uuid("categoryId must be a valid UUID").optional().nullable(),
+      description: z.string().max(255).optional().nullable(),
+      fromAccountId: z.string().uuid(/* ... */).optional().nullable(),
+      toAccountId: z.string().uuid(/* ... */).optional().nullable(),
+      tags: normalizedTags,
+      note: z.string().max(1000).optional().nullable(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.type === "EXPENSE" && !data.fromAccountId) { ctx.addIssue({ /* ... */ }); }
+      if (data.type === "INCOME" && !data.toAccountId) { ctx.addIssue({ /* ... */ }); }
+      if (data.type === "ADJUSTMENT") {
+        // exactly one side, and no categoryId
       }
-    }
-  }),
+      if (data.type === "TRANSFER") {
+        // both sides required, and they must differ
+      }
+    }),
 });
 ```
+
+`updateTransactionSchema` makes every field optional and adds
+`.refine((data) => Object.values(data).some((v) => v !== undefined))` so an empty body is a 400.
+`quickAddTransactionSchema` requires only `amount` and excludes `ADJUSTMENT` from its type enum
+(a quick-add adjustment would be an un-detailable `pendingDetails` entry, since it can take no
+category). Listing uses `getTransactionsSchema` — a `query` schema — rather than the generic
+`paginationQuerySchema`.
 
 **Key decisions:**
 
 - `superRefine` enables cross-field validation that depends on the `type` value
-- All IDs are validated as UUIDs
-- `amount` must be positive (not zero or negative)
-- TRANSFER validates that source and destination are different accounts
+- Note the deliberate overlap with `Transaction.assertValid()`: Zod guards the HTTP shape, the
+  entity guards the invariant. The entity's copy is what protects partial updates and internal
+  callers such as quick-add
+- The schema accepts **no** `currency`, `source` or `userId` field. `validate()` replaces
+  `req.body` with the parsed result, so unknown fields are stripped (mass-assignment guard)
+- Dates require an explicit offset (`datetime({ offset: true })`)
 
 ---
 
-### Step 11: Routes (with OpenAPI)
+### Step 10: Routes (with OpenAPI)
 
 **File:** `src/app/routes/transactionRoutes.ts`
 
-Each route has a JSDoc `@openapi` block for Swagger documentation, followed by the validation middleware and controller method.
+Each route carries a JSDoc `@openapi` block for Swagger, then the validation middleware, then the controller method.
 
 ```typescript
 const router = Router();
 
-router.get(
-  "/",
-  validate(paginationQuerySchema),
-  TransactionController.getAllTransactions,
-);
-router.post(
-  "/",
-  validate(createTransactionSchema),
-  TransactionController.createTransaction,
-);
-router.get(
-  "/:id",
-  validate(idParamSchema),
-  TransactionController.getTransactionById,
-);
-router.put(
-  "/:id",
-  validate(updateTransactionSchema),
-  TransactionController.updateTransaction,
-);
-router.delete(
-  "/:id",
-  validate(idParamSchema),
-  TransactionController.deleteTransaction,
-);
+router.get("/", validate(getTransactionsSchema), TransactionController.getAllTransactions);
+router.post("/", validate(createTransactionSchema), TransactionController.createTransaction);
+router.post("/quick", validate(quickAddTransactionSchema), TransactionController.quickAddTransaction);
+router.get("/tags", TransactionController.getTags);
+router.get("/:id", validate(idParamSchema), TransactionController.getTransactionById);
+router.put("/:id", validate(updateTransactionSchema), TransactionController.updateTransaction);
+router.delete("/:id", validate(idParamSchema), TransactionController.deleteTransaction);
 
 export default router;
 ```
+
+Literal paths (`/quick`, `/tags`) must be declared **before** `/:id`, or the parameterized route
+swallows them.
 
 **Registration in `src/app.ts`:**
 
 ```typescript
 app.use(authMiddleware); // JWT required for everything below
-app.use("/transactions", transactionRoutes);
+app.use("/transactions", apiLimiter, transactionRoutes);
 ```
 
 ---
@@ -557,67 +753,84 @@ app.use("/transactions", transactionRoutes);
 
 ```mermaid
 graph LR
-    subgraph "HTTP Layer"
+    subgraph "HTTP Layer — src/app"
         R["transactionRoutes.ts<br/>Express Router"]
         V["schemas.ts<br/>Zod superRefine"]
         C["TransactionController.ts"]
     end
 
-    subgraph "Business Layer"
-        S["TransactionService.ts<br/>adjustBalances()"]
+    subgraph "Business Layer — src/app"
+        S["TransactionService.ts<br/>adjustBalances() in withTransaction"]
         DTO["TransactionDTO.ts"]
+        F["RepositoryFactory"]
     end
 
-    subgraph "Data Layer"
+    subgraph "Domain — src/domain"
+        E["Transaction.ts<br/>Entity + assertValid()"]
         RI["ITransactionRepository.ts"]
         AI["IAccountRepository.ts"]
-        RS["TransactionSeqRepository.ts"]
-        RM["TransactionMongoRepository.ts"]
     end
 
-    subgraph "Domain"
-        E["Transaction.ts<br/>Entity"]
-        SM["TransactionModel.ts<br/>Sequelize"]
-        MM["TransactionMongoModel.ts<br/>Mongoose"]
+    subgraph "Infrastructure — src/infrastructure"
+        RM["TransactionRepository.ts"]
+        MM["TransactionModel.ts<br/>Mongoose"]
+        DB[("MongoDB<br/>replica set")]
     end
 
     R -->|validate| V
     R -->|delegate| C
     C -->|call| S
+    C -->|resolve repos| F
     S -->|uses| RI
     S -->|uses| AI
     S -->|creates| E
     S -->|receives| DTO
-    RI -.->|impl| RS
-    RI -.->|impl| RM
-    RS -->|maps to| E
+    RI -.->|implemented by| RM
+    F --> RM
     RM -->|maps to| E
-    RS -->|queries| SM
-    RM -->|queries| MM
+    RM -->|queries| MM --> DB
 ```
 
 ---
 
 ## 4. Validation
 
-Validation happens in two places:
+Validation happens in three places, each with a distinct job:
 
-1. **Request-level validation** (Zod in `schemas.ts`): Validates data shape, types, and cross-field constraints **before** the request reaches the controller. Returns 400 on failure.
-
-2. **Business-level validation** (Service): Validates business rules like ownership, account existence, and ID mismatches. Throws `ApiError` caught by the error middleware.
+1. **Request-level** (Zod in `schemas.ts`): shape, types, and cross-field constraints, **before** the
+   request reaches the controller. Returns 400 with `code: "VALIDATION"` and a
+   `details: [{ field, message }]` array. It also whitelists the body.
+2. **Domain-level** (`Transaction.assertValid()`): invariants that must hold no matter who builds the
+   entity — including the merged result of a partial update and internally constructed quick-adds.
+   Throws `DomainValidationError`, rendered as a 400 in the same shape as the Zod path.
+3. **Business-level** (Service): rules that need the database — ownership, account and category
+   existence, currency agreement, idempotency conflicts. Throws `ApiError`.
 
 ---
 
 ## 5. Error Handling
 
-| Scenario                     | Where                    | Error Thrown                   |
-| ---------------------------- | ------------------------ | ------------------------------ |
-| Invalid request data         | Validation middleware    | 400 ValidationError (Zod)      |
-| Transaction not found        | Service                  | 404 NotFoundError (ApiError)   |
-| User doesn't own transaction | Service                  | 403 ForbiddenError (ApiError)  |
-| Source account not found     | Service (adjustBalances) | 404 NotFoundError (ApiError)   |
-| ID mismatch (URL vs body)    | Service                  | 400 BadRequestError (ApiError) |
-| Duplicate key (DB)           | Error middleware         | 409 ConflictError              |
+Every error body carries a stable `code`. Clients branch on `code`, never on `message`.
+
+| Scenario                                      | Where                    | Status | `code`                          |
+| --------------------------------------------- | ------------------------ | ------ | ------------------------------- |
+| Invalid request data                          | Validation middleware    | 400    | `VALIDATION`                    |
+| Date more than 24h in the future              | Entity `assertValid()`   | 400    | `FUTURE_DATE`                   |
+| Unknown or foreign pagination cursor          | Repository               | 400    | `INVALID_CURSOR`                |
+| Assigning an archived category                | Service                  | 400    | `CATEGORY_ARCHIVED`             |
+| Category type ≠ transaction type              | Service                  | 400    | `CATEGORY_TYPE_MISMATCH`        |
+| Accounts with different currencies            | Service (adjustBalances) | 400    | `CURRENCY_MISMATCH`             |
+| Quick-add with no account and no default      | Service                  | 400    | `NO_DEFAULT_ACCOUNT`            |
+| Malformed `Idempotency-Key` header            | Controller               | 400    | `IDEMPOTENCY_KEY_INVALID`       |
+| ID mismatch (URL vs body)                     | Service                  | 400    | —                               |
+| Missing/invalid JWT                           | `authMiddleware`         | 401    | —                               |
+| `API_SECRET` set and `x-api-secret` missing   | `gatewaySecretMiddleware`| 403    | —                               |
+| Transaction not found **or owned by another user** | Service             | 404    | —                               |
+| Source/destination account not found or foreign | Service (adjustBalances) | 404  | —                               |
+| Idempotent replay whose original was deleted  | Service                  | 409    | `IDEMPOTENCY_ORIGINAL_DELETED`  |
+| Duplicate key (Mongo 11000)                   | Error middleware         | 409    | `DUPLICATE`                     |
+| Same `Idempotency-Key`, different payload     | Service                  | 422    | `IDEMPOTENCY_PAYLOAD_MISMATCH`  |
+| MongoDB unreachable                           | Error middleware         | 503    | `DB_UNAVAILABLE`                |
 
 ---
 
@@ -625,15 +838,29 @@ Validation happens in two places:
 
 **File:** `src/__tests__/services/TransactionService.test.ts`
 
-The test file demonstrates:
+The test file demonstrates the project's unit-test conventions:
 
-1. **Mocking constants** (must be first):
+1. **Mock `shared/constants` first** — the module parses env vars eagerly at import time:
 
 ```typescript
-jest.mock("../../shared/constants", () => ({ ENVIRONMENT: { ... }, ... }));
+jest.mock("../../shared/constants", () => ({
+  ENVIRONMENT: { PORT: 3000, DB_TYPE: "MONGO", JWT_SECRET: "test", NODE_ENV: "test", /* ... */ },
+  DB_TYPES: { MONGO: "MONGO" },
+  TRANSACTION_TYPES: { INCOME: "INCOME", EXPENSE: "EXPENSE", TRANSFER: "TRANSFER", ADJUSTMENT: "ADJUSTMENT" },
+  // ... CATEGORY_TYPES, MODEL_NAMES
+}));
 ```
 
-2. **Creating mock repositories:**
+2. **Mock `shared/unitOfWork`** so the transactional callback runs inline against mock repositories,
+   with no real MongoDB session:
+
+```typescript
+jest.mock("../../shared/unitOfWork", () => ({
+  withTransaction: jest.fn((fn: (session: unknown) => unknown) => fn("test-session")),
+}));
+```
+
+3. **Create mock repositories** covering the full interface:
 
 ```typescript
 const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
@@ -643,27 +870,37 @@ const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
+  aggregateSpending: jest.fn(),
+  listTags: jest.fn().mockResolvedValue([]),
+  countByCategory: jest.fn().mockResolvedValue(0),
+  sumAmountsByCategory: jest.fn(),
+  sumAmounts: jest.fn().mockResolvedValue(0),
 });
 ```
 
-3. **Testing balance adjustments:**
+4. **Assert on the atomic increment and the session**, not on a recomputed balance:
 
 ```typescript
-it("should create an expense and subtract from source account", async () => {
-  const account = makeAccount({ id: "acct-1", balance: 1000 });
-  acctRepo.getById.mockResolvedValue(account);
-  txRepo.create.mockResolvedValue(storedExpense);
+it("debits the source account for an EXPENSE (atomic increment)", async () => {
+  acctRepo.getById.mockResolvedValue(account());
+  const dto: CreateTransactionDTO = {
+    type: "EXPENSE", amount: 100, date: new Date("2026-03-28"),
+    fromAccountId: ACC_A, userId: USER,
+  };
+  txRepo.create.mockResolvedValue(new Transaction({ id: TX_ID, ...dto }));
 
-  await service.createTransaction(validExpense);
+  await service.createTransaction(dto);
 
-  expect(acctRepo.update).toHaveBeenCalledWith("acct-1", { balance: 900 });
+  expect(acctRepo.incrementBalance).toHaveBeenCalledTimes(1);
+  expect(acctRepo.incrementBalance).toHaveBeenCalledWith(ACC_A, -100, "test-session");
+  expect(txRepo.create).toHaveBeenCalledWith(expect.any(Transaction), "test-session");
 });
 ```
 
-4. **Testing error conditions:**
+5. **Test error conditions** — including that a foreign resource looks missing:
 
 ```typescript
-it("should throw when source account not found", async () => {
+it("throws when the source account is not found", async () => {
   acctRepo.getById.mockResolvedValue(null);
   await expect(service.createTransaction(validExpense)).rejects.toThrow(
     "Source account not found",
@@ -671,15 +908,25 @@ it("should throw when source account not found", async () => {
 });
 ```
 
+Ids in tests are real UUID v7 strings, because the Zod schemas and entity checks validate the format.
+The whole suite (374 tests, 20 suites) runs without a database in a few seconds; `npm run ci` is the
+gate that must pass before handing work back.
+
 ---
 
 ## 7. What NOT to Do
 
 - **Do NOT adjust account balances in the controller** — all balance logic is in `TransactionService.adjustBalances()`
-- **Do NOT skip balance reversal on update/delete** — this will cause balance drift
-- **Do NOT allow TRANSFER with same source and destination** — Zod validation prevents this, but never bypass it
-- **Do NOT use FLOAT for monetary amounts** — Sequelize model uses `DECIMAL(15, 2)`
-- **Do NOT create transactions without validating account existence** — the service checks this
+- **Do NOT read a balance, add to it, and write it back** — use `incrementBalance` (`$inc`), or concurrent transactions will lose updates
+- **Do NOT write a balance change outside `withTransaction`** — the ledger row and the balances must commit together
+- **Do NOT skip balance reversal on update/delete** — this causes balance drift
+- **Do NOT do float math on money** — amounts are decimal above the repository and integer cents below it; convert only with `toCents`/`fromCents`
+- **Do NOT let the client set `currency`, `source`, `pendingDetails` on create, or `userId`** — all four are server-derived
+- **Do NOT return 403 for a transaction or account owned by another user** — return 404, so ids can't be probed
+- **Do NOT hard-delete** — transactions are soft-deleted (`deletedAt`); accounts and categories are archived (`archivedAt`)
+- **Do NOT allow TRANSFER with the same source and destination** — Zod and `assertValid()` both prevent it; never bypass either
+- **Do NOT add a validation rule to Zod only** — if it is an invariant of the entity, it belongs in `assertValid()` too, or partial updates will slip past it
+- **Do NOT throw an `ApiError` without a `code`** when clients need to branch on the outcome
 - **Do NOT call `TransactionService` from other services** — if balance logic needs reuse, extract it
 
 ---
@@ -688,25 +935,24 @@ it("should throw when source account not found", async () => {
 
 When building a new module following this pattern:
 
-- [ ] Domain entity in `src/domain/entities/`
-- [ ] DTOs in `src/app/dtos/`
-- [ ] Sequelize model in `src/domain/models/sequelize/`
-- [ ] Mongoose model in `src/domain/models/mongoose/`
-- [ ] Model added to `MODEL_NAMES` in `src/shared/constants.ts`
-- [ ] Sequelize model re-exported from `src/domain/models/sequelize/models.ts`
-- [ ] Repository interface in `src/domain/repositories/[entity]/`
-- [ ] Sequelize repository implementation
-- [ ] Mongoose repository implementation
-- [ ] Registered in both providers (`sequelizeProvider.ts`, `mongoProvider.ts`)
-- [ ] Typed getter added to `RepositoryFactory`
-- [ ] Key added to `REPO_KEYS`
-- [ ] Service in `src/app/services/`
-- [ ] Controller in `src/app/controllers/`
-- [ ] Validation schemas in `src/app/validation/schemas.ts`
-- [ ] Routes in `src/app/routes/` with OpenAPI annotations
-- [ ] Routes registered in `src/app.ts`
-- [ ] Migration file in `src/database/migrations/`
-- [ ] Unit tests in `src/__tests__/services/`
+- [ ] Domain entity in `src/domain/entities/`, with `assertValid()` if it has invariants
+- [ ] DTOs (and a `...View` interface if the service returns a shaped result) in `src/app/dtos/`
+- [ ] Mongoose model in `src/infrastructure/models/`, `_id` as a UUID string, money as integer cents, `timestamps: true`, and a soft-delete field (`archivedAt` or `deletedAt`)
+- [ ] `userId`-prefixed indexes for every listing and filter query
+- [ ] Model name added to `MODEL_NAMES` in `src/shared/constants.ts`
+- [ ] Model added to `scripts/sync-indexes.ts` so production builds its indexes
+- [ ] Repository interface (plus a typed `...Filters`) in `src/domain/repositories/[entity]/`
+- [ ] Repository implementation in `src/infrastructure/repositories/[entity]/`, with `toEntity`/`toStorage` and `buildPaginatedResult`
+- [ ] Registered in `src/app/factories/providers/mongoProvider.ts`
+- [ ] Key added to `REPO_KEYS` and a typed getter added to `RepositoryFactory`
+- [ ] Service in `src/app/services/`, taking repository **interfaces**, and wrapping multi-document writes in `withTransaction`
+- [ ] Ownership checks that answer 404 for foreign resources
+- [ ] Controller in `src/app/controllers/`, thin, injecting `userId` from `req.user`
+- [ ] Validation schemas in `src/app/validation/schemas.ts`, reusing `moneyAmount` / `isoDate` / `normalizedTags`
+- [ ] Routes in `src/app/routes/` with OpenAPI annotations, literal paths before `/:id`
+- [ ] Routes registered in `src/app.ts` behind `authMiddleware` and `apiLimiter`
+- [ ] Unit tests in `src/__tests__/services/` (mock `shared/constants` and `shared/unitOfWork`)
 - [ ] Entity tests in `src/__tests__/entities/`
 - [ ] Module documentation in `docs/modules/`
-- [ ] `docs/_index.json` updated if new doc files created
+- [ ] `docs/_index.json` updated if new doc files were created
+- [ ] `npm run ci` passes

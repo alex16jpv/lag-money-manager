@@ -1,0 +1,224 @@
+### ==========================================================
+### BUDGETS — CRUD, budget GLOBAL, períodos, spent, overrides,
+### effectiveFrom, expiración de CUSTOM, archivar y restaurar
+### El view trae: type, currency, archivedCategoryIds, hasOverride,
+### expired, effectiveFrom, createdAt/updatedAt.
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+
+@token = {{login.response.body.accessToken}}
+
+### Categoría del budget (type debe ser compatible con el del budget)
+# @name cat
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "BudgetCat {{$randomInt 100 999}}", "type": "EXPENSE" }
+
+###
+
+@catId = {{cat.response.body.id}}
+
+### ---------- Éxito ----------
+
+### Crear budget mensual por categoría (éxito)
+# @name budget
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Comida",
+  "color": "RED",
+  "categoryIds": ["{{catId}}"],
+  "amount": 500,
+  "periodType": "MONTHLY",
+  "note": "límite mensual"
+}
+
+###
+
+@budgetId = {{budget.response.body.id}}
+
+### Budget GLOBAL — categoryIds: [] = TODO el gasto del período
+### (los quick-adds sin categoría cuentan aquí desde el segundo cero)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Total del mes", "color": "GRAY", "categoryIds": [], "amount": 3000, "periodType": "MONTHLY" }
+
+### Meta de INGRESO (backend-ready; el front MVP no la expone)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Meta facturación", "color": "GREEN", "categoryIds": [], "type": "INCOME", "amount": 5000, "periodType": "MONTHLY" }
+
+### Budget con effectiveFrom backdateado — "existe" desde julio
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Comida semanal", "color": "TEAL", "categoryIds": ["{{catId}}"], "amount": 150, "periodType": "WEEKLY", "effectiveFrom": "2026-07-01T00:00:00.000Z" }
+
+### Listar budgets (spent del período actual)
+GET {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+
+### Listar para un mes pasado (reference) — los budgets que aún no
+### "existían" (effectiveFrom/createdAt posteriores) NO aparecen
+GET {{baseUrl}}/budgets?reference=2026-07-15T12:00:00.000Z
+Authorization: Bearer {{token}}
+
+### Get por id
+GET {{baseUrl}}/budgets/{{budgetId}}
+Authorization: Bearer {{token}}
+
+### Update (éxito) — cambiar periodType LIMPIA los overrides y fechas CUSTOM
+PUT {{baseUrl}}/budgets/{{budgetId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "amount": 600, "color": "AMBER" }
+
+### Override del monto del período actual (hasOverride pasa a true)
+PUT {{baseUrl}}/budgets/{{budgetId}}/amount
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "amount": 800 }
+
+### Override en 0 — "este período no aplica"
+PUT {{baseUrl}}/budgets/{{budgetId}}/amount
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "amount": 0 }
+
+### QUITAR el override — vuelve al baseAmount (hasOverride vuelve a false)
+DELETE {{baseUrl}}/budgets/{{budgetId}}/amount
+Authorization: Bearer {{token}}
+
+### Budget CUSTOM (ventana fija; expira al pasar periodEndDate)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Viaje",
+  "color": "BLUE",
+  "categoryIds": ["{{catId}}"],
+  "amount": 1000,
+  "periodType": "CUSTOM",
+  "periodStartDate": "2026-06-01T00:00:00.000Z",
+  "periodEndDate": "2026-06-15T00:00:00.000Z"
+}
+
+### Segundo CUSTOM sobre la MISMA categoría con ventana que no se toca (201):
+### los CUSTOM solo chocan si sus fechas se intersectan
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Viaje diciembre",
+  "color": "BLUE",
+  "categoryIds": ["{{catId}}"],
+  "amount": 1000,
+  "periodType": "CUSTOM",
+  "periodStartDate": "2026-12-01T00:00:00.000Z",
+  "periodEndDate": "2026-12-31T00:00:00.000Z"
+}
+
+### CUSTOM que se solapa con "Viaje" (400 BUDGET_PERIOD_OVERLAP)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Viaje solapado",
+  "color": "RED",
+  "categoryIds": ["{{catId}}"],
+  "amount": 500,
+  "periodType": "CUSTOM",
+  "periodStartDate": "2026-06-10T00:00:00.000Z",
+  "periodEndDate": "2026-06-20T00:00:00.000Z"
+}
+
+### Los CUSTOM expirados salen del listado por defecto; verlos:
+GET {{baseUrl}}/budgets?includeExpired=true
+Authorization: Bearer {{token}}
+
+### Archivar (soft delete, idempotente) — se puede restaurar más abajo
+DELETE {{baseUrl}}/budgets/{{budgetId}}
+Authorization: Bearer {{token}}
+
+### Ver archivados
+GET {{baseUrl}}/budgets?includeArchived=true
+Authorization: Bearer {{token}}
+
+### Restaurar un budget archivado — conserva overrides, effectiveFrom y categorías.
+### Idempotente. Si otro activo ya cubre esas categorías en ese período: 400
+### BUDGET_PERIOD_OVERLAP (no se restaura; el usuario crea uno nuevo).
+POST {{baseUrl}}/budgets/{{budgetId}}/restore
+Authorization: Bearer {{token}}
+
+### ---------- Casos de error ----------
+
+### Duplicado — misma categoría + mismo tipo de período + mismo type (400 BUDGET_PERIOD_OVERLAP)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Comida dup", "color": "GREEN", "categoryIds": ["{{catId}}"], "amount": 400, "periodType": "MONTHLY" }
+
+### Segundo budget GLOBAL del mismo período (400 BUDGET_PERIOD_OVERLAP)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Total dup", "color": "GRAY", "categoryIds": [], "amount": 100, "periodType": "MONTHLY" }
+
+### Categoría inexistente/ajena (404 Category not found)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "X", "color": "RED", "categoryIds": ["00000000-0000-0000-0000-000000000000"], "amount": 100, "periodType": "MONTHLY" }
+
+### Custom sin fechas (400)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Bad custom", "color": "RED", "categoryIds": ["{{catId}}"], "amount": 100, "periodType": "CUSTOM" }
+
+### Fechas CUSTOM en un budget NO-custom (400)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Bad dates", "color": "RED", "categoryIds": ["{{catId}}"], "amount": 100, "periodType": "MONTHLY", "periodStartDate": "2026-09-01T00:00:00.000Z" }
+
+### reference inválido (400 — ya no persiste claves corruptas)
+GET {{baseUrl}}/budgets?reference=basura
+Authorization: Bearer {{token}}
+
+### Color inválido (400)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "X", "color": "amber-200", "categoryIds": ["{{catId}}"], "amount": 100, "periodType": "MONTHLY" }

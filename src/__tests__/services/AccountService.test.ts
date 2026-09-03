@@ -1,7 +1,7 @@
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
     PORT: 3000,
-    DB_TYPE: "SEQ",
+    DB_TYPE: "MONGO",
     JWT_SECRET: "test",
     BCRYPT_SALT_ROUNDS: 12,
     JWT_EXPIRATION: "24h",
@@ -37,7 +37,8 @@ jest.mock("../../shared/constants", () => ({
     BROWN: "BROWN",
     BLACK: "BLACK",
   },
-  DB_TYPES: { SEQ: "SEQ", MONGO: "MONGO", LOCAL_STORAGE: "LOCAL_STORAGE" },
+  DB_TYPES: { MONGO: "MONGO" },
+  TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
@@ -57,11 +58,11 @@ jest.mock("../../shared/constants", () => ({
 }));
 
 import { AccountService } from "../../app/services/AccountService";
-import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
-import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { Account } from "../../domain/entities/Account";
+import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { User } from "../../domain/entities/User";
 import { ApiError } from "../../shared/errors";
-import { CreateAccountDTO } from "../../app/dtos/AccountDTO";
 
 const validAccountProps = {
   id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
@@ -77,29 +78,39 @@ const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
+  getByIdIncludingArchived: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
+  incrementBalance: jest.fn().mockResolvedValue(true),
+  archiveNonDefault: jest.fn().mockResolvedValue(true),
+  restore: jest.fn(),
+  getDefaultByUserId: jest.fn(),
+  setDefault: jest.fn(),
+  countByUserId: jest.fn().mockResolvedValue(1),
 });
 
-const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
-  getAll: jest.fn(),
-  getAllByUserId: jest.fn(),
-  getById: jest.fn(),
-  create: jest.fn(),
-  update: jest.fn(),
-  delete: jest.fn(),
-});
+const createUserRepoMock = () =>
+  ({
+    getById: jest.fn().mockResolvedValue(
+      new User({
+        id: validAccountProps.userId,
+        name: "Owner",
+        email: "owner@test.com",
+        currency: "COP",
+      }),
+    ),
+  }) as unknown as jest.Mocked<IUserRepository>;
 
 describe("AccountService", () => {
   let service: AccountService;
   let repo: jest.Mocked<IAccountRepository>;
-  let transactionRepo: jest.Mocked<ITransactionRepository>;
+  let userRepo: jest.Mocked<IUserRepository>;
 
   beforeEach(() => {
     repo = createMockRepo();
-    transactionRepo = createMockTransactionRepo();
-    service = new AccountService(repo, transactionRepo);
+    userRepo = createUserRepoMock();
+    service = new AccountService(repo, userRepo);
   });
 
   describe("getAllAccounts", () => {
@@ -164,7 +175,11 @@ describe("AccountService", () => {
       });
 
       const filters = { ids: ["019576a0-d7b6-7d6d-af6a-2b7545f5ac70"] };
-      await service.getAllAccounts(validAccountProps.userId, pagination, filters);
+      await service.getAllAccounts(
+        validAccountProps.userId,
+        pagination,
+        filters,
+      );
 
       expect(repo.getAllByUserId).toHaveBeenCalledWith(
         validAccountProps.userId,
@@ -176,21 +191,21 @@ describe("AccountService", () => {
 
   describe("getAccountById", () => {
     it("should return account when found and owned by user", async () => {
-      repo.getById.mockResolvedValue(mockAccount);
+      repo.getByIdIncludingArchived.mockResolvedValue(mockAccount);
 
       const result = await service.getAccountById(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         validAccountProps.userId,
       );
 
-      expect(repo.getById).toHaveBeenCalledWith(
+      expect(repo.getByIdIncludingArchived).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       );
       expect(result.name).toBe("Savings");
     });
 
     it("should throw NotFound when account does not exist", async () => {
-      repo.getById.mockResolvedValue(null);
+      repo.getByIdIncludingArchived.mockResolvedValue(null);
 
       await expect(
         service.getAccountById(
@@ -216,12 +231,56 @@ describe("AccountService", () => {
       expect(repo.create).toHaveBeenCalledTimes(1);
       expect(result.name).toBe("Savings");
     });
+
+    it("stamps the owner's currency on the account [multi-moneda etapa 1]", async () => {
+      repo.create.mockImplementation(async (a) => new Account(a as never));
+
+      const result = await service.createAccount(validAccountProps);
+
+      expect(result.currency).toBe("COP");
+    });
+
+    it("marks the first account as default [F2]", async () => {
+      repo.countByUserId.mockResolvedValue(0);
+      repo.create.mockImplementation(async (a) => new Account(a as never));
+
+      const result = await service.createAccount(validAccountProps);
+
+      expect(result.isDefault).toBe(true);
+    });
+  });
+
+  describe("setDefaultAccount [F2]", () => {
+    it("sets the account as default", async () => {
+      repo.setDefault.mockResolvedValue(
+        new Account({ ...validAccountProps, isDefault: true }),
+      );
+
+      const result = await service.setDefaultAccount(
+        mockAccount.id,
+        mockAccount.userId,
+      );
+
+      expect(repo.setDefault).toHaveBeenCalledWith(
+        mockAccount.id,
+        mockAccount.userId,
+      );
+      expect(result.isDefault).toBe(true);
+    });
+
+    it("throws NotFound when the account does not exist", async () => {
+      repo.setDefault.mockResolvedValue(null);
+
+      await expect(
+        service.setDefaultAccount(mockAccount.id, mockAccount.userId),
+      ).rejects.toThrow("Account not found");
+    });
   });
 
   describe("updateAccount", () => {
     it("should update an account", async () => {
       const updated = new Account({ ...validAccountProps, name: "Updated" });
-      repo.getById.mockResolvedValue(mockAccount);
+      repo.getByIdIncludingArchived.mockResolvedValue(mockAccount);
       repo.update.mockResolvedValue(updated);
 
       const result = await service.updateAccount(
@@ -259,27 +318,70 @@ describe("AccountService", () => {
     });
   });
 
-  describe("deleteAccount", () => {
-    it("should delete an account", async () => {
-      repo.getById.mockResolvedValue(mockAccount);
-      repo.delete.mockResolvedValue();
-      transactionRepo.getAllByUserId.mockResolvedValue({
-        data: [],
-        pagination: { limit: 1, offset: 0, total: 0, hasMore: false, nextCursor: null },
-      });
+  describe("deleteAccount (archive)", () => {
+    it("rejects archiving the default account [R2-03]", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...validAccountProps, isDefault: true }),
+      );
+
+      await expect(
+        service.deleteAccount(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          validAccountProps.userId,
+        ),
+      ).rejects.toThrow("Cannot archive the default account");
+      expect(repo.archiveNonDefault).not.toHaveBeenCalled();
+    });
+
+    it("should archive an account (even when it has transactions)", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(mockAccount);
+      repo.archiveNonDefault.mockResolvedValue(true);
 
       await service.deleteAccount(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         validAccountProps.userId,
       );
 
-      expect(repo.delete).toHaveBeenCalledWith(
+      expect(repo.archiveNonDefault).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        validAccountProps.userId,
       );
     });
 
-    it("should throw NotFound when deleting non-existent account", async () => {
-      repo.getById.mockResolvedValue(null);
+    it("rejects when the account became default between check and archive (race)", async () => {
+      repo.getByIdIncludingArchived
+        .mockResolvedValueOnce(mockAccount)
+        .mockResolvedValueOnce(
+          new Account({ ...validAccountProps, isDefault: true }),
+        );
+      repo.archiveNonDefault.mockResolvedValue(false);
+
+      await expect(
+        service.deleteAccount(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          validAccountProps.userId,
+        ),
+      ).rejects.toThrow("Cannot archive the default account");
+    });
+
+    it("resolves when a concurrent archive wins the race (idempotent)", async () => {
+      repo.getByIdIncludingArchived
+        .mockResolvedValueOnce(mockAccount)
+        .mockResolvedValueOnce(
+          new Account({ ...validAccountProps, archivedAt: new Date() }),
+        );
+      repo.archiveNonDefault.mockResolvedValue(false);
+
+      await expect(
+        service.deleteAccount(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          validAccountProps.userId,
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    it("should throw NotFound when archiving non-existent account", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(null);
 
       await expect(
         service.deleteAccount(
@@ -289,21 +391,64 @@ describe("AccountService", () => {
       ).rejects.toThrow("Account not found");
     });
 
-    it("should throw BadRequest when account has associated transactions", async () => {
-      repo.getById.mockResolvedValue(mockAccount);
-      transactionRepo.getAllByUserId.mockResolvedValue({
-        data: [{}] as any,
-        pagination: { limit: 1, offset: 0, total: 1, hasMore: false, nextCursor: null },
-      });
+    it("should throw Forbidden when archiving another user's account", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(mockAccount);
 
       await expect(
         service.deleteAccount(
           "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-          validAccountProps.userId,
+          "another-user",
         ),
-      ).rejects.toThrow("Cannot delete account with associated transactions");
+      ).rejects.toThrow("Account not found");
 
-      expect(repo.delete).not.toHaveBeenCalled();
+      expect(repo.archiveNonDefault).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("restoreAccount", () => {
+    // Without this the user is stuck: restore answers 409 because another
+    // account took the name, and renaming the archived one is refused.
+    it("renames as part of the same write when a new name is given", async () => {
+      repo.restore.mockResolvedValue(
+        new Account({ ...validAccountProps, name: "Nequi antiguo" }),
+      );
+
+      const result = await service.restoreAccount(
+        mockAccount.id,
+        mockAccount.userId,
+        "Nequi antiguo",
+      );
+
+      expect(repo.restore).toHaveBeenCalledWith(
+        mockAccount.id,
+        mockAccount.userId,
+        "Nequi antiguo",
+      );
+      expect(result.name).toBe("Nequi antiguo");
+    });
+
+    it("restores the user's archived account", async () => {
+      repo.restore.mockResolvedValue(mockAccount);
+
+      const result = await service.restoreAccount(
+        mockAccount.id,
+        mockAccount.userId,
+      );
+
+      expect(repo.restore).toHaveBeenCalledWith(
+        mockAccount.id,
+        mockAccount.userId,
+        undefined,
+      );
+      expect(result.id).toBe(mockAccount.id);
+    });
+
+    it("throws NotFound when there is nothing to restore", async () => {
+      repo.restore.mockResolvedValue(null);
+
+      await expect(
+        service.restoreAccount(mockAccount.id, mockAccount.userId),
+      ).rejects.toThrow("Account not found");
     });
   });
 
@@ -328,7 +473,7 @@ describe("AccountService", () => {
     });
 
     it("should throw NotFound on update when account does not exist", async () => {
-      repo.getById.mockResolvedValue(null);
+      repo.getByIdIncludingArchived.mockResolvedValue(null);
 
       await expect(
         service.updateAccount(

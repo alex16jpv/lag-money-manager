@@ -1,7 +1,7 @@
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
     PORT: 3000,
-    DB_TYPE: "SEQ",
+    DB_TYPE: "MONGO",
     JWT_SECRET: "test",
     BCRYPT_SALT_ROUNDS: 12,
     JWT_EXPIRATION: "24h",
@@ -37,11 +37,22 @@ jest.mock("../../shared/constants", () => ({
     BROWN: "BROWN",
     BLACK: "BLACK",
   },
-  DB_TYPES: { SEQ: "SEQ", MONGO: "MONGO", LOCAL_STORAGE: "LOCAL_STORAGE" },
+  DB_TYPES: { MONGO: "MONGO" },
+  TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
+    ADJUSTMENT: "ADJUSTMENT",
+  },
+  BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
+  BUDGET_PERIOD_TYPES: {
+    WEEKLY: "WEEKLY",
+    BIWEEKLY: "BIWEEKLY",
+    MONTHLY: "MONTHLY",
+    QUARTERLY: "QUARTERLY",
+    YEARLY: "YEARLY",
+    CUSTOM: "CUSTOM",
   },
   CATEGORY_TYPES: {
     INCOME: "INCOME",
@@ -57,19 +68,19 @@ jest.mock("../../shared/constants", () => ({
 }));
 
 import {
+  createAccountSchema,
+  createCategorySchema,
+  createTransactionSchema,
+  getCategoriesSchema,
+  getTransactionsSchema,
+  idParamSchema,
+  loginSchema,
   paginationQuerySchema,
   registerSchema,
-  loginSchema,
-  updateUserSchema,
-  createAccountSchema,
   updateAccountSchema,
-  createCategorySchema,
   updateCategorySchema,
-  getCategoriesSchema,
-  idParamSchema,
-  createTransactionSchema,
   updateTransactionSchema,
-  getTransactionsSchema,
+  updateUserSchema,
 } from "../../app/validation/schemas";
 
 const validUUID = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
@@ -168,6 +179,20 @@ describe("Validation Schemas", () => {
       },
     };
 
+    it("should accept a supported locale", () => {
+      const result = registerSchema.safeParse({
+        body: { ...validRegister.body, locale: "es" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject an unsupported locale", () => {
+      const result = registerSchema.safeParse({
+        body: { ...validRegister.body, locale: "fr" },
+      });
+      expect(result.success).toBe(false);
+    });
+
     it("should accept valid registration data", () => {
       const result = registerSchema.safeParse(validRegister);
       expect(result.success).toBe(true);
@@ -259,7 +284,7 @@ describe("Validation Schemas", () => {
     it("should accept valid update with email", () => {
       const result = updateUserSchema.safeParse({
         params: { id: validUUID },
-        body: { email: "new@example.com" },
+        body: { email: "new@example.com", currentPassword: "oldpassword" },
       });
       expect(result.success).toBe(true);
     });
@@ -267,7 +292,7 @@ describe("Validation Schemas", () => {
     it("should accept valid update with password", () => {
       const result = updateUserSchema.safeParse({
         params: { id: validUUID },
-        body: { password: "newpassword123" },
+        body: { password: "newpassword123", currentPassword: "oldpassword" },
       });
       expect(result.success).toBe(true);
     });
@@ -337,6 +362,25 @@ describe("Validation Schemas", () => {
     it("should reject empty name", () => {
       const result = createAccountSchema.safeParse({
         body: { name: "", type: "SAVINGS" },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    // The unique index folds case and accents but not whitespace, so an
+    // untrimmed "Savings " would slip past it as a second account.
+    it("trims the name so padding cannot bypass the unique index", () => {
+      const result = createAccountSchema.safeParse({
+        body: { name: "  Savings  ", type: "SAVINGS" },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.body.name).toBe("Savings");
+      }
+    });
+
+    it("should reject a name that is only whitespace", () => {
+      const result = createAccountSchema.safeParse({
+        body: { name: "   ", type: "SAVINGS" },
       });
       expect(result.success).toBe(false);
     });
@@ -497,18 +541,27 @@ describe("Validation Schemas", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should accept valid category with emoji", () => {
+    it("should accept a curated icon key", () => {
       const result = createCategorySchema.safeParse({
-        body: { name: "Food", emoji: "🍔" },
+        body: { name: "Food", icon: "utensils" },
       });
       expect(result.success).toBe(true);
     });
 
-    it("should reject emoji exceeding 8 characters", () => {
+    it("should reject an icon outside the curated set", () => {
       const result = createCategorySchema.safeParse({
-        body: { name: "Food", emoji: "a".repeat(9) },
+        body: { name: "Food", icon: "not-an-icon" },
       });
       expect(result.success).toBe(false);
+    });
+
+    it("should drop the legacy emoji field instead of storing it", () => {
+      const result = createCategorySchema.safeParse({
+        body: { name: "Food", emoji: "x" },
+      });
+      expect(result.success).toBe(true);
+      const body = (result.data as { body: Record<string, unknown> }).body;
+      expect(body).not.toHaveProperty("emoji");
     });
 
     it("should reject empty name", () => {
@@ -575,15 +628,23 @@ describe("Validation Schemas", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should accept update with only emoji", () => {
+    it("should accept update with only icon", () => {
       const result = updateCategorySchema.safeParse({
         params: { id: validUUID },
-        body: { emoji: "🚗" },
+        body: { icon: "car" },
       });
       expect(result.success).toBe(true);
     });
 
-    it("should reject empty body (no name or emoji)", () => {
+    it("should accept update clearing the icon with null", () => {
+      const result = updateCategorySchema.safeParse({
+        params: { id: validUUID },
+        body: { icon: null },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject empty body (no name or icon)", () => {
       const result = updateCategorySchema.safeParse({
         params: { id: validUUID },
         body: {},
@@ -862,7 +923,6 @@ describe("Validation Schemas", () => {
             fromAccountId: validUUID,
             categoryId: null,
             description: null,
-            tags: null,
             note: null,
           },
         });
@@ -882,14 +942,27 @@ describe("Validation Schemas", () => {
         expect(result.success).toBe(false);
       });
 
-      it("should reject tags exceeding 500 characters", () => {
+      it("should accept an array of tags", () => {
         const result = createTransactionSchema.safeParse({
           body: {
             type: "EXPENSE",
             amount: 50,
             date: validDate,
             fromAccountId: validUUID,
-            tags: "a".repeat(501),
+            tags: ["food", "coffee"],
+          },
+        });
+        expect(result.success).toBe(true);
+      });
+
+      it("should reject a tag exceeding 50 characters", () => {
+        const result = createTransactionSchema.safeParse({
+          body: {
+            type: "EXPENSE",
+            amount: 50,
+            date: validDate,
+            fromAccountId: validUUID,
+            tags: ["a".repeat(51)],
           },
         });
         expect(result.success).toBe(false);

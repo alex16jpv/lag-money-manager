@@ -1,7 +1,8 @@
-import { Request, Response, NextFunction } from "express";
-import { errorMiddleware } from "../../shared/middlewares";
-import { ApiError } from "../../shared/errors";
+import { NextFunction, Request, Response } from "express";
+
 import { DomainValidationError } from "../../domain/errors";
+import { ApiError } from "../../shared/errors";
+import { errorMiddleware } from "../../shared/middlewares";
 
 jest.mock("../../shared/logger", () => ({
   error: jest.fn(),
@@ -11,7 +12,7 @@ jest.mock("../../shared/logger", () => ({
 }));
 
 const createMockRes = (): jest.Mocked<Response> => {
-  const res = {} as jest.Mocked<Response>;
+  const res = { locals: {} } as unknown as jest.Mocked<Response>;
   res.status = jest.fn().mockReturnThis();
   res.json = jest.fn().mockReturnThis();
   return res;
@@ -37,12 +38,11 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "NotFoundError",
       message: "User not found",
-      details: undefined,
     });
   });
 
   it("should handle ApiError with details", () => {
-    const error = new ApiError("BadRequest", "Validation failed", {
+    const error = new ApiError("BadRequest", "Validation failed", undefined, {
       field: "email",
     });
 
@@ -65,7 +65,8 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "ValidationError",
       message: "'name' is required",
-      details: { field: "name" },
+      code: "VALIDATION",
+      details: [{ field: "name", message: "'name' is required" }],
     });
   });
 
@@ -78,40 +79,8 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "ValidationError",
       message: "Invalid data",
-    });
-  });
-
-  it("should handle SequelizeUniqueConstraintError", () => {
-    const error = Object.assign(new Error("Validation error"), {
-      name: "SequelizeUniqueConstraintError",
-      errors: [
-        { message: "email must be unique" },
-        { message: "name must be unique" },
-      ],
-    });
-
-    errorMiddleware(error as Error, req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(409);
-    expect(res.json).toHaveBeenCalledWith({
-      error: "ConflictError",
-      message: "email must be unique, name must be unique",
-    });
-  });
-
-  it("should handle SequelizeForeignKeyConstraintError", () => {
-    const error = Object.assign(new Error("FK error"), {
-      name: "SequelizeForeignKeyConstraintError",
-      fields: ["userId"],
-    });
-
-    errorMiddleware(error as Error, req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({
-      error: "ValidationError",
-      message: "Foreign key constraint error",
-      details: { fields: "userId" },
+      code: "VALIDATION",
+      details: [{ field: "", message: "Invalid data" }],
     });
   });
 
@@ -124,6 +93,7 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "InternalServerError",
       message: "An unexpected error occurred",
+      code: "INTERNAL",
     });
   });
 
@@ -140,6 +110,7 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "ConflictError",
       message: "Duplicate value for: email",
+      code: "DUPLICATE",
     });
   });
 
@@ -154,6 +125,51 @@ describe("errorMiddleware", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "ValidationError",
       message: "Invalid ID format",
+      code: "INVALID_ID",
+    });
+  });
+
+  it("maps a malformed JSON body to 400, not 500", () => {
+    const error = Object.assign(
+      new SyntaxError("Unexpected non-whitespace character after JSON"),
+      { type: "entity.parse.failed", statusCode: 400, expose: true },
+    );
+
+    errorMiddleware(error as Error, req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "BadRequestError",
+      message: "Request body is not valid JSON",
+      code: "MALFORMED_JSON",
+    });
+  });
+
+  it("maps an oversized body to 413", () => {
+    const error = Object.assign(new Error("request entity too large"), {
+      type: "entity.too.large",
+      statusCode: 413,
+      expose: true,
+    });
+
+    errorMiddleware(error as Error, req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(413);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "BadRequestError",
+      message: "request entity too large",
+      code: "PAYLOAD_TOO_LARGE",
+    });
+  });
+
+  it("still reports a genuine server fault as 500", () => {
+    errorMiddleware(new Error("boom"), req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "InternalServerError",
+      message: "An unexpected error occurred",
+      code: "INTERNAL",
     });
   });
 });

@@ -1,10 +1,25 @@
 import { v7 as uuidv7 } from "uuid";
 
+import { DEFAULT_CURRENCY } from "../../shared/currency";
+import { DEFAULT_LOCALE, Locale } from "../../shared/locale";
+import { DEFAULT_TIMEZONE } from "../../shared/timezone";
+
 export interface UserProps {
   id?: string;
   name: string;
   email: string;
   password?: string;
+  // Bumped on password change / logout-all to invalidate outstanding tokens.
+  tokenVersion?: number;
+  // IANA timezone; drives day/period boundaries for stats and budgets.
+  timezone?: string;
+  // ISO 4217; the user's (single, for now) money currency. Locked once the
+  // user has accounts — changing it with history arrives with multi-currency.
+  currency?: string;
+  // UI language (en | es). Follows the user across devices.
+  locale?: Locale;
+  // Last session open (login/register); impossible to reconstruct later.
+  lastLoginAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -14,14 +29,36 @@ export class User {
   name: string;
   email: string;
   password?: string;
+  tokenVersion: number;
+  timezone: string;
+  currency: string;
+  locale: Locale;
+  lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 
-  constructor({ id, name, email, password, createdAt, updatedAt }: UserProps) {
+  constructor({
+    id,
+    name,
+    email,
+    password,
+    tokenVersion,
+    timezone,
+    currency,
+    locale,
+    lastLoginAt,
+    createdAt,
+    updatedAt,
+  }: UserProps) {
     this.id = id ?? uuidv7();
     this.name = name;
     this.email = email;
     this.password = password;
+    this.tokenVersion = tokenVersion ?? 0;
+    this.timezone = timezone ?? DEFAULT_TIMEZONE;
+    this.currency = currency ?? DEFAULT_CURRENCY;
+    this.locale = locale ?? DEFAULT_LOCALE;
+    this.lastLoginAt = lastLoginAt ?? null;
     this.createdAt = createdAt ?? new Date();
     this.updatedAt = updatedAt ?? new Date();
   }

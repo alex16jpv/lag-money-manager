@@ -1,5 +1,9 @@
 import { v7 as uuidv7 } from "uuid";
-import { TransactionType } from "../../shared/constants";
+
+import { TransactionSource, TransactionType } from "../../shared/constants";
+import { currencyDecimals } from "../../shared/currency";
+import { hasValidPrecision, MAX_AMOUNT } from "../../shared/money";
+import { DomainValidationError } from "../errors";
 
 export interface TransactionProps {
   id?: string;
@@ -11,8 +15,12 @@ export interface TransactionProps {
   fromAccountId?: string | null;
   toAccountId?: string | null;
   userId: string;
-  tags?: string | null;
+  tags?: string[];
   note?: string | null;
+  pendingDetails?: boolean;
+  source?: TransactionSource;
+  // ISO 4217; stamped from the involved account when balances are applied.
+  currency?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -27,8 +35,11 @@ export class Transaction {
   fromAccountId: string | null;
   toAccountId: string | null;
   userId: string;
-  tags: string | null;
+  tags: string[];
   note: string | null;
+  pendingDetails: boolean;
+  source: TransactionSource;
+  currency?: string;
   createdAt: Date;
   updatedAt: Date;
 
@@ -42,9 +53,122 @@ export class Transaction {
     this.fromAccountId = props.fromAccountId ?? null;
     this.toAccountId = props.toAccountId ?? null;
     this.userId = props.userId;
-    this.tags = props.tags ?? null;
+    this.tags = props.tags ?? [];
     this.note = props.note ?? null;
+    this.pendingDetails = props.pendingDetails ?? false;
+    this.source = props.source ?? "MANUAL";
+    this.currency = props.currency;
     this.createdAt = props.createdAt ?? new Date();
     this.updatedAt = props.updatedAt ?? new Date();
+  }
+
+  /**
+   * Zod caps every amount at 2 decimals; currencies with no minor unit
+   * (JPY, CLP, KRW...) need the stricter rule. Separate from assertValid
+   * because the currency is stamped from the account, which the service only
+   * reads later — at creation time this is a no-op and the service calls it
+   * again once the currency is known.
+   */
+  assertValidPrecision(): void {
+    const decimals = currencyDecimals(this.currency);
+    if (!hasValidPrecision(this.amount, decimals)) {
+      throw new DomainValidationError(
+        decimals === 0
+          ? `${this.currency} amounts cannot have decimals`
+          : `Amount must have at most ${decimals} decimal places`,
+        "amount",
+        "AMOUNT_PRECISION",
+      );
+    }
+  }
+
+  // Called on create and on the update merge so a partial update can't leave an
+  // inconsistent shape.
+  assertValid(): void {
+    if (!(this.amount > 0)) {
+      throw new DomainValidationError(
+        "Amount must be greater than 0",
+        "amount",
+      );
+    }
+    // Future-dated money would hit today's balance and future budget windows;
+    // scheduled transactions will be their own feature, not raw future dates.
+    if (this.date.getTime() > Date.now() + 24 * 60 * 60 * 1000) {
+      throw new DomainValidationError(
+        "date cannot be more than 24 hours in the future",
+        "date",
+        "FUTURE_DATE",
+      );
+    }
+    if (this.amount > MAX_AMOUNT) {
+      throw new DomainValidationError(
+        `Amount must be at most ${MAX_AMOUNT}`,
+        "amount",
+      );
+    }
+    this.assertValidPrecision();
+    if (this.type === "EXPENSE") {
+      if (!this.fromAccountId) {
+        throw new DomainValidationError(
+          "fromAccountId is required for expense transactions",
+          "fromAccountId",
+        );
+      }
+      if (this.toAccountId) {
+        throw new DomainValidationError(
+          "toAccountId is not allowed for expense transactions",
+          "toAccountId",
+        );
+      }
+    }
+    if (this.type === "INCOME") {
+      if (!this.toAccountId) {
+        throw new DomainValidationError(
+          "toAccountId is required for income transactions",
+          "toAccountId",
+        );
+      }
+      if (this.fromAccountId) {
+        throw new DomainValidationError(
+          "fromAccountId is not allowed for income transactions",
+          "fromAccountId",
+        );
+      }
+    }
+    if (this.type === "ADJUSTMENT") {
+      const sides = [this.fromAccountId, this.toAccountId].filter(Boolean);
+      if (sides.length !== 1) {
+        throw new DomainValidationError(
+          "Adjustment requires exactly one of fromAccountId (decrease) or toAccountId (increase)",
+          "fromAccountId",
+        );
+      }
+      if (this.categoryId) {
+        throw new DomainValidationError(
+          "categoryId is not allowed for adjustment transactions",
+          "categoryId",
+        );
+      }
+    }
+    if (this.type === "TRANSFER") {
+      if (!this.fromAccountId) {
+        throw new DomainValidationError(
+          "fromAccountId is required for transfer transactions",
+          "fromAccountId",
+        );
+      }
+      if (!this.toAccountId) {
+        throw new DomainValidationError(
+          "toAccountId is required for transfer transactions",
+          "toAccountId",
+        );
+      }
+      if (this.fromAccountId === this.toAccountId) {
+        throw new DomainValidationError(
+          "fromAccountId and toAccountId must be different",
+          "toAccountId",
+        );
+      }
+    }
   }
 }

@@ -1,26 +1,42 @@
 # lag-money-manager
 
-REST API for personal money management — track accounts, categories, and transactions with automatic balance adjustments.
+REST API for personal money management — track accounts, categories and
+transactions with automatic balance adjustments, budget per period, and see
+where the money went.
 
 ## Quick Start
 
 ```bash
 npm install
 cp .env.example .env    # Configure environment variables (see docs/guides/environment-vars.md)
-docker compose up -d    # Start MySQL + MongoDB containers
-npm run db:migrate      # Run database migrations (MySQL)
+docker compose up -d    # Start MongoDB (single-node replica set) + Mongoku UI
 npm run start:dev       # Start development server
 ```
+
+> Collections are created on first write (no schema/migration step). Indexes are
+> built automatically on connect in development (`autoIndex`), but in production
+> they are created by `npm run db:sync-indexes`, run automatically as a deploy
+> step (see `scripts/deploy-lambda.sh`) so index builds never run under live
+> traffic.
+
+> Money is stored as integer cents and balance adjustments run inside MongoDB
+> transactions, so the database must be a **replica set** (the docker-compose
+> service and MongoDB Atlas both are). A standalone `mongod` will reject writes.
 
 ## Lambda Deployment
 
 ```bash
-npm run build           # Build TypeScript code
-npm ci --omit=dev
-zip -r function.zip dist/ node_modules package.json
-# Upload function.zip to AWS Lambda and set handler to dist/lambda.handler
-# Configure environment variables in Lambda console (see docs/guides/environment-vars.md)
+export MONGO_URI="<production URI>"   # required: the deploy syncs indexes first
+npm run deploy:lambda
 ```
+
+Builds, syncs the indexes, assembles the package in `build/lambda-package/` and
+uploads it. It installs the production dependencies **into that directory**, so
+your working `node_modules` keeps its dev dependencies — pruning them in place
+would leave you without `tsc` for the next build.
+
+See [Deployment](docs/guides/deployment.md) for the one-time AWS setup and the
+Lambda's own environment variables.
 
 ## Stack
 
@@ -29,7 +45,6 @@ zip -r function.zip dist/ node_modules package.json
 | TypeScript 6    | Language                 |
 | Express 5       | HTTP framework           |
 | Zod 4           | Request validation       |
-| Sequelize 6     | MySQL ORM                |
 | Mongoose 9      | MongoDB ODM              |
 | JWT + bcryptjs  | Authentication           |
 | Pino            | Structured logging       |
@@ -60,6 +75,7 @@ zip -r function.zip dist/ node_modules package.json
 - [Adding New Features](docs/guides/adding-new-features.md)
 - [Environment Variables](docs/guides/environment-vars.md)
 - [Testing](docs/guides/testing.md)
+- [Deterministic Test Seed](docs/guides/testing-seed.md) — `npm run seed:test` for the frontend's E2E fixtures
 
 ### Modules
 
@@ -67,7 +83,9 @@ zip -r function.zip dist/ node_modules package.json
 - [Users](docs/modules/users.md) — User profile management
 - [Accounts](docs/modules/accounts.md) — Financial accounts and balances
 - [Categories](docs/modules/categories.md) — Transaction categories
-- [Transactions](docs/modules/transactions.md) — Income, expenses, transfers
+- [Transactions](docs/modules/transactions.md) — Income, expenses, transfers, adjustments
+- [Budgets](docs/modules/budgets.md) — Per-period spending limits with live spend
+- [Stats](docs/modules/stats.md) — Spending aggregated by category, day or tag
 
 ### Examples
 

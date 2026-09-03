@@ -1,25 +1,40 @@
 # Production Deployment Guide
 
+The production target is **AWS Lambda + a Function URL**, backed by **MongoDB Atlas**. The application is Mongo-only; there is no SQL backend and no data-migration step.
+
 ## Prerequisites
 
-- Node.js 20+ runtime
-- MySQL 8+ or MongoDB 7+ (depending on `DB_TYPE`)
-- A reverse proxy (nginx, Caddy, AWS ALB, etc.) for TLS termination
+- Node.js 22 (the version CI builds and tests against)
+- A MongoDB **replica set** — Atlas is one out of the box. Multi-document transactions (used for balance adjustments) are rejected by a standalone `mongod`, so `MONGO_URI` must point at a replica set
 - Environment variables configured (see `docs/guides/environment-vars.md`)
+- TLS termination: the Lambda Function URL provides it; a self-hosted `dist/server.js` needs a reverse proxy (nginx, Caddy, AWS ALB, ...)
 
 ## Building for Production
 
 ```bash
-# Install dependencies (production only)
-npm ci --omit=dev
-
-# Compile TypeScript
-npm run build
-
-# Output: dist/ directory
+npm ci          # all dependencies — TypeScript is one of them
+npm run build   # compiles to dist/
 ```
 
-The compiled application entry point is `dist/server.js`.
+The compiled entry point is `dist/server.js`.
+
+> **Build before pruning, never after.** `tsc` is a devDependency, so
+> `npm ci --omit=dev` removes the very compiler the build needs and
+> `npm run build` then fails with `tsc: not found`. Nothing that runs from
+> `dist/` needs the dev dependencies — they are only needed to produce it.
+
+To ship a runtime without them, install the production set into a **separate**
+directory instead of pruning the one you work in:
+
+```bash
+npm ci && npm run build
+npm ci --omit=dev --prefix build/lambda-package
+cp -r dist build/lambda-package/dist
+```
+
+`npm run deploy:lambda` already does exactly this, which is why it never
+disturbs your working `node_modules` — prefer it over assembling the package by
+hand.
 
 ## AWS Lambda Deployment
 
@@ -151,13 +166,30 @@ Copy the template into `.env.deploy` (gitignored) and fill it in:
 cp .env.deploy.example .env.deploy
 ```
 
-  | Variable               | Description                                    |
-  | ---------------------- | ---------------------------------------------- |
-  | `AWS_PROFILE`          | Named CLI profile created in step 2            |
-  | `AWS_REGION`           | Region where the function lives                |
-  | `LAMBDA_FUNCTION_NAME` | Exact function name from the Lambda console    |
-  | `KEEPALIVE_RULE_NAME`  | Optional. EventBridge rule name for keepalive  |
-  | `KEEPALIVE_SCHEDULE`   | Optional. Defaults to `rate(1 day)`            |
+  | Variable               | Description                                                                 |
+  | ---------------------- | --------------------------------------------------------------------------- |
+  | `AWS_PROFILE`          | Named CLI profile created in step 2                                           |
+  | `AWS_REGION`           | Region where the function lives                                               |
+  | `LAMBDA_FUNCTION_NAME` | Exact function name from the Lambda console                                   |
+  | `MONGO_URI`            | **Required.** The **production** database — see [The production MONGO_URI](#the-production-mongo-uri) |
+  | `KEEPALIVE_RULE_NAME`  | Optional. EventBridge rule name for keepalive                                 |
+  | `KEEPALIVE_SCHEDULE`   | Optional. Defaults to `rate(1 day)`                                           |
+
+> **Quote any value containing `&`, `#` or spaces** — the connection URI
+> especially. The file is `source`d, so bash reads it as code: an unquoted `&`
+> ends the assignment and backgrounds it, and the variable reaches the script
+> **empty**, which reads as "you never set it".
+>
+> ```
+> MONGO_URI="mongodb://...?ssl=true&replicaSet=atlas-..."
+> ```
+
+`.env.deploy` is sourced with `set -a`, so everything in it is exported to the
+deploy steps — no `export` needed in your shell, and nothing leaks into normal
+development: `npm run start:dev` keeps reading `.env`. Because `dotenv` never
+overwrites a variable that already exists, the `MONGO_URI` from `.env.deploy`
+wins over the local one in `.env`, so the deploy cannot sync indexes against
+your development database by accident.
 
 ### Deploying
 
@@ -169,12 +201,94 @@ The script (`scripts/deploy-lambda.sh`):
 
 1. Verifies the credentials for `AWS_PROFILE` (access keys are used as-is; an expired `aws login`/SSO session re-opens the browser login; a missing profile fails fast with instructions)
 2. Compiles TypeScript to `dist/`
-3. Installs **production-only** dependencies into a clean staging directory (`build/lambda-package/`)
-4. Zips `dist/ + node_modules/ + package.json` into `build/lambda.zip`
-5. Uploads it with `aws lambda update-function-code` and waits for the update to complete
-6. Warns if the function's configured handler is not `dist/lambda.handler`
+3. Syncs MongoDB indexes (`NODE_ENV=production npm run db:sync-indexes`) — see [Index creation](#index-creation) below. This runs **before** anything is packaged or uploaded, and a failure aborts the deploy
+4. Installs **production-only** dependencies into a clean staging directory (`build/lambda-package/`)
+5. Zips `dist/ + node_modules/ + package.json` into `build/lambda.zip`
+6. Uploads it with `aws lambda update-function-code` and waits for the update to complete
+7. Warns if the function's configured handler is not `dist/lambda.handler`
 
-The zip layout requires the function handler to be **`dist/lambda.handler`**. Runtime environment variables (DB credentials, `JWT_SECRET`, `API_SECRET`, ...) are **not** part of the package — manage them in the Lambda console or with `aws lambda update-function-configuration --environment`.
+The zip layout requires the function handler to be **`dist/lambda.handler`**. Runtime environment variables (`MONGO_URI`, `JWT_SECRET`, `API_SECRET`, ...) are **not** part of the package — manage them in the Lambda console or with `aws lambda update-function-configuration --environment`.
+
+### Index creation
+
+`autoIndex` is enabled everywhere **except** `NODE_ENV=production` (`src/config/mongoConnection.ts`), so production never builds indexes as a side effect of serving a request. They are created by an explicit deploy step:
+
+```bash
+NODE_ENV=production MONGO_URI=<production uri> npm run db:sync-indexes
+```
+
+`scripts/sync-indexes.ts` calls `syncIndexes()` on every registered model — it creates the missing ones and **drops indexes that no longer exist in the schema**. The model list comes from the Mongoose registry (populated by `src/infrastructure/models/index.ts`), not from a list kept inside the script: a hand-maintained one had already fallen behind and left `RefreshSession` without its TTL and `familyId` indexes in production.
+
+**`MONGO_URI` is required for the deploy.** It is validated up front, alongside `AWS_PROFILE` and the rest, and the sync runs unconditionally before anything is compiled, packaged or uploaded. If the variable is missing, or the database rejects an index, the deploy aborts and nothing is released.
+
+That strictness is deliberate: several correctness guarantees live in the database, not in application code, so shipping onto an unindexed database silently disables them.
+
+| Index | What it enforces | What its absence costs |
+| ----- | ---------------- | ---------------------- |
+| `users.email` unique | One account per email | The same email registers over and over — `register` deliberately has no application-level check, so the index is the only guard |
+| `accounts.userId` unique, partial on `isDefault` | One default account per user | Two defaults; quick-add picks an arbitrary one |
+| `budgets` unique, partial on `archivedAt` | No overlapping budgets per category and period | Duplicate budgets double-counting the same spending |
+| `categories.(userId, name)` unique, collation `es` strength 2 | Case-insensitive unique names | "Comida" and "comida" coexist |
+| TTL on `ratelimits.expiresAt`, `idempotencykeys.createdAt`, `refreshsessions.expiresAt` | Automatic expiry | The collections grow forever — refresh sessions gain a document per login *and* per rotation |
+
+An index build fails when existing data already violates it (duplicate emails, say). The deploy stops with the driver's `E11000` naming the offending index and value: fix the data, then deploy again.
+
+Outside production the application builds these itself on connect, so a fresh local database needs no manual step. See [Environment Variables](./environment-vars.md).
+
+### The production MONGO_URI
+
+Atlas offers two connection strings for the same cluster. Either works — pick
+whichever your network resolves.
+
+**Standard connection string** (explicit hosts). Use this one if `mongodb+srv://`
+fails for you: the SRV form needs a DNS SRV lookup, which some networks, VPNs
+and WSL setups do not resolve.
+
+```
+mongodb://USER:PASSWORD@ac-xxxxx-shard-00-00.xxxxx.mongodb.net:27017,ac-xxxxx-shard-00-01.xxxxx.mongodb.net:27017,ac-xxxxx-shard-00-02.xxxxx.mongodb.net:27017/lag_money?ssl=true&replicaSet=atlas-xxxxx-shard-0&authSource=admin&retryWrites=true&w=majority
+```
+
+**SRV connection string** (shorter; resolves the hosts, TLS and `authSource` on
+its own, so `ssl`, `authSource` and `replicaSet` can all be dropped):
+
+```
+mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net/lag_money?retryWrites=true&w=majority
+```
+
+What the URI must satisfy, whichever form you use:
+
+| Requirement | Why |
+| ----------- | --- |
+| **The database name goes before the `?`** (`/lag_money?...`) | Atlas copies the string without one. With no database in the path the driver silently uses one called **`test`** — everything appears to work, in the wrong database |
+| **Keep `replicaSet=...`** (standard form only) | Balance updates run in multi-document transactions, which require a replica set. The SRV form discovers it on its own |
+| **Never add `directConnection=true`** | That is a local single-node workaround. Against Atlas it disables replica-set discovery and breaks transactions |
+| **URL-encode the password** | `@ : / ? # [ ] %` must be percent-encoded. An unencoded `@` splits the URI and surfaces as a confusing authentication error |
+| `retryWrites=true&w=majority` | Retries transient write failures and confirms writes against a majority of the replica set |
+
+The credentials are the **database user** created under Atlas's *Database
+Access*, not your Atlas account login. The cluster's *Network Access* list must
+also allow the connecting IP — the deploy machine when syncing indexes, and the
+Lambda's egress address at runtime.
+
+> **The URI goes in two separate places.** `.env.deploy` is read by your machine
+> during the deploy, to sync indexes. The Lambda's own `MONGO_URI` environment
+> variable is what the running application uses, and it is **not** part of the
+> deployment package — set it in the Lambda console or with
+> `aws lambda update-function-configuration`. Both must point at the same
+> database, and both need the database name in the path.
+
+### Required production configuration
+
+| Variable      | Why it matters in production                                                                                                            |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `MONGO_URI`   | Must point at a **replica set** — transactions fail otherwise                                                                             |
+| `API_SECRET`  | Must be set: with `NODE_ENV=production` a missing value makes every request fail with a 500 "Server misconfiguration" (fail-closed)        |
+| `JWT_SECRET`  | Required by the env schema; the process refuses to start without it                                                                       |
+| `CORS_ORIGIN` | Required; comma-separated list of allowed origins                                                                                         |
+
+Once `API_SECRET` is set, **every** request must carry the `x-api-secret` header — including `GET /`, `GET /health/db` and `/auth/*`. Requests without it (or with a wrong value) get `403 Access denied`. See `src/app/middlewares/gatewaySecretMiddleware.ts`.
+
+Swagger UI is **not** served in production: `/api-docs` is only mounted when `NODE_ENV !== "production"` (`src/app.ts`).
 
 ### Database Keepalive (MongoDB Atlas free tier)
 
@@ -212,7 +326,9 @@ aws lambda invoke --function-name <name> \
 - Mongoose command buffering is disabled and `serverSelectionTimeoutMS` is 5s, so failures surface in ~5s with the real error instead of a 10s `buffering timed out`.
 - On Lambda, a failed initial connection is retried on the next request; the process only exits (`process.exit(1)`) when running as a long-lived server, where the orchestrator restarts it.
 
-## Running the Application
+## Running the Application (long-lived server)
+
+The sections below cover the alternative to Lambda: running `dist/server.js` as a normal process (container, VM, PM2). The Lambda deployment uses `dist/lambda.handler` and none of the reverse-proxy / process-manager setup here.
 
 ```bash
 NODE_ENV=production node dist/server.js
@@ -256,24 +372,16 @@ server {
 
 ## Database Connection Pool Tuning
 
-### Sequelize (MySQL)
+Pool options are set in code (`src/config/mongoConnection.ts`), not through the URI:
 
-Configure pool settings via environment variables:
+| Option                      | Value                                    | Rationale                                                                                                     |
+| --------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `maxPoolSize`               | `5` on Lambda, `10` elsewhere            | Atlas M0 caps ~500 connections cluster-wide; the driver default of 100 per process exhausts it with a handful of warm Lambda instances |
+| `serverSelectionTimeoutMS`  | `5000`                                   | Failures surface in ~5s with the real error                                                                    |
+| `bufferCommands`            | `false` (global)                         | No 10s "buffering timed out" masking a connection error                                                        |
+| `autoIndex`                 | on except `NODE_ENV=production`          | Production indexes come from `npm run db:sync-indexes`                                                         |
 
-| Variable           | Default | Production Recommendation                             |
-| ------------------ | ------- | ----------------------------------------------------- |
-| `SEQ_POOL_MAX`     | `20`    | Match expected concurrent request volume              |
-| `SEQ_POOL_MIN`     | `5`     | Keep at 2–5 to maintain warm connections              |
-| `SEQ_POOL_ACQUIRE` | `30000` | 30s is usually sufficient; increase for slow networks |
-| `SEQ_POOL_IDLE`    | `10000` | Lower to 5000 if connections are scarce               |
-
-### Mongoose (MongoDB)
-
-Connection pooling is handled by the MongoDB driver. The default pool size (usually 5–10) is sufficient for most single-instance deployments. For higher throughput, pass pool options in the `MONGO_URI`:
-
-```
-mongodb://user:pass@host:27017/db?maxPoolSize=20&minPoolSize=5
-```
+Lambda detection is based on `AWS_LAMBDA_FUNCTION_NAME`, which the runtime sets. Raising throughput means editing that file, not the URI — a `maxPoolSize` query parameter in `MONGO_URI` is overridden by the explicit connect option.
 
 ## Graceful Shutdown
 
@@ -281,7 +389,7 @@ The application handles `SIGTERM` and `SIGINT` signals for graceful shutdown (im
 
 1. Receives the signal
 2. Stops accepting new HTTP connections (`server.close()`)
-3. Closes the database connection (Mongoose `disconnect()` or Sequelize `close()`)
+3. Closes the database connection (Mongoose `disconnect()`)
 4. Logs "Graceful shutdown complete"
 5. Exits with code `0`
 
@@ -307,7 +415,7 @@ services:
       start_period: 10s
 ```
 
-The `GET /` endpoint returns `200 { "hello": "world!" }` and can be used as a liveness probe.
+The `GET /` endpoint returns `200 { "hello": "world!" }` and can be used as a liveness probe. When `API_SECRET` is set the probe must send the `x-api-secret` header too, or it gets a `403` and the container is restarted forever.
 
 ### Kubernetes
 
@@ -329,13 +437,16 @@ readinessProbe:
 
 ## Rate Limiting
 
-The application applies rate limiting on the `/auth` routes:
+Two layers, both with a 15-minute window:
 
-- **Window:** 15 minutes
-- **Max requests:** 100 per window per IP
-- **Headers:** Standard rate limit headers (`RateLimit-*`)
+| Layer                                                | Applies to                                    | Limit                                          | Store                                                              |
+| ---------------------------------------------------- | --------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------ |
+| Global limiter (`express-rate-limit`, `src/app.ts`)  | Every mounted route, `/` and `/health/db` too | `RATE_LIMIT_MAX` per IP (default `200`)        | In-memory — **per Lambda instance**, so the effective ceiling scales with concurrency |
+| Auth limiter (`authRateLimitMiddleware.ts`)          | `/auth/login`, `/auth/register`, `/auth/refresh` | `AUTH_RATE_LIMIT_MAX` (default `10`); refresh uses `REFRESH_RATE_LIMIT_MAX` (default `60`) | MongoDB (`RateLimitModel`), so the limit holds across instances     |
 
-In production behind a reverse proxy, ensure `trust proxy` is set correctly so rate limiting applies to the real client IP, not the proxy IP.
+Login is limited on two dimensions: per IP and per target email. The per-email counter is refunded on success, so only failed logins burn that budget. Over-limit responses are `429` with `code: "RATE_LIMITED"` and a `Retry-After` header; the store failing open is deliberate — a Mongo error must not lock everyone out of login.
+
+The global limiter emits standard `RateLimit-*` headers. In production `trust proxy` is set to `1`, so the limiters see the real client IP rather than the proxy's.
 
 ## Security Headers
 
@@ -371,10 +482,13 @@ Before deploying, ensure these are set:
 
 - [ ] `NODE_ENV=production`
 - [ ] `JWT_SECRET` — strong, unique secret (min 32 characters)
+- [ ] `API_SECRET` — required in production; every request must then send `x-api-secret`
 - [ ] `CORS_ORIGIN` — your frontend domain(s), not `*`
-- [ ] `DB_TYPE` — `SEQ` or `MONGO`
-- [ ] Database credentials (`SEQ_*` or `MONGO_URI`)
+- [ ] `MONGO_URI` — replica set, **database name in the path**, no `directConnection`, password URL-encoded ([details](#the-production-mongo-uri)). Set in **both** the Lambda's configuration and `.env.deploy`
 - [ ] `LOG_LEVEL` — appropriate for production (`info` or `warn`)
 - [ ] `BCRYPT_SALT_ROUNDS` — 12+ for production
+- [ ] Indexes synced — the deploy does this and aborts on failure; only run `npm run db:sync-indexes` by hand if you deployed some other way
+
+Optional: `REFRESH_SECRET` (falls back to `JWT_SECRET`; a separate value lets you rotate the access secret without invalidating every session), `RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_MAX`, `REFRESH_RATE_LIMIT_MAX`, `JWT_EXPIRATION`, `REFRESH_TOKEN_EXPIRATION`.
 
 See `docs/guides/environment-vars.md` for the complete list.

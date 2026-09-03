@@ -1,13 +1,12 @@
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { IBudgetRepository } from "../../domain/repositories/budget/IBudgetRepository";
+import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
+import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT } from "../../shared/constants";
-import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
-import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import logger from "../../shared/logger";
-import {
-  dbType as seqDbType,
-  registerRepositories as registerSeqRepositories,
-} from "./providers/sequelizeProvider";
 import {
   dbType as mongoDbType,
   registerRepositories as registerMongoRepositories,
@@ -20,6 +19,9 @@ export const REPO_KEYS = {
   ACCOUNT: "account",
   CATEGORY: "category",
   TRANSACTION: "transaction",
+  IDEMPOTENCY: "idempotency",
+  BUDGET: "budget",
+  REFRESH_SESSION: "refreshSession",
 } as const;
 
 type DbProvider = (factory: RepositoryFactory) => void;
@@ -76,10 +78,23 @@ export class RepositoryFactory {
   getTransactionRepository(): ITransactionRepository {
     return this.getRepository<ITransactionRepository>(REPO_KEYS.TRANSACTION);
   }
+
+  getIdempotencyRepository(): IIdempotencyRepository {
+    return this.getRepository<IIdempotencyRepository>(REPO_KEYS.IDEMPOTENCY);
+  }
+
+  getBudgetRepository(): IBudgetRepository {
+    return this.getRepository<IBudgetRepository>(REPO_KEYS.BUDGET);
+  }
+
+  getRefreshSessionRepository(): IRefreshSessionRepository {
+    return this.getRepository<IRefreshSessionRepository>(
+      REPO_KEYS.REFRESH_SESSION,
+    );
+  }
 }
 
 // Register providers
-RepositoryFactory.registerProvider(seqDbType, registerSeqRepositories);
 RepositoryFactory.registerProvider(mongoDbType, registerMongoRepositories);
 
 const repositoryFactory = new RepositoryFactory();

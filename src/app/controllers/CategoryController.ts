@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
+
+import { CategoryFilters } from "../../domain/repositories/category/ICategoryRepository";
+import { extractPagination } from "../../shared/pagination";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { CategoryService } from "../services/CategoryService";
-import { extractPagination } from "../../shared/pagination";
-import { CategoryFilters } from "../../domain/repositories/category/ICategoryRepository";
 
 const categoryService = new CategoryService(
   repositoryFactory.getCategoryRepository(),
@@ -18,6 +19,9 @@ export class CategoryController {
     }
     if (req.query.type) {
       filters.type = req.query.type as string;
+    }
+    if (req.query.includeArchived === "true") {
+      filters.includeArchived = true;
     }
 
     const result = await categoryService.getAllCategories(
@@ -58,6 +62,21 @@ export class CategoryController {
   static deleteCategory = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     await categoryService.deleteCategory(req.params.id as string, userId);
-    res.status(200).json({ message: 'Category deleted successfully' });
+    res.status(200).json({ message: "Category archived successfully" });
+  };
+
+  static restoreCategory = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const category = await categoryService.restoreCategory(
+      req.params.id as string,
+      userId,
+      (req.body as { name?: string } | undefined)?.name,
+    );
+    res.status(200).json(category);
+  };
+
+  static restoreDefaults = async (req: Request, res: Response) => {
+    const created = await categoryService.restoreDefaults(req.user!.userId);
+    res.status(200).json({ data: created });
   };
 }

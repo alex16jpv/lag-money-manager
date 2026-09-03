@@ -8,23 +8,22 @@ This guide covers how to add each type of component in the project. Follow the e
 
 A full module consists of all layers from route to database. Create these files in order:
 
-1. Domain entity
-2. DTOs
-3. Sequelize model
-4. Mongoose model
-5. Repository interface
-6. Sequelize repository
-7. Mongoose repository
-8. Register in both providers and factory
-9. Service
-10. Controller
-11. Validation schemas
-12. Routes
-13. Register routes in `src/app.ts`
-14. Migration file (for Sequelize)
-15. Tests
+1. Domain entity — `src/domain/entities/`
+2. DTOs — `src/app/dtos/`
+3. Mongoose model — `src/infrastructure/models/`
+4. Repository interface — `src/domain/repositories/[entity]/`
+5. Repository implementation — `src/infrastructure/repositories/[entity]/`
+6. Register it in `mongoProvider.ts` and `RepositoryFactory.ts`
+7. Service — `src/app/services/`
+8. Controller — `src/app/controllers/`
+9. Validation schemas — `src/app/validation/schemas.ts`
+10. Routes — `src/app/routes/`, then register them in `src/app.ts`
+11. OpenAPI request body in `src/config/swagger.ts` (if the endpoints take a body)
+12. Tests — `src/__tests__/`
 
 Refer to the sections below for each file.
+
+> **Layer rule:** `src/domain/` holds entities and repository *interfaces* and imports nothing from `app/` or `infrastructure/`. Mongoose models and the concrete repositories live in `src/infrastructure/`. Names carry no `Mongo` suffix — MongoDB is the only backend.
 
 ---
 
@@ -39,11 +38,14 @@ Refer to the sections below for each file.
 **Boilerplate:**
 
 ```typescript
+import { v7 as uuidv7 } from "uuid";
+
 export interface [Entity]Props {
   id?: string;
   name: string;
   // ... entity-specific required fields
   userId: string;
+  archivedAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -52,26 +54,30 @@ export class [Entity] {
   id: string;
   name: string;
   userId: string;
-  createdAt: Date;
-  updatedAt: Date;
+  archivedAt: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 
-  constructor({ id, name, userId, createdAt, updatedAt }: [Entity]Props) {
-    this.id = id!;
+  constructor({ id, name, userId, archivedAt, createdAt, updatedAt }: [Entity]Props) {
+    this.id = id ?? uuidv7();
     this.name = name;
     this.userId = userId;
-    this.createdAt = createdAt!;
-    this.updatedAt = updatedAt!;
+    this.archivedAt = archivedAt ?? null;
+    this.createdAt = createdAt;
+    this.updatedAt = updatedAt;
   }
 }
 ```
 
-**Other files to modify:** None (entities are standalone).
+**Other files to modify:** None (entities are standalone — they import only `uuid` and `src/shared/constants`).
 
 **Checklist:**
 
-- [ ] Props interface defined with optional `id`, `createdAt`, `updatedAt`
-- [ ] Class properties match props
-- [ ] Constructor uses null coalescing (`??`) for optional fields
+- [ ] Props interface defined with optional `id`, `archivedAt`, `createdAt`, `updatedAt`
+- [ ] `id` defaults to `uuidv7()` — the entity mints its own id, the database does not
+- [ ] `createdAt`/`updatedAt` stay optional (`?: Date`); Mongoose fills them via `{ timestamps: true }`. Never `!`-assert them into existence
+- [ ] Constructor uses `??` for optional fields
+- [ ] Money fields are **decimals** on the entity; the integer-cents conversion belongs to the repository
 
 ---
 
@@ -107,92 +113,27 @@ export interface Update[Entity]DTO {
 
 ---
 
-## New Sequelize Model
-
-**When:** Adding a new entity that must be persisted in MySQL.
-
-**File:** `src/domain/models/sequelize/[Entity]Model.ts`
-
-**Naming:** `PascalCase` with `Model` suffix
-
-**Boilerplate:**
-
-```typescript
-import { DataTypes, Model, Sequelize } from "sequelize";
-import { MODEL_NAMES } from "../../../shared/constants";
-import { v7 as uuidv7 } from "uuid";
-
-export class [Entity]Model extends Model {
-  id!: string;
-  name!: string;
-  userId!: string;
-
-  static associate() {
-    [Entity]Model.belongsTo(UserModel, { foreignKey: "userId", as: "user" });
-  }
-}
-
-export default (sequelize: Sequelize) => {
-  [Entity]Model.init(
-    {
-      id: {
-        type: DataTypes.CHAR(36),
-        defaultValue: () => uuidv7(),
-        primaryKey: true,
-      },
-      name: {
-        type: DataTypes.STRING,
-        allowNull: false,
-      },
-      userId: {
-        type: DataTypes.CHAR(36),
-        allowNull: false,
-      },
-    },
-    {
-      sequelize,
-      modelName: MODEL_NAMES.[ENTITY],
-    },
-  );
-  return [Entity]Model;
-};
-```
-
-**Other files to modify:**
-
-- `src/shared/constants.ts` — Add entity name to `MODEL_NAMES`
-- `src/domain/models/sequelize/models.ts` — Add re-export
-- Create a migration file in `src/database/migrations/`
-
-**Checklist:**
-
-- [ ] Model class extends `Model`
-- [ ] UUID v7 as default primary key
-- [ ] `associate()` static method defined
-- [ ] Registered in `MODEL_NAMES` constant
-- [ ] Re-exported from `models.ts`
-- [ ] Migration file created
-
----
-
 ## New Mongoose Model
 
-**When:** Adding a new entity that must be persisted in MongoDB.
+**When:** Adding a new entity that must be persisted.
 
-**File:** `src/domain/models/mongoose/[Entity]MongoModel.ts`
+**File:** `src/infrastructure/models/[Entity]Model.ts`
 
-**Naming:** `PascalCase` with `MongoModel` suffix
+**Naming:** `PascalCase` with a `Model` suffix — no `Mongo` in the name.
 
 **Boilerplate:**
 
 ```typescript
 import mongoose, { Schema } from "mongoose";
-import { MODEL_NAMES } from "../../../shared/constants";
+
+import { MODEL_NAMES } from "../../shared/constants";
 
 export interface I[Entity]Document {
   _id: string;
   name: string;
+  amount: number; // integer cents
   userId: string;
+  archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -201,22 +142,36 @@ const [Entity]Schema = new Schema<I[Entity]Document>(
   {
     _id: { type: String, required: true },
     name: { type: String, required: true },
+    amount: { type: Number, required: true },
     userId: { type: String, required: true },
+    archivedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
-export const [Entity]MongoModel = mongoose.model<I[Entity]Document>(
+// Every query is user-scoped: index accordingly.
+[Entity]Schema.index({ userId: 1, _id: 1 });
+
+export const [Entity]Model = mongoose.model<I[Entity]Document>(
   MODEL_NAMES.[ENTITY],
   [Entity]Schema,
 );
 ```
 
+**Other files to modify:**
+
+- `src/shared/constants.ts` — add the entity name to `MODEL_NAMES`
+- `scripts/sync-indexes.ts` — add the model to the list, or its indexes will never be built in production (`autoIndex` is off there)
+
 **Checklist:**
 
-- [ ] Document interface with `_id` as string
+- [ ] Document interface with `_id` as a string (UUID v7, minted by the entity)
 - [ ] Schema uses `{ timestamps: true }`
-- [ ] Model name matches `MODEL_NAMES` constant
+- [ ] Model name comes from `MODEL_NAMES`
+- [ ] Money fields stored as **integer cents**, and the interface says so in a comment
+- [ ] Indexes declared on the schema, prefixed by `userId` for user-scoped queries
+- [ ] Uniqueness that must survive soft deletes uses a `partialFilterExpression` (see `AccountModel.ts`, `BudgetModel.ts`); case-insensitive uniqueness adds a `collation`
+- [ ] Model added to `scripts/sync-indexes.ts`
 
 ---
 
@@ -232,94 +187,88 @@ export const [Entity]MongoModel = mongoose.model<I[Entity]Document>(
 
 ```typescript
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
+import { TxSession } from "../../../shared/unitOfWork";
 import { [Entity] } from "../../entities/[Entity]";
 import { IRepository } from "../IRepository";
+
+export interface [Entity]Filters {
+  ids?: string[];
+  includeArchived?: boolean;
+}
 
 export interface I[Entity]Repository extends IRepository<[Entity]> {
   getAllByUserId(
     userId: string,
     pagination: PaginationParams,
+    filters?: [Entity]Filters,
   ): Promise<PaginatedResult<[Entity]>>;
+
+  // Unlike getById, also resolves archived rows (read paths only).
+  getByIdIncludingArchived(id: string): Promise<[Entity] | null>;
+
+  countByUserId(userId: string): Promise<number>;
 }
 ```
+
+`IRepository<T>` already provides `getById`, `getAll`, `create`, `update` and `delete`, each accepting an optional `session?: TxSession` so the method can join a transaction.
 
 **Checklist:**
 
 - [ ] Extends `IRepository<T>`
-- [ ] Adds `getAllByUserId()` if entity is user-scoped
+- [ ] Adds `getAllByUserId()` if the entity is user-scoped
+- [ ] Methods that can participate in a multi-document write accept `session?: TxSession`
+- [ ] Each non-obvious method carries a one-line comment saying what it guarantees
 
 ---
 
-## New Sequelize Repository
+## New Repository Implementation
 
-**When:** Implementing data access for MySQL.
+**When:** Implementing data access for a new entity.
 
-**File:** `src/domain/repositories/[entity]/[Entity]SeqRepository.ts`
+**File:** `src/infrastructure/repositories/[entity]/[Entity]Repository.ts` — no `Mongo` suffix.
 
-**Boilerplate:** Follow the pattern in `src/domain/repositories/account/AccountSeqRepository.ts`:
+**Boilerplate:** Follow `src/infrastructure/repositories/account/AccountRepository.ts`:
 
 - Implement the entity-specific interface
-- Use `this.model.findByPk()`, `findAndCountAll()`, `create()`, `update()`, `destroy()`
-- Map results to domain entities via `new [Entity](result.toJSON())`
-- Include `paginatedFindAll()` private method for cursor/offset pagination
-- Throw `ApiError("NotFound", ...)` in update/delete when entity not found
+- Private `toEntity(doc)` maps a document to a domain entity, converting cents to decimals with `fromCents`
+- Private `toStorage(entity)` does the reverse with `toCents` before any write
+- `create()` uses `entity.id ?? uuidv7()` for `_id`
+- `.lean()` on every read
+- Private `paginatedFind()` that applies the cursor (`_id: { $gt: cursor }`), sorts by `_id: 1`, runs the `find` and `countDocuments` in a `Promise.all`, and returns `buildPaginatedResult(...)`
+- `delete()` is a **soft delete**: `findOneAndUpdate({ _id, archivedAt: null }, { archivedAt: new Date() })`
+- Throw `ApiError("NotFound", ...)` from update/delete when nothing matched
+- Pass `{ session: session ?? undefined }` through to every write
 
 **Other files to modify:**
 
-- `src/app/factories/providers/sequelizeProvider.ts` — Register the new repository
+- `src/app/factories/providers/mongoProvider.ts` — register the new repository
 
 **Checklist:**
 
 - [ ] Implements `I[Entity]Repository`
-- [ ] All methods return domain entities, not raw models
-- [ ] Pagination support (offset + cursor)
-- [ ] Registered in Sequelize provider
-
----
-
-## New Mongoose Repository
-
-**When:** Implementing data access for MongoDB.
-
-**File:** `src/domain/repositories/[entity]/[Entity]MongoRepository.ts`
-
-**Boilerplate:** Follow the pattern in `src/domain/repositories/account/AccountMongoRepository.ts`:
-
-- Implement the entity-specific interface
-- Use `toEntity()` private method to map Mongoose documents to domain entities
-- Use UUID v7 for `_id` on `create()`
-- Use `.lean()` for read queries
-- Include `paginatedFind()` private method
-
-**Other files to modify:**
-
-- `src/app/factories/providers/mongoProvider.ts` — Register the new repository
-
-**Checklist:**
-
-- [ ] Implements `I[Entity]Repository`
-- [ ] `toEntity()` mapper from document to domain entity
+- [ ] `toEntity()` / `toStorage()` mappers; no raw document ever leaves the repository
 - [ ] UUID v7 generated for new documents
-- [ ] `.lean()` used on queries
-- [ ] Registered in Mongo provider
+- [ ] `.lean()` used on reads
+- [ ] Money converted with `toCents`/`fromCents` — this layer is the only place that knows about cents
+- [ ] Soft delete via `archivedAt`, never `deleteOne`
+- [ ] Registered in the Mongo provider
 
 ---
 
 ## Register in Repository Factory
 
-**When:** After creating both repository implementations.
+**When:** After creating the repository implementation.
 
 **Files to modify:**
 
 1. `src/app/factories/RepositoryFactory.ts`:
-   - Add key to `REPO_KEYS`: `[ENTITY]: "[entity]"`
-   - Add typed getter: `get[Entity]Repository(): I[Entity]Repository`
+   - Add a key to `REPO_KEYS`: `[ENTITY]: "[entity]"`
+   - Add a typed getter: `get[Entity]Repository(): I[Entity]Repository`
 
-2. `src/app/factories/providers/sequelizeProvider.ts`:
-   - Add: `factory.register("[entity]", () => new [Entity]SeqRepository());`
+2. `src/app/factories/providers/mongoProvider.ts`:
+   - Add: `factory.register("[entity]", () => new [Entity]Repository());`
 
-3. `src/app/factories/providers/mongoProvider.ts`:
-   - Add: `factory.register("[entity]", () => new [Entity]MongoRepository());`
+The factory caches one instance per key and is the only place repositories are constructed. Tests exploit this: they mock the factory module wholesale, which is why services must receive repositories through their constructor rather than reaching for the factory themselves.
 
 ---
 
@@ -333,10 +282,16 @@ export interface I[Entity]Repository extends IRepository<[Entity]> {
 
 ```typescript
 import { [Entity] } from "../../domain/entities/[Entity]";
-import { I[Entity]Repository } from "../../domain/repositories/[entity]/I[Entity]Repository";
-import { PaginatedResult, PaginationParams } from "../../shared/pagination";
+import {
+  [Entity]Filters,
+  I[Entity]Repository,
+} from "../../domain/repositories/[entity]/I[Entity]Repository";
 import { ApiError } from "../../shared/errors";
+import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { Create[Entity]DTO, Update[Entity]DTO } from "../dtos/[Entity]DTO";
+
+// Soft cap: protects the shared Atlas M0 tier from runaway creation.
+const MAX_[ENTITIES]_PER_USER = 100;
 
 export class [Entity]Service {
   constructor(private repo: I[Entity]Repository) {}
@@ -344,45 +299,77 @@ export class [Entity]Service {
   async getAll[Entities](
     userId: string,
     pagination: PaginationParams,
+    filters?: [Entity]Filters,
   ): Promise<PaginatedResult<[Entity]>> {
-    return await this.repo.getAllByUserId(userId, pagination);
+    return this.repo.getAllByUserId(userId, pagination, filters);
   }
 
+  // Reads resolve archived rows too (archivedAt tells them apart);
+  // only the listing hides them by default.
   async get[Entity]ById(id: string, userId: string): Promise<[Entity]> {
-    const entity = await this.repo.getById(id);
-    if (!entity) throw new ApiError("NotFound", "[Entity] not found");
-    if (entity.userId !== userId) throw new ApiError("Forbidden", "Access denied");
-    return entity;
+    const entity = await this.repo.getByIdIncludingArchived(id);
+    // Someone else's id is a 404, not a 403: a 403 would confirm it exists.
+    if (!entity || entity.userId !== userId) {
+      throw new ApiError("NotFound", "[Entity] not found");
+    }
+    return new [Entity](entity);
   }
 
   async create[Entity](dto: Create[Entity]DTO): Promise<[Entity]> {
-    const entity = new [Entity](dto);
-    return await this.repo.create(entity);
+    if ((await this.repo.countByUserId(dto.userId)) >= MAX_[ENTITIES]_PER_USER) {
+      throw new ApiError(
+        "BadRequest",
+        `[Entity] limit reached (${MAX_[ENTITIES]_PER_USER})`,
+        "[ENTITY]_LIMIT_REACHED",
+      );
+    }
+    return new [Entity](await this.repo.create(new [Entity](dto)));
   }
 
-  async update[Entity](id: string, dto: Update[Entity]DTO, userId: string): Promise<[Entity]> {
-    if (dto.id && dto.id !== id) throw new ApiError("BadRequest", "[Entity] id does not match");
-    const existing = await this.repo.getById(id);
-    if (!existing) throw new ApiError("NotFound", "[Entity] not found");
-    if (existing.userId !== userId) throw new ApiError("Forbidden", "Access denied");
-    return await this.repo.update(id, dto);
+  async update[Entity](
+    id: string,
+    dto: Update[Entity]DTO,
+    userId: string,
+  ): Promise<[Entity]> {
+    if (dto.id && dto.id !== id) {
+      throw new ApiError("BadRequest", "[Entity] id does not match");
+    }
+    const existing = await this.repo.getByIdIncludingArchived(id);
+    if (!existing || existing.userId !== userId) {
+      throw new ApiError("NotFound", "[Entity] not found");
+    }
+    if (existing.archivedAt) {
+      throw new ApiError(
+        "BadRequest",
+        "[Entity] is archived; restore it first",
+        "RESOURCE_ARCHIVED",
+      );
+    }
+    return new [Entity](await this.repo.update(id, dto));
   }
 
   async delete[Entity](id: string, userId: string): Promise<void> {
-    const existing = await this.repo.getById(id);
-    if (!existing) throw new ApiError("NotFound", "[Entity] not found");
-    if (existing.userId !== userId) throw new ApiError("Forbidden", "Access denied");
-    return await this.repo.delete(id);
+    const existing = await this.repo.getByIdIncludingArchived(id);
+    if (!existing || existing.userId !== userId) {
+      throw new ApiError("NotFound", "[Entity] not found");
+    }
+    // Already archived: idempotent success, not a 404.
+    if (existing.archivedAt) return;
+    await this.repo.delete(id);
   }
 }
 ```
 
+Writes that touch more than one document (e.g. a transaction adjusting an account balance) wrap the whole thing in `withTransaction` from `src/shared/unitOfWork.ts` and pass the `session` down to every repository call. The callback is retried on transient conflicts, so it must be idempotent.
+
 **Checklist:**
 
-- [ ] Constructor receives repository interface (dependency injection)
-- [ ] All methods that access user-scoped data verify ownership
-- [ ] Uses `ApiError` for NotFound, Forbidden, BadRequest
-- [ ] Returns domain entities
+- [ ] Constructor receives repository **interfaces** (dependency injection) — never the factory, never a model
+- [ ] Every user-scoped method verifies ownership, and reports a foreign id as `404`
+- [ ] Errors are `ApiError` with a **stable `code`** where the client needs to branch
+- [ ] Deleting something already archived is an idempotent success
+- [ ] Returns domain entities (re-wrapped with `new [Entity](...)`), never raw documents
+- [ ] Multi-document writes go through `withTransaction`
 - [ ] No direct database access
 
 ---
@@ -520,18 +507,24 @@ export default router;
 
 **Other files to modify:**
 
-- `src/app.ts` — Import and register the route:
+- `src/app.ts` — import and register the route, with the shared rate limiter:
   ```typescript
   import [entity]Routes from "./app/routes/[entity]Routes";
   // After authMiddleware:
-  app.use("/[entities]", [entity]Routes);
+  app.use("/[entities]", apiLimiter, [entity]Routes);
   ```
+- `src/config/swagger.ts` — add the request bodies to `requestBodies`, generated from the Zod schemas:
+  ```typescript
+  Create[Entity]Input: bodyOf(v.create[Entity]Schema),
+  Update[Entity]Input: bodyOf(v.update[Entity]Schema),
+  ```
+  Response views (`[Entity]`, `[Entity]List: listOf("[Entity]")`) are hand-written there; request bodies never are.
 
 **Checklist:**
 
 - [ ] Every endpoint has validation middleware
-- [ ] OpenAPI JSDoc annotations on every route
-- [ ] Route registered in `src/app.ts` after `authMiddleware` (if protected)
+- [ ] OpenAPI JSDoc annotations on every route, `$ref`-ing the generated request body
+- [ ] Route registered in `src/app.ts` after `authMiddleware` (if protected) and behind `apiLimiter`
 - [ ] Default export of router
 
 ---
@@ -556,37 +549,42 @@ export default router;
 
 **Files to modify:**
 
-1. `src/shared/constants.ts` — Add to the appropriate Zod env schema (`baseEnvSchema`, `seqEnvSchema`, or `mongoEnvSchema`)
-2. `.env` — Add the variable with a value
-3. `docs/guides/environment-vars.md` — Document the new variable
-4. `docker-compose.yml` — If it's a Docker-related variable
+1. `src/shared/constants.ts` — add it to `baseEnvSchema` (or to `mongoEnvSchema` if it is Mongo-specific). `ENVIRONMENT` is parsed **eagerly at import time**, so a required variable without a default breaks every process, including tests
+2. `.env.example` — add it with a safe placeholder and a comment
+3. `.env` — your local value
+4. `docs/guides/environment-vars.md` — document it
+5. `docker-compose.yml` — only if it is a Docker-related variable
 
 **Checklist:**
 
-- [ ] Added to Zod env schema with proper type and validation
-- [ ] Default value provided if applicable
+- [ ] Added to the Zod env schema with the right type and validation
+- [ ] Has a `.default(...)` unless it must be set explicitly — otherwise every test that mocks `shared/constants` needs updating too
+- [ ] Present in `.env.example`
 - [ ] Documented in environment-vars.md
+- [ ] If it must be set in production, add it to the checklist in `docs/guides/deployment.md`
 
 ---
 
-## New Migration (Sequelize)
+## Changing Indexes
 
-**When:** Changing the MySQL database schema.
+There is no migration system — the schema lives in the Mongoose models and indexes are the only thing that needs a deploy step.
 
-**Command:**
+- Declare the index on the schema in `src/infrastructure/models/[Entity]Model.ts`
+- Make sure the model is listed in `scripts/sync-indexes.ts`
+- `autoIndex` builds indexes automatically in development and test; in production it is off, so run `npm run db:sync-indexes` before the new code serves traffic (`scripts/deploy-lambda.sh` does it for you when `MONGO_URI` is set)
 
-```bash
-npm run db:migration:generate -- --name [description]
-```
+`syncIndexes()` **drops** indexes that are no longer declared in the schema, so removing a line from a model is a destructive production change — treat it as one.
 
-**File:** `src/database/migrations/YYYYMMDDHHMMSS-[description].js`
+---
 
-**Naming:** Timestamp prefix is auto-generated. Use descriptive kebab-case for the name (e.g., `create-budgets`, `add-column-to-transactions`).
+## Tests for a New Module
 
-**Checklist:**
+**Files:** `src/__tests__/entities/[Entity].test.ts`, `src/__tests__/services/[Entity]Service.test.ts`, plus cases in `src/__tests__/validation/schemas.test.ts` and `src/__tests__/integration/api.test.ts`.
 
-- [ ] `up` function creates/alters tables
-- [ ] `down` function reverses the change
-- [ ] UUID primary keys use `CHAR(36)`
-- [ ] Foreign keys reference correct tables
-- [ ] Run `npm run db:migrate` to test
+Full patterns are in `docs/guides/testing.md`. The three things that bite first:
+
+- Mock `../../shared/constants` **before** any import of source code — it parses `process.env` eagerly at import time
+- `jest.Mocked<I[Entity]Repository>` needs every method of the interface, so adding one to the interface means updating each mock
+- The whole suite runs without MongoDB. Indexes, collation and real transaction atomicity are therefore **not** covered by any test you write here — verify those against a real replica set
+
+Run `npm run ci` (typecheck + typecheck:tests + lint + test) before opening the PR.

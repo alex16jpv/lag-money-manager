@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "project": "lag-money-manager",
-  "stack": "TypeScript 6 / Express 5 / Zod 4 / Sequelize 6 (MySQL) / Mongoose 9 (MongoDB) / JWT / Pino",
+  "stack": "TypeScript 6 / Express 5 / Zod 4 / Mongoose 9 (MongoDB) / JWT / Pino / Jest — deployed to AWS Lambda",
   "documents": [
     {
       "path": "docs/agent-context.md",
@@ -67,9 +67,9 @@
     },
     {
       "path": "docs/architecture/decisions/001-dual-database-support.md",
-      "title": "ADR-001: Dual Database Support",
-      "description": "Decision to support both MySQL (Sequelize) and MongoDB (Mongoose) via repository pattern and factory provider.",
-      "tags": ["architecture", "decisions", "database", "repository"],
+      "title": "ADR-001: Dual Database Support (superseded)",
+      "description": "Historical record of the dual-database decision, superseded: the project is MongoDB-only and the repository/factory seam is kept only for testing.",
+      "tags": ["architecture", "decisions", "database", "repository", "superseded"],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -108,7 +108,7 @@
     {
       "path": "docs/guides/contributing.md",
       "title": "Contributing Guide",
-      "description": "Contribution workflow, code style, commit conventions, and PR process.",
+      "description": "Contribution workflow, the npm run ci gate, code style, commit conventions, the generated OpenAPI spec, and the conventions a review checks.",
       "tags": ["guide", "contributing", "workflow"],
       "audience": "human",
       "mustReadFirst": false
@@ -116,7 +116,7 @@
     {
       "path": "docs/guides/adding-new-features.md",
       "title": "Adding New Features",
-      "description": "Step-by-step instructions for adding each type of component: routes, controllers, services, repositories, models, etc.",
+      "description": "Step-by-step instructions for adding each type of component: entities, DTOs, Mongoose models, repositories, services, controllers, validation, routes, env vars and indexes.",
       "tags": ["guide", "features", "development", "boilerplate"],
       "audience": "both",
       "mustReadFirst": false
@@ -132,16 +132,16 @@
     {
       "path": "docs/guides/testing.md",
       "title": "Testing Guide",
-      "description": "How to run tests, write new tests, mock dependencies, and testing conventions.",
-      "tags": ["guide", "testing", "jest", "mocking"],
+      "description": "How to run the 374-test suite and the npm run ci gate, write new tests, mock repositories and constants, and what the mocked suite cannot cover.",
+      "tags": ["guide", "testing", "jest", "mocking", "ci"],
       "audience": "both",
       "mustReadFirst": false
     },
     {
       "path": "docs/guides/deployment.md",
       "title": "Production Deployment Guide",
-      "description": "HTTPS configuration, database pool tuning, graceful shutdown, container health checks, and production checklist.",
-      "tags": ["guide", "deployment", "production", "docker", "security"],
+      "description": "AWS Lambda deploy scripts and credentials, MongoDB Atlas requirements, index sync, rate limiting, HTTPS, and the production environment checklist.",
+      "tags": ["guide", "deployment", "production", "lambda", "aws", "atlas", "security"],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -180,8 +180,24 @@
     {
       "path": "docs/modules/transactions.md",
       "title": "Transactions Module",
-      "description": "Transactions module: income/expense/transfer, balance adjustments, complex validation, cross-repository operations.",
+      "description": "Transactions module: income/expense/transfer/adjustment, balance adjustments, complex validation, cross-repository operations.",
       "tags": ["module", "transactions", "crud", "balance", "transfer"],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
+      "path": "docs/modules/budgets.md",
+      "title": "Budgets Module",
+      "description": "Budgets module: recurring periods resolved from a reference date, per-period amount overrides, category scoping, and archive semantics.",
+      "tags": ["module", "budgets", "crud", "periods"],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
+      "path": "docs/modules/stats.md",
+      "title": "Stats Module",
+      "description": "Stats module: GET /stats/spending, aggregating transactions over a date range grouped by category, day or tag.",
+      "tags": ["module", "stats", "aggregation", "reporting"],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -246,6 +262,14 @@
       "title": "Prompt: Q&A and Docs Update",
       "description": "Reusable prompt for answering questions and automatically updating documentation gaps.",
       "tags": ["prompts", "agent", "qa", "documentation"],
+      "audience": "agent",
+      "mustReadFirst": false
+    },
+    {
+      "path": "docs/prompts/fix-audit-issues.md",
+      "title": "Prompt: Fix Audit Issues",
+      "description": "Reusable prompt for fixing specific issues from a technical audit report, one commit per issue.",
+      "tags": ["prompts", "agent", "audit", "fixes"],
       "audience": "agent",
       "mustReadFirst": false
     }

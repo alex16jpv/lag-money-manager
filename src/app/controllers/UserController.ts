@@ -1,16 +1,14 @@
 import { Request, Response } from "express";
-import { UserService } from "../services/UserService";
-import repositoryFactory from "../factories/RepositoryFactory";
-import { extractPagination } from "../../shared/pagination";
 
-const userService = new UserService(repositoryFactory.getUserRepository());
+import repositoryFactory from "../factories/RepositoryFactory";
+import { UserService } from "../services/UserService";
+
+const userService = new UserService(
+  repositoryFactory.getUserRepository(),
+  repositoryFactory.getAccountRepository(),
+);
 
 export class UserController {
-  static getAllUsers = async (req: Request, res: Response) => {
-    const result = await userService.getAllUsers(extractPagination(req));
-    res.status(200).json(result);
-  };
-
   static getUserById = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     const id = req.params.id as string;
@@ -29,6 +27,6 @@ export class UserController {
     const userId = req.user!.userId;
     const id = req.params.id as string;
     await userService.deleteUser(id, userId);
-    res.status(200).json({ message: 'User deleted successfully' });
+    res.status(200).json({ message: "User deleted successfully" });
   };
 }

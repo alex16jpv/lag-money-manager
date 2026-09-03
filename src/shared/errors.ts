@@ -1,12 +1,10 @@
+import { ErrorCode } from "./errorCodes";
+
 class BaseError extends Error {
   statusCode: number;
-  details?: Record<string, unknown>;
+  details?: unknown;
 
-  constructor(
-    message: string,
-    statusCode: number,
-    details?: Record<string, unknown>,
-  ) {
+  constructor(message: string, statusCode: number, details?: unknown) {
     super(message);
     this.statusCode = statusCode;
     this.details = details;
@@ -19,16 +17,22 @@ export class ApiError extends BaseError {
     Unauthorized: 401,
     Forbidden: 403,
     NotFound: 404,
+    Conflict: 409,
     UnprocessableEntity: 422,
     InternalServerError: 500,
   };
 
+  // Stable machine-readable code; clients branch on this, never on `message`.
+  code?: ErrorCode;
+
   constructor(
     name: keyof typeof ApiError.errors,
     message?: string,
-    details?: Record<string, unknown>,
+    code?: ErrorCode,
+    details?: unknown,
   ) {
     super(message || name, ApiError.errors[name], details);
     this.name = name + "Error";
+    this.code = code;
   }
 }
