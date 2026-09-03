@@ -1,6 +1,6 @@
 ### ==========================================================
 ### BUDGETS — CRUD, budget GLOBAL, períodos, spent, overrides,
-### effectiveFrom, expiración de CUSTOM, archivar (SIN restore)
+### effectiveFrom, expiración de CUSTOM, archivar y restaurar
 ### El view trae: type, currency, archivedCategoryIds, hasOverride,
 ### expired, effectiveFrom, createdAt/updatedAt.
 ### ==========================================================
@@ -161,7 +161,7 @@ Content-Type: application/json
 GET {{baseUrl}}/budgets?includeExpired=true
 Authorization: Bearer {{token}}
 
-### Archivar — DEFINITIVO vía API (sin restore; para "recuperarlo" se crea otro)
+### Archivar (soft delete, idempotente) — se puede restaurar más abajo
 DELETE {{baseUrl}}/budgets/{{budgetId}}
 Authorization: Bearer {{token}}
 
