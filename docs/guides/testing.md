@@ -88,7 +88,7 @@ npm run test:mongo          # jest -c jest.mongo.config.js
 
 | File | What it holds |
 | --- | --- |
-| `parityFixtures.mongo.test.ts` | Checks the API's figures against `auditoria/offline-fixtures/*.json` — balances, per-category and per-day buckets, tag buckets, budget windows and `spent`, and the pending summary, across three timezones and currencies. |
+| `parityFixtures.mongo.test.ts` | Checks the API's figures against `auditoria/offline-fixtures/*.json` — balances, per-category and per-day buckets, tag buckets, budget windows and `spent`, and the pending summary, across four timezones and currencies. |
 | `offlineWrites.mongo.test.ts` | The write paths an offline client walks: an exact replay, a batch that half landed, an id colliding with another user's, a stale `If-Match`, ten guarded writes with one conflict, a movement against an account archived elsewhere, one filed under a category archived online, and a device whose clock runs ahead. |
 
 Mocks cannot cover any of it. `$dateToString` with a timezone, `$facet`, the tag `$unwind`, the partial unique indexes behind the replay rules and the rollback of a Mongo transaction are the behaviour under test.
