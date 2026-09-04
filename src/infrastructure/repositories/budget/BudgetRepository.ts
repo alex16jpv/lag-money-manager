@@ -67,6 +67,11 @@ export class BudgetRepository implements IBudgetRepository {
     return doc ? this.toEntity(doc) : null;
   }
 
+  async getOwnById(id: string, userId: string): Promise<Budget | null> {
+    const doc = await BudgetModel.findOne({ _id: id, userId }).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
   async getByIdIncludingArchived(id: string): Promise<Budget | null> {
     const doc = await BudgetModel.findOne({ _id: id }).lean();
     return doc ? this.toEntity(doc) : null;

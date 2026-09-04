@@ -136,3 +136,41 @@ Content-Type: application/json
 ### Get inexistente o de otro usuario (404 uniforme)
 GET {{baseUrl}}/accounts/00000000-0000-0000-0000-000000000000
 Authorization: Bearer {{token}}
+
+### ==========================================================
+### O-B1 — id del cliente (offline). El id lo pone el cliente y el
+### servidor no lo reemplaza. Este bloque es re-ejecutable: la
+### segunda corrida responde 200 (replay) en vez de 201.
+### ==========================================================
+
+### Crear con id propio (201 la primera vez, 200 el replay)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000a1", "name": "Offline CASH", "type": "CASH", "balance": 100, "color": "TEAL" }
+
+### Replay idéntico (200, mismo recurso, sin escribir de nuevo)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000a1", "name": "Offline CASH", "type": "CASH", "balance": 100, "color": "TEAL" }
+
+### Mismo id, payload distinto (409 ID_TAKEN)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000a1", "name": "Otro nombre", "type": "CASH", "balance": 100 }
+
+### id que no es UUID (400 VALIDATION)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "no-es-uuid", "name": "X", "type": "CASH" }
+
+### id de OTRO usuario (409 ID_TAKEN opaco, no lee el documento ajeno).
+### Para dispararlo: crea la cuenta con ese id logueado como otro usuario
+### y repite este POST con el token de este.

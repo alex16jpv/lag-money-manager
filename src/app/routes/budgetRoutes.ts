@@ -75,6 +75,11 @@ const router = Router();
  *       (uncategorized and quick-adds included); only one global budget per period type
  *       can exist. `periodStartDate`/`periodEndDate` are required with `periodType=CUSTOM`
  *       and rejected for any other period type. `currency` is stamped from the user.
+ *
+ *       Accepts an optional client-minted `id` (UUID). Replaying the same
+ *       create returns 200 with the stored budget; the same id with a
+ *       different payload, or one that belongs to another user, is rejected
+ *       with 409 ID_TAKEN.
  *     parameters:
  *       - in: query
  *         name: reference
@@ -87,6 +92,12 @@ const router = Router();
  *           schema:
  *             $ref: '#/components/schemas/CreateBudgetInput'
  *     responses:
+ *       200:
+ *         description: Replay of a create already made with this client-minted id
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Budget'
  *       201:
  *         description: Budget created (view resolved for the reference period)
  *         content:
@@ -104,7 +115,7 @@ const router = Router();
  *       404:
  *         description: A referenced category was not found (or not owned by the user)
  *       409:
- *         description: Concurrent duplicate creation lost the race to the unique index (code DUPLICATE)
+ *         description: Concurrent duplicate creation lost the race to the unique index (code DUPLICATE), or the client-minted id is already in use (code ID_TAKEN)
  *         content:
  *           application/json:
  *             schema:

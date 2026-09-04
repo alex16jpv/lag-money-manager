@@ -222,3 +222,30 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "name": "X", "color": "amber-200", "categoryIds": ["{{catId}}"], "amount": 100, "periodType": "MONTHLY" }
+
+### ==========================================================
+### O-B1 — id del cliente (offline). Re-ejecutable: la segunda
+### corrida responde 200 (replay) en vez de 201, sin volver a
+### evaluar la regla de solapamiento.
+### ==========================================================
+
+### Crear con id propio (201 la primera vez, 200 el replay)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000b1", "name": "Offline budget", "color": "GREEN", "categoryIds": ["{{catId}}"], "amount": 250, "periodType": "MONTHLY" }
+
+### Replay idéntico (200)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000b1", "name": "Offline budget", "color": "GREEN", "categoryIds": ["{{catId}}"], "amount": 250, "periodType": "MONTHLY" }
+
+### Mismo id, monto distinto (409 ID_TAKEN, no BUDGET_PERIOD_OVERLAP)
+POST {{baseUrl}}/budgets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000b1", "name": "Offline budget", "color": "GREEN", "categoryIds": ["{{catId}}"], "amount": 900, "periodType": "MONTHLY" }

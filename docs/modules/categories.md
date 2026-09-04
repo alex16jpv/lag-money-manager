@@ -46,6 +46,9 @@ Create a new category. Requires: `name` (1–255 chars). Optional: `icon` (one o
 
 Names are unique per user, **case-insensitively** — "Comida" and "comida" collide; accents stay distinct. A user is capped at 200 categories (`CATEGORY_LIMIT_REACHED`).
 
+**Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. Replaying the exact same create returns **200** with the stored category instead of creating a second one. The same id with a **different payload** — or an id that belongs to **another user** — is rejected with **409 `ID_TAKEN`**; the answer is identical in both cases, and a foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
+
+
 ### `POST /categories/restore-defaults`
 
 Recreate the missing default categories. Idempotent by `seedKey`: archived seed categories count as present (the user removed them on purpose) and renamed ones keep their `seedKey`, so neither is duplicated. Responds `200` with `{ "data": [...] }` — an empty array when nothing was missing.
@@ -142,6 +145,7 @@ None specific to this module.
 | `Unauthorized`            | 401    | Missing, invalid or expired access token                         |
 | `NotFound`                | 404    | Category missing **or owned by another user**                    |
 | `DUPLICATE`               | 409    | An active category already uses this name (case-insensitively)   |
+| `ID_TAKEN`                | 409    | The client-minted `id` is already in use (different payload, or another user's) |
 
 > Foreign categories return **404, not 403** — the response is uniform for "missing" and "not yours" so category ids cannot be probed.
 

@@ -15,6 +15,8 @@ export interface IAccountRepository extends IRepository<Account> {
     filters?: AccountFilters,
   ): Promise<PaginatedResult<Account>>;
 
+  // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
+  getOwnById(id: string, userId: string): Promise<Account | null>;
   // Unlike getById, also resolves archived accounts (read paths only).
   getByIdIncludingArchived(id: string): Promise<Account | null>;
 

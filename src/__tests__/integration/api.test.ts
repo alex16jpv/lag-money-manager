@@ -31,6 +31,7 @@ const mockAccountRepo: jest.Mocked<IAccountRepository> = {
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  getOwnById: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -47,6 +48,7 @@ const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  getOwnById: jest.fn(),
   create: jest.fn(),
   createMany: jest.fn(),
   listSeedKeys: jest.fn().mockResolvedValue([]),
@@ -61,6 +63,7 @@ const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
+  getOwnById: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -76,6 +79,7 @@ const mockBudgetRepo = {
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  getOwnById: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -1254,6 +1258,250 @@ describe("Integration Tests", () => {
         });
 
       expect(res.status).toBe(400);
+    });
+  });
+  // ==================== Client-minted ids (O-B1) ====================
+  describe("Client-minted ids [O-B1]", () => {
+    const CLIENT_ID = "019576a0-d7b6-7d6d-af6a-2b7545f5ac71";
+    const dupKey = (keyPattern: Record<string, number>): Error =>
+      Object.assign(new Error("E11000 duplicate key"), {
+        name: "MongoServerError",
+        code: 11000,
+        keyPattern,
+      });
+    const accountBody = {
+      id: CLIENT_ID,
+      name: "Savings",
+      type: "SAVINGS",
+      balance: 1000,
+    };
+
+    beforeEach(() => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+      mockTransactionRepo.sumAmountsByCategory.mockResolvedValue({});
+    });
+
+    it("stores the id the client sent", async () => {
+      mockAccountRepo.getOwnById.mockResolvedValue(null);
+      mockAccountRepo.create.mockResolvedValue(testAccount);
+
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .send(accountBody);
+
+      expect(res.status).toBe(201);
+      expect(mockAccountRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ id: CLIENT_ID }),
+      );
+    });
+
+    it("rejects an id that is not a UUID", async () => {
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ ...accountBody, id: "not-a-uuid" });
+
+      expect(res.status).toBe(400);
+      expect(mockAccountRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("replays an identical create with 200 and does not write again", async () => {
+      mockAccountRepo.getOwnById.mockResolvedValue(testAccount);
+
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .send(accountBody);
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(CLIENT_ID);
+      expect(mockAccountRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("answers 409 ID_TAKEN when the same id carries a different payload", async () => {
+      mockAccountRepo.getOwnById.mockResolvedValue(testAccount);
+
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ ...accountBody, name: "Renamed" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("ID_TAKEN");
+      expect(mockAccountRepo.create).not.toHaveBeenCalled();
+    });
+
+    // A leak here would tell the caller that someone else's resource exists,
+    // and the message would describe it.
+    it("answers an opaque 409 ID_TAKEN for another user's id, without reading it", async () => {
+      mockAccountRepo.getOwnById.mockResolvedValue(null);
+      mockAccountRepo.create.mockRejectedValue(dupKey({ _id: 1 }));
+
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .send(accountBody);
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("ID_TAKEN");
+      expect(res.body).toEqual({
+        error: "ConflictError",
+        message: "That id is already in use; retry with a new one",
+        code: "ID_TAKEN",
+      });
+      expect(mockAccountRepo.getById).not.toHaveBeenCalled();
+      expect(mockAccountRepo.getByIdIncludingArchived).not.toHaveBeenCalled();
+      expect(mockAccountRepo.getOwnById).toHaveBeenCalledWith(
+        CLIENT_ID,
+        testUser.id,
+      );
+    });
+
+    it("still reports a duplicate name as DUPLICATE, not ID_TAKEN", async () => {
+      mockAccountRepo.getOwnById.mockResolvedValue(null);
+      mockAccountRepo.create.mockRejectedValue(dupKey({ userId: 1, name: 1 }));
+
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .send(accountBody);
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("DUPLICATE");
+    });
+
+    it("replays a category create", async () => {
+      mockCategoryRepo.getOwnById.mockResolvedValue(testCategory);
+
+      const res = await request(app)
+        .post("/categories")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ id: testCategory.id, name: "Food", icon: "utensils" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(testCategory.id);
+      expect(mockCategoryRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a category replay whose icon changed", async () => {
+      mockCategoryRepo.getOwnById.mockResolvedValue(testCategory);
+
+      const res = await request(app)
+        .post("/categories")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ id: testCategory.id, name: "Food", icon: "car" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("ID_TAKEN");
+    });
+
+    it("replays a transaction create without touching balances", async () => {
+      mockTransactionRepo.getOwnById.mockResolvedValue(testTransaction);
+
+      const res = await request(app)
+        .post("/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          id: testTransaction.id,
+          type: "EXPENSE",
+          amount: 50,
+          date: "2026-03-28T00:00:00.000Z",
+          fromAccountId: testTransaction.fromAccountId,
+          categoryId: testTransaction.categoryId,
+          description: "Groceries",
+        });
+
+      expect(res.status).toBe(200);
+      expect(mockTransactionRepo.create).not.toHaveBeenCalled();
+      expect(mockAccountRepo.incrementBalance).not.toHaveBeenCalled();
+    });
+
+    // The unsent date and account resolve to `now` and to the current default
+    // account, so comparing them would fail every legitimate replay.
+    it("replays a quick-add on the fields the client actually sent", async () => {
+      mockTransactionRepo.getOwnById.mockResolvedValue(
+        new Transaction({ ...testTransaction, source: "QUICK" }),
+      );
+
+      const res = await request(app)
+        .post("/transactions/quick")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ id: testTransaction.id, amount: 50 });
+
+      expect(res.status).toBe(200);
+      expect(mockTransactionRepo.create).not.toHaveBeenCalled();
+      expect(mockAccountRepo.getDefaultByUserId).not.toHaveBeenCalled();
+    });
+
+    it("rejects a quick-add replay of a transaction that was not a quick-add", async () => {
+      mockTransactionRepo.getOwnById.mockResolvedValue(testTransaction);
+
+      const res = await request(app)
+        .post("/transactions/quick")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ id: testTransaction.id, amount: 50 });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("ID_TAKEN");
+    });
+
+    it("replays a budget create without re-running the overlap rule", async () => {
+      const budget = new Budget({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac90",
+        name: "Food",
+        color: "RED",
+        categoryIds: [testCategory.id],
+        amount: 500,
+        periodType: "MONTHLY",
+        userId: testUser.id,
+      });
+      mockBudgetRepo.getOwnById.mockResolvedValue(budget);
+
+      const res = await request(app)
+        .post("/budgets")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          id: budget.id,
+          name: "Food",
+          color: "RED",
+          categoryIds: [testCategory.id],
+          amount: 500,
+          periodType: "MONTHLY",
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(budget.id);
+      expect(mockBudgetRepo.create).not.toHaveBeenCalled();
+      expect(mockBudgetRepo.findOverlapping).not.toHaveBeenCalled();
+    });
+
+    it("rejects a budget replay whose amount changed", async () => {
+      const budget = new Budget({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac90",
+        name: "Food",
+        color: "RED",
+        categoryIds: [testCategory.id],
+        amount: 500,
+        periodType: "MONTHLY",
+        userId: testUser.id,
+      });
+      mockBudgetRepo.getOwnById.mockResolvedValue(budget);
+
+      const res = await request(app)
+        .post("/budgets")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          id: budget.id,
+          name: "Food",
+          color: "RED",
+          categoryIds: [testCategory.id],
+          amount: 900,
+          periodType: "MONTHLY",
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("ID_TAKEN");
     });
   });
 });

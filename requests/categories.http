@@ -135,3 +135,29 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "icon": "coffee" }
+
+### ==========================================================
+### O-B1 — id del cliente (offline). Re-ejecutable: la segunda
+### corrida responde 200 (replay) en vez de 201.
+### ==========================================================
+
+### Crear con id propio (201 la primera vez, 200 el replay)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000c1", "name": "Offline cat", "icon": "coffee", "type": "EXPENSE" }
+
+### Replay idéntico (200)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000c1", "name": "Offline cat", "icon": "coffee", "type": "EXPENSE" }
+
+### Mismo id, icono distinto (409 ID_TAKEN)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000c1", "name": "Offline cat", "icon": "car", "type": "EXPENSE" }

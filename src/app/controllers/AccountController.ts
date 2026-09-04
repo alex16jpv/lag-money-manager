@@ -30,11 +30,12 @@ export class AccountController {
 
   static createAccount = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    const newAccount = await accountService.createAccount({
-      ...req.body,
-      userId,
-    });
-    res.status(201).json(newAccount);
+    const outcome = { replayed: false };
+    const newAccount = await accountService.createAccount(
+      { ...req.body, userId },
+      outcome,
+    );
+    res.status(outcome.replayed ? 200 : 201).json(newAccount);
   };
 
   static getAccountById = async (req: Request, res: Response) => {

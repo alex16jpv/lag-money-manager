@@ -7,6 +7,7 @@ import {
   ITransactionRepository,
   TransactionFilters,
 } from "../../domain/repositories/transaction/ITransactionRepository";
+import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { ErrorCode } from "../../shared/errorCodes";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
@@ -27,6 +28,43 @@ function isDuplicateKeyError(err: unknown): boolean {
 
 // Scope in the stored key keeps future idempotent operations from colliding.
 const TXN_CREATE_SCOPE = "txn-create";
+
+const sameTags = (a: string[], b: string[]): boolean =>
+  a.length === b.length && a.every((t, i) => t === b[i]);
+
+const sameInstant = (a: Date, b: Date | string): boolean =>
+  a.getTime() === new Date(b).getTime();
+
+function matchesCreate(t: Transaction, dto: CreateTransactionDTO): boolean {
+  return (
+    t.type === dto.type &&
+    t.amount === dto.amount &&
+    sameInstant(t.date, dto.date) &&
+    t.categoryId === (dto.categoryId ?? null) &&
+    t.description === (dto.description ?? null) &&
+    t.fromAccountId === (dto.fromAccountId ?? null) &&
+    t.toAccountId === (dto.toAccountId ?? null) &&
+    sameTags(t.tags, dto.tags ?? []) &&
+    t.note === (dto.note ?? null) &&
+    t.source === (dto.source ?? "MANUAL") &&
+    t.pendingDetails === (dto.pendingDetails ?? false)
+  );
+}
+
+// Only what the client sent: the omitted date and account resolve to `now` and
+// to whichever account is default *at that moment*, which no replay can match.
+function matchesQuickAdd(t: Transaction, dto: QuickAddTransactionDTO): boolean {
+  return (
+    t.source === "QUICK" &&
+    t.amount === dto.amount &&
+    (dto.type === undefined || t.type === dto.type) &&
+    (dto.date === undefined || sameInstant(t.date, dto.date)) &&
+    (dto.categoryId === undefined || t.categoryId === dto.categoryId) &&
+    (dto.fromAccountId === undefined ||
+      t.fromAccountId === dto.fromAccountId) &&
+    (dto.toAccountId === undefined || t.toAccountId === dto.toAccountId)
+  );
+}
 
 export interface IdempotencyMeta {
   key: string;
@@ -105,6 +143,21 @@ export class TransactionService {
   async createTransaction(
     dto: CreateTransactionDTO,
     idempotency?: IdempotencyMeta,
+    outcome?: CreateOutcome,
+  ): Promise<Transaction> {
+    return createOrReplay({
+      clientId: dto.id,
+      outcome,
+      findOwn: (id) => this.transactionRepo.getOwnById(id, dto.userId),
+      matches: (t) => matchesCreate(t, dto),
+      replay: async (t) => t,
+      create: () => this.insertTransaction(dto, idempotency),
+    });
+  }
+
+  private async insertTransaction(
+    dto: CreateTransactionDTO,
+    idempotency?: IdempotencyMeta,
   ): Promise<Transaction> {
     if (idempotency) {
       const existing = await this.replayIdempotent(dto.userId, idempotency);
@@ -176,6 +229,21 @@ export class TransactionService {
   async quickAddTransaction(
     dto: QuickAddTransactionDTO,
     idempotency?: IdempotencyMeta,
+    outcome?: CreateOutcome,
+  ): Promise<Transaction> {
+    return createOrReplay({
+      clientId: dto.id,
+      outcome,
+      findOwn: (id) => this.transactionRepo.getOwnById(id, dto.userId),
+      matches: (t) => matchesQuickAdd(t, dto),
+      replay: async (t) => t,
+      create: () => this.insertQuickAdd(dto, idempotency),
+    });
+  }
+
+  private async insertQuickAdd(
+    dto: QuickAddTransactionDTO,
+    idempotency?: IdempotencyMeta,
   ): Promise<Transaction> {
     const type = dto.type ?? "EXPENSE";
     let fromAccountId = dto.fromAccountId ?? null;
@@ -188,8 +256,9 @@ export class TransactionService {
       toAccountId = await this.resolveDefaultAccountId(dto.userId);
     }
 
-    return this.createTransaction(
+    return this.insertTransaction(
       {
+        id: dto.id,
         type,
         amount: dto.amount,
         date: dto.date ?? new Date(),

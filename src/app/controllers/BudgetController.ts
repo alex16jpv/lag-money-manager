@@ -57,11 +57,13 @@ export class BudgetController {
 
   static createBudget = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
+    const outcome = { replayed: false };
     const budget = await budgetService.createBudget(
       { ...req.body, userId },
       await resolveContext(req),
+      outcome,
     );
-    res.status(201).json(budget);
+    res.status(outcome.replayed ? 200 : 201).json(budget);
   };
 
   static updateBudget = async (req: Request, res: Response) => {

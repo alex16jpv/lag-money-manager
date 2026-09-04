@@ -20,6 +20,9 @@ export interface OverlapCandidate {
 }
 
 export interface IBudgetRepository extends IRepository<Budget> {
+  // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
+  getOwnById(id: string, userId: string): Promise<Budget | null>;
+
   // Unlike getById, also resolves archived budgets (uniform semantics:
   // archived resources stay readable; writes reject with RESOURCE_ARCHIVED).
   getByIdIncludingArchived(id: string): Promise<Budget | null>;

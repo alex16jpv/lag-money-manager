@@ -79,6 +79,7 @@ const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  getOwnById: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -247,6 +248,52 @@ describe("AccountService", () => {
       const result = await service.createAccount(validAccountProps);
 
       expect(result.isDefault).toBe(true);
+    });
+
+    // O-B1: `balance` moves with every transaction, so a replay days later
+    // must be judged against the balance the account was opened with.
+    it("replays a client-minted id against openingBalance, not the live balance [O-B1]", async () => {
+      const outcome = { replayed: false };
+      repo.getOwnById.mockResolvedValue(
+        new Account({
+          ...validAccountProps,
+          balance: 12345,
+          openingBalance: 500,
+        }),
+      );
+
+      const result = await service.createAccount(validAccountProps, outcome);
+
+      expect(outcome.replayed).toBe(true);
+      expect(result.balance).toBe(12345);
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses a client-minted id whose stored account differs [O-B1]", async () => {
+      repo.getOwnById.mockResolvedValue(
+        new Account({ ...validAccountProps, type: "CASH" }),
+      );
+
+      await expect(service.createAccount(validAccountProps)).rejects.toThrow(
+        expect.objectContaining({ code: "ID_TAKEN" }),
+      );
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it("never reads an id it does not own [O-B1]", async () => {
+      repo.getOwnById.mockResolvedValue(null);
+      repo.create.mockRejectedValue(
+        Object.assign(new Error("E11000"), {
+          code: 11000,
+          keyPattern: { _id: 1 },
+        }),
+      );
+
+      await expect(service.createAccount(validAccountProps)).rejects.toThrow(
+        expect.objectContaining({ code: "ID_TAKEN" }),
+      );
+      expect(repo.getById).not.toHaveBeenCalled();
+      expect(repo.getByIdIncludingArchived).not.toHaveBeenCalled();
     });
   });
 

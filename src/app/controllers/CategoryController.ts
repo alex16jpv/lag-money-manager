@@ -41,11 +41,12 @@ export class CategoryController {
 
   static createCategory = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    const newCategory = await categoryService.createCategory({
-      ...req.body,
-      userId,
-    });
-    res.status(201).json(newCategory);
+    const outcome = { replayed: false };
+    const newCategory = await categoryService.createCategory(
+      { ...req.body, userId },
+      outcome,
+    );
+    res.status(outcome.replayed ? 200 : 201).json(newCategory);
   };
 
   static updateCategory = async (req: Request, res: Response) => {

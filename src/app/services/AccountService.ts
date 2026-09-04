@@ -6,6 +6,7 @@ import {
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { assertAmountPrecision } from "../../shared/money";
+import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
@@ -37,7 +38,26 @@ export class AccountService {
     return new Account(account);
   }
 
-  async createAccount(dto: CreateAccountDTO): Promise<Account> {
+  async createAccount(
+    dto: CreateAccountDTO,
+    outcome?: CreateOutcome,
+  ): Promise<Account> {
+    return createOrReplay({
+      clientId: dto.id,
+      outcome,
+      findOwn: (id) => this.repo.getOwnById(id, dto.userId),
+      // openingBalance, not balance: transactions have moved the latter since.
+      matches: (a) =>
+        a.name === dto.name &&
+        a.type === dto.type &&
+        a.openingBalance === dto.balance &&
+        (a.color ?? null) === (dto.color ?? null),
+      replay: async (a) => new Account(a),
+      create: () => this.insertAccount(dto),
+    });
+  }
+
+  private async insertAccount(dto: CreateAccountDTO): Promise<Account> {
     const count = await this.repo.countByUserId(dto.userId);
     if (count >= MAX_ACCOUNTS_PER_USER) {
       throw new ApiError(

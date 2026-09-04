@@ -82,6 +82,11 @@ export class AccountRepository implements IAccountRepository {
     return this.toEntity(doc);
   }
 
+  async getOwnById(id: string, userId: string): Promise<Account | null> {
+    const doc = await AccountModel.findOne({ _id: id, userId }).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
   async getByIdIncludingArchived(id: string): Promise<Account | null> {
     const doc = await AccountModel.findById(id).lean();
     return doc ? this.toEntity(doc) : null;

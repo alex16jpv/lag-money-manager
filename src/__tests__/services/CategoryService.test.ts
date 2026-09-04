@@ -18,6 +18,7 @@ const createMockRepo = (): jest.Mocked<ICategoryRepository> => ({
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  getOwnById: jest.fn(),
   create: jest.fn(),
   createMany: jest.fn(),
   listSeedKeys: jest.fn().mockResolvedValue([]),

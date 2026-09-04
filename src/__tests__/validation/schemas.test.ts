@@ -69,6 +69,7 @@ jest.mock("../../shared/constants", () => ({
 
 import {
   createAccountSchema,
+  createBudgetSchema,
   createCategorySchema,
   createTransactionSchema,
   getCategoriesSchema,
@@ -76,6 +77,7 @@ import {
   idParamSchema,
   loginSchema,
   paginationQuerySchema,
+  quickAddTransactionSchema,
   registerSchema,
   updateAccountSchema,
   updateCategorySchema,
@@ -1092,5 +1094,74 @@ describe("Validation Schemas", () => {
       });
       expect(result.success).toBe(false);
     });
+  });
+
+  // O-B1: an offline client mints the id so its create can be retried.
+  describe("client-minted id on creates", () => {
+    const bodies: [
+      string,
+      {
+        safeParse: (v: unknown) => {
+          success: boolean;
+          data?: { body?: { id?: string } };
+        };
+      },
+      Record<string, unknown>,
+    ][] = [
+      [
+        "createAccountSchema",
+        createAccountSchema,
+        { name: "Cash", type: "CASH" },
+      ],
+      ["createCategorySchema", createCategorySchema, { name: "Food" }],
+      [
+        "createTransactionSchema",
+        createTransactionSchema,
+        {
+          type: "EXPENSE",
+          amount: 10,
+          date: "2026-03-28T00:00:00.000Z",
+          fromAccountId: validUUID2,
+        },
+      ],
+      ["quickAddTransactionSchema", quickAddTransactionSchema, { amount: 10 }],
+      [
+        "createBudgetSchema",
+        createBudgetSchema,
+        {
+          name: "Food",
+          color: "RED",
+          categoryIds: [],
+          amount: 100,
+          periodType: "MONTHLY",
+        },
+      ],
+    ];
+
+    it.each(bodies)("%s keeps a valid id", (_name, schema, body) => {
+      const result = schema.safeParse({
+        query: {},
+        body: { ...body, id: validUUID },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.body?.id).toBe(validUUID);
+    });
+
+    it.each(bodies)("%s stays valid without an id", (_name, schema, body) => {
+      const result = schema.safeParse({ query: {}, body });
+      expect(result.success).toBe(true);
+      expect(result.data?.body?.id).toBeUndefined();
+    });
+
+    it.each(bodies)(
+      "%s rejects an id that is not a UUID",
+      (_name, schema, body) => {
+        const result = schema.safeParse({
+          query: {},
+          body: { ...body, id: "42" },
+        });
+        expect(result.success).toBe(false);
+      },
+    );
   });
 });

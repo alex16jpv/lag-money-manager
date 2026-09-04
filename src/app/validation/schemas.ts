@@ -58,6 +58,9 @@ const isoDate = z
   .datetime({ offset: true, message: "Must be a valid ISO 8601 date" })
   .transform((s) => new Date(s));
 
+// Offline clients mint the id so a create can be retried without duplicating.
+const clientMintedId = z.string().uuid("id must be a valid UUID").optional();
+
 // Trim + casefold + dedupe: "Café", "café" and "café " must be ONE tag,
 // or the per-tag spending stats fragment into ghost buckets.
 const normalizedTags = z
@@ -249,6 +252,7 @@ export const updateUserSchema = z.object({
 
 export const createAccountSchema = z.object({
   body: z.object({
+    id: clientMintedId,
     name: accountName,
     type: z.enum(accountTypeValues, {
       error: `Invalid account type. Available: ${accountTypeValues.join(", ")}`,
@@ -288,6 +292,7 @@ export const updateAccountSchema = z.object({
 
 export const createCategorySchema = z.object({
   body: z.object({
+    id: clientMintedId,
     name: z.string().min(1, "Name is required").max(255),
     icon: z
       .enum(CATEGORY_ICONS, {
@@ -390,6 +395,7 @@ export const budgetIdParamSchema = z.object({
 export const createBudgetSchema = z.object({
   query: budgetReferenceQuery,
   body: z.object({
+    id: clientMintedId,
     name: z.string().min(1, "Name is required").max(255),
     color: z.enum(colorValues, {
       error: `Invalid color. Available: ${colorValues.join(", ")}`,
@@ -495,6 +501,7 @@ export const registerSchema = z.object({
 export const createTransactionSchema = z.object({
   body: z
     .object({
+      id: clientMintedId,
       type: z.enum(transactionTypeValues, {
         error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
       }),
@@ -674,6 +681,7 @@ export const batchUpdateTransactionsSchema = z.object({
 
 export const quickAddTransactionSchema = z.object({
   body: z.object({
+    id: clientMintedId,
     amount: moneyAmount,
     type: z.enum(quickAddTypeValues).optional(),
     date: z

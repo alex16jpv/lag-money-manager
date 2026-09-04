@@ -10,6 +10,7 @@ import { IUserRepository } from "../../domain/repositories/user/IUserRepository"
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { assertAmountPrecision } from "../../shared/money";
 import { resolvePeriod } from "../../shared/budgetPeriod";
+import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { ApiError } from "../../shared/errors";
 import { fromCents } from "../../shared/money";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
@@ -22,6 +23,27 @@ import {
 interface ViewContext {
   reference: Date;
   timezone: string;
+}
+
+const sameIds = (a: string[], b: string[]): boolean =>
+  a.length === b.length && a.every((id, i) => id === b[i]);
+
+const sameInstant = (a: Date | null, b: Date | null | undefined): boolean =>
+  (a?.getTime() ?? null) === (b?.getTime() ?? null);
+
+function matchesCreate(b: Budget, dto: CreateBudgetDTO): boolean {
+  return (
+    b.name === dto.name &&
+    b.color === dto.color &&
+    sameIds(b.categoryIds, dto.categoryIds) &&
+    b.type === (dto.type ?? "EXPENSE") &&
+    b.amount === dto.amount &&
+    b.periodType === dto.periodType &&
+    sameInstant(b.periodStartDate, dto.periodStartDate) &&
+    sameInstant(b.periodEndDate, dto.periodEndDate) &&
+    sameInstant(b.effectiveFrom, dto.effectiveFrom) &&
+    (b.note ?? null) === (dto.note ?? null)
+  );
 }
 
 export class BudgetService {
@@ -62,6 +84,21 @@ export class BudgetService {
   }
 
   async createBudget(
+    dto: CreateBudgetDTO,
+    ctx: ViewContext,
+    outcome?: CreateOutcome,
+  ): Promise<BudgetView> {
+    return createOrReplay({
+      clientId: dto.id,
+      outcome,
+      findOwn: (id) => this.repo.getOwnById(id, dto.userId),
+      matches: (b) => matchesCreate(b, dto),
+      replay: async (b) => (await this.toViews(dto.userId, [b], ctx))[0],
+      create: () => this.insertBudget(dto, ctx),
+    });
+  }
+
+  private async insertBudget(
     dto: CreateBudgetDTO,
     ctx: ViewContext,
   ): Promise<BudgetView> {

@@ -4,6 +4,7 @@ import {
   ICategoryRepository,
 } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
+import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
@@ -40,7 +41,25 @@ export class CategoryService {
     return new Category(category);
   }
 
-  async createCategory(dto: CreateCategoryDTO): Promise<Category> {
+  async createCategory(
+    dto: CreateCategoryDTO,
+    outcome?: CreateOutcome,
+  ): Promise<Category> {
+    return createOrReplay({
+      clientId: dto.id,
+      outcome,
+      findOwn: (id) => this.repo.getOwnById(id, dto.userId),
+      matches: (c) =>
+        c.name === dto.name &&
+        (c.icon ?? null) === (dto.icon ?? null) &&
+        (c.color ?? null) === (dto.color ?? null) &&
+        (c.type ?? null) === (dto.type ?? null),
+      replay: async (c) => new Category(c),
+      create: () => this.insertCategory(dto),
+    });
+  }
+
+  private async insertCategory(dto: CreateCategoryDTO): Promise<Category> {
     if (
       (await this.repo.countByUserId(dto.userId)) >= MAX_CATEGORIES_PER_USER
     ) {

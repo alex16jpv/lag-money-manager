@@ -338,3 +338,52 @@ Content-Type: application/json
 ### Cursor de paginación inválido (400 INVALID_CURSOR)
 GET {{baseUrl}}/transactions?cursor=00000000-0000-0000-0000-000000000000
 Authorization: Bearer {{token}}
+
+### ==========================================================
+### O-B1 — id del cliente (offline). Re-ejecutable: la segunda
+### corrida responde 200 (replay) en vez de 201.
+### ==========================================================
+
+### Crear con id propio (201 la primera vez, 200 el replay)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000f1", "type": "EXPENSE", "amount": 12.5, "date": "{{date}}", "fromAccountId": "{{accAId}}", "categoryId": "{{catId}}", "description": "Offline" }
+
+### Replay idéntico (200, sin mover saldos otra vez)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000f1", "type": "EXPENSE", "amount": 12.5, "date": "{{date}}", "fromAccountId": "{{accAId}}", "categoryId": "{{catId}}", "description": "Offline" }
+
+### Mismo id, importe distinto (409 ID_TAKEN)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000f1", "type": "EXPENSE", "amount": 99, "date": "{{date}}", "fromAccountId": "{{accAId}}", "categoryId": "{{catId}}", "description": "Offline" }
+
+### Quick-add con id propio (201 / 200 en el replay). El replay se juzga
+### solo por lo que el cliente mandó: date y cuenta sin enviar resolverían
+### a "ahora" y a la cuenta default del momento.
+POST {{baseUrl}}/transactions/quick
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000f2", "amount": 7 }
+
+### Replay del quick-add (200)
+POST {{baseUrl}}/transactions/quick
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000f2", "amount": 7 }
+
+### Mismo id, importe distinto (409 ID_TAKEN)
+POST {{baseUrl}}/transactions/quick
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000f2", "amount": 8 }

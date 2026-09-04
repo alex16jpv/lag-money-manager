@@ -93,6 +93,11 @@ router.get(
  *     description: >
  *       Active category names are unique per user, case-insensitively
  *       ("Comida" = "comida"; accents still distinct).
+ *
+ *       Accepts an optional client-minted `id` (UUID). Replaying the same
+ *       create returns 200 with the stored resource; the same id with a
+ *       different payload, or one that belongs to another user, is rejected
+ *       with 409 ID_TAKEN.
  *     requestBody:
  *       required: true
  *       content:
@@ -100,6 +105,12 @@ router.get(
  *           schema:
  *             $ref: '#/components/schemas/CreateCategoryInput'
  *     responses:
+ *       200:
+ *         description: Replay of a create already made with this client-minted id
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Category'
  *       201:
  *         description: Category created
  *         content:
@@ -119,7 +130,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: An active category with this name already exists (code DUPLICATE, case-insensitive)
+ *         description: An active category with this name already exists (code DUPLICATE, case-insensitive), or the client-minted id is already in use (code ID_TAKEN)
  *         content:
  *           application/json:
  *             schema:

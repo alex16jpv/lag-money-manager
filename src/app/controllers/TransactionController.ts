@@ -110,20 +110,24 @@ export class TransactionController {
 
   static createTransaction = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
+    const outcome = { replayed: false };
     const newTransaction = await transactionService.createTransaction(
       { ...req.body, userId },
       idempotencyMeta(req),
+      outcome,
     );
-    res.status(201).json(newTransaction);
+    res.status(outcome.replayed ? 200 : 201).json(newTransaction);
   };
 
   static quickAddTransaction = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
+    const outcome = { replayed: false };
     const newTransaction = await transactionService.quickAddTransaction(
       { ...req.body, userId },
       idempotencyMeta(req),
+      outcome,
     );
-    res.status(201).json(newTransaction);
+    res.status(outcome.replayed ? 200 : 201).json(newTransaction);
   };
 
   static updateTransaction = async (req: Request, res: Response) => {

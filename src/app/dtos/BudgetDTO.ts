@@ -1,6 +1,7 @@
 import { BudgetPeriodType, BudgetType, Color } from "../../shared/constants";
 
 export interface CreateBudgetDTO {
+  id?: string;
   name: string;
   color: Color;
   categoryIds: string[];

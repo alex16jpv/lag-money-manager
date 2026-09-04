@@ -14,6 +14,8 @@ export interface ICategoryRepository extends IRepository<Category> {
     pagination: PaginationParams,
     filters?: CategoryFilters,
   ): Promise<PaginatedResult<Category>>;
+  // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
+  getOwnById(id: string, userId: string): Promise<Category | null>;
   // Unlike getById, also resolves archived categories (callers decide the policy).
   getByIdIncludingArchived(id: string): Promise<Category | null>;
   // Duplicate-tolerant: skips (userId,name) duplicates, inserts the rest.

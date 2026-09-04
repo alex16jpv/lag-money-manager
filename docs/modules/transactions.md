@@ -125,6 +125,9 @@ Create a new transaction. Adjusts affected account balances atomically.
 
 **Optional header:** `Idempotency-Key` — see [Idempotency](#idempotency).
 
+**Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. Replaying the exact same create returns **200** with the stored transaction instead of creating a second one. The same id with a **different payload** — or an id that belongs to **another user** — is rejected with **409 `ID_TAKEN`**; the answer is identical in both cases, and a foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
+
+
 **Validation rules** (Zod `superRefine`, then re-checked by `Transaction.assertValid()` on the merged entity):
 
 - `EXPENSE` requires `fromAccountId`; `toAccountId` is not allowed
@@ -140,7 +143,7 @@ Create a new transaction. Adjusts affected account balances atomically.
 
 Low-friction capture: only `amount` is required. Defaults `type` to `EXPENSE`, `date` to now, and the missing side account to the user's **default account** (`NO_DEFAULT_ACCOUNT` when none is set and no account id was given).
 
-The created transaction is flagged `pendingDetails: true` and `source: QUICK`, so the client can list it later with `?pendingDetails=true`. `ADJUSTMENT` is not allowed here. Accepts the same `Idempotency-Key` header.
+The created transaction is flagged `pendingDetails: true` and `source: QUICK`, so the client can list it later with `?pendingDetails=true`. `ADJUSTMENT` is not allowed here. Accepts the same `Idempotency-Key` header, and the same optional client-minted `id` — a quick-add replay is judged only on the fields the client actually sent, because the unsent `date` and account resolve to *now* and to whichever account is default at that moment.
 
 ### `GET /transactions/tags`
 
@@ -280,6 +283,7 @@ None specific to this module.
 | `Unauthorized`                     | 401    | Missing, invalid or expired access token                            |
 | `NotFound`                         | 404    | Transaction, category, or account missing **or owned by another user** |
 | `IDEMPOTENCY_ORIGINAL_DELETED`     | 409    | The transaction created with this key was deleted; retry with a new key |
+| `ID_TAKEN`                         | 409    | The client-minted `id` is already in use (different payload, or another user's) |
 | `IDEMPOTENCY_PAYLOAD_MISMATCH`     | 422    | The `Idempotency-Key` was already used with a different payload     |
 | `InternalServerError`              | 500    | An account vanished mid-adjustment (aborts the MongoDB transaction) |
 
@@ -340,6 +344,8 @@ In both directions, if the `$inc` itself matches no document the service throws 
 ## Idempotency
 
 `POST /transactions` and `POST /transactions/quick` accept an optional `Idempotency-Key` header — 1–200 characters of `[A-Za-z0-9_-]`, typically a UUID generated per create action. A malformed key is rejected with `400 IDEMPOTENCY_KEY_INVALID` (the key becomes part of a stored `_id`).
+
+A create that carries a client-minted `id` does not need the header: the id is already the retry key, and it costs no write in `IdempotencyKeyModel`. Both work together if sent.
 
 | Situation                                        | Result                                                    |
 | ------------------------------------------------ | --------------------------------------------------------- |

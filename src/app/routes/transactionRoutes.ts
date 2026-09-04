@@ -132,6 +132,11 @@ router.get(
  *       - **ADJUSTMENT**: Balance reconciliation; exactly one of `fromAccountId` (decrease) or `toAccountId` (increase), no `categoryId`. Excluded from spending stats and budgets.
  *
  *       The server stamps `currency` (from the involved account) and `source`; client-sent values are ignored.
+ *
+ *       Accepts an optional client-minted `id` (UUID). Replaying the same
+ *       create returns 200 with the stored transaction; the same id with a
+ *       different payload, or one that belongs to another user, is rejected
+ *       with 409 ID_TAKEN.
  *     parameters:
  *       - in: header
  *         name: Idempotency-Key
@@ -150,6 +155,12 @@ router.get(
  *           schema:
  *             $ref: '#/components/schemas/CreateTransactionInput'
  *     responses:
+ *       200:
+ *         description: Replay of a create already made with this client-minted id
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Transaction'
  *       201:
  *         description: Transaction created
  *         content:
@@ -171,7 +182,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: The transaction originally created with this Idempotency-Key was deleted; retry with a new key (code IDEMPOTENCY_ORIGINAL_DELETED)
+ *         description: The transaction originally created with this Idempotency-Key was deleted (code IDEMPOTENCY_ORIGINAL_DELETED), or the client-minted id is already in use (code ID_TAKEN)
  *         content:
  *           application/json:
  *             schema:
@@ -200,6 +211,11 @@ router.post(
  *       `date` = now, and the missing side account = the user's default account.
  *       The created transaction is flagged `pendingDetails: true` and `source: QUICK`
  *       so the client can list it for later detailing. ADJUSTMENT is not allowed here.
+ *
+ *       Accepts an optional client-minted `id` (UUID). Replaying the same
+ *       create returns 200 with the stored transaction; the same id with a
+ *       different payload, or one that belongs to another user, is rejected
+ *       with 409 ID_TAKEN.
  *     parameters:
  *       - in: header
  *         name: Idempotency-Key
@@ -218,6 +234,12 @@ router.post(
  *           schema:
  *             $ref: '#/components/schemas/QuickAddTransactionInput'
  *     responses:
+ *       200:
+ *         description: Replay of a create already made with this client-minted id
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Transaction'
  *       201:
  *         description: Transaction created (pendingDetails=true, source=QUICK)
  *         content:
@@ -239,7 +261,7 @@ router.post(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: The transaction originally created with this Idempotency-Key was deleted; retry with a new key (code IDEMPOTENCY_ORIGINAL_DELETED)
+ *         description: The transaction originally created with this Idempotency-Key was deleted (code IDEMPOTENCY_ORIGINAL_DELETED), or the client-minted id is already in use (code ID_TAKEN)
  *         content:
  *           application/json:
  *             schema:

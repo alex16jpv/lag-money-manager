@@ -72,6 +72,9 @@ Create a budget.
 
 Responds `201` with the view resolved for the reference period.
 
+**Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. Replaying the exact same create returns **200** with the stored budget instead of creating a second one. The same id with a **different payload** — or an id that belongs to **another user** — is rejected with **409 `ID_TAKEN`**; the answer is identical in both cases, and a foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
+
+
 ### `GET /budgets/:id`
 
 Always responds for owned budgets: archived ones stay readable (with `archivedAt` set) and expired CUSTOM ones come back with `expired: true`.
@@ -246,6 +249,7 @@ None specific to this module.
 | `NotFound`                  | 404    | Budget missing **or owned by another user** (uniform, so ids can't be probed)   |
 | `NotFound`                  | 404    | A referenced category is missing or not owned                                   |
 | `DUPLICATE`                 | 409    | A concurrent create lost the race to the unique partial index (`CUSTOM`: identical window) |
+| `ID_TAKEN`                  | 409    | The client-minted `id` is already in use (different payload, or another user's) |
 
 ## Overlap Rule
 

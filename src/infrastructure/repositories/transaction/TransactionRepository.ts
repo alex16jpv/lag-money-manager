@@ -123,6 +123,11 @@ export class TransactionRepository implements ITransactionRepository {
     };
   }
 
+  async getOwnById(id: string, userId: string): Promise<Transaction | null> {
+    const doc = await TransactionModel.findOne({ _id: id, userId }).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
   async getById(id: string, session?: TxSession): Promise<Transaction | null> {
     const doc = await TransactionModel.findOne({ _id: id, deletedAt: null })
       .session(session ?? null)
