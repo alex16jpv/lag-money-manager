@@ -47,6 +47,8 @@ export const ERROR_CODES = [
   "BUDGET_PERIOD_OVERLAP",
   // Client-minted ids
   "ID_TAKEN",
+  // Optimistic concurrency
+  "STALE_UPDATE",
   // Idempotency
   "IDEMPOTENCY_KEY_INVALID",
   "IDEMPOTENCY_PAYLOAD_MISMATCH",

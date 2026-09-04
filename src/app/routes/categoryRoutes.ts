@@ -231,6 +231,7 @@ router.get("/:id", validate(idParamSchema), CategoryController.getCategoryById);
  *           type: string
  *           format: uuid
  *         description: Category ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     requestBody:
  *       required: true
  *       content:
@@ -263,11 +264,11 @@ router.get("/:id", validate(idParamSchema), CategoryController.getCategoryById);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: Another active category already uses this name (code DUPLICATE, case-insensitive)
+ *         description: Another active category already uses this name (code DUPLICATE, case-insensitive), or the resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *               $ref: '#/components/schemas/CategoryConflict'
  */
 router.put(
   "/:id",
@@ -293,6 +294,7 @@ router.put(
  *           type: string
  *           format: uuid
  *         description: Category ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
  *         description: Category archived (or already archived)
@@ -318,6 +320,12 @@ router.put(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CategoryConflict'
  */
 router.delete(
   "/:id",
@@ -346,6 +354,7 @@ router.delete(
  *         required: true
  *         schema: { type: string, format: uuid }
  *         description: Category ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
  *         description: Category restored (or already active)
@@ -372,11 +381,11 @@ router.delete(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: An active category already uses this name (code DUPLICATE)
+ *         description: An active category already uses this name (code DUPLICATE), or the resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *               $ref: '#/components/schemas/CategoryConflict'
  */
 router.post(
   "/:id/restore",

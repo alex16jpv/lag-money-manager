@@ -173,6 +173,7 @@ router.post("/", validate(createBudgetSchema), BudgetController.createBudget);
  *         name: reference
  *         schema: { type: string, format: date-time }
  *         description: "Period to resolve amount/spent in the response (default: now)"
+ *       - $ref: '#/components/parameters/IfMatch'
  *     requestBody:
  *       required: true
  *       content:
@@ -196,6 +197,12 @@ router.post("/", validate(createBudgetSchema), BudgetController.createBudget);
  *         description: Unauthorized
  *       404:
  *         description: Budget or referenced category not found (or not owned by the user)
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BudgetConflict'
  *   delete:
  *     tags: [Budgets]
  *     summary: Archive a budget
@@ -213,6 +220,7 @@ router.post("/", validate(createBudgetSchema), BudgetController.createBudget);
  *         name: reference
  *         schema: { type: string, format: date-time }
  *         description: Accepted for uniformity; not used by this operation
+ *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
  *         description: Budget archived (or already archived)
@@ -226,6 +234,12 @@ router.post("/", validate(createBudgetSchema), BudgetController.createBudget);
  *         description: Unauthorized
  *       404:
  *         description: Budget not found
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BudgetConflict'
  */
 router.get(
   "/:id",
@@ -267,6 +281,7 @@ router.delete(
  *         name: reference
  *         schema: { type: string, format: date-time }
  *         description: "Any instant inside the period to resolve (default: now)"
+ *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
  *         description: Budget restored (view resolved for the reference period)
@@ -289,11 +304,11 @@ router.delete(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: A concurrent restore won the race against the unique index (code DUPLICATE)
+ *         description: A concurrent restore won the race against the unique index (code DUPLICATE), or the resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *               $ref: '#/components/schemas/BudgetConflict'
  */
 router.post(
   "/:id/restore",
@@ -324,6 +339,7 @@ router.post(
  *         name: reference
  *         schema: { type: string, format: date-time }
  *         description: "Any instant inside the period to override (default: now)"
+ *       - $ref: '#/components/parameters/IfMatch'
  *     requestBody:
  *       required: true
  *       content:
@@ -347,6 +363,12 @@ router.post(
  *         description: Unauthorized
  *       404:
  *         description: Budget not found
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BudgetConflict'
  */
 router.put(
   "/:id/amount",
@@ -374,6 +396,7 @@ router.put(
  *         name: reference
  *         schema: { type: string, format: date-time }
  *         description: "Any instant inside the period whose override is removed (default: now)"
+ *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
  *         description: Override removed (view resolved for the reference period)
@@ -391,6 +414,12 @@ router.put(
  *         description: Unauthorized
  *       404:
  *         description: Budget not found
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BudgetConflict'
  */
 router.delete(
   "/:id/amount",

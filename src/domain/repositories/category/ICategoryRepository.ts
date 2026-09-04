@@ -9,6 +9,20 @@ export interface CategoryFilters {
 }
 
 export interface ICategoryRepository extends IRepository<Category> {
+  // `expectedUpdatedAt` goes into the write's own filter: an optimistic guard
+  // checked before the write would let two racing callers through.
+  update(
+    id: string,
+    entity: Partial<Category>,
+    session?: unknown,
+    expectedUpdatedAt?: Date,
+  ): Promise<Category>;
+  delete(
+    id: string,
+    session?: unknown,
+    expectedUpdatedAt?: Date,
+  ): Promise<void>;
+
   getAllByUserId(
     userId: string,
     pagination: PaginationParams,
@@ -27,5 +41,10 @@ export interface ICategoryRepository extends IRepository<Category> {
   countByUserId(userId: string): Promise<number>;
   // `name` renames as part of the same write, so the unique index sees the
   // final state and no one can take the name in between.
-  restore(id: string, userId: string, name?: string): Promise<Category | null>;
+  restore(
+    id: string,
+    userId: string,
+    name?: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<Category | null>;
 }

@@ -174,3 +174,52 @@ Content-Type: application/json
 ### id de OTRO usuario (409 ID_TAKEN opaco, no lee el documento ajeno).
 ### Para dispararlo: crea la cuenta con ese id logueado como otro usuario
 ### y repite este POST con el token de este.
+
+### ==========================================================
+### O-B2 — If-Match (concurrencia optimista). Sin la cabecera,
+### la escritura es incondicional, como siempre.
+### ==========================================================
+
+### Leer la cuenta para quedarse con su updatedAt
+# @name accForIfMatch
+GET {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+
+###
+
+@accountAVersion = {{accForIfMatch.response.body.updatedAt}}
+
+### Escritura con la versión correcta (200) — ojo: esto cambia updatedAt,
+### así que repetirla tal cual da 409 STALE_UPDATE
+PUT {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+If-Match: {{accountAVersion}}
+Content-Type: application/json
+
+{ "color": "INDIGO" }
+
+### La misma versión otra vez (409 STALE_UPDATE; `current` trae la cuenta del servidor)
+PUT {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+If-Match: {{accountAVersion}}
+Content-Type: application/json
+
+{ "color": "ROSE" }
+
+### Cabecera mal formada — fecha sin hora (400 VALIDATION, no un 409 silencioso)
+PUT {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+If-Match: 2026-09-03
+Content-Type: application/json
+
+{ "color": "ROSE" }
+
+### Archivar con versión vieja (409 STALE_UPDATE)
+DELETE {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+If-Match: 2020-01-01T00:00:00.000Z
+
+### Cuenta default con versión vieja (409 STALE_UPDATE)
+POST {{baseUrl}}/accounts/{{accountA}}/default
+Authorization: Bearer {{token}}
+If-Match: 2020-01-01T00:00:00.000Z

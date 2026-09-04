@@ -441,6 +441,7 @@ describe("TransactionService", () => {
         { amount: 175 },
         "test-session",
         expect.objectContaining({ amount: 100, type: "EXPENSE" }),
+        undefined,
       );
 
       txRepo.update.mockClear();
@@ -449,6 +450,7 @@ describe("TransactionService", () => {
         TX_ID,
         { note: "x" },
         "test-session",
+        undefined,
         undefined,
       );
     });
@@ -477,6 +479,7 @@ describe("TransactionService", () => {
         { date: new Date("2026-04-02") },
         "test-session",
         expect.objectContaining({ date: new Date("2026-03-28") }),
+        undefined,
       );
     });
 
@@ -560,7 +563,11 @@ describe("TransactionService", () => {
         100,
         "test-session",
       );
-      expect(txRepo.delete).toHaveBeenCalledWith(TX_ID, "test-session");
+      expect(txRepo.delete).toHaveBeenCalledWith(
+        TX_ID,
+        "test-session",
+        undefined,
+      );
     });
 
     it("denies deleting a transaction owned by another user", async () => {

@@ -11,6 +11,7 @@ import {
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
+import { TxSession } from "../../../shared/unitOfWork";
 import { CategoryModel, ICategoryDocument } from "../../models/CategoryModel";
 
 export class CategoryRepository implements ICategoryRepository {
@@ -161,11 +162,20 @@ export class CategoryRepository implements ICategoryRepository {
     return keys as string[];
   }
 
-  async update(id: string, category: Partial<Category>): Promise<Category> {
+  async update(
+    id: string,
+    category: Partial<Category>,
+    session?: TxSession,
+    expectedUpdatedAt?: Date,
+  ): Promise<Category> {
     const doc = await CategoryModel.findOneAndUpdate(
-      { _id: id, archivedAt: null },
+      {
+        _id: id,
+        archivedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       category,
-      { new: true },
+      { new: true, session: session ?? undefined },
     ).lean();
     if (!doc) {
       throw new ApiError("NotFound", "Category not found");
@@ -173,11 +183,19 @@ export class CategoryRepository implements ICategoryRepository {
     return this.toEntity(doc);
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(
+    id: string,
+    session?: TxSession,
+    expectedUpdatedAt?: Date,
+  ): Promise<void> {
     const doc = await CategoryModel.findOneAndUpdate(
-      { _id: id, archivedAt: null },
+      {
+        _id: id,
+        archivedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { archivedAt: new Date() },
-      { new: true },
+      { new: true, session: session ?? undefined },
     ).lean();
     if (!doc) {
       throw new ApiError("NotFound", "Category not found");
@@ -188,9 +206,15 @@ export class CategoryRepository implements ICategoryRepository {
     id: string,
     userId: string,
     name?: string,
+    expectedUpdatedAt?: Date,
   ): Promise<Category | null> {
     const doc = await CategoryModel.findOneAndUpdate(
-      { _id: id, userId, archivedAt: { $ne: null } },
+      {
+        _id: id,
+        userId,
+        archivedAt: { $ne: null },
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { archivedAt: null, ...(name ? { name } : {}) },
       { new: true },
     ).lean();

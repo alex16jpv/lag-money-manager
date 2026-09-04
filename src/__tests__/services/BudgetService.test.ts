@@ -407,6 +407,7 @@ describe("BudgetService", () => {
         "b1",
         USER,
         "2026-08",
+        undefined,
       );
       expect(view.hasOverride).toBe(false);
     });
@@ -750,7 +751,9 @@ describe("BudgetService", () => {
       const archived = makeBudget({ archivedAt: new Date("2026-08-01") });
       budgetRepo.getByIdIncludingArchived.mockResolvedValue(archived);
 
-      await expect(service.deleteBudget("b1", USER)).resolves.toBeUndefined();
+      await expect(
+        service.deleteBudget("b1", USER, CTX),
+      ).resolves.toBeUndefined();
       expect(budgetRepo.delete).not.toHaveBeenCalled();
     });
 
@@ -782,7 +785,7 @@ describe("BudgetService", () => {
       budgetRepo.getByIdIncludingArchived.mockResolvedValue(archived());
       budgetRepo.restore.mockResolvedValue(makeBudget());
       const view = await service.restoreBudget("b1", USER, CTX);
-      expect(budgetRepo.restore).toHaveBeenCalledWith("b1", USER);
+      expect(budgetRepo.restore).toHaveBeenCalledWith("b1", USER, undefined);
       expect(view.archivedAt).toBeNull();
     });
     it("refuses when another active budget already covers its categories", async () => {

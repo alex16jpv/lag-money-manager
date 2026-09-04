@@ -9,6 +9,7 @@ import { IAccountRepository } from "../../domain/repositories/account/IAccountRe
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { ApiError } from "../../shared/errors";
 
 // --- Mock repositories ---
 const mockUserRepo: jest.Mocked<IUserRepository> = {
@@ -694,6 +695,7 @@ describe("Integration Tests", () => {
       expect(mockAccountRepo.archiveNonDefault).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        undefined,
       );
     });
   });
@@ -710,6 +712,7 @@ describe("Integration Tests", () => {
       expect(mockAccountRepo.restore).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
         testUser.id,
+        undefined,
         undefined,
       );
     });
@@ -729,6 +732,7 @@ describe("Integration Tests", () => {
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
         testUser.id,
         "Nequi antiguo",
+        undefined,
       );
     });
 
@@ -866,6 +870,8 @@ describe("Integration Tests", () => {
       expect(res.status).toBe(200);
       expect(mockCategoryRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
+        undefined,
+        undefined,
       );
     });
   });
@@ -1147,6 +1153,7 @@ describe("Integration Tests", () => {
       expect(mockTransactionRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac74",
         expect.anything(),
+        undefined,
       );
     });
   });
@@ -1502,6 +1509,246 @@ describe("Integration Tests", () => {
 
       expect(res.status).toBe(409);
       expect(res.body.code).toBe("ID_TAKEN");
+    });
+  });
+
+  // ==================== Optimistic concurrency (O-B2) ====================
+  describe("If-Match [O-B2]", () => {
+    const V1 = new Date("2026-01-01T00:00:00.000Z");
+    const V2 = new Date("2026-02-02T00:00:00.000Z");
+    const ACC = "019576a0-d7b6-7d6d-af6a-2b7545f5ac71";
+    const at = (updatedAt: Date): Account =>
+      new Account({ ...testAccount, updatedAt, archivedAt: null });
+
+    beforeEach(() => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+      mockTransactionRepo.sumAmountsByCategory.mockResolvedValue({});
+    });
+
+    it("writes normally when the header matches", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(at(V1));
+      mockAccountRepo.update.mockResolvedValue(at(V2));
+
+      const res = await request(app)
+        .put(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ name: "Renamed" });
+
+      expect(res.status).toBe(200);
+      // The guard travels into the write's own filter, not just the check above.
+      expect(mockAccountRepo.update).toHaveBeenCalledWith(
+        ACC,
+        { name: "Renamed" },
+        undefined,
+        V1,
+      );
+    });
+
+    it("answers 409 STALE_UPDATE carrying the server's version", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(at(V2));
+
+      const res = await request(app)
+        .put(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ name: "Renamed" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("STALE_UPDATE");
+      expect(res.body.current).toMatchObject({
+        id: ACC,
+        name: "Savings",
+        updatedAt: V2.toISOString(),
+      });
+      expect(mockAccountRepo.update).not.toHaveBeenCalled();
+    });
+
+    it("rejects a malformed header with 400, not a silent 409", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(at(V1));
+
+      const res = await request(app)
+        .put(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", "2026-01-01")
+        .send({ name: "Renamed" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+      expect(res.body.details).toEqual([
+        { field: "If-Match", message: expect.any(String) },
+      ]);
+      expect(mockAccountRepo.update).not.toHaveBeenCalled();
+    });
+
+    // Losing the race is the case the pre-check cannot see: the filter did.
+    it("turns a write whose filter matched nothing into 409, not 404", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(at(V1));
+      mockAccountRepo.update.mockRejectedValue(
+        new ApiError("NotFound", "Account not found"),
+      );
+      mockAccountRepo.getOwnById.mockResolvedValue(at(V2));
+
+      const res = await request(app)
+        .put(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ name: "Renamed" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("STALE_UPDATE");
+    });
+
+    it("keeps 404 when the resource is really gone", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(at(V1));
+      mockAccountRepo.update.mockRejectedValue(
+        new ApiError("NotFound", "Account not found"),
+      );
+      mockAccountRepo.getOwnById.mockResolvedValue(null);
+
+      const res = await request(app)
+        .put(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ name: "Renamed" });
+
+      expect(res.status).toBe(404);
+    });
+
+    // Stale wins over RESOURCE_ARCHIVED: the caller cannot know about a state
+    // it has not read yet, and re-reading tells it everything.
+    it("prefers STALE_UPDATE over the archived guard", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...testAccount, updatedAt: V2, archivedAt: new Date() }),
+      );
+
+      const res = await request(app)
+        .put(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ name: "Renamed" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("STALE_UPDATE");
+    });
+
+    it("guards the archive, the restore and the default flag", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(at(V1));
+      mockAccountRepo.archiveNonDefault.mockResolvedValue(true);
+      await request(app)
+        .delete(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString());
+      expect(mockAccountRepo.archiveNonDefault).toHaveBeenCalledWith(
+        ACC,
+        testUser.id,
+        V1,
+      );
+
+      mockAccountRepo.restore.mockResolvedValue(at(V2));
+      await request(app)
+        .post(`/accounts/${ACC}/restore`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({});
+      expect(mockAccountRepo.restore).toHaveBeenCalledWith(
+        ACC,
+        testUser.id,
+        undefined,
+        V1,
+      );
+
+      mockAccountRepo.setDefault.mockResolvedValue(at(V2));
+      await request(app)
+        .post(`/accounts/${ACC}/default`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString());
+      expect(mockAccountRepo.setDefault).toHaveBeenCalledWith(
+        ACC,
+        testUser.id,
+        V1,
+      );
+    });
+
+    it("guards a category update", async () => {
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({ ...testCategory, updatedAt: V2 }),
+      );
+
+      const res = await request(app)
+        .put(`/categories/${testCategory.id}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ name: "Comida" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("STALE_UPDATE");
+      expect(res.body.current.id).toBe(testCategory.id);
+      expect(mockCategoryRepo.update).not.toHaveBeenCalled();
+    });
+
+    it("guards a transaction update without touching balances", async () => {
+      mockTransactionRepo.getById.mockResolvedValue(
+        new Transaction({ ...testTransaction, updatedAt: V2 }),
+      );
+
+      const res = await request(app)
+        .put(`/transactions/${testTransaction.id}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ amount: 99 });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("STALE_UPDATE");
+      expect(mockTransactionRepo.update).not.toHaveBeenCalled();
+      expect(mockAccountRepo.incrementBalance).not.toHaveBeenCalled();
+    });
+
+    // A deleted transaction has no `deletedAt` in its API shape, so a 409
+    // carrying it would look like a live transaction. 404 is the honest answer,
+    // and it is also what the route says today without a guard.
+    it("answers 404, not 409, when the transaction was already deleted", async () => {
+      mockTransactionRepo.getById.mockResolvedValue(null);
+
+      const res = await request(app)
+        .delete(`/transactions/${testTransaction.id}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString());
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBeUndefined();
+      expect(mockAccountRepo.incrementBalance).not.toHaveBeenCalled();
+    });
+
+    it("guards a budget update and answers with the budget view", async () => {
+      mockBudgetRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Budget({
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac90",
+          name: "Food",
+          color: "RED",
+          categoryIds: [testCategory.id],
+          amount: 500,
+          periodType: "MONTHLY",
+          userId: testUser.id,
+          updatedAt: V2,
+        }),
+      );
+
+      const res = await request(app)
+        .put("/budgets/019576a0-d7b6-7d6d-af6a-2b7545f5ac90")
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ amount: 900 });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("STALE_UPDATE");
+      // The view, not the raw document: same shape as GET /budgets/:id.
+      expect(res.body.current).toMatchObject({
+        baseAmount: 500,
+        spent: 0,
+        periodKey: expect.any(String),
+      });
+      expect(mockBudgetRepo.update).not.toHaveBeenCalled();
     });
   });
 });

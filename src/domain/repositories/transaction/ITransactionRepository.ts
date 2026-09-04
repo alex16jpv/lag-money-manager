@@ -69,12 +69,21 @@ export interface ITransactionRepository extends IRepository<Transaction> {
   // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
   getOwnById(id: string, userId: string): Promise<Transaction | null>;
 
+  // `expectedUpdatedAt` goes into the write's own filter: an optimistic guard
+  // checked before the write would let two racing callers through.
   update(
     id: string,
     entity: Partial<Transaction>,
     session?: unknown,
     revision?: TransactionRevision,
+    expectedUpdatedAt?: Date,
   ): Promise<Transaction>;
+
+  delete(
+    id: string,
+    session?: unknown,
+    expectedUpdatedAt?: Date,
+  ): Promise<void>;
 
   getAllByUserId(
     userId: string,

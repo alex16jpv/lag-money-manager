@@ -406,6 +406,7 @@ router.get(
  *           type: string
  *           format: uuid
  *         description: Transaction ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     requestBody:
  *       required: true
  *       content:
@@ -429,6 +430,12 @@ router.get(
  *         description: Unauthorized
  *       404:
  *         description: Transaction, category, or account not found (or not owned by the user)
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/TransactionConflict'
  */
 router.put(
   "/:id",
@@ -451,6 +458,7 @@ router.put(
  *           type: string
  *           format: uuid
  *         description: Transaction ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
  *         description: Transaction deleted
@@ -464,6 +472,12 @@ router.put(
  *         description: Unauthorized
  *       404:
  *         description: Transaction not found
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/TransactionConflict'
  */
 router.delete(
   "/:id",

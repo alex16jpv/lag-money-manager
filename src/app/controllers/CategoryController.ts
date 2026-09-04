@@ -4,6 +4,7 @@ import { CategoryFilters } from "../../domain/repositories/category/ICategoryRep
 import { extractPagination } from "../../shared/pagination";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { CategoryService } from "../services/CategoryService";
+import { ifMatch } from "./ifMatch";
 
 const categoryService = new CategoryService(
   repositoryFactory.getCategoryRepository(),
@@ -56,13 +57,18 @@ export class CategoryController {
       id,
       req.body,
       userId,
+      ifMatch(req),
     );
     res.status(200).json(updatedCategory);
   };
 
   static deleteCategory = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    await categoryService.deleteCategory(req.params.id as string, userId);
+    await categoryService.deleteCategory(
+      req.params.id as string,
+      userId,
+      ifMatch(req),
+    );
     res.status(200).json({ message: "Category archived successfully" });
   };
 
@@ -72,6 +78,7 @@ export class CategoryController {
       req.params.id as string,
       userId,
       (req.body as { name?: string } | undefined)?.name,
+      ifMatch(req),
     );
     res.status(200).json(category);
   };

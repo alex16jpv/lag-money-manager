@@ -249,3 +249,46 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "id": "019a0000-0b01-7000-8000-0000000000b1", "name": "Offline budget", "color": "GREEN", "categoryIds": ["{{catId}}"], "amount": 900, "periodType": "MONTHLY" }
+
+### ==========================================================
+### O-B2 — If-Match (concurrencia optimista). La guarda es el
+### updatedAt del BUDGET, también para el override de monto.
+### ==========================================================
+
+### Leer el budget para quedarse con su updatedAt
+# @name budgetForIfMatch
+GET {{baseUrl}}/budgets/{{budgetId}}
+Authorization: Bearer {{token}}
+
+###
+
+@budgetVersion = {{budgetForIfMatch.response.body.updatedAt}}
+
+### Editar con la versión correcta (200)
+PUT {{baseUrl}}/budgets/{{budgetId}}
+Authorization: Bearer {{token}}
+If-Match: {{budgetVersion}}
+Content-Type: application/json
+
+{ "note": "Editado con If-Match" }
+
+### La misma versión otra vez (409 STALE_UPDATE; `current` trae la VISTA del budget)
+PUT {{baseUrl}}/budgets/{{budgetId}}
+Authorization: Bearer {{token}}
+If-Match: {{budgetVersion}}
+Content-Type: application/json
+
+{ "amount": 999 }
+
+### Override de monto con versión vieja (409 STALE_UPDATE)
+PUT {{baseUrl}}/budgets/{{budgetId}}/amount
+Authorization: Bearer {{token}}
+If-Match: 2020-01-01T00:00:00.000Z
+Content-Type: application/json
+
+{ "amount": 123 }
+
+### Archivar con versión vieja (409 STALE_UPDATE)
+DELETE {{baseUrl}}/budgets/{{budgetId}}
+Authorization: Bearer {{token}}
+If-Match: 2020-01-01T00:00:00.000Z

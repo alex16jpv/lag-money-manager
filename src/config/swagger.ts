@@ -354,6 +354,21 @@ const dataOf = (items: object): object =>
     properties: { data: { type: "array", items } },
   });
 
+/**
+ * The 409 of a guarded write: the error, plus the resource as the server has it
+ * when the code is STALE_UPDATE. Optional, because the same status also covers
+ * DUPLICATE and ID_TAKEN, which carry nothing.
+ */
+const conflictOf = (view: string): Record<string, unknown> => ({
+  allOf: [
+    { $ref: "#/components/schemas/ErrorResponse" },
+    {
+      type: "object",
+      properties: { current: { $ref: `#/components/schemas/${view}` } },
+    },
+  ],
+});
+
 const options: swaggerJsdoc.Options = {
   definition: {
     openapi: "3.0.3",
@@ -365,12 +380,29 @@ const options: swaggerJsdoc.Options = {
         "at most 2 decimal places (stored as integer cents). Every monetary " +
         "resource carries the user's `currency` (ISO 4217). Errors carry a " +
         "stable machine-readable `code`. Mutating a create twice is safe " +
-        "with the `Idempotency-Key` header on POST /transactions[/quick].",
+        "with the `Idempotency-Key` header on POST /transactions[/quick]. " +
+        "Creates accept a client-minted `id`; writes accept `If-Match: " +
+        "<updatedAt ISO>` and answer 409 STALE_UPDATE with the server's copy " +
+        "in `current`.",
     },
     servers: [{ url: "/", description: "Current server" }],
     components: {
       securitySchemes: {
         bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+      },
+      parameters: {
+        IfMatch: {
+          in: "header",
+          name: "If-Match",
+          required: false,
+          schema: { type: "string", format: "date-time" },
+          description:
+            "Optimistic concurrency: the `updatedAt` this client last read, " +
+            "verbatim (ISO 8601 with a time and an offset). The write only " +
+            "lands if the server still has that version; otherwise 409 " +
+            "STALE_UPDATE, with the server's copy in `current`. Omit the " +
+            "header to write unconditionally, as before.",
+        },
       },
       schemas: {
         ...requestBodies,
@@ -400,6 +432,10 @@ const options: swaggerJsdoc.Options = {
         RestoreDefaultsResponse: dataOf({
           $ref: "#/components/schemas/Category",
         }),
+        AccountConflict: conflictOf("Account"),
+        CategoryConflict: conflictOf("Category"),
+        TransactionConflict: conflictOf("Transaction"),
+        BudgetConflict: conflictOf("Budget"),
       },
     },
     security: [{ bearerAuth: [] }],

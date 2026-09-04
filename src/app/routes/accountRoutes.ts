@@ -197,6 +197,7 @@ router.get("/:id", validate(idParamSchema), AccountController.getAccountById);
  *           type: string
  *           format: uuid
  *         description: Account ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     requestBody:
  *       required: true
  *       content:
@@ -229,11 +230,11 @@ router.get("/:id", validate(idParamSchema), AccountController.getAccountById);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: Another active account already uses this name (code DUPLICATE, case-insensitive)
+ *         description: Another active account already uses this name (code DUPLICATE, case-insensitive), or the resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *               $ref: '#/components/schemas/AccountConflict'
  */
 router.put(
   "/:id",
@@ -258,6 +259,7 @@ router.put(
  *           type: string
  *           format: uuid
  *         description: Account ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
  *         description: Account archived
@@ -283,6 +285,12 @@ router.put(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AccountConflict'
  */
 router.delete("/:id", validate(idParamSchema), AccountController.deleteAccount);
 
@@ -307,6 +315,7 @@ router.delete("/:id", validate(idParamSchema), AccountController.deleteAccount);
  *         required: true
  *         schema: { type: string, format: uuid }
  *         description: Account ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
  *         description: Account restored (or already active)
@@ -333,11 +342,11 @@ router.delete("/:id", validate(idParamSchema), AccountController.deleteAccount);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: An active account took this name while it was archived (code DUPLICATE) — rename that one first
+ *         description: An active account took this name while it was archived (code DUPLICATE) — rename that one first, or the resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *               $ref: '#/components/schemas/AccountConflict'
  */
 router.post(
   "/:id/restore",
@@ -358,6 +367,7 @@ router.post(
  *         required: true
  *         schema: { type: string, format: uuid }
  *         description: Account ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
  *         description: Default account set
@@ -383,6 +393,12 @@ router.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AccountConflict'
  */
 router.post(
   "/:id/default",

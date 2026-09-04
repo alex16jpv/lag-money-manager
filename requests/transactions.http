@@ -387,3 +387,38 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "id": "019a0000-0b01-7000-8000-0000000000f2", "amount": 8 }
+
+### ==========================================================
+### O-B2 — If-Match (concurrencia optimista). PATCH /transactions/batch
+### NO lleva guarda: una cabecera no puede direccionar N documentos.
+### ==========================================================
+
+### Leer la transacción para quedarse con su updatedAt
+# @name txForIfMatch
+GET {{baseUrl}}/transactions/{{txId}}
+Authorization: Bearer {{token}}
+
+###
+
+@txVersion = {{txForIfMatch.response.body.updatedAt}}
+
+### Editar con la versión correcta (200)
+PUT {{baseUrl}}/transactions/{{txId}}
+Authorization: Bearer {{token}}
+If-Match: {{txVersion}}
+Content-Type: application/json
+
+{ "description": "Editada con If-Match" }
+
+### La misma versión otra vez (409 STALE_UPDATE; `current` trae la transacción del servidor)
+PUT {{baseUrl}}/transactions/{{txId}}
+Authorization: Bearer {{token}}
+If-Match: {{txVersion}}
+Content-Type: application/json
+
+{ "amount": 99 }
+
+### Borrar con versión vieja (409 STALE_UPDATE, y el saldo NO se mueve)
+DELETE {{baseUrl}}/transactions/{{txId}}
+Authorization: Bearer {{token}}
+If-Match: 2020-01-01T00:00:00.000Z

@@ -5,6 +5,7 @@ import { extractPagination } from "../../shared/pagination";
 import { DEFAULT_TIMEZONE } from "../../shared/timezone";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { BudgetService } from "../services/BudgetService";
+import { ifMatch } from "./ifMatch";
 
 const budgetService = new BudgetService(
   repositoryFactory.getBudgetRepository(),
@@ -73,13 +74,19 @@ export class BudgetController {
       req.body,
       userId,
       await resolveContext(req),
+      ifMatch(req),
     );
     res.status(200).json(budget);
   };
 
   static deleteBudget = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    await budgetService.deleteBudget(req.params.id as string, userId);
+    await budgetService.deleteBudget(
+      req.params.id as string,
+      userId,
+      await resolveContext(req),
+      ifMatch(req),
+    );
     res.status(200).json({ message: "Budget archived successfully" });
   };
 
@@ -89,6 +96,7 @@ export class BudgetController {
       req.params.id as string,
       userId,
       await resolveContext(req),
+      ifMatch(req),
     );
     res.status(200).json(budget);
   };
@@ -99,6 +107,7 @@ export class BudgetController {
       req.params.id as string,
       userId,
       await resolveContext(req),
+      ifMatch(req),
     );
     res.status(200).json(budget);
   };
@@ -110,6 +119,7 @@ export class BudgetController {
       userId,
       req.body.amount,
       await resolveContext(req),
+      ifMatch(req),
     );
     res.status(200).json(budget);
   };

@@ -8,6 +8,7 @@ import {
   TransactionFilters,
 } from "../../domain/repositories/transaction/ITransactionRepository";
 import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
+import { assertFresh } from "../../shared/concurrency";
 import { ErrorCode } from "../../shared/errorCodes";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
@@ -322,6 +323,7 @@ export class TransactionService {
     id: string,
     dto: UpdateTransactionDTO,
     userId: string,
+    expectedUpdatedAt?: Date,
   ): Promise<Transaction> {
     if (dto.id && dto.id !== id) {
       throw new ApiError("BadRequest", "Transaction id does not match");
@@ -335,6 +337,9 @@ export class TransactionService {
       if (existing.userId !== userId) {
         throw new ApiError("NotFound", "Transaction not found");
       }
+      // Read and write share the session, so this check and the guard in the
+      // update's filter are one atomic decision.
+      assertFresh(existing, expectedUpdatedAt, (t) => t);
 
       const updated = new Transaction({ ...existing, ...dto });
       updated.assertValid();
@@ -370,11 +375,21 @@ export class TransactionService {
           }
         : undefined;
 
-      return await this.transactionRepo.update(id, dto, session, revision);
+      return await this.transactionRepo.update(
+        id,
+        dto,
+        session,
+        revision,
+        expectedUpdatedAt,
+      );
     });
   }
 
-  async deleteTransaction(id: string, userId: string): Promise<void> {
+  async deleteTransaction(
+    id: string,
+    userId: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<void> {
     await withTransaction(async (session) => {
       const transaction = await this.transactionRepo.getById(id, session);
       if (!transaction) {
@@ -383,9 +398,10 @@ export class TransactionService {
       if (transaction.userId !== userId) {
         throw new ApiError("NotFound", "Transaction not found");
       }
+      assertFresh(transaction, expectedUpdatedAt, (t) => t);
 
       await this.adjustBalances(transaction, -1, session);
-      await this.transactionRepo.delete(id, session);
+      await this.transactionRepo.delete(id, session, expectedUpdatedAt);
     });
   }
 

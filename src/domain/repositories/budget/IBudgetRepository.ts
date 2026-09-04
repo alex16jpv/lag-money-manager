@@ -20,6 +20,20 @@ export interface OverlapCandidate {
 }
 
 export interface IBudgetRepository extends IRepository<Budget> {
+  // `expectedUpdatedAt` goes into the write's own filter: an optimistic guard
+  // checked before the write would let two racing callers through.
+  update(
+    id: string,
+    entity: Partial<Budget>,
+    session?: unknown,
+    expectedUpdatedAt?: Date,
+  ): Promise<Budget>;
+  delete(
+    id: string,
+    session?: unknown,
+    expectedUpdatedAt?: Date,
+  ): Promise<void>;
+
   // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
   getOwnById(id: string, userId: string): Promise<Budget | null>;
 
@@ -45,12 +59,17 @@ export interface IBudgetRepository extends IRepository<Budget> {
   // Un-archives the user's own archived budget; null if there was none to
   // restore. Clearing archivedAt in a single write lets the partial unique
   // index judge the resulting state and catch a concurrent restore.
-  restore(id: string, userId: string): Promise<Budget | null>;
+  restore(
+    id: string,
+    userId: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<Budget | null>;
 
   clearAmountOverride(
     id: string,
     userId: string,
     periodKey: string,
+    expectedUpdatedAt?: Date,
   ): Promise<Budget | null>;
 
   setAmountOverride(
@@ -58,5 +77,6 @@ export interface IBudgetRepository extends IRepository<Budget> {
     userId: string,
     periodKey: string,
     amount: number,
+    expectedUpdatedAt?: Date,
   ): Promise<Budget | null>;
 }

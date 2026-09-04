@@ -199,6 +199,8 @@ describe("CategoryService", () => {
       expect(repo.update).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         { name: "Transport" },
+        undefined,
+        undefined,
       );
       expect(result.name).toBe("Transport");
     });
@@ -237,6 +239,8 @@ describe("CategoryService", () => {
 
       expect(repo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        undefined,
+        undefined,
       );
     });
 

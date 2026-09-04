@@ -311,6 +311,7 @@ describe("AccountService", () => {
       expect(repo.setDefault).toHaveBeenCalledWith(
         mockAccount.id,
         mockAccount.userId,
+        undefined,
       );
       expect(result.isDefault).toBe(true);
     });
@@ -339,6 +340,8 @@ describe("AccountService", () => {
       expect(repo.update).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         { name: "Updated" },
+        undefined,
+        undefined,
       );
       expect(result.name).toBe("Updated");
     });
@@ -392,6 +395,7 @@ describe("AccountService", () => {
       expect(repo.archiveNonDefault).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         validAccountProps.userId,
+        undefined,
       );
     });
 
@@ -470,6 +474,7 @@ describe("AccountService", () => {
         mockAccount.id,
         mockAccount.userId,
         "Nequi antiguo",
+        undefined,
       );
       expect(result.name).toBe("Nequi antiguo");
     });
@@ -485,6 +490,7 @@ describe("AccountService", () => {
       expect(repo.restore).toHaveBeenCalledWith(
         mockAccount.id,
         mockAccount.userId,
+        undefined,
         undefined,
       );
       expect(result.id).toBe(mockAccount.id);

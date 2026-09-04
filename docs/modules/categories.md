@@ -146,8 +146,33 @@ None specific to this module.
 | `NotFound`                | 404    | Category missing **or owned by another user**                    |
 | `DUPLICATE`               | 409    | An active category already uses this name (case-insensitively)   |
 | `ID_TAKEN`                | 409    | The client-minted `id` is already in use (different payload, or another user's) |
+| `STALE_UPDATE`            | 409    | `If-Match` no longer matches the stored version (`current` carries the server's copy) |
 
 > Foreign categories return **404, not 403** — the response is uniform for "missing" and "not yours" so category ids cannot be probed.
+
+## Optimistic concurrency (`If-Match`)
+
+Every write below accepts an optional `If-Match` header carrying the `updatedAt`
+this client last read, verbatim as the API prints it
+(`2026-09-03T18:00:00.000Z`; an ISO 8601 datetime with an offset is also
+accepted, a bare date is not — that is `400 VALIDATION`).
+
+`PUT /categories/:id` · `DELETE /categories/:id` · `POST /categories/:id/restore`
+
+The write only lands if the server still holds that version. Otherwise the answer
+is **409 `STALE_UPDATE`**, and its body carries `current`: the category as the server
+has it now, in the same shape a `GET` would return — so a client can show
+"Server / This device" without a second request.
+
+Two rules worth knowing:
+
+- **The condition travels inside the write's own filter**, not only in a check
+  before it. Two clients holding the same version cannot both win.
+- **`STALE_UPDATE` outranks `RESOURCE_ARCHIVED` and the other write guards.** A
+  caller writing against an old version cannot know about a state it has not
+  read yet; re-reading tells it everything at once.
+
+Without the header nothing changes: the write is unconditional, exactly as before.
 
 ## Default Categories
 

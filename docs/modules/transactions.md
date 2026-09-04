@@ -284,10 +284,46 @@ None specific to this module.
 | `NotFound`                         | 404    | Transaction, category, or account missing **or owned by another user** |
 | `IDEMPOTENCY_ORIGINAL_DELETED`     | 409    | The transaction created with this key was deleted; retry with a new key |
 | `ID_TAKEN`                         | 409    | The client-minted `id` is already in use (different payload, or another user's) |
+| `STALE_UPDATE`                     | 409    | `If-Match` no longer matches the stored version (`current` carries the server's copy) |
 | `IDEMPOTENCY_PAYLOAD_MISMATCH`     | 422    | The `Idempotency-Key` was already used with a different payload     |
 | `InternalServerError`              | 500    | An account vanished mid-adjustment (aborts the MongoDB transaction) |
 
 > Missing and foreign resources both return **404, never 403** — the response is uniform so ids cannot be probed.
+
+## Optimistic concurrency (`If-Match`)
+
+Every write below accepts an optional `If-Match` header carrying the `updatedAt`
+this client last read, verbatim as the API prints it
+(`2026-09-03T18:00:00.000Z`; an ISO 8601 datetime with an offset is also
+accepted, a bare date is not — that is `400 VALIDATION`).
+
+`PUT /transactions/:id` · `DELETE /transactions/:id`
+
+`PATCH /transactions/batch` is **not** guarded: one header cannot address N
+documents. Each item is a state assignment and is idempotent by construction.
+
+The write only lands if the server still holds that version. Otherwise the answer
+is **409 `STALE_UPDATE`**, and its body carries `current`: the transaction as the server
+has it now, in the same shape a `GET` would return — so a client can show
+"Server / This device" without a second request.
+
+Two rules worth knowing:
+
+- **The condition travels inside the write's own filter**, not only in a check
+  before it. Two clients holding the same version cannot both win.
+- **`STALE_UPDATE` outranks `RESOURCE_ARCHIVED` and the other write guards.** A
+  caller writing against an old version cannot know about a state it has not
+  read yet; re-reading tells it everything at once.
+
+**A deleted transaction answers `404`, not `409`.** Transactions are the only
+guarded entity that disappears from reads once soft-deleted, and the API shape
+has no `deletedAt`, so a `current` would look like a live transaction. An offline
+client should read `404` on a guarded write as "another device deleted this" —
+and, for a `DELETE`, as the state it wanted anyway. Accounts, categories and
+budgets stay readable when archived, so those answer `409` with
+`current.archivedAt` set.
+
+Without the header nothing changes: the write is unconditional, exactly as before.
 
 ## Transaction Types
 

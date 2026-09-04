@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 
 import { DomainValidationError } from "../domain/errors";
-import { ApiError } from "./errors";
+import { ApiError, StaleUpdateError } from "./errors";
 import logger from "./logger";
 
 const MONGO_UNAVAILABLE_ERROR_NAMES = new Set([
@@ -69,6 +69,9 @@ export const errorMiddleware = (
       message: error.message,
       ...(error.code && { code: error.code }),
       ...(error.details !== undefined && { details: error.details }),
+      // The server's version of the resource, so a stale write can be resolved
+      // without a second round trip.
+      ...(error instanceof StaleUpdateError && { current: error.current }),
     });
     return;
   }

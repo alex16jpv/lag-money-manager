@@ -4,6 +4,7 @@ import { AccountFilters } from "../../domain/repositories/account/IAccountReposi
 import { extractPagination } from "../../shared/pagination";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { AccountService } from "../services/AccountService";
+import { ifMatch } from "./ifMatch";
 
 const accountService = new AccountService(
   repositoryFactory.getAccountRepository(),
@@ -54,13 +55,18 @@ export class AccountController {
       id,
       req.body,
       userId,
+      ifMatch(req),
     );
     res.status(200).json(updatedAccount);
   };
 
   static deleteAccount = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    await accountService.deleteAccount(req.params.id as string, userId);
+    await accountService.deleteAccount(
+      req.params.id as string,
+      userId,
+      ifMatch(req),
+    );
     res.status(200).json({ message: "Account archived successfully" });
   };
 
@@ -70,6 +76,7 @@ export class AccountController {
       req.params.id as string,
       userId,
       (req.body as { name?: string } | undefined)?.name,
+      ifMatch(req),
     );
     res.status(200).json(account);
   };
@@ -79,6 +86,7 @@ export class AccountController {
     const account = await accountService.setDefaultAccount(
       req.params.id as string,
       userId,
+      ifMatch(req),
     );
     res.status(200).json(account);
   };

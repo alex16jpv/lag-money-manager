@@ -129,9 +129,14 @@ export class AccountRepository implements IAccountRepository {
     id: string,
     account: Partial<Account>,
     session?: TxSession,
+    expectedUpdatedAt?: Date,
   ): Promise<Account> {
     const doc = await AccountModel.findOneAndUpdate(
-      { _id: id, archivedAt: null },
+      {
+        _id: id,
+        archivedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       this.toStorage(account),
       { new: true, session: session ?? undefined },
     ).lean();
@@ -166,9 +171,19 @@ export class AccountRepository implements IAccountRepository {
     }
   }
 
-  async archiveNonDefault(id: string, userId: string): Promise<boolean> {
+  async archiveNonDefault(
+    id: string,
+    userId: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<boolean> {
     const doc = await AccountModel.findOneAndUpdate(
-      { _id: id, userId, archivedAt: null, isDefault: false },
+      {
+        _id: id,
+        userId,
+        archivedAt: null,
+        isDefault: false,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { archivedAt: new Date() },
       { new: true },
     ).lean();
@@ -179,10 +194,16 @@ export class AccountRepository implements IAccountRepository {
     id: string,
     userId: string,
     name?: string,
+    expectedUpdatedAt?: Date,
   ): Promise<Account | null> {
     // Never restore as default: another account may have taken the flag.
     const doc = await AccountModel.findOneAndUpdate(
-      { _id: id, userId, archivedAt: { $ne: null } },
+      {
+        _id: id,
+        userId,
+        archivedAt: { $ne: null },
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { archivedAt: null, isDefault: false, ...(name ? { name } : {}) },
       { new: true },
     ).lean();
@@ -198,12 +219,17 @@ export class AccountRepository implements IAccountRepository {
     return doc ? this.toEntity(doc) : null;
   }
 
-  async setDefault(id: string, userId: string): Promise<Account | null> {
+  async setDefault(
+    id: string,
+    userId: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<Account | null> {
     return withTransaction(async (session) => {
       const exists = await AccountModel.exists({
         _id: id,
         userId,
         archivedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
       }).session(session);
       if (!exists) return null;
       // Unset BEFORE set: the partial unique default index rejects a second
@@ -214,7 +240,12 @@ export class AccountRepository implements IAccountRepository {
         { session },
       );
       const target = await AccountModel.findOneAndUpdate(
-        { _id: id, userId, archivedAt: null },
+        {
+          _id: id,
+          userId,
+          archivedAt: null,
+          ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+        },
         { isDefault: true },
         { new: true, session },
       ).lean();

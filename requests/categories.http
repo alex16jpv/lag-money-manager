@@ -161,3 +161,37 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "id": "019a0000-0b01-7000-8000-0000000000c1", "name": "Offline cat", "icon": "car", "type": "EXPENSE" }
+
+### ==========================================================
+### O-B2 — If-Match (concurrencia optimista)
+### ==========================================================
+
+### Leer la categoría para quedarse con su updatedAt
+# @name catForIfMatch
+GET {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+
+###
+
+@categoryVersion = {{catForIfMatch.response.body.updatedAt}}
+
+### Escritura con la versión correcta (200)
+PUT {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+If-Match: {{categoryVersion}}
+Content-Type: application/json
+
+{ "color": "LIME" }
+
+### La misma versión otra vez (409 STALE_UPDATE)
+PUT {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+If-Match: {{categoryVersion}}
+Content-Type: application/json
+
+{ "color": "CYAN" }
+
+### Archivar con versión vieja (409 STALE_UPDATE)
+DELETE {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+If-Match: 2020-01-01T00:00:00.000Z

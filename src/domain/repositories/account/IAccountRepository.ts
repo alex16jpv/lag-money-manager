@@ -9,6 +9,15 @@ export interface AccountFilters {
 }
 
 export interface IAccountRepository extends IRepository<Account> {
+  // `expectedUpdatedAt` goes into the write's own filter: an optimistic guard
+  // checked before the write would let two racing callers through.
+  update(
+    id: string,
+    entity: Partial<Account>,
+    session?: TxSession,
+    expectedUpdatedAt?: Date,
+  ): Promise<Account>;
+
   getAllByUserId(
     userId: string,
     pagination: PaginationParams,
@@ -30,15 +39,28 @@ export interface IAccountRepository extends IRepository<Account> {
 
   // Atomic archive that refuses the default account even under races;
   // false when nothing matched (default, archived or missing).
-  archiveNonDefault(id: string, userId: string): Promise<boolean>;
+  archiveNonDefault(
+    id: string,
+    userId: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<boolean>;
 
   // Un-archives the user's own archived account; null if none to restore.
   // `name` renames as part of the same write, so the unique index sees the
   // final state and no one can take the name in between.
-  restore(id: string, userId: string, name?: string): Promise<Account | null>;
+  restore(
+    id: string,
+    userId: string,
+    name?: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<Account | null>;
 
   getDefaultByUserId(userId: string): Promise<Account | null>;
   // Sets this account as the user's only default; null if not found.
-  setDefault(id: string, userId: string): Promise<Account | null>;
+  setDefault(
+    id: string,
+    userId: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<Account | null>;
   countByUserId(userId: string): Promise<number>;
 }

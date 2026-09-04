@@ -13,6 +13,7 @@ import {
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
+import { TxSession } from "../../../shared/unitOfWork";
 import { BudgetModel, IBudgetDocument } from "../../models/BudgetModel";
 
 export class BudgetRepository implements IBudgetRepository {
@@ -124,11 +125,20 @@ export class BudgetRepository implements IBudgetRepository {
     return this.toEntity(doc.toObject() as IBudgetDocument);
   }
 
-  async update(id: string, budget: Partial<Budget>): Promise<Budget> {
+  async update(
+    id: string,
+    budget: Partial<Budget>,
+    session?: TxSession,
+    expectedUpdatedAt?: Date,
+  ): Promise<Budget> {
     const doc = await BudgetModel.findOneAndUpdate(
-      { _id: id, archivedAt: null },
+      {
+        _id: id,
+        archivedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       this.toStorage(budget),
-      { new: true },
+      { new: true, session: session ?? undefined },
     ).lean();
     if (!doc) {
       throw new ApiError("NotFound", "Budget not found");
@@ -136,11 +146,19 @@ export class BudgetRepository implements IBudgetRepository {
     return this.toEntity(doc);
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(
+    id: string,
+    session?: TxSession,
+    expectedUpdatedAt?: Date,
+  ): Promise<void> {
     const doc = await BudgetModel.findOneAndUpdate(
-      { _id: id, archivedAt: null },
+      {
+        _id: id,
+        archivedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { archivedAt: new Date() },
-      { new: true },
+      { new: true, session: session ?? undefined },
     ).lean();
     if (!doc) {
       throw new ApiError("NotFound", "Budget not found");
@@ -174,9 +192,18 @@ export class BudgetRepository implements IBudgetRepository {
     return docs.map((doc) => this.toEntity(doc));
   }
 
-  async restore(id: string, userId: string): Promise<Budget | null> {
+  async restore(
+    id: string,
+    userId: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<Budget | null> {
     const doc = await BudgetModel.findOneAndUpdate(
-      { _id: id, userId, archivedAt: { $ne: null } },
+      {
+        _id: id,
+        userId,
+        archivedAt: { $ne: null },
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { archivedAt: null },
       { new: true },
     ).lean();
@@ -187,9 +214,15 @@ export class BudgetRepository implements IBudgetRepository {
     id: string,
     userId: string,
     periodKey: string,
+    expectedUpdatedAt?: Date,
   ): Promise<Budget | null> {
     const doc = await BudgetModel.findOneAndUpdate(
-      { _id: id, userId, archivedAt: null },
+      {
+        _id: id,
+        userId,
+        archivedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { $unset: { [`amountOverrides.${periodKey}`]: "" } },
       { new: true },
     ).lean();
@@ -201,9 +234,15 @@ export class BudgetRepository implements IBudgetRepository {
     userId: string,
     periodKey: string,
     amount: number,
+    expectedUpdatedAt?: Date,
   ): Promise<Budget | null> {
     const doc = await BudgetModel.findOneAndUpdate(
-      { _id: id, userId, archivedAt: null },
+      {
+        _id: id,
+        userId,
+        archivedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { $set: { [`amountOverrides.${periodKey}`]: toCents(amount) } },
       { new: true },
     ).lean();

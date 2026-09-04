@@ -202,6 +202,7 @@ export class TransactionRepository implements ITransactionRepository {
     transaction: Partial<Transaction>,
     session?: TxSession,
     revision?: TransactionRevision,
+    expectedUpdatedAt?: Date,
   ): Promise<Transaction> {
     const update: Record<string, unknown> = {
       $set: this.toStorage(transaction),
@@ -216,7 +217,11 @@ export class TransactionRepository implements ITransactionRepository {
       };
     }
     const doc = await TransactionModel.findOneAndUpdate(
-      { _id: id, deletedAt: null },
+      {
+        _id: id,
+        deletedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       update,
       { new: true, session: session ?? undefined },
     ).lean();
@@ -226,9 +231,17 @@ export class TransactionRepository implements ITransactionRepository {
     return this.toEntity(doc);
   }
 
-  async delete(id: string, session?: TxSession): Promise<void> {
+  async delete(
+    id: string,
+    session?: TxSession,
+    expectedUpdatedAt?: Date,
+  ): Promise<void> {
     const doc = await TransactionModel.findOneAndUpdate(
-      { _id: id, deletedAt: null },
+      {
+        _id: id,
+        deletedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { deletedAt: new Date() },
       { new: true, session: session ?? undefined },
     ).lean();

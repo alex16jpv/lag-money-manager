@@ -61,6 +61,12 @@ const isoDate = z
 // Offline clients mint the id so a create can be retried without duplicating.
 const clientMintedId = z.string().uuid("id must be a valid UUID").optional();
 
+// Optimistic concurrency: the `updatedAt` the client had, as the API prints it.
+export const ifMatchHeader = z.string().datetime({
+  offset: true,
+  message: "If-Match must be the resource's updatedAt, in ISO 8601",
+});
+
 // Trim + casefold + dedupe: "Café", "café" and "café " must be ONE tag,
 // or the per-tag spending stats fragment into ghost buckets.
 const normalizedTags = z
