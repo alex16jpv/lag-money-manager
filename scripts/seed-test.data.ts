@@ -365,6 +365,77 @@ export const REFERENCE_MONTH_EXPENSES = {
 /** Quick-adds: amount only, no category — the review inbox of the designs. */
 export const QUICK_ADDS = [12_500, 15_400, 20_000] as const;
 
+/**
+ * Rows the seed creates and then deletes. Transactions are the only entity
+ * that carries `deletedAt` (the other three archive instead), and without a
+ * tombstone of each kind `GET /sync/changes` has nothing to report as gone —
+ * an offline client would keep showing a row the server no longer has.
+ *
+ * They are excluded from the balance arithmetic: deleting reverses the effect,
+ * so their net movement is zero and the designed final balances still hold.
+ */
+export const DELETED_EXPENSES = [
+  {
+    amount: 64_800,
+    description: "Returned jacket",
+    account: "visa",
+    categoryKey: "lifestyle",
+    dayOfMonth: 6,
+  },
+  {
+    amount: 23_100,
+    description: "Duplicate charge",
+    account: "bancolombia",
+    categoryKey: "food",
+    dayOfMonth: 17,
+  },
+] as const;
+
+/** A deleted quick-add too: the review inbox needs its own tombstone. */
+export const DELETED_QUICK_ADD = { amount: 8_900, dayOfMonth: 19 } as const;
+
+/**
+ * How the seed spreads `updatedAt` once everything is written.
+ *
+ * Mongoose stamps every save with "now", so a freshly seeded database has all
+ * of its rows on the same instant: any `since` either returns everything or
+ * nothing, and a test of the incremental pull proves nothing at all. The seed
+ * therefore rewrites the timestamps through the driver, spread over a window
+ * that ends yesterday — never in the future, or the feed's 60 s watermark
+ * would hide the rows.
+ */
+export interface SyncSpread {
+  /** Earliest `updatedAt` in the database after the spread. */
+  from: string;
+  /** Latest one. Always in the past. */
+  to: string;
+  rows: number;
+  sharedInstant: string;
+  sharedInstantRows: number;
+  tombstones: {
+    accounts: number;
+    categories: number;
+    budgets: number;
+    transactions: number;
+  };
+}
+
+export const SYNC_SPREAD = {
+  /** The window opens this many days before the reference day. */
+  startsDaysAgo: 14,
+  /** And closes this many days before it, so nothing is stamped "now". */
+  endsDaysAgo: 1,
+  /** Archived and deleted rows were touched after they were created. */
+  touchedAfterHours: 6,
+  /**
+   * Rows that share one exact instant. `GET /sync/changes` pages on
+   * `(updatedAt, _id)`; without a group of rows on the same instant, the
+   * tie-break is never exercised and a page boundary inside one instant —
+   * which is what drops rows — cannot happen.
+   */
+  sharedInstantRows: 6,
+} as const;
+
 export const UNCATEGORIZED_TOTAL = QUICK_ADDS.reduce((a, b) => a + b, 0);
 
 export const NON_EXPENSE = {

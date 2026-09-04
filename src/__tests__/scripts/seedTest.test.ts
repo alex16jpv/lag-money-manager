@@ -21,15 +21,32 @@ const OUTPUT = join(ROOT, "scripts/seed-test.output.json");
 
 interface SeedOutput {
   user: { id: string; email: string };
+  sync: {
+    from: string;
+    to: string;
+    rows: number;
+    sharedInstant: string;
+    sharedInstantRows: number;
+    tombstones: Record<string, number>;
+  };
   accounts: Record<string, { id: string; balance: number; archived: boolean }>;
   categories: Record<string, string>;
   budgets: Record<string, string>;
   totals: {
     transactions: number;
+    deletedTransactions: number;
     monthSpending: number;
     byCategory: Record<string, number>;
   };
 }
+
+/** Rows the change feed reports as gone, per entity and per tombstone field. */
+const TOMBSTONES = [
+  ["accounts", "archivedAt"],
+  ["categories", "archivedAt"],
+  ["budgets", "archivedAt"],
+  ["transactions", "deletedAt"],
+] as const;
 
 const runSeed = (): SeedOutput => {
   execFileSync("npx", ["tsx", "scripts/seed-test.ts"], {
@@ -47,6 +64,8 @@ describe("seed:test", () => {
   let second: SeedOutput;
   let counts: Record<string, number>;
   let seededName: string | undefined;
+  let tombstones: Record<string, number>;
+  let updatedAt: number[];
 
   beforeAll(async () => {
     const client = new MongoClient(TEST_URI, {
@@ -78,6 +97,26 @@ describe("seed:test", () => {
       budgets: await db.collection("budgets").countDocuments(scoped),
       sessions: await db.collection("refreshsessions").countDocuments(scoped),
     };
+
+    tombstones = {};
+    for (const [collection, field] of TOMBSTONES) {
+      tombstones[collection] = await db
+        .collection(collection)
+        .countDocuments({ ...scoped, [field]: { $ne: null } });
+    }
+    updatedAt = (
+      await Promise.all(
+        TOMBSTONES.map(([collection]) =>
+          db
+            .collection(collection)
+            .find(scoped, { projection: { updatedAt: 1 } })
+            .toArray(),
+        ),
+      )
+    )
+      .flat()
+      .map((doc) => (doc.updatedAt as Date).getTime());
+
     await db.dropDatabase();
     await client.close();
   }, 180_000);
@@ -134,6 +173,37 @@ describe("seed:test", () => {
       uncategorized: 47_900,
     });
     expect(second.totals.monthSpending).toBe(1_286_000);
+  });
+
+  // Everything below is what makes the dataset usable by GET /sync/changes.
+  // A seed where every row shares one instant lets an incremental pull look
+  // correct while returning everything, or nothing.
+  it("spreads updatedAt instead of stamping one instant", () => {
+    if (!ran()) return;
+    expect(new Set(updatedAt).size).toBeGreaterThan(1);
+    expect(Math.max(...updatedAt)).toBeLessThan(Date.now());
+  });
+
+  it("leaves a group of rows sharing one instant, for the tie-break", () => {
+    if (!ran()) return;
+    const perInstant = new Map<number, number>();
+    for (const at of updatedAt)
+      perInstant.set(at, (perInstant.get(at) ?? 0) + 1);
+    expect(Math.max(...perInstant.values())).toBe(
+      second.sync.sharedInstantRows,
+    );
+    expect(second.sync.sharedInstantRows).toBeGreaterThan(1);
+  });
+
+  it("carries a tombstone for every entity", () => {
+    if (!ran()) return;
+    expect(tombstones).toEqual({
+      accounts: 1,
+      categories: 1,
+      budgets: 1,
+      transactions: second.totals.deletedTransactions,
+    });
+    expect(second.totals.deletedTransactions).toBeGreaterThan(0);
   });
 
   it("lands the designed final balances", () => {

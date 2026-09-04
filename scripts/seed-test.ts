@@ -39,6 +39,8 @@ import {
   ACCOUNTS,
   ARCHIVED_CATEGORY_KEY,
   BUDGET_IDS,
+  DELETED_EXPENSES,
+  DELETED_QUICK_ADD,
   EXTRA_CATEGORIES,
   NON_EXPENSE,
   PRIOR_MONTHS,
@@ -48,6 +50,8 @@ import {
   resolveReferenceMonth,
   SEED_USER,
   SEEDED_CATEGORY_IDS,
+  SYNC_SPREAD,
+  SyncSpread,
   UNCATEGORIZED_TOTAL,
 } from "./seed-test.data";
 import { writeSeedOutput } from "./seed-test.output";
@@ -65,6 +69,8 @@ interface PlannedTransaction {
   toAccount?: string;
   tags?: string[];
   quick?: boolean;
+  /** Created and then deleted, so the change feed has a tombstone to report. */
+  deleted?: boolean;
 }
 
 /** Sequential, stable ids: the nth transaction always gets the nth id. */
@@ -143,6 +149,31 @@ function planTransactions(
       date: month.set({ day: Math.max(1, lastDay - n), hour: 18 }).toJSDate(),
       quick: true,
     });
+  });
+
+  // Deleted afterwards. They belong to no design figure: every total the seed
+  // asserts is computed over live rows, so these can carry any amount.
+  for (const item of DELETED_EXPENSES) {
+    add({
+      type: "EXPENSE",
+      amount: item.amount,
+      date: month
+        .set({ day: Math.min(item.dayOfMonth, lastDay), hour: 15 })
+        .toJSDate(),
+      description: item.description,
+      categoryKey: item.categoryKey,
+      fromAccount: item.account,
+      deleted: true,
+    });
+  }
+  add({
+    type: "EXPENSE",
+    amount: DELETED_QUICK_ADD.amount,
+    date: month
+      .set({ day: Math.min(DELETED_QUICK_ADD.dayOfMonth, lastDay), hour: 20 })
+      .toJSDate(),
+    quick: true,
+    deleted: true,
   });
 
   for (const prior of PRIOR_MONTHS) {
@@ -286,6 +317,9 @@ export async function seed(): Promise<Record<string, unknown>> {
     if (key) movement.set(key, (movement.get(key) ?? 0) + delta);
   };
   for (const t of planned) {
+    // Deleting reverses the effect, so a row that ends up deleted moves
+    // nothing and must not shift the opening balance either.
+    if (t.deleted) continue;
     // Quick-adds have no explicit account: the service charges the default one.
     shift(t.quick ? "bancolombia" : t.fromAccount, -t.amount);
     shift(t.toAccount, t.amount);
@@ -330,6 +364,14 @@ export async function seed(): Promise<Record<string, unknown>> {
       tags: t.tags ?? [],
       userId: SEED_USER.id,
     } as never);
+  }
+
+  // Deleted through the service, so the balances it moved are reversed and
+  // the row keeps a real `deletedAt` — the only tombstone a transaction has.
+  for (const t of planned) {
+    if (t.deleted) {
+      await transactionService.deleteTransaction(t.id, SEED_USER.id);
+    }
   }
 
   const nequi = ACCOUNTS.find((a) => a.archived);
@@ -504,7 +546,9 @@ export async function seed(): Promise<Record<string, unknown>> {
     });
   }
 
-  await verify(accountService, statsService, month, lastDay);
+  const sync = await spreadSyncTimestamps(referenceDay);
+
+  await verify(accountService, statsService, month, lastDay, sync);
 
   return writeSeedOutput({
     referenceDay,
@@ -514,7 +558,137 @@ export async function seed(): Promise<Record<string, unknown>> {
     categoryId,
     accountId,
     transactionCount: planned.length,
+    deletedTransactionCount: planned.filter((t) => t.deleted).length,
+    sync,
   });
+}
+
+/** Collections in the change feed, and the field that marks a row as gone. */
+const FEED_COLLECTIONS = [
+  { name: "users", tombstone: "deletedAt", scoped: false },
+  { name: "accounts", tombstone: "archivedAt", scoped: true },
+  { name: "categories", tombstone: "archivedAt", scoped: true },
+  { name: "budgets", tombstone: "archivedAt", scoped: true },
+  { name: "transactions", tombstone: "deletedAt", scoped: true },
+] as const;
+
+/**
+ * Spreads `createdAt`/`updatedAt` over a window that ends yesterday.
+ *
+ * Written through the driver, not through Mongoose: its timestamps stamp
+ * "now" on every save, which is exactly the state this undoes. Everything the
+ * seed just wrote shares one instant, and against that a `since` either
+ * returns the whole database or nothing — so the incremental pull looks like
+ * it works no matter what it does.
+ *
+ * Rows that were archived or deleted are stamped later than they were created,
+ * because that is what happened to them; and a group of rows is put on one
+ * exact instant so the `(updatedAt, _id)` tie-break has something to break.
+ */
+async function spreadSyncTimestamps(
+  referenceDay: DateTime,
+): Promise<SyncSpread> {
+  const db = mongoose.connection.db;
+  if (!db) throw new Error("No database handle to spread the timestamps on");
+
+  const rows: { collection: string; id: string; touched: boolean }[] = [];
+  for (const collection of FEED_COLLECTIONS) {
+    const docs = await db
+      .collection(collection.name)
+      .find(
+        collection.scoped
+          ? { userId: SEED_USER.id }
+          : { _id: SEED_USER.id as never },
+        { projection: { _id: 1, [collection.tombstone]: 1 } },
+      )
+      .sort({ _id: 1 })
+      .toArray();
+    for (const doc of docs) {
+      rows.push({
+        collection: collection.name,
+        id: String(doc._id),
+        touched: doc[collection.tombstone] != null,
+      });
+    }
+  }
+
+  const start = referenceDay.minus({ days: SYNC_SPREAD.startsDaysAgo });
+  const end = referenceDay.minus({ days: SYNC_SPREAD.endsDaysAgo });
+  const step = end.diff(start).milliseconds / Math.max(1, rows.length);
+  const stamped = rows.map((row, i) => {
+    const created = start.plus({ milliseconds: Math.round(i * step) });
+    return {
+      ...row,
+      created,
+      updated: row.touched
+        ? created.plus({ hours: SYNC_SPREAD.touchedAfterHours })
+        : created,
+    };
+  });
+
+  // The shared instant is taken from untouched rows: an archived or deleted
+  // one is stamped later than it was created, which would split the group.
+  const group = stamped
+    .filter((row) => !row.touched)
+    .slice(-SYNC_SPREAD.sharedInstantRows);
+  const sharedInstant = group[0]?.created ?? start;
+  for (const row of group) {
+    row.created = sharedInstant;
+    row.updated = sharedInstant;
+  }
+
+  const writes = new Map<
+    string,
+    { id: string; created: Date; updated: Date }[]
+  >();
+  for (const row of stamped) {
+    const batch = writes.get(row.collection) ?? [];
+    batch.push({
+      id: row.id,
+      created: row.created.toJSDate(),
+      updated: row.updated.toJSDate(),
+    });
+    writes.set(row.collection, batch);
+  }
+
+  for (const [collection, batch] of writes) {
+    await db.collection(collection).bulkWrite(
+      batch.map((row) => ({
+        updateOne: {
+          filter: { _id: row.id as never },
+          update: { $set: { createdAt: row.created, updatedAt: row.updated } },
+        },
+      })),
+    );
+  }
+
+  const tombstones = {
+    accounts: 0,
+    categories: 0,
+    budgets: 0,
+    transactions: 0,
+  };
+  for (const collection of FEED_COLLECTIONS) {
+    if (!(collection.name in tombstones)) continue;
+    tombstones[collection.name as keyof typeof tombstones] = await db
+      .collection(collection.name)
+      .countDocuments({
+        userId: SEED_USER.id,
+        [collection.tombstone]: { $ne: null },
+      });
+  }
+
+  const updatedAt = stamped.map((row) => row.updated.toMillis());
+  const inUserZone = (millis: number): string =>
+    DateTime.fromMillis(millis).setZone(SEED_USER.timezone).toISO() as string;
+  return {
+    from: inUserZone(Math.min(...updatedAt)),
+    to: inUserZone(Math.max(...updatedAt)),
+    rows: rows.length,
+    sharedInstant: sharedInstant.toISO() as string,
+    sharedInstantRows: group.length,
+    tombstones,
+  };
 }
 
 /** Reads the data back and refuses to hand the frontend a drifted fixture. */
@@ -523,6 +697,7 @@ async function verify(
   statsService: StatsService,
   month: DateTime,
   lastDay: number,
+  sync: SyncSpread,
 ): Promise<void> {
   const failures: string[] = [];
 
@@ -562,6 +737,8 @@ async function verify(
     );
   }
 
+  failures.push(...(await syncFailures(sync)));
+
   if (failures.length > 0) {
     throw new Error(
       `Seed verification failed — the dataset and the API disagree:\n  ${failures.join("\n  ")}`,
@@ -570,6 +747,78 @@ async function verify(
   console.log(
     `Verified: ${ACCOUNTS.length} balances, the month total (${expected}) and ${sessionCount} sessions.`,
   );
+  console.log(
+    `Sync-ready: ${sync.rows} rows stamped from ${sync.from} to ${sync.to}, ` +
+      `${sync.sharedInstantRows} sharing ${sync.sharedInstant}, tombstones ` +
+      `${JSON.stringify(sync.tombstones)}.`,
+  );
+}
+
+/**
+ * The checks that make the seed usable by the change feed. Read back from the
+ * database, not from the plan: what matters is what a `since` would actually
+ * see.
+ */
+async function syncFailures(sync: SyncSpread): Promise<string[]> {
+  const db = mongoose.connection.db;
+  if (!db) return ["No database handle to verify the sync spread"];
+  const failures: string[] = [];
+
+  for (const [entity, count] of Object.entries(sync.tombstones)) {
+    if (count < 1) {
+      failures.push(
+        `${entity}: no archived or deleted row for the change feed`,
+      );
+    }
+  }
+
+  const instants = new Set<number>();
+  let inTheFuture = 0;
+  const now = Date.now();
+  for (const collection of FEED_COLLECTIONS) {
+    const docs = await db
+      .collection(collection.name)
+      .find(
+        collection.scoped
+          ? { userId: SEED_USER.id }
+          : { _id: SEED_USER.id as never },
+        { projection: { updatedAt: 1 } },
+      )
+      .toArray();
+    for (const doc of docs) {
+      const at = (doc.updatedAt as Date).getTime();
+      instants.add(at);
+      if (at > now) inTheFuture += 1;
+    }
+  }
+
+  if (instants.size < 2) {
+    failures.push(
+      `every row shares one updatedAt: a \`since\` cannot tell them apart`,
+    );
+  }
+  if (inTheFuture > 0) {
+    // The feed's cursor lands 60 s behind the server clock, so a row stamped
+    // ahead of now would never come back through it.
+    failures.push(`${inTheFuture} rows are stamped in the future`);
+  }
+
+  const total = await db
+    .collection("transactions")
+    .countDocuments({ userId: SEED_USER.id });
+  const midpoint = new Date(
+    (new Date(sync.from).getTime() + new Date(sync.to).getTime()) / 2,
+  );
+  const after = await db
+    .collection("transactions")
+    .countDocuments({ userId: SEED_USER.id, updatedAt: { $gt: midpoint } });
+  if (after === 0 || after === total) {
+    failures.push(
+      `a since in the middle of the window returns ${after} of ${total} transactions: the spread is not a spread`,
+    );
+  }
+
+  return failures;
 }
 
 async function main(): Promise<void> {

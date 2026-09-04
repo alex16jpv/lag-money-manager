@@ -11,11 +11,14 @@ npm run test:watch
 
 # Run tests with coverage report
 npm run test:coverage
+
+# The suite that needs a real database (not part of `npm run ci`)
+npm run test:mongo
 ```
 
 All test commands include `--forceExit --detectOpenHandles` flags to ensure clean termination.
 
-The suite is **374 tests across 20 files** and runs in a few seconds — no database, no network.
+The default suite runs in a few seconds with no database and no network: the repositories are mocked. The exceptions are `scripts/seedTest.test.ts`, which drives the real seed and reports its checks as skipped when no local MongoDB answers, and the `mongo/` suite below, which is excluded from `npm test` altogether.
 
 ## The CI Gate
 
@@ -29,6 +32,7 @@ That is exactly what `.github/workflows/ci.yml` runs, in order:
 npm run typecheck        # tsc --noEmit over src/
 npm run typecheck:tests  # tsc -p tsconfig.test.json (tests are type-checked separately)
 npm run lint             # eslint src/
+npm run format:check     # prettier --check "src/**/*.ts"
 npm test                 # jest
 ```
 
@@ -71,7 +75,25 @@ src/__tests__/
 
 **Naming convention:** `[OriginalFileName].test.ts`
 
-**Test discovery pattern:** `**/__tests__/**/*.test.ts` (configured in `jest.config.js`)
+**Test discovery pattern:** `**/__tests__/**/*.test.ts`, minus `*.mongo.test.ts` (configured in `jest.config.js`)
+
+## The mongod-backed suite
+
+```bash
+docker compose up -d mongo
+npm run test:mongo          # jest -c jest.mongo.config.js
+```
+
+`src/__tests__/mongo/*.mongo.test.ts` runs against a **real** local MongoDB and is kept out of `npm test`, and so out of `npm run ci`, because CI has no database. Two files:
+
+| File | What it holds |
+| --- | --- |
+| `parityFixtures.mongo.test.ts` | Checks the API's figures against `auditoria/offline-fixtures/*.json` — balances, per-category and per-day buckets, tag buckets, budget windows and `spent`, and the pending summary, across three timezones and currencies. |
+| `offlineWrites.mongo.test.ts` | The write paths an offline client walks: an exact replay, a batch that half landed, an id colliding with another user's, a stale `If-Match`, ten guarded writes with one conflict, a movement against an account archived elsewhere, one filed under a category archived online, and a device whose clock runs ahead. |
+
+Mocks cannot cover any of it. `$dateToString` with a timezone, `$facet`, the tag `$unwind`, the partial unique indexes behind the replay rules and the rollback of a Mongo transaction are the behaviour under test.
+
+The suite **drops its database** on the way in and on the way out, so it refuses to start against anything but `localhost` — `src/__tests__/mongo/env.setup.ts` checks the host before any module loads, and the app never reads `.env`, whose `MONGO_URI` points at the real cluster. Point it elsewhere with `MONGO_TEST_URI`.
 
 ## What Is Tested
 

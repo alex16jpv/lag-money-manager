@@ -15,6 +15,7 @@ import {
   QUICK_ADDS,
   REFERENCE_MONTH_EXPENSES,
   SEED_USER,
+  SyncSpread,
   UNCATEGORIZED_TOTAL,
 } from "./seed-test.data";
 
@@ -41,6 +42,8 @@ export async function writeSeedOutput(args: {
   categoryId: (key: string) => string;
   accountId: (key: string) => string;
   transactionCount: number;
+  deletedTransactionCount: number;
+  sync: SyncSpread;
 }): Promise<Record<string, unknown>> {
   const categoryTotals = Object.fromEntries(
     Object.entries(REFERENCE_MONTH_EXPENSES).map(([key, group]) => [
@@ -92,8 +95,12 @@ export async function writeSeedOutput(args: {
       familyId: d.familyId,
       userAgent: d.userAgent,
     })),
+    // What makes the dataset usable by `GET /sync/changes`: when the rows were
+    // last touched, and which of them are tombstones.
+    sync: args.sync,
     totals: {
       transactions: args.transactionCount,
+      deletedTransactions: args.deletedTransactionCount,
       monthSpending: monthTotal,
       byCategory: { ...categoryTotals, uncategorized: UNCATEGORIZED_TOTAL },
       quickAdds: QUICK_ADDS.length,
