@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from "uuid";
 
 import { Transaction } from "../../../domain/entities/Transaction";
 import {
+  ChangedTransaction,
   ITransactionRepository,
   SpendingQuery,
   SpendingResult,
@@ -17,11 +18,13 @@ import {
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
 import {
   ITransactionDocument,
   TransactionModel,
 } from "../../models/TransactionModel";
+import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
 
 export class TransactionRepository implements ITransactionRepository {
   private toEntity(doc: ITransactionDocument): Transaction {
@@ -121,6 +124,20 @@ export class TransactionRepository implements ITransactionRepository {
       ...page,
       summary: { totalAmount: fromCents(summary[0]?.totalAmount ?? 0) },
     };
+  }
+
+  async changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<ChangedTransaction[]> {
+    const docs = await TransactionModel.find(changesSinceFilter(userId, cursor))
+      .sort(CHANGE_FEED_SORT)
+      .limit(limit)
+      .lean();
+    return docs.map((doc) =>
+      Object.assign(this.toEntity(doc), { deletedAt: doc.deletedAt ?? null }),
+    );
   }
 
   async getOwnById(id: string, userId: string): Promise<Transaction | null> {

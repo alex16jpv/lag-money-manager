@@ -110,6 +110,10 @@ TransactionSchema.index(
   { partialFilterExpression: { pendingDetails: true, deletedAt: null } },
 );
 
+// Offline change feed: keyset pagination over (updatedAt, _id), archived and
+// deleted rows included — the client learns of a disappearance no other way.
+TransactionSchema.index({ userId: 1, updatedAt: 1, _id: 1 });
+
 export const TransactionModel = mongoose.model<ITransactionDocument>(
   MODEL_NAMES.TRANSACTION,
   TransactionSchema,

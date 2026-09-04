@@ -1,31 +1,20 @@
 import bcryptjs from "bcryptjs";
 
-import { User } from "../../domain/entities/User";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
-import { UpdateUserDTO, UserResponseDTO } from "../dtos/UserDTO";
+import {
+  toUserResponse,
+  UpdateUserDTO,
+  UserResponseDTO,
+} from "../dtos/UserDTO";
 
 export class UserService {
   constructor(
     private repo: IUserRepository,
     private accountRepo: IAccountRepository,
   ) {}
-
-  private toResponseDTO(user: User): UserResponseDTO {
-    return {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      timezone: user.timezone,
-      currency: user.currency,
-      locale: user.locale,
-      lastLoginAt: user.lastLoginAt,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
-  }
 
   async getUserById(id: string, userId: string): Promise<UserResponseDTO> {
     if (id !== userId) {
@@ -35,7 +24,7 @@ export class UserService {
     if (!user) {
       throw new ApiError("NotFound", "User not found");
     }
-    return this.toResponseDTO(user);
+    return toUserResponse(user);
   }
 
   async updateUser(
@@ -102,12 +91,12 @@ export class UserService {
       };
       // Atomic bump: a concurrent logout-all must never lose a revocation.
       const updated = await this.repo.updateWithTokenBump(id, securedDto);
-      return this.toResponseDTO(updated);
+      return toUserResponse(updated);
     }
 
     const { currentPassword: _ignored, ...fields } = dto;
     const updated = await this.repo.update(id, fields);
-    return this.toResponseDTO(updated);
+    return toUserResponse(updated);
   }
 
   async deleteUser(id: string, userId: string): Promise<void> {

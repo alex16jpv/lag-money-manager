@@ -1,5 +1,6 @@
 import { BudgetPeriodType, BudgetType } from "../../../shared/constants";
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { Budget } from "../../entities/Budget";
 import { IRepository } from "../IRepository";
 
@@ -36,6 +37,15 @@ export interface IBudgetRepository extends IRepository<Budget> {
 
   // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
   getOwnById(id: string, userId: string): Promise<Budget | null>;
+
+  // Offline change feed: everything the user touched after `cursor`, in
+  // `(updatedAt, _id)` order, ARCHIVED AND DELETED ROWS INCLUDED — a client
+  // that only sees live rows never learns that something disappeared.
+  changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<Budget[]>;
 
   // Unlike getById, also resolves archived budgets (uniform semantics:
   // archived resources stay readable; writes reject with RESOURCE_ARCHIVED).

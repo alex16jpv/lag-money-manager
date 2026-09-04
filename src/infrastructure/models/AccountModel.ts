@@ -70,6 +70,10 @@ AccountSchema.index(
   },
 );
 
+// Offline change feed: keyset pagination over (updatedAt, _id), archived and
+// deleted rows included — the client learns of a disappearance no other way.
+AccountSchema.index({ userId: 1, updatedAt: 1, _id: 1 });
+
 export const AccountModel = mongoose.model<IAccountDocument>(
   MODEL_NAMES.ACCOUNT,
   AccountSchema,

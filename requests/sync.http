@@ -1,0 +1,102 @@
+### ==========================================================
+### SYNC — tirón incremental y snapshot inicial (mirror offline)
+### Un solo endpoint: sin `since` ni `cursor` = snapshot completo.
+### Trae ARCHIVADOS y BORRADOS (archivedAt / deletedAt): es la única
+### forma de que el cliente se entere de que algo desapareció.
+### Orden (updatedAt, _id); `limit` cuenta filas de TODAS las entidades.
+### El `nextCursor` de un tirón terminado va 60 s por detrás de
+### `serverTime` a propósito: `updatedAt` lo estampa la app, no la BD.
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+
+@token = {{login.response.body.accessToken}}
+
+### Snapshot completo (primer arranque del cliente)
+# @name snapshot
+GET {{baseUrl}}/sync/changes
+Authorization: Bearer {{token}}
+
+###
+
+@nextCursor = {{snapshot.response.body.pagination.nextCursor}}
+
+### Tirón incremental: el nextCursor del anterior, tal cual
+GET {{baseUrl}}/sync/changes?cursor={{nextCursor}}
+Authorization: Bearer {{token}}
+
+### Página pequeña para ver el paginado (hasMore = true)
+# @name firstPage
+GET {{baseUrl}}/sync/changes?limit=2
+Authorization: Bearer {{token}}
+
+###
+
+@pageCursor = {{firstPage.response.body.pagination.nextCursor}}
+
+### Segunda página — no repite ni se salta filas en el borde
+GET {{baseUrl}}/sync/changes?limit=2&cursor={{pageCursor}}
+Authorization: Bearer {{token}}
+
+### Por fecha en vez de cursor: `since` es EXCLUSIVO
+GET {{baseUrl}}/sync/changes?since=2026-01-01T00:00:00.000Z
+Authorization: Bearer {{token}}
+
+### Acepta offset ISO (mismo instante que el de arriba en Bogotá)
+GET {{baseUrl}}/sync/changes?since=2025-12-31T19:00:00-05:00
+Authorization: Bearer {{token}}
+
+### Si llegan los dos, gana `cursor` (es la posición más precisa)
+GET {{baseUrl}}/sync/changes?since=1999-01-01T00:00:00.000Z&cursor={{nextCursor}}
+Authorization: Bearer {{token}}
+
+### Archivar una cuenta y volver a tirar: aparece con archivedAt
+### (crea la cuenta, archívala, y pide los cambios desde antes)
+# @name syncAcc
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Sync demo {{$randomInt 100 999}}", "type": "CASH", "balance": 10 }
+
+###
+
+@syncAccId = {{syncAcc.response.body.id}}
+
+### Archivarla
+DELETE {{baseUrl}}/accounts/{{syncAccId}}
+Authorization: Bearer {{token}}
+
+### Ahora aparece en el feed con archivedAt != null
+GET {{baseUrl}}/sync/changes?since=2026-01-01T00:00:00.000Z
+Authorization: Bearer {{token}}
+
+### ---------- Casos de error ----------
+
+### Cursor ilegible (400, code INVALID_CURSOR) — NO devuelve la página 1
+GET {{baseUrl}}/sync/changes?cursor=no-es-un-cursor
+Authorization: Bearer {{token}}
+
+### limit por encima del techo (400, code VALIDATION, field "limit")
+GET {{baseUrl}}/sync/changes?limit=5000
+Authorization: Bearer {{token}}
+
+### limit 0 (400, code VALIDATION)
+GET {{baseUrl}}/sync/changes?limit=0
+Authorization: Bearer {{token}}
+
+### since sin hora (400, code VALIDATION)
+GET {{baseUrl}}/sync/changes?since=2026-01-01
+Authorization: Bearer {{token}}
+
+### Sin token (401)
+GET {{baseUrl}}/sync/changes

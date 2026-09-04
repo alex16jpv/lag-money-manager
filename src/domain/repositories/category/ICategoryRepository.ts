@@ -1,4 +1,5 @@
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { Category } from "../../entities/Category";
 import { IRepository } from "../IRepository";
 
@@ -30,6 +31,15 @@ export interface ICategoryRepository extends IRepository<Category> {
   ): Promise<PaginatedResult<Category>>;
   // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
   getOwnById(id: string, userId: string): Promise<Category | null>;
+
+  // Offline change feed: everything the user touched after `cursor`, in
+  // `(updatedAt, _id)` order, ARCHIVED AND DELETED ROWS INCLUDED — a client
+  // that only sees live rows never learns that something disappeared.
+  changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<Category[]>;
   // Unlike getById, also resolves archived categories (callers decide the policy).
   getByIdIncludingArchived(id: string): Promise<Category | null>;
   // Duplicate-tolerant: skips (userId,name) duplicates, inserts the rest.

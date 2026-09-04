@@ -37,6 +37,9 @@ describe("OpenAPI response views", () => {
     "StatsBucket",
     "StatsResponse",
     "ErrorResponse",
+    "SyncTransaction",
+    "SyncBudget",
+    "SyncChangesResponse",
   ])("%s declares which fields are always present", (name) => {
     const v = view(name);
     expect(v.required).toBeDefined();
@@ -86,6 +89,21 @@ describe("OpenAPI response views", () => {
   it("leaves no list response defined inline in a route", () => {
     const inline = JSON.stringify(spec.paths).match(/"properties":\{"data":/g);
     expect(inline).toBeNull();
+  });
+
+  // The change feed is the only place a client is told something disappeared,
+  // so the two tombstone fields cannot be optional downstream.
+  it("keeps the sync feed's tombstones mandatory", () => {
+    expect(view("SyncTransaction").required).toContain("deletedAt");
+    expect(view("SyncBudget").required).toContain("archivedAt");
+  });
+
+  it("derives SyncTransaction from the Transaction view instead of copying it", () => {
+    const tx = Object.keys(view("Transaction").properties);
+    expect(Object.keys(view("SyncTransaction").properties)).toEqual([
+      ...tx,
+      "deletedAt",
+    ]);
   });
 
   it("publishes the error codes as an enum the frontend can derive", () => {

@@ -35,6 +35,7 @@ const createBudgetRepo = (): jest.Mocked<IBudgetRepository> =>
     getById: jest.fn(),
     getByIdIncludingArchived: jest.fn(),
     getOwnById: jest.fn(),
+    changesSince: jest.fn().mockResolvedValue([]),
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),

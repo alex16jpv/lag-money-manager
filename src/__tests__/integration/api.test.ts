@@ -33,6 +33,7 @@ const mockAccountRepo: jest.Mocked<IAccountRepository> = {
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
   getOwnById: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -50,6 +51,7 @@ const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
   getOwnById: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   createMany: jest.fn(),
   listSeedKeys: jest.fn().mockResolvedValue([]),
@@ -65,6 +67,7 @@ const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getOwnById: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -81,6 +84,7 @@ const mockBudgetRepo = {
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
   getOwnById: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -1749,6 +1753,141 @@ describe("Integration Tests", () => {
         periodKey: expect.any(String),
       });
       expect(mockBudgetRepo.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==================== Incremental sync feed (O-B3) ====================
+  describe("GET /sync/changes", () => {
+    const SNAPSHOT_CURSOR = undefined;
+
+    beforeEach(() => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+      mockAccountRepo.changesSince.mockResolvedValue([testAccount]);
+      mockCategoryRepo.changesSince.mockResolvedValue([testCategory]);
+      mockTransactionRepo.changesSince.mockResolvedValue([
+        Object.assign(testTransaction, { deletedAt: null }),
+      ]);
+      mockBudgetRepo.changesSince.mockResolvedValue([]);
+    });
+
+    it("returns a full snapshot when no position is given", async () => {
+      const res = await request(app)
+        .get("/sync/changes")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body.changes)).toEqual([
+        "user",
+        "accounts",
+        "categories",
+        "transactions",
+        "budgets",
+      ]);
+      expect(res.body.changes.user.id).toBe(testUser.id);
+      expect(res.body.changes.user.password).toBeUndefined();
+      expect(res.body.serverTime).toEqual(expect.any(String));
+      expect(mockAccountRepo.changesSince).toHaveBeenCalledWith(
+        testUser.id,
+        SNAPSHOT_CURSOR,
+        201,
+      );
+    });
+
+    it("turns ?since= into an exclusive lower bound on updatedAt", async () => {
+      const res = await request(app)
+        .get("/sync/changes?since=2026-05-01T00:00:00.000Z")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(mockAccountRepo.changesSince).toHaveBeenCalledWith(
+        testUser.id,
+        { updatedAt: new Date("2026-05-01T00:00:00.000Z"), id: null },
+        201,
+      );
+    });
+
+    it("lets the cursor win over ?since=: it is the more precise position", async () => {
+      const first = await request(app)
+        .get("/sync/changes?limit=1")
+        .set("Authorization", `Bearer ${token}`);
+      const cursor = first.body.pagination.nextCursor as string;
+
+      const res = await request(app)
+        .get(`/sync/changes?since=1999-01-01T00:00:00.000Z&cursor=${cursor}`)
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      const calls = mockAccountRepo.changesSince.mock.calls;
+      const passed = calls[calls.length - 1]?.[1];
+      expect(passed?.updatedAt.getFullYear()).not.toBe(1999);
+    });
+
+    // Serving page one for a cursor the server cannot read is how a client
+    // silently loops over the same rows forever.
+    it("rejects an unreadable cursor with 400 INVALID_CURSOR", async () => {
+      const res = await request(app)
+        .get("/sync/changes?cursor=not-a-real-cursor")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("INVALID_CURSOR");
+      expect(mockAccountRepo.changesSince).not.toHaveBeenCalled();
+    });
+
+    it("rejects a limit past the ceiling instead of silently clamping it", async () => {
+      const res = await request(app)
+        .get("/sync/changes?limit=5000")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+      expect(res.body.details[0].field).toBe("limit");
+    });
+
+    it("reports deletions and archives, which no other endpoint does", async () => {
+      mockAccountRepo.changesSince.mockResolvedValue([
+        new Account({
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac79",
+          name: "Old wallet",
+          type: "CASH",
+          balance: 0,
+          userId: testUser.id,
+          archivedAt: new Date("2026-02-01"),
+          updatedAt: new Date("2026-02-01"),
+        }),
+      ]);
+      mockTransactionRepo.changesSince.mockResolvedValue([
+        Object.assign(
+          new Transaction({
+            id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac78",
+            type: "EXPENSE",
+            amount: 5,
+            date: new Date("2026-02-01"),
+            fromAccountId: testAccount.id,
+            userId: testUser.id,
+            updatedAt: new Date("2026-02-02"),
+          }),
+          { deletedAt: new Date("2026-02-02") },
+        ),
+      ]);
+
+      const res = await request(app)
+        .get("/sync/changes")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.changes.accounts[0].archivedAt).toBe(
+        new Date("2026-02-01").toISOString(),
+      );
+      expect(res.body.changes.transactions[0].deletedAt).toBe(
+        new Date("2026-02-02").toISOString(),
+      );
+    });
+
+    it("requires authentication", async () => {
+      const res = await request(app).get("/sync/changes");
+
+      expect(res.status).toBe(401);
     });
   });
 });

@@ -49,6 +49,10 @@ CategorySchema.index(
   },
 );
 
+// Offline change feed: keyset pagination over (updatedAt, _id), archived and
+// deleted rows included — the client learns of a disappearance no other way.
+CategorySchema.index({ userId: 1, updatedAt: 1, _id: 1 });
+
 export const CategoryModel = mongoose.model<ICategoryDocument>(
   MODEL_NAMES.CATEGORY,
   CategorySchema,

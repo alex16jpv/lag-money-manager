@@ -338,6 +338,60 @@ const responseViews = {
   }),
 };
 
+// Sync-only views. Separate from responseViews because SyncTransaction is
+// derived from the Transaction view and cannot read it while it is still
+// being built.
+const syncViews = {
+  SyncTransaction: withRequired({
+    type: "object",
+    description:
+      "A transaction in the change feed: the usual shape plus the tombstone.",
+    properties: {
+      ...responseViews.Transaction.properties,
+      deletedAt: {
+        ...nullableDateTime,
+        description:
+          "Set when the transaction was deleted. Only the sync feed reports " +
+          "it: everywhere else a deleted transaction simply stops existing.",
+      },
+    },
+  }),
+  SyncBudget: withRequired({
+    type: "object",
+    description:
+      "A budget as STORED, not the view GET /budgets returns: no periodKey, " +
+      "no window and no spent. Those depend on a reference date and on the " +
+      "transactions, so the client derives them from what it already holds.",
+    properties: {
+      id: uuid,
+      name: { type: "string" },
+      color: enumOf(COLORS),
+      categoryIds: {
+        type: "array",
+        items: uuid,
+        description: "Empty array = global budget (all spending counts).",
+      },
+      type: enumOf(BUDGET_TYPES),
+      currency: { type: "string", example: "COP" },
+      amount: { ...money, description: "Base amount, before any override." },
+      amountOverrides: {
+        type: "object",
+        additionalProperties: money,
+        description: 'Period key (e.g. "2026-12") to the amount for it.',
+      },
+      periodType: enumOf(BUDGET_PERIOD_TYPES),
+      periodStartDate: nullableDateTime,
+      periodEndDate: nullableDateTime,
+      effectiveFrom: nullableDateTime,
+      note: { type: "string", nullable: true },
+      userId: uuid,
+      archivedAt: nullableDateTime,
+      createdAt: dateTime,
+      updatedAt: dateTime,
+    },
+  }),
+};
+
 const listOf = (ref: string): object =>
   withRequired({
     type: "object",
@@ -353,6 +407,65 @@ const dataOf = (items: object): object =>
     type: "object",
     properties: { data: { type: "array", items } },
   });
+
+/**
+ * The change feed's envelope. `nextCursor` is never null: a finished run still
+ * hands back the watermark for the next one (60 s behind `serverTime`, see the
+ * route's description).
+ */
+const syncChangesResponse = withRequired({
+  type: "object",
+  properties: {
+    serverTime: {
+      ...dateTime,
+      description: "The server's clock when the page was read.",
+    },
+    changes: withRequired({
+      type: "object",
+      properties: {
+        user: {
+          allOf: [{ $ref: "#/components/schemas/User" }],
+          nullable: true,
+          description: "Null when the profile did not change in this page.",
+        },
+        accounts: {
+          type: "array",
+          items: { $ref: "#/components/schemas/Account" },
+        },
+        categories: {
+          type: "array",
+          items: { $ref: "#/components/schemas/Category" },
+        },
+        transactions: {
+          type: "array",
+          items: { $ref: "#/components/schemas/SyncTransaction" },
+        },
+        budgets: {
+          type: "array",
+          items: { $ref: "#/components/schemas/SyncBudget" },
+        },
+      },
+    }),
+    pagination: withRequired({
+      type: "object",
+      properties: {
+        limit: { type: "integer" },
+        count: {
+          type: "integer",
+          description: "Rows in this page, all entities together.",
+        },
+        hasMore: { type: "boolean" },
+        nextCursor: {
+          type: "string",
+          description:
+            "Opaque. Send it back verbatim: as `cursor` to keep paging while " +
+            "`hasMore`, and as the starting `cursor` of the next pull once it " +
+            "is false.",
+        },
+      },
+    }),
+  },
+});
 
 /**
  * The 409 of a guarded write: the error, plus the resource as the server has it
@@ -407,6 +520,8 @@ const options: swaggerJsdoc.Options = {
       schemas: {
         ...requestBodies,
         ...responseViews,
+        ...syncViews,
+        SyncChangesResponse: syncChangesResponse,
         AccountList: listOf("Account"),
         CategoryList: listOf("Category"),
         TransactionList: {

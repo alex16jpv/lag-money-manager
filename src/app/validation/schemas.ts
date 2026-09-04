@@ -14,6 +14,7 @@ import { CATEGORY_ICONS } from "../../shared/icons";
 import { Locale, LOCALES } from "../../shared/locale";
 import { MAX_AMOUNT } from "../../shared/money";
 import { MAX_LIMIT } from "../../shared/pagination";
+import { SYNC_MAX_LIMIT } from "../../shared/syncCursor";
 import { isValidTimeZone } from "../../shared/timezone";
 
 const timezoneField = z
@@ -464,6 +465,28 @@ export const budgetAmountOverrideSchema = z.object({
  * the same request is the only way out that does not force the user to go and
  * edit the *other* resource first.
  */
+// The offline change feed. `since` and `cursor` are two ways of naming the same
+// position: `cursor` wins when both arrive, because it is the more precise one
+// (it can point inside an instant, `since` cannot).
+export const syncChangesSchema = z.object({
+  query: z.object({
+    since: z
+      .string()
+      .datetime({
+        offset: true,
+        message: "since must be a valid ISO 8601 date",
+      })
+      .optional(),
+    cursor: z.string().min(1).max(512).optional(),
+    limit: z.coerce
+      .number()
+      .int("Limit must be an integer")
+      .min(1, "Limit must be at least 1")
+      .max(SYNC_MAX_LIMIT, `Limit must be at most ${SYNC_MAX_LIMIT}`)
+      .optional(),
+  }),
+});
+
 export const restoreSchema = z.object({
   params: z.object({
     id: z.string().uuid("ID must be a valid UUID"),

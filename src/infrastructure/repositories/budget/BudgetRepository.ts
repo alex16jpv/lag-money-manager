@@ -13,8 +13,10 @@ import {
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
 import { BudgetModel, IBudgetDocument } from "../../models/BudgetModel";
+import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
 
 export class BudgetRepository implements IBudgetRepository {
   private toEntity(doc: IBudgetDocument): Budget {
@@ -66,6 +68,18 @@ export class BudgetRepository implements IBudgetRepository {
   async getById(id: string): Promise<Budget | null> {
     const doc = await BudgetModel.findOne({ _id: id, archivedAt: null }).lean();
     return doc ? this.toEntity(doc) : null;
+  }
+
+  async changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<Budget[]> {
+    const docs = await BudgetModel.find(changesSinceFilter(userId, cursor))
+      .sort(CHANGE_FEED_SORT)
+      .limit(limit)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
   }
 
   async getOwnById(id: string, userId: string): Promise<Budget | null> {

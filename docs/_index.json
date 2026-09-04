@@ -202,6 +202,14 @@
       "mustReadFirst": false
     },
     {
+      "path": "docs/modules/sync.md",
+      "title": "Sync Module",
+      "description": "Sync module: GET /sync/changes, the incremental change feed and initial snapshot that feeds the offline mirror, tombstones included.",
+      "tags": ["module", "sync", "offline", "pagination", "cursor"],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
       "path": "docs/examples/full-module-walkthrough.md",
       "title": "Full Module Walkthrough",
       "description": "Step-by-step tutorial building the Transactions module — the most representative module in the project.",

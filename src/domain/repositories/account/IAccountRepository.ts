@@ -1,4 +1,5 @@
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
 import { Account } from "../../entities/Account";
 import { IRepository } from "../IRepository";
@@ -26,6 +27,15 @@ export interface IAccountRepository extends IRepository<Account> {
 
   // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
   getOwnById(id: string, userId: string): Promise<Account | null>;
+
+  // Offline change feed: everything the user touched after `cursor`, in
+  // `(updatedAt, _id)` order, ARCHIVED AND DELETED ROWS INCLUDED — a client
+  // that only sees live rows never learns that something disappeared.
+  changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<Account[]>;
   // Unlike getById, also resolves archived accounts (read paths only).
   getByIdIncludingArchived(id: string): Promise<Account | null>;
 

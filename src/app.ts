@@ -15,6 +15,7 @@ import authRoutes from "./app/routes/authRoutes";
 import budgetRoutes from "./app/routes/budgetRoutes";
 import categoryRoutes from "./app/routes/categoryRoutes";
 import statsRoutes from "./app/routes/statsRoutes";
+import syncRoutes from "./app/routes/syncRoutes";
 import transactionRoutes from "./app/routes/transactionRoutes";
 import userRoutes from "./app/routes/userRoutes";
 import { pingDatabase } from "./config/dbHealth";
@@ -95,6 +96,7 @@ app.use("/categories", apiLimiter, categoryRoutes);
 app.use("/transactions", apiLimiter, transactionRoutes);
 app.use("/budgets", apiLimiter, budgetRoutes);
 app.use("/stats", apiLimiter, statsRoutes);
+app.use("/sync", apiLimiter, syncRoutes);
 
 app.use(errorMiddleware);
 

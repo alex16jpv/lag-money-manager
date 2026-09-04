@@ -12,8 +12,10 @@ import {
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession, withTransaction } from "../../../shared/unitOfWork";
 import { AccountModel, IAccountDocument } from "../../models/AccountModel";
+import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
 
 export class AccountRepository implements IAccountRepository {
   private toEntity(doc: IAccountDocument): Account {
@@ -80,6 +82,18 @@ export class AccountRepository implements IAccountRepository {
       .lean();
     if (!doc) return null;
     return this.toEntity(doc);
+  }
+
+  async changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<Account[]> {
+    const docs = await AccountModel.find(changesSinceFilter(userId, cursor))
+      .sort(CHANGE_FEED_SORT)
+      .limit(limit)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
   }
 
   async getOwnById(id: string, userId: string): Promise<Account | null> {
