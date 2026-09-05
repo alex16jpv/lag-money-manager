@@ -1,17 +1,16 @@
 /**
- * Builds `auditoria/offline-fixtures/` from the scenarios: `npm run fixtures:offline`.
+ * Builds `fixtures/offline/` from the scenarios: `npm run fixtures:offline`.
  *
- * The directory lives outside both repositories on purpose — it is the shared
- * contract, read by the backend's parity test and by the frontend's derive
- * tests (O-F3) — so it is fully regenerable from here. Nothing is hand-edited
- * there.
+ * That directory is the committed contract between the backend's aggregations
+ * and the frontend's local derivations (O-F3). The backend's mongod suite
+ * reads it; the frontend vendors it verbatim (`npm run fixtures:sync` there).
+ * Nothing in it is hand-edited: `npm run fixtures:check` rebuilds into memory
+ * and fails when the committed files differ, so a rule changed here travels
+ * with its fixture in the same commit (offline plan, invariant 6).
  *
- * The output is byte-stable: no timestamps, no ids that move between runs. A
- * rebuild that changes a file means a rule changed, and invariant 6 of the
- * offline contract says the fixture travels in that same commit.
+ * The output is byte-stable: no timestamps, no ids that move between runs.
  */
-import "dotenv/config";
-
+import { existsSync, readdirSync, readFileSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
 import { DateTime } from "luxon";
 import { join } from "path";
@@ -34,11 +33,8 @@ import {
   Scenario,
 } from "./types";
 
-/* eslint-disable no-console -- a CLI script reports to its operator */
-
-const OUT_DIR =
-  process.env.OFFLINE_FIXTURES_DIR ??
-  join(__dirname, "../../../auditoria/offline-fixtures");
+export const OUT_DIR =
+  process.env.OFFLINE_FIXTURES_DIR ?? join(__dirname, "../../fixtures/offline");
 
 const GENERATED_BY =
   "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline";
@@ -241,16 +237,23 @@ function readme(fixtures: Fixture[]): string {
     "",
     "The contract between the figures the backend computes and the ones the app",
     "derives on the device with no network (`lib/local/derive`, O-F3). Each file",
-    "holds a set of rows and the figures they must produce. The backend checks",
-    "them against a real mongod in `src/__tests__/mongo/parityFixtures.mongo.test.ts`;",
-    "the frontend feeds the same file to its pure derivations. When a figure here",
-    "changes, both sides change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.",
+    "holds a set of rows and the figures they must produce. The canonical copy is",
+    "`fixtures/offline/` in lag-money-manager: `npm run fixtures:check` fails its CI",
+    "when the generator and these files disagree, and",
+    "`src/__tests__/mongo/parityFixtures.mongo.test.ts` checks the real services",
+    "against them on a real mongod. The frontend vendors the folder verbatim in",
+    "`ledger-flow/lib/local/derive/fixtures/` (`npm run fixtures:sync` there) and",
+    "feeds it to its pure derivations. When a figure here changes, both sides",
+    "change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.",
     "",
     "## The rules the figures follow",
     "",
     "- **Add in minor units.** Every amount is a decimal in the currency's own unit,",
     "  as the API prints it. Multiply by 100, round, add as integers, divide once at",
-    "  the end. Adding `0.10 + 0.20 + 19.99 + 2.30` in floats gives `22.590000000000003`.",
+    "  the end. As a running float sum, `1000 − 10.10 + 1500 − 7.77 − 100 − 3.45` is",
+    "  `2378.6800000000003`; in minor units it is `2378.68`, the `current` balance",
+    "  of `eur-madrid`. (Most short sums happen to come back exact in floats — that",
+    "  is what makes the rule easy to skip and hard to see.)",
     "- **Windows are half-open `[from, to)`** and built in the **user's timezone**. A",
     "  month is `[1st 00:00 local, next 1st 00:00 local)`; the two ends can carry",
     "  different UTC offsets across a DST change.",
@@ -272,6 +275,10 @@ function readme(fixtures: Fixture[]): string {
     "  those. Archived budgets produce no view at all.",
     "- **Balances** are `openingBalance` plus the effect of the live rows. The client",
     "  never writes a balance (invariant 2): it projects it and marks the projection.",
+    "  This is the rule, not the client's recipe: on the device the shown balance is",
+    "  the server's `balance` from the mirror plus the effect of the unsent outbox,",
+    "  and the two agree whenever the outbox is empty.",
+    "- **`pending.transactionIds` is a set.** No order is part of the contract.",
     "",
     "## Shape of a file",
     "",
@@ -302,21 +309,24 @@ function readme(fixtures: Fixture[]): string {
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
-async function main(): Promise<void> {
+export interface BuiltFile {
+  name: string;
+  body: string;
+}
+
+/** Every file of the directory, in memory: what `--check` compares and the test asserts. */
+export function buildFixtureFiles(): {
+  fixtures: Fixture[];
+  files: BuiltFile[];
+} {
   const fixtures = SCENARIOS.map((s, i) => buildFixture(s, i + 1));
-  await mkdir(OUT_DIR, { recursive: true });
-
-  for (const fixture of fixtures) {
-    await writeFile(
-      join(OUT_DIR, `${fixture.id}.json`),
-      `${JSON.stringify(fixture, null, 2)}\n`,
-      "utf8",
-    );
-  }
-
-  await writeFile(
-    join(OUT_DIR, "index.json"),
-    `${JSON.stringify(
+  const files: BuiltFile[] = fixtures.map((fixture) => ({
+    name: `${fixture.id}.json`,
+    body: `${JSON.stringify(fixture, null, 2)}\n`,
+  }));
+  files.push({
+    name: "index.json",
+    body: `${JSON.stringify(
       {
         generatedBy: GENERATED_BY,
         fixtures: fixtures.map((f) => ({
@@ -332,10 +342,51 @@ async function main(): Promise<void> {
       null,
       2,
     )}\n`,
-    "utf8",
-  );
+  });
+  files.push({ name: "README.md", body: readme(fixtures) });
+  return { fixtures, files };
+}
 
-  await writeFile(join(OUT_DIR, "README.md"), readme(fixtures), "utf8");
+/** Names of the files that differ from, are missing in, or are extra in `dir`. */
+export function driftAgainst(dir: string, files: BuiltFile[]): string[] {
+  const drift: string[] = [];
+  for (const file of files) {
+    const path = join(dir, file.name);
+    if (!existsSync(path)) drift.push(`${file.name} (missing)`);
+    else if (readFileSync(path, "utf8") !== file.body) {
+      drift.push(`${file.name} (differs)`);
+    }
+  }
+  const built = new Set(files.map((f) => f.name));
+  if (existsSync(dir)) {
+    for (const name of readdirSync(dir)) {
+      if (!built.has(name)) drift.push(`${name} (not generated)`);
+    }
+  }
+  return drift;
+}
+
+async function main(): Promise<void> {
+  const { fixtures, files } = buildFixtureFiles();
+
+  if (process.argv.includes("--check")) {
+    const drift = driftAgainst(OUT_DIR, files);
+    if (drift.length > 0) {
+      console.error(
+        `fixtures/offline is out of date with scripts/offline-fixtures:\n  ${drift.join("\n  ")}\nRun npm run fixtures:offline and commit the result.`,
+      );
+      process.exit(1);
+    }
+    console.log(
+      `fixtures/offline matches the generator (${files.length} files)`,
+    );
+    return;
+  }
+
+  await mkdir(OUT_DIR, { recursive: true });
+  for (const file of files) {
+    await writeFile(join(OUT_DIR, file.name), file.body, "utf8");
+  }
 
   console.log(`Wrote ${fixtures.length} fixtures to ${OUT_DIR}`);
   for (const f of fixtures) {
@@ -349,7 +400,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}

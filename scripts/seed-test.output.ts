@@ -4,9 +4,8 @@
  * duplicating the constants.
  */
 import { writeFile } from "fs/promises";
-import { join } from "path";
-
 import { DateTime } from "luxon";
+import { join } from "path";
 
 import {
   ACCOUNTS,

@@ -56,8 +56,6 @@ import {
 } from "./seed-test.data";
 import { writeSeedOutput } from "./seed-test.output";
 
-/* eslint-disable no-console -- a CLI script reports to its operator, not to the app log */
-
 interface PlannedTransaction {
   id: string;
   type: "EXPENSE" | "INCOME" | "TRANSFER" | "ADJUSTMENT";
@@ -519,7 +517,7 @@ export async function seed(): Promise<Record<string, unknown>> {
       );
     }
     if ("archived" in b) {
-      await budgetService.deleteBudget(b.id, SEED_USER.id);
+      await budgetService.deleteBudget(b.id, SEED_USER.id, ctx);
     }
   }
 

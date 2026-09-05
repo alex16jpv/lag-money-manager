@@ -341,7 +341,7 @@ const madrid: Scenario = {
   id: "eur-madrid",
   title: "EUR · Europe/Madrid · two decimals and the spring DST jump",
   pins: [
-    "Amounts with decimals only add up exactly in minor units: 0.10 + 0.20 + 19.99 + 2.30 is 22.59.",
+    "Amounts with decimals only add up exactly in minor units: the `current` balance, 1000 − 10.10 + 1500 − 7.77 − 100 − 3.45, drifts to 2378.6800000000003 as a float sum.",
     "A March window opens at +01:00 and closes at +02:00: its ends have different offsets.",
     "2026-03-29 is a 23-hour day — the local times 02:00–02:59 do not exist.",
     "A transaction 5 minutes into April is UTC-March: a UTC window would take it and drop the one on 1 March.",

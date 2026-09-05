@@ -1,5 +1,5 @@
 /**
- * Shapes of `auditoria/offline-fixtures/*.json` — the parity contract between
+ * Shapes of `fixtures/offline/*.json` — the parity contract between
  * the backend's aggregations and the frontend's local derivations (O-B6/O-F3).
  *
  * Two layers live here. The `Scenario*` types are how a scenario is authored

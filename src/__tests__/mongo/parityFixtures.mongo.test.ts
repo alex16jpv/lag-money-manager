@@ -1,5 +1,5 @@
 /**
- * The parity contract: `auditoria/offline-fixtures/*.json` says what the
+ * The parity contract: `fixtures/offline/*.json` says what the
  * figures are, and this checks the API against it on a real mongod.
  *
  * The expected block was produced by a second, independent reading of the
@@ -12,6 +12,8 @@
  * Mocks cannot stand in: `$dateToString` with a timezone, `$facet`, the
  * half-open windows and the tag `$unwind` are the behaviour under test.
  */
+import { join } from "path";
+
 import repositoryFactory from "../../app/factories/RepositoryFactory";
 import { SpendingQuery } from "../../domain/repositories/transaction/ITransactionRepository";
 import {
@@ -44,8 +46,8 @@ describe("offline parity fixtures", () => {
     await disconnect();
   });
 
-  it(`reads ${"the fixtures"} from the shared directory`, () => {
-    expect(fixtureDir()).toContain("offline-fixtures");
+  it("reads the fixtures from the committed directory", () => {
+    expect(fixtureDir()).toContain(join("fixtures", "offline"));
     expect(fixtures.length).toBeGreaterThan(0);
   });
 

@@ -1,0 +1,854 @@
+{
+  "id": "cop-bogota",
+  "title": "COP · America/Bogota · zero-decimal currency, fixed −05:00 offset",
+  "pins": [
+    "A day bucket is the day in the USER's timezone: 23:30 in Bogota is already tomorrow in UTC.",
+    "A month window is [first day 00:00 local, next month 00:00 local) — not a UTC month.",
+    "Deleted transactions leave every figure: totals, buckets, budgets and balances.",
+    "ADJUSTMENT moves a balance but is excluded from spending unless asked for by name.",
+    "TRANSFER moves two balances and is not spending.",
+    "An archived category keeps its totals; archiving is not deleting.",
+    "Quick-adds count as spending under `uncategorized`, and are the pending summary.",
+    "Tag buckets double-count a transaction with two tags: their sum exceeds the total.",
+    "With no `type`, the server means EXPENSE + INCOME + TRANSFER, everything but ADJUSTMENT."
+  ],
+  "generatedBy": "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline",
+  "user": {
+    "id": "01930001-0000-7000-8000-0000000u0001",
+    "timezone": "America/Bogota",
+    "currency": "COP",
+    "minorUnits": 0
+  },
+  "accounts": [
+    {
+      "key": "bank",
+      "id": "01930001-0000-7000-8000-0000000a0001",
+      "name": "Bancolombia",
+      "type": "ACCOUNT",
+      "color": "BLUE",
+      "currency": "COP",
+      "openingBalance": 1000000,
+      "isDefault": true,
+      "archivedAt": null
+    },
+    {
+      "key": "cash",
+      "id": "01930001-0000-7000-8000-0000000a0002",
+      "name": "Cash",
+      "type": "CASH",
+      "color": "GRAY",
+      "currency": "COP",
+      "openingBalance": 200000,
+      "isDefault": false,
+      "archivedAt": null
+    },
+    {
+      "key": "card",
+      "id": "01930001-0000-7000-8000-0000000a0003",
+      "name": "Visa Gold",
+      "type": "CARD",
+      "color": "PURPLE",
+      "currency": "COP",
+      "openingBalance": -500000,
+      "isDefault": false,
+      "archivedAt": null
+    },
+    {
+      "key": "savings",
+      "id": "01930001-0000-7000-8000-0000000a0004",
+      "name": "Savings",
+      "type": "SAVINGS",
+      "color": "GREEN",
+      "currency": "COP",
+      "openingBalance": 5000000,
+      "isDefault": false,
+      "archivedAt": null
+    },
+    {
+      "key": "closed",
+      "id": "01930001-0000-7000-8000-0000000a0005",
+      "name": "Nequi",
+      "type": "OTHER",
+      "color": "PINK",
+      "currency": "COP",
+      "openingBalance": 0,
+      "isDefault": false,
+      "archivedAt": "2026-08-20T12:00:00-05:00"
+    }
+  ],
+  "categories": [
+    {
+      "key": "food",
+      "id": "01930001-0000-7000-8000-0000000c0001",
+      "name": "Food",
+      "type": "EXPENSE",
+      "archivedAt": null
+    },
+    {
+      "key": "transport",
+      "id": "01930001-0000-7000-8000-0000000c0002",
+      "name": "Transport",
+      "type": "EXPENSE",
+      "archivedAt": null
+    },
+    {
+      "key": "coffee",
+      "id": "01930001-0000-7000-8000-0000000c0003",
+      "name": "Coffee",
+      "type": "EXPENSE",
+      "archivedAt": null
+    },
+    {
+      "key": "trips",
+      "id": "01930001-0000-7000-8000-0000000c0004",
+      "name": "Trips",
+      "type": "EXPENSE",
+      "archivedAt": "2026-08-20T12:00:00-05:00"
+    },
+    {
+      "key": "salary",
+      "id": "01930001-0000-7000-8000-0000000c0005",
+      "name": "Salary",
+      "type": "INCOME",
+      "archivedAt": null
+    }
+  ],
+  "transactions": [
+    {
+      "key": "late-july-groceries",
+      "id": "01930001-0000-7000-8000-0000000t0001",
+      "type": "EXPENSE",
+      "amount": 30000,
+      "date": "2026-07-31T23:30:00-05:00",
+      "description": "Corner store",
+      "categoryId": "01930001-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [
+        "groceries"
+      ],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "04:30Z on 2026-08-01: a UTC day bucket files it under August, the user under 31 July."
+    },
+    {
+      "key": "salary",
+      "id": "01930001-0000-7000-8000-0000000t0002",
+      "type": "INCOME",
+      "amount": 4000000,
+      "date": "2026-08-01T09:00:00-05:00",
+      "description": "August salary",
+      "categoryId": "01930001-0000-7000-8000-0000000c0005",
+      "fromAccountId": null,
+      "toAccountId": "01930001-0000-7000-8000-0000000a0001",
+      "tags": [],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "market",
+      "id": "01930001-0000-7000-8000-0000000t0003",
+      "type": "EXPENSE",
+      "amount": 85000,
+      "date": "2026-08-03T12:00:00-05:00",
+      "description": "Carulla groceries",
+      "categoryId": "01930001-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [
+        "groceries"
+      ],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "same-day-coffee",
+      "id": "01930001-0000-7000-8000-0000000t0004",
+      "type": "EXPENSE",
+      "amount": 9800,
+      "date": "2026-08-03T19:45:00-05:00",
+      "description": "Pergamino",
+      "categoryId": "01930001-0000-7000-8000-0000000c0003",
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [
+        "coffee"
+      ],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "Second row of 2026-08-03, so that day's bucket has a count and an average."
+    },
+    {
+      "key": "bus",
+      "id": "01930001-0000-7000-8000-0000000t0005",
+      "type": "EXPENSE",
+      "amount": 12000,
+      "date": "2026-08-05T08:15:00-05:00",
+      "description": "TransMilenio",
+      "categoryId": "01930001-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [
+        "work"
+      ],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "to-savings",
+      "id": "01930001-0000-7000-8000-0000000t0006",
+      "type": "TRANSFER",
+      "amount": 500000,
+      "date": "2026-08-10T10:00:00-05:00",
+      "description": "Monthly savings",
+      "categoryId": null,
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0001",
+      "toAccountId": "01930001-0000-7000-8000-0000000a0004",
+      "tags": [],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "Moves two balances and is not spending."
+    },
+    {
+      "key": "flight",
+      "id": "01930001-0000-7000-8000-0000000t0007",
+      "type": "EXPENSE",
+      "amount": 250000,
+      "date": "2026-08-12T16:20:00-05:00",
+      "description": "Avianca",
+      "categoryId": "01930001-0000-7000-8000-0000000c0004",
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0003",
+      "toAccountId": null,
+      "tags": [
+        "travel"
+      ],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "Its category is archived and it still counts."
+    },
+    {
+      "key": "cash-count",
+      "id": "01930001-0000-7000-8000-0000000t0008",
+      "type": "ADJUSTMENT",
+      "amount": 7500,
+      "date": "2026-08-14T07:05:00-05:00",
+      "description": "Cash count correction",
+      "categoryId": null,
+      "fromAccountId": null,
+      "toAccountId": "01930001-0000-7000-8000-0000000a0002",
+      "tags": [],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "Moves the balance; excluded from spending unless type=ADJUSTMENT is asked for."
+    },
+    {
+      "key": "dinner",
+      "id": "01930001-0000-7000-8000-0000000t0009",
+      "type": "EXPENSE",
+      "amount": 42500,
+      "date": "2026-08-18T21:00:00-05:00",
+      "description": "Rappi dinner",
+      "categoryId": "01930001-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0003",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "No tags: lands in the `untagged` bucket."
+    },
+    {
+      "key": "latte",
+      "id": "01930001-0000-7000-8000-0000000t0010",
+      "type": "EXPENSE",
+      "amount": 11300,
+      "date": "2026-08-20T13:00:00-05:00",
+      "description": "Juan Valdez",
+      "categoryId": "01930001-0000-7000-8000-0000000c0003",
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0003",
+      "toAccountId": null,
+      "tags": [
+        "coffee",
+        "latte"
+      ],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "Two tags: counted once in the total, twice across the tag buckets."
+    },
+    {
+      "key": "taxi",
+      "id": "01930001-0000-7000-8000-0000000t0011",
+      "type": "EXPENSE",
+      "amount": 18400,
+      "date": "2026-08-22T11:30:00-05:00",
+      "description": "Uber to work",
+      "categoryId": "01930001-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [
+        "work"
+      ],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "quick-lunch",
+      "id": "01930001-0000-7000-8000-0000000t0012",
+      "type": "EXPENSE",
+      "amount": 12500,
+      "date": "2026-08-24T18:00:00-05:00",
+      "description": null,
+      "categoryId": null,
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "COP",
+      "source": "QUICK",
+      "pendingDetails": true,
+      "deletedAt": null,
+      "note": "Quick-add: no category, pending review, charged to the default account."
+    },
+    {
+      "key": "quick-errand",
+      "id": "01930001-0000-7000-8000-0000000t0013",
+      "type": "EXPENSE",
+      "amount": 20000,
+      "date": "2026-08-25T18:30:00-05:00",
+      "description": null,
+      "categoryId": null,
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "COP",
+      "source": "QUICK",
+      "pendingDetails": true,
+      "deletedAt": null
+    },
+    {
+      "key": "refunded",
+      "id": "01930001-0000-7000-8000-0000000t0014",
+      "type": "EXPENSE",
+      "amount": 99000,
+      "date": "2026-08-26T12:00:00-05:00",
+      "description": "Returned purchase",
+      "categoryId": "01930001-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": "2026-08-27T12:00:00.000-05:00",
+      "note": "Deleted: absent from every figure, and its balance effect is reversed."
+    },
+    {
+      "key": "last-minute-coffee",
+      "id": "01930001-0000-7000-8000-0000000t0015",
+      "type": "EXPENSE",
+      "amount": 4700,
+      "date": "2026-08-31T23:30:00-05:00",
+      "description": "Tinto",
+      "categoryId": "01930001-0000-7000-8000-0000000c0003",
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [
+        "coffee"
+      ],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "04:30Z on 2026-09-01: inside August for the user, outside it in UTC."
+    }
+  ],
+  "budgets": [
+    {
+      "key": "everything",
+      "id": "01930001-0000-7000-8000-0000000b0001",
+      "name": "Everything",
+      "type": "EXPENSE",
+      "categoryIds": [],
+      "amount": 2000000,
+      "amountOverrides": {},
+      "currency": "COP",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2026-06-01T00:00:00-05:00",
+      "archivedAt": null,
+      "note": "Global: spends the window's whole expense, quick-adds included."
+    },
+    {
+      "key": "food",
+      "id": "01930001-0000-7000-8000-0000000b0002",
+      "name": "Food",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930001-0000-7000-8000-0000000c0001"
+      ],
+      "amount": 150000,
+      "amountOverrides": {
+        "2026-08": 180000
+      },
+      "currency": "COP",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2026-06-01T00:00:00-05:00",
+      "archivedAt": null,
+      "note": "The override applies to the reference period only; baseAmount stays 150 000."
+    },
+    {
+      "key": "coffee",
+      "id": "01930001-0000-7000-8000-0000000b0003",
+      "name": "Coffee",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930001-0000-7000-8000-0000000c0003"
+      ],
+      "amount": 30000,
+      "amountOverrides": {},
+      "currency": "COP",
+      "periodType": "WEEKLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2026-06-01T00:00:00-05:00",
+      "archivedAt": null,
+      "note": "ISO week (Monday-based) resolved in the user's timezone."
+    },
+    {
+      "key": "transport",
+      "id": "01930001-0000-7000-8000-0000000b0004",
+      "name": "Transport",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930001-0000-7000-8000-0000000c0002"
+      ],
+      "amount": 60000,
+      "amountOverrides": {},
+      "currency": "COP",
+      "periodType": "BIWEEKLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2026-06-01T00:00:00-05:00",
+      "archivedAt": null,
+      "note": "Two-week grid anchored on the week of 2024-01-01, not on the budget."
+    },
+    {
+      "key": "trip",
+      "id": "01930001-0000-7000-8000-0000000b0005",
+      "name": "August trip",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930001-0000-7000-8000-0000000c0004"
+      ],
+      "amount": 300000,
+      "amountOverrides": {},
+      "currency": "COP",
+      "periodType": "CUSTOM",
+      "periodStartDate": "2026-08-10T00:00:00-05:00",
+      "periodEndDate": "2026-08-31T00:00:00-05:00",
+      "effectiveFrom": null,
+      "archivedAt": null,
+      "note": "Its only category is archived: archivedCategoryIds is not empty."
+    },
+    {
+      "key": "old-trip",
+      "id": "01930001-0000-7000-8000-0000000b0006",
+      "name": "July trip",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930001-0000-7000-8000-0000000c0002"
+      ],
+      "amount": 100000,
+      "amountOverrides": {},
+      "currency": "COP",
+      "periodType": "CUSTOM",
+      "periodStartDate": "2026-07-01T00:00:00-05:00",
+      "periodEndDate": "2026-08-01T00:00:00-05:00",
+      "effectiveFrom": null,
+      "archivedAt": null,
+      "note": "Expired at the reference instant: still listed, flagged."
+    },
+    {
+      "key": "retired",
+      "id": "01930001-0000-7000-8000-0000000b0007",
+      "name": "Retired budget",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930001-0000-7000-8000-0000000c0003"
+      ],
+      "amount": 40000,
+      "amountOverrides": {},
+      "currency": "COP",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2026-06-01T00:00:00-05:00",
+      "archivedAt": "2026-08-20T12:00:00-05:00",
+      "note": "Archived: out of the views, present in the sync feed with archivedAt."
+    }
+  ],
+  "expected": {
+    "balances": [
+      {
+        "key": "bank",
+        "accountId": "01930001-0000-7000-8000-0000000a0001",
+        "balance": 4334100
+      },
+      {
+        "key": "cash",
+        "accountId": "01930001-0000-7000-8000-0000000a0002",
+        "balance": 181000
+      },
+      {
+        "key": "card",
+        "accountId": "01930001-0000-7000-8000-0000000a0003",
+        "balance": -803800
+      },
+      {
+        "key": "savings",
+        "accountId": "01930001-0000-7000-8000-0000000a0004",
+        "balance": 5500000
+      },
+      {
+        "key": "closed",
+        "accountId": "01930001-0000-7000-8000-0000000a0005",
+        "balance": 0
+      }
+    ],
+    "pending": {
+      "count": 2,
+      "total": 32500,
+      "transactionIds": [
+        "01930001-0000-7000-8000-0000000t0012",
+        "01930001-0000-7000-8000-0000000t0013"
+      ]
+    },
+    "spending": [
+      {
+        "name": "august-by-category",
+        "query": {
+          "groupBy": "category",
+          "type": "EXPENSE",
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota"
+        },
+        "total": 466200,
+        "buckets": [
+          {
+            "key": "01930001-0000-7000-8000-0000000c0004",
+            "total": 250000,
+            "count": 1,
+            "avg": 250000
+          },
+          {
+            "key": "01930001-0000-7000-8000-0000000c0001",
+            "total": 127500,
+            "count": 2,
+            "avg": 63750
+          },
+          {
+            "key": "uncategorized",
+            "total": 32500,
+            "count": 2,
+            "avg": 16250
+          },
+          {
+            "key": "01930001-0000-7000-8000-0000000c0002",
+            "total": 30400,
+            "count": 2,
+            "avg": 15200
+          },
+          {
+            "key": "01930001-0000-7000-8000-0000000c0003",
+            "total": 25800,
+            "count": 3,
+            "avg": 8600
+          }
+        ]
+      },
+      {
+        "name": "august-by-tag",
+        "query": {
+          "groupBy": "tag",
+          "type": "EXPENSE",
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota"
+        },
+        "total": 466200,
+        "buckets": [
+          {
+            "key": "travel",
+            "total": 250000,
+            "count": 1,
+            "avg": 250000
+          },
+          {
+            "key": "groceries",
+            "total": 85000,
+            "count": 1,
+            "avg": 85000
+          },
+          {
+            "key": "untagged",
+            "total": 75000,
+            "count": 3,
+            "avg": 25000
+          },
+          {
+            "key": "work",
+            "total": 30400,
+            "count": 2,
+            "avg": 15200
+          },
+          {
+            "key": "coffee",
+            "total": 25800,
+            "count": 3,
+            "avg": 8600
+          },
+          {
+            "key": "latte",
+            "total": 11300,
+            "count": 1,
+            "avg": 11300
+          }
+        ],
+        "note": "The buckets add up to more than `total`: one transaction carries two tags."
+      },
+      {
+        "name": "july-31-to-august-by-day",
+        "query": {
+          "groupBy": "day",
+          "type": "EXPENSE",
+          "from": "2026-07-31T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota"
+        },
+        "total": 496200,
+        "buckets": [
+          {
+            "key": "2026-07-31",
+            "total": 30000,
+            "count": 1,
+            "avg": 30000
+          },
+          {
+            "key": "2026-08-03",
+            "total": 94800,
+            "count": 2,
+            "avg": 47400
+          },
+          {
+            "key": "2026-08-05",
+            "total": 12000,
+            "count": 1,
+            "avg": 12000
+          },
+          {
+            "key": "2026-08-12",
+            "total": 250000,
+            "count": 1,
+            "avg": 250000
+          },
+          {
+            "key": "2026-08-18",
+            "total": 42500,
+            "count": 1,
+            "avg": 42500
+          },
+          {
+            "key": "2026-08-20",
+            "total": 11300,
+            "count": 1,
+            "avg": 11300
+          },
+          {
+            "key": "2026-08-22",
+            "total": 18400,
+            "count": 1,
+            "avg": 18400
+          },
+          {
+            "key": "2026-08-24",
+            "total": 12500,
+            "count": 1,
+            "avg": 12500
+          },
+          {
+            "key": "2026-08-25",
+            "total": 20000,
+            "count": 1,
+            "avg": 20000
+          },
+          {
+            "key": "2026-08-31",
+            "total": 4700,
+            "count": 1,
+            "avg": 4700
+          }
+        ],
+        "note": "Widened by a day so the 31 July bucket shows up next to August's."
+      },
+      {
+        "name": "august-by-category-untyped",
+        "query": {
+          "groupBy": "category",
+          "type": null,
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota"
+        },
+        "total": 4966200,
+        "buckets": [
+          {
+            "key": "01930001-0000-7000-8000-0000000c0005",
+            "total": 4000000,
+            "count": 1,
+            "avg": 4000000
+          },
+          {
+            "key": "uncategorized",
+            "total": 532500,
+            "count": 3,
+            "avg": 177500
+          },
+          {
+            "key": "01930001-0000-7000-8000-0000000c0004",
+            "total": 250000,
+            "count": 1,
+            "avg": 250000
+          },
+          {
+            "key": "01930001-0000-7000-8000-0000000c0001",
+            "total": 127500,
+            "count": 2,
+            "avg": 63750
+          },
+          {
+            "key": "01930001-0000-7000-8000-0000000c0002",
+            "total": 30400,
+            "count": 2,
+            "avg": 15200
+          },
+          {
+            "key": "01930001-0000-7000-8000-0000000c0003",
+            "total": 25800,
+            "count": 3,
+            "avg": 8600
+          }
+        ],
+        "note": "No `type`: income and the transfer are in, only ADJUSTMENT is out."
+      }
+    ],
+    "budgets": {
+      "reference": "2026-08-20T12:00:00-05:00",
+      "views": [
+        {
+          "key": "everything",
+          "id": "01930001-0000-7000-8000-0000000b0001",
+          "periodKey": "2026-08",
+          "periodFrom": "2026-08-01T05:00:00.000Z",
+          "periodTo": "2026-09-01T05:00:00.000Z",
+          "baseAmount": 2000000,
+          "amount": 2000000,
+          "hasOverride": false,
+          "spent": 466200,
+          "expired": false,
+          "archivedCategoryIds": []
+        },
+        {
+          "key": "food",
+          "id": "01930001-0000-7000-8000-0000000b0002",
+          "periodKey": "2026-08",
+          "periodFrom": "2026-08-01T05:00:00.000Z",
+          "periodTo": "2026-09-01T05:00:00.000Z",
+          "baseAmount": 150000,
+          "amount": 180000,
+          "hasOverride": true,
+          "spent": 127500,
+          "expired": false,
+          "archivedCategoryIds": []
+        },
+        {
+          "key": "coffee",
+          "id": "01930001-0000-7000-8000-0000000b0003",
+          "periodKey": "2026-W34",
+          "periodFrom": "2026-08-17T05:00:00.000Z",
+          "periodTo": "2026-08-24T05:00:00.000Z",
+          "baseAmount": 30000,
+          "amount": 30000,
+          "hasOverride": false,
+          "spent": 11300,
+          "expired": false,
+          "archivedCategoryIds": []
+        },
+        {
+          "key": "transport",
+          "id": "01930001-0000-7000-8000-0000000b0004",
+          "periodKey": "2026-BW33",
+          "periodFrom": "2026-08-10T05:00:00.000Z",
+          "periodTo": "2026-08-24T05:00:00.000Z",
+          "baseAmount": 60000,
+          "amount": 60000,
+          "hasOverride": false,
+          "spent": 18400,
+          "expired": false,
+          "archivedCategoryIds": []
+        },
+        {
+          "key": "trip",
+          "id": "01930001-0000-7000-8000-0000000b0005",
+          "periodKey": "1786338000000_1788152400000",
+          "periodFrom": "2026-08-10T05:00:00.000Z",
+          "periodTo": "2026-08-31T05:00:00.000Z",
+          "baseAmount": 300000,
+          "amount": 300000,
+          "hasOverride": false,
+          "spent": 250000,
+          "expired": false,
+          "archivedCategoryIds": [
+            "01930001-0000-7000-8000-0000000c0004"
+          ]
+        },
+        {
+          "key": "old-trip",
+          "id": "01930001-0000-7000-8000-0000000b0006",
+          "periodKey": "1782882000000_1785560400000",
+          "periodFrom": "2026-07-01T05:00:00.000Z",
+          "periodTo": "2026-08-01T05:00:00.000Z",
+          "baseAmount": 100000,
+          "amount": 100000,
+          "hasOverride": false,
+          "spent": 0,
+          "expired": true,
+          "archivedCategoryIds": []
+        }
+      ]
+    }
+  }
+}

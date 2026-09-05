@@ -108,7 +108,7 @@ export interface Fixture {
 
 const FIXTURE_DIR =
   process.env.OFFLINE_FIXTURES_DIR ??
-  join(__dirname, "../../../../auditoria/offline-fixtures");
+  join(__dirname, "../../../fixtures/offline");
 
 export function loadFixtures(): Fixture[] {
   const index = JSON.parse(

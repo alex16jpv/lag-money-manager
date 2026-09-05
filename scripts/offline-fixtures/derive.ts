@@ -9,8 +9,9 @@
  * against it on a real mongod. `lib/local/derive` in the frontend (O-F3) will
  * be the third.
  *
- * Everything is added in minor units and converted once at the end. Adding
- * 0.10 + 0.20 + 19.99 + 2.30 in floats gives 22.590000000000003.
+ * Everything is added in minor units and converted once at the end: as a
+ * running float sum, 1000 − 10.10 + 1500 − 7.77 − 100 − 3.45 is
+ * 2378.6800000000003, not the 2378.68 the fixture expects.
  */
 import { DateTime } from "luxon";
 
