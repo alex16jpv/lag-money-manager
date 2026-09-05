@@ -133,10 +133,10 @@ router.get(
  *
  *       The server stamps `currency` (from the involved account) and `source`; client-sent values are ignored.
  *
- *       Accepts an optional client-minted `id` (UUID). Replaying the same
- *       create returns 200 with the stored transaction; the same id with a
- *       different payload, or one that belongs to another user, is rejected
- *       with 409 ID_TAKEN.
+ *       Accepts an optional client-minted `id` (UUID). An id the user already
+ *       owns replays with 200 and the stored transaction, whatever the
+ *       payload says now (the row may have been edited elsewhere since); an
+ *       id that belongs to another user is rejected with 409 ID_TAKEN.
  *     parameters:
  *       - in: header
  *         name: Idempotency-Key
@@ -212,10 +212,10 @@ router.post(
  *       The created transaction is flagged `pendingDetails: true` and `source: QUICK`
  *       so the client can list it for later detailing. ADJUSTMENT is not allowed here.
  *
- *       Accepts an optional client-minted `id` (UUID). Replaying the same
- *       create returns 200 with the stored transaction; the same id with a
- *       different payload, or one that belongs to another user, is rejected
- *       with 409 ID_TAKEN.
+ *       Accepts an optional client-minted `id` (UUID). An id the user already
+ *       owns replays with 200 and the stored transaction, whatever the
+ *       payload says now (the row may have been edited elsewhere since); an
+ *       id that belongs to another user is rejected with 409 ID_TAKEN.
  *     parameters:
  *       - in: header
  *         name: Idempotency-Key

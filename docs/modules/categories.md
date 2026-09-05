@@ -46,7 +46,7 @@ Create a new category. Requires: `name` (1–255 chars). Optional: `icon` (one o
 
 Names are unique per user, **case-insensitively** — "Comida" and "comida" collide; accents stay distinct. A user is capped at 200 categories (`CATEGORY_LIMIT_REACHED`).
 
-**Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. Replaying the exact same create returns **200** with the stored category instead of creating a second one. The same id with a **different payload** — or an id that belongs to **another user** — is rejected with **409 `ID_TAKEN`**; the answer is identical in both cases, and a foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
+**Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. An id the user already owns replays with **200** and the stored category **whatever the payload says now** — the row may have been edited from another device between a lost response and the retry, and a 409 there would make the client mint a second id and duplicate it. An id that belongs to **another user** is rejected with **409 `ID_TAKEN`**, worded so the caller cannot tell it exists; the foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
 
 
 ### `POST /categories/restore-defaults`
@@ -145,7 +145,7 @@ None specific to this module.
 | `Unauthorized`            | 401    | Missing, invalid or expired access token                         |
 | `NotFound`                | 404    | Category missing **or owned by another user**                    |
 | `DUPLICATE`               | 409    | An active category already uses this name (case-insensitively)   |
-| `ID_TAKEN`                | 409    | The client-minted `id` is already in use (different payload, or another user's) |
+| `ID_TAKEN`                | 409    | The client-minted `id` belongs to another user (the user's own id always replays with 200) |
 | `STALE_UPDATE`            | 409    | `If-Match` no longer matches the stored version (`current` carries the server's copy) |
 
 > Foreign categories return **404, not 403** — the response is uniform for "missing" and "not yours" so category ids cannot be probed.

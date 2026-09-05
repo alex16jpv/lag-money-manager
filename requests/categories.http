@@ -155,7 +155,7 @@ Content-Type: application/json
 
 { "id": "019a0000-0b01-7000-8000-0000000000c1", "name": "Offline cat", "icon": "coffee", "type": "EXPENSE" }
 
-### Mismo id, icono distinto (409 ID_TAKEN)
+### Mismo id, icono distinto (200: replay, gana la fila guardada)
 POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}
 Content-Type: application/json

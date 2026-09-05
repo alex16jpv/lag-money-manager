@@ -1330,7 +1330,8 @@ describe("Integration Tests", () => {
       expect(mockAccountRepo.create).not.toHaveBeenCalled();
     });
 
-    it("answers 409 ID_TAKEN when the same id carries a different payload", async () => {
+    // The stored row wins: it may have been edited from another device since.
+    it("replays the user's own id with 200 even when the payload differs", async () => {
       mockAccountRepo.getOwnById.mockResolvedValue(testAccount);
 
       const res = await request(app)
@@ -1338,8 +1339,8 @@ describe("Integration Tests", () => {
         .set("Authorization", `Bearer ${token}`)
         .send({ ...accountBody, name: "Renamed" });
 
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe("ID_TAKEN");
+      expect(res.status).toBe(200);
+      expect(res.body.name).toBe(testAccount.name);
       expect(mockAccountRepo.create).not.toHaveBeenCalled();
     });
 
@@ -1395,7 +1396,7 @@ describe("Integration Tests", () => {
       expect(mockCategoryRepo.create).not.toHaveBeenCalled();
     });
 
-    it("rejects a category replay whose icon changed", async () => {
+    it("replays a category whose icon changed with the stored icon", async () => {
       mockCategoryRepo.getOwnById.mockResolvedValue(testCategory);
 
       const res = await request(app)
@@ -1403,8 +1404,9 @@ describe("Integration Tests", () => {
         .set("Authorization", `Bearer ${token}`)
         .send({ id: testCategory.id, name: "Food", icon: "car" });
 
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe("ID_TAKEN");
+      expect(res.status).toBe(200);
+      expect(res.body.icon).toBe(testCategory.icon);
+      expect(mockCategoryRepo.create).not.toHaveBeenCalled();
     });
 
     it("replays a transaction create without touching balances", async () => {
@@ -1445,7 +1447,7 @@ describe("Integration Tests", () => {
       expect(mockAccountRepo.getDefaultByUserId).not.toHaveBeenCalled();
     });
 
-    it("rejects a quick-add replay of a transaction that was not a quick-add", async () => {
+    it("replays a quick-add against the stored transaction, whatever it became", async () => {
       mockTransactionRepo.getOwnById.mockResolvedValue(testTransaction);
 
       const res = await request(app)
@@ -1453,8 +1455,9 @@ describe("Integration Tests", () => {
         .set("Authorization", `Bearer ${token}`)
         .send({ id: testTransaction.id, amount: 50 });
 
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe("ID_TAKEN");
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(testTransaction.id);
+      expect(mockTransactionRepo.create).not.toHaveBeenCalled();
     });
 
     it("replays a budget create without re-running the overlap rule", async () => {
@@ -1487,7 +1490,7 @@ describe("Integration Tests", () => {
       expect(mockBudgetRepo.findOverlapping).not.toHaveBeenCalled();
     });
 
-    it("rejects a budget replay whose amount changed", async () => {
+    it("replays a budget whose amount changed with the stored amount", async () => {
       const budget = new Budget({
         id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac90",
         name: "Food",
@@ -1511,8 +1514,9 @@ describe("Integration Tests", () => {
           periodType: "MONTHLY",
         });
 
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe("ID_TAKEN");
+      expect(res.status).toBe(200);
+      expect(res.body.amount).toBe(500);
+      expect(mockBudgetRepo.create).not.toHaveBeenCalled();
     });
   });
 

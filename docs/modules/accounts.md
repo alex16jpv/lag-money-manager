@@ -45,7 +45,7 @@ Create a new account. Requires: `name`, `type`. Optional: `balance` (defaults to
 
 The server sets `currency` from the owner's currency and marks the **first** account as default. A user is capped at 100 accounts (`ACCOUNT_LIMIT_REACHED`).
 
-**Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. Replaying the exact same create returns **200** with the stored account instead of creating a second one. The same id with a **different payload** — or an id that belongs to **another user** — is rejected with **409 `ID_TAKEN`**; the answer is identical in both cases, and a foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
+**Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. An id the user already owns replays with **200** and the stored account **whatever the payload says now** — the row may have been edited from another device between a lost response and the retry, and a 409 there would make the client mint a second id and duplicate it. An id that belongs to **another user** is rejected with **409 `ID_TAKEN`**, worded so the caller cannot tell it exists; the foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
 
 Active account names are **unique per user**, enforced by a partial unique index on `(userId, name)` with collation `es` strength 2: `"Efectivo"` and `"efectivo"` collide (accents stay distinct), names are trimmed before storing, and the user's capitalisation is preserved. Archiving an account **frees its name**, so the same one can be used again. A collision — on create, on rename, or on restoring an account whose name was taken meanwhile — answers **409 `DUPLICATE`**.
 
@@ -124,7 +124,7 @@ None specific to this module.
 | `Unauthorized`                     | 401    | Missing, invalid or expired access token                         |
 | `NotFound`                         | 404    | Account missing **or owned by another user**                     |
 | `DUPLICATE`                        | 409    | An active account already uses this name (case-insensitive)      |
-| `ID_TAKEN`                         | 409    | The client-minted `id` is already in use (different payload, or another user's) |
+| `ID_TAKEN`                         | 409    | The client-minted `id` belongs to another user (the user's own id always replays with 200) |
 | `STALE_UPDATE`                     | 409    | `If-Match` no longer matches the stored version (`current` carries the server's copy) |
 
 > Foreign accounts return **404, not 403** — the response is uniform for "missing" and "not yours" so account ids cannot be probed.

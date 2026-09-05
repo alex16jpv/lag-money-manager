@@ -358,7 +358,7 @@ Content-Type: application/json
 
 { "id": "019a0000-0b01-7000-8000-0000000000f1", "type": "EXPENSE", "amount": 12.5, "date": "{{date}}", "fromAccountId": "{{accAId}}", "categoryId": "{{catId}}", "description": "Offline" }
 
-### Mismo id, importe distinto (409 ID_TAKEN)
+### Mismo id, importe distinto (200: replay, gana la fila guardada)
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -381,7 +381,7 @@ Content-Type: application/json
 
 { "id": "019a0000-0b01-7000-8000-0000000000f2", "amount": 7 }
 
-### Mismo id, importe distinto (409 ID_TAKEN)
+### Mismo id, importe distinto (200: replay, gana la fila guardada)
 POST {{baseUrl}}/transactions/quick
 Authorization: Bearer {{token}}
 Content-Type: application/json

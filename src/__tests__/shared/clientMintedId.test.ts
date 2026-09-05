@@ -47,7 +47,6 @@ interface Stored {
 
 interface Op extends CreateOrReplay<Stored, Stored> {
   findOwn: jest.Mock<Promise<Stored | null>, [string]>;
-  matches: jest.Mock<boolean, [Stored]>;
   replay: jest.Mock<Promise<Stored>, [Stored]>;
   create: jest.Mock<Promise<Stored>, []>;
 }
@@ -60,7 +59,6 @@ describe("createOrReplay", () => {
     findOwn: jest
       .fn<Promise<Stored | null>, [string]>()
       .mockResolvedValue(null),
-    matches: jest.fn<boolean, [Stored]>().mockReturnValue(true),
     replay: jest.fn<Promise<Stored>, [Stored]>(async (s) => s),
     create: jest.fn<Promise<Stored>, []>().mockResolvedValue(stored),
     ...over,
@@ -88,18 +86,15 @@ describe("createOrReplay", () => {
     expect(outcome.replayed).toBe(true);
   });
 
-  it("reports ID_TAKEN when the stored payload differs", async () => {
+  // The row may have been edited elsewhere between the lost response and the
+  // retry; a 409 here would make the client mint another id and duplicate it.
+  it("replays the user's own id whatever the payload says now", async () => {
     const outcome = { replayed: false };
-    const o = op({
-      findOwn: jest.fn().mockResolvedValue(stored),
-      matches: jest.fn().mockReturnValue(false),
-      outcome,
-    });
-    await expect(createOrReplay(o)).rejects.toMatchObject({
-      code: "ID_TAKEN",
-      statusCode: 409,
-    });
-    expect(outcome.replayed).toBe(false);
+    const edited: Stored = { id: "a", name: "Renamed elsewhere" };
+    const o = op({ findOwn: jest.fn().mockResolvedValue(edited), outcome });
+    await expect(createOrReplay(o)).resolves.toBe(edited);
+    expect(o.create).not.toHaveBeenCalled();
+    expect(outcome.replayed).toBe(true);
   });
 
   it("reports ID_TAKEN for an id owned by somebody else", async () => {

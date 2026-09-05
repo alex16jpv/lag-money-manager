@@ -47,12 +47,6 @@ export class AccountService {
       clientId: dto.id,
       outcome,
       findOwn: (id) => this.repo.getOwnById(id, dto.userId),
-      // openingBalance, not balance: transactions have moved the latter since.
-      matches: (a) =>
-        a.name === dto.name &&
-        a.type === dto.type &&
-        a.openingBalance === dto.balance &&
-        (a.color ?? null) === (dto.color ?? null),
       replay: async (a) => new Account(a),
       create: () => this.insertAccount(dto),
     });

@@ -1,6 +1,6 @@
 import { ApiError } from "./errors";
 
-/** Set when the client's `id` already named an identical resource: 200, not 201. */
+/** Set when the client's `id` already named one of the user's resources: 200, not 201. */
 export interface CreateOutcome {
   replayed: boolean;
 }
@@ -10,7 +10,6 @@ export interface CreateOrReplay<TStored, TResult> {
   outcome?: CreateOutcome;
   // Must be scoped to the owner: reading another user's document leaks it.
   findOwn: (id: string) => Promise<TStored | null>;
-  matches: (stored: TStored) => boolean;
   replay: (stored: TStored) => Promise<TResult>;
   create: () => Promise<TResult>;
 }
@@ -27,7 +26,7 @@ export function isDuplicateIdError(err: unknown): boolean {
   return !!key && Object.keys(key).length === 1 && "_id" in key;
 }
 
-// Same message whoever owns the id: the caller must not learn it exists elsewhere.
+// Only ever raised for another user's id, and worded so the caller cannot tell it exists.
 function idTaken(): ApiError {
   return new ApiError(
     "Conflict",
@@ -39,6 +38,13 @@ function idTaken(): ApiError {
 /**
  * Creates, or replays the create the client already made under the same id.
  * Without `clientId` the create runs untouched.
+ *
+ * A create is "make sure this entity exists" (offline plan, invariant 3), so an
+ * id the user already owns replays whatever the payload says now: the row may
+ * have been edited from another device between the lost response and the
+ * retry, and answering 409 there would make the client mint a second id and
+ * create a duplicate. 409 ID_TAKEN is reserved for an id that is not the
+ * user's, which is the only case where "mint another one" is the right move.
  */
 export async function createOrReplay<TStored, TResult>(
   op: CreateOrReplay<TStored, TResult>,
@@ -47,7 +53,6 @@ export async function createOrReplay<TStored, TResult>(
   if (!clientId) return op.create();
 
   const replayOf = async (stored: TStored): Promise<TResult> => {
-    if (!op.matches(stored)) throw idTaken();
     if (op.outcome) op.outcome.replayed = true;
     return op.replay(stored);
   };

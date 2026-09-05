@@ -270,14 +270,16 @@ describe("AccountService", () => {
       expect(repo.create).not.toHaveBeenCalled();
     });
 
-    it("refuses a client-minted id whose stored account differs [O-B1]", async () => {
+    it("replays a client-minted id even when the stored account differs [O-B1]", async () => {
+      const outcome = { replayed: false };
       repo.getOwnById.mockResolvedValue(
         new Account({ ...validAccountProps, type: "CASH" }),
       );
 
-      await expect(service.createAccount(validAccountProps)).rejects.toThrow(
-        expect.objectContaining({ code: "ID_TAKEN" }),
-      );
+      const result = await service.createAccount(validAccountProps, outcome);
+
+      expect(outcome.replayed).toBe(true);
+      expect(result.type).toBe("CASH");
       expect(repo.create).not.toHaveBeenCalled();
     });
 

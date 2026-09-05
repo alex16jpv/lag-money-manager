@@ -125,7 +125,7 @@ Create a new transaction. Adjusts affected account balances atomically.
 
 **Optional header:** `Idempotency-Key` — see [Idempotency](#idempotency).
 
-**Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. Replaying the exact same create returns **200** with the stored transaction instead of creating a second one. The same id with a **different payload** — or an id that belongs to **another user** — is rejected with **409 `ID_TAKEN`**; the answer is identical in both cases, and a foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
+**Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. An id the user already owns replays with **200** and the stored transaction **whatever the payload says now** — the row may have been edited from another device between a lost response and the retry, and a 409 there would make the client mint a second id and duplicate it. An id that belongs to **another user** is rejected with **409 `ID_TAKEN`**, worded so the caller cannot tell it exists; the foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
 
 
 **Validation rules** (Zod `superRefine`, then re-checked by `Transaction.assertValid()` on the merged entity):
@@ -283,7 +283,7 @@ None specific to this module.
 | `Unauthorized`                     | 401    | Missing, invalid or expired access token                            |
 | `NotFound`                         | 404    | Transaction, category, or account missing **or owned by another user** |
 | `IDEMPOTENCY_ORIGINAL_DELETED`     | 409    | The transaction created with this key was deleted; retry with a new key |
-| `ID_TAKEN`                         | 409    | The client-minted `id` is already in use (different payload, or another user's) |
+| `ID_TAKEN`                         | 409    | The client-minted `id` belongs to another user (the user's own id always replays with 200) |
 | `STALE_UPDATE`                     | 409    | `If-Match` no longer matches the stored version (`current` carries the server's copy) |
 | `IDEMPOTENCY_PAYLOAD_MISMATCH`     | 422    | The `Idempotency-Key` was already used with a different payload     |
 | `InternalServerError`              | 500    | An account vanished mid-adjustment (aborts the MongoDB transaction) |

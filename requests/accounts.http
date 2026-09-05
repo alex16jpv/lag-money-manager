@@ -157,7 +157,7 @@ Content-Type: application/json
 
 { "id": "019a0000-0b01-7000-8000-0000000000a1", "name": "Offline CASH", "type": "CASH", "balance": 100, "color": "TEAL" }
 
-### Mismo id, payload distinto (409 ID_TAKEN)
+### Mismo id, payload distinto (200: replay, gana la fila guardada)
 POST {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
 Content-Type: application/json

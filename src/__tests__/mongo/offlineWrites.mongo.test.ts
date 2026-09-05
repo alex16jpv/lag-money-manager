@@ -152,7 +152,9 @@ describe("offline write paths", () => {
     await createAccount(alice, accountId, "Alice's account", 500).expect(201);
 
     const foreign = await createAccount(bob, accountId, "Bob's account", 999);
-    const ownConflict = await createAccount(
+    // Alice's own retry with a changed payload is a replay, never a conflict:
+    // the row wins, and nothing tells the client to mint a second id.
+    const ownRetry = await createAccount(
       alice,
       accountId,
       "Renamed by Alice",
@@ -161,10 +163,11 @@ describe("offline write paths", () => {
 
     expect(foreign.status).toBe(409);
     expect(foreign.body.code).toBe("ID_TAKEN");
-    // Same code and same words as a collision with one of your own rows: the
-    // answer must not tell Bob whether that id exists or is someone else's.
-    expect(foreign.body.message).toBe(ownConflict.body.message);
-    expect(ownConflict.status).toBe(409);
+    expect(foreign.body.message).toBe(
+      "That id is already in use; retry with a new one",
+    );
+    expect(ownRetry.status).toBe(200);
+    expect(ownRetry.body.name).toBe("Alice's account");
 
     const stored = await AccountModel.findById(accountId).lean();
     expect([stored?.name, stored?.userId]).toEqual([

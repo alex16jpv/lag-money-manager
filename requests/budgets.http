@@ -243,7 +243,7 @@ Content-Type: application/json
 
 { "id": "019a0000-0b01-7000-8000-0000000000b1", "name": "Offline budget", "color": "GREEN", "categoryIds": ["{{catId}}"], "amount": 250, "periodType": "MONTHLY" }
 
-### Mismo id, monto distinto (409 ID_TAKEN, no BUDGET_PERIOD_OVERLAP)
+### Mismo id, monto distinto (200: replay, gana la fila guardada; nunca BUDGET_PERIOD_OVERLAP)
 POST {{baseUrl}}/budgets
 Authorization: Bearer {{token}}
 Content-Type: application/json

@@ -94,10 +94,10 @@ router.get(
  *       Active category names are unique per user, case-insensitively
  *       ("Comida" = "comida"; accents still distinct).
  *
- *       Accepts an optional client-minted `id` (UUID). Replaying the same
- *       create returns 200 with the stored resource; the same id with a
- *       different payload, or one that belongs to another user, is rejected
- *       with 409 ID_TAKEN.
+ *       Accepts an optional client-minted `id` (UUID). An id the user already
+ *       owns replays with 200 and the stored resource, whatever the payload
+ *       says now (the row may have been edited elsewhere since); an id that
+ *       belongs to another user is rejected with 409 ID_TAKEN.
  *     requestBody:
  *       required: true
  *       content:

@@ -50,11 +50,6 @@ export class CategoryService {
       clientId: dto.id,
       outcome,
       findOwn: (id) => this.repo.getOwnById(id, dto.userId),
-      matches: (c) =>
-        c.name === dto.name &&
-        (c.icon ?? null) === (dto.icon ?? null) &&
-        (c.color ?? null) === (dto.color ?? null) &&
-        (c.type ?? null) === (dto.type ?? null),
       replay: async (c) => new Category(c),
       create: () => this.insertCategory(dto),
     });
