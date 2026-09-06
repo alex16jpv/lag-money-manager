@@ -98,6 +98,11 @@ const mockIdempotencyRepo = {
   record: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockSyncOpRepo = {
+  find: jest.fn().mockResolvedValue(null),
+  record: jest.fn().mockResolvedValue(undefined),
+};
+
 const mockRefreshSessionRepo = {
   create: jest.fn().mockResolvedValue(undefined),
   findById: jest.fn().mockResolvedValue(null),
@@ -220,6 +225,7 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getIdempotencyRepository: () => mockIdempotencyRepo,
     getBudgetRepository: () => mockBudgetRepo,
     getRefreshSessionRepository: () => mockRefreshSessionRepo,
+    getSyncOpRepository: () => mockSyncOpRepo,
   },
   RepositoryFactory: jest.fn(),
 }));
@@ -1906,6 +1912,158 @@ describe("Integration Tests", () => {
 
     it("requires authentication", async () => {
       const res = await request(app).get("/sync/changes");
+
+      expect(res.status).toBe(401);
+    });
+  });
+
+  // ==================== POST /sync (O-B4) ====================
+  describe("POST /sync", () => {
+    const OP = "019576a0-d7b6-7d6d-af6a-2b7545f5ac90";
+    const operation = (
+      over: Record<string, unknown> = {},
+    ): Record<string, unknown> => ({
+      opId: OP,
+      seq: 1,
+      occurredAt: "2026-09-05T10:00:00.000Z",
+      entity: "account",
+      action: "create",
+      id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91",
+      payload: { body: { name: "Offline wallet", type: "CASH", balance: 10 } },
+      opVersion: 1,
+      ...over,
+    });
+
+    beforeEach(() => {
+      mockSyncOpRepo.find.mockResolvedValue(null);
+      mockSyncOpRepo.record.mockResolvedValue(undefined);
+    });
+
+    it("applies a create through the account service and answers per operation", async () => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+      mockAccountRepo.getOwnById.mockResolvedValue(null);
+      mockAccountRepo.create.mockImplementation(
+        async (a) => new Account(a as ConstructorParameters<typeof Account>[0]),
+      );
+
+      const res = await request(app)
+        .post("/sync")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ operations: [operation()] });
+
+      expect(res.status).toBe(200);
+      expect(res.body.serverTime).toBeDefined();
+      expect(res.body.results).toHaveLength(1);
+      expect(res.body.results[0]).toMatchObject({
+        opId: OP,
+        seq: 1,
+        entity: "account",
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91",
+        status: "applied",
+        result: {
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91",
+          name: "Offline wallet",
+        },
+      });
+      // The id came from the envelope, not from the caller's choice of body.
+      expect(mockAccountRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91" }),
+      );
+      expect(mockSyncOpRepo.record).toHaveBeenCalledWith(testUser.id, OP, {
+        status: "applied",
+        entityId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91",
+        code: null,
+      });
+    });
+
+    it("refuses an invalid envelope as a whole (400 VALIDATION) and applies nothing", async () => {
+      const res = await request(app)
+        .post("/sync")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ operations: [operation(), operation({ seq: 2 })] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+      expect(res.body.details[0].message).toContain("repeat an opId");
+      expect(mockAccountRepo.create).not.toHaveBeenCalled();
+      expect(mockSyncOpRepo.find).not.toHaveBeenCalled();
+    });
+
+    it("refuses more than 200 operations", async () => {
+      const operations = Array.from({ length: 201 }, (_, i) =>
+        operation({
+          opId: `019576a0-d7b6-7d6d-af6a-${String(i).padStart(12, "0")}`,
+          seq: i,
+        }),
+      );
+      const res = await request(app)
+        .post("/sync")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ operations });
+
+      expect(res.status).toBe(400);
+      expect(res.body.details[0].message).toContain("at most 200");
+    });
+
+    it("accepts a full batch well past the general 10 kB body cap", async () => {
+      // Unknown action: each is rejected per operation, no repository is hit.
+      const operations = Array.from({ length: 200 }, (_, i) =>
+        operation({
+          opId: `019576a0-d7b6-7d6d-af6a-${String(i).padStart(12, "0")}`,
+          // Distinct rows: a second write on a row whose first failed is `blocked`.
+          id: `019576a0-d7b6-7d6d-bf6a-${String(i).padStart(12, "0")}`,
+          seq: i,
+          action: "teleport",
+        }),
+      );
+      const body = JSON.stringify({ operations });
+      expect(body.length).toBeGreaterThan(10 * 1024);
+
+      const res = await request(app)
+        .post("/sync")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Content-Type", "application/json")
+        .send(body);
+
+      expect(res.status).toBe(200);
+      expect(res.body.results).toHaveLength(200);
+      expect(
+        new Set(res.body.results.map((r: { status: string }) => r.status)),
+      ).toEqual(new Set(["rejected"]));
+      expect(res.body.results[0].code).toBe("VALIDATION");
+    });
+
+    it("still refuses a body over 1 MB (413 PAYLOAD_TOO_LARGE)", async () => {
+      const res = await request(app)
+        .post("/sync")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Content-Type", "application/json")
+        .send(
+          JSON.stringify({
+            operations: [
+              operation({ payload: { body: { note: "x".repeat(1_100_000) } } }),
+            ],
+          }),
+        );
+
+      expect(res.status).toBe(413);
+      expect(res.body.code).toBe("PAYLOAD_TOO_LARGE");
+    });
+
+    it("leaves the other routes' 10 kB cap untouched", async () => {
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Content-Type", "application/json")
+        .send(JSON.stringify({ name: "x".repeat(11_000), type: "CASH" }));
+
+      expect(res.status).toBe(413);
+    });
+
+    it("requires authentication", async () => {
+      const res = await request(app)
+        .post("/sync")
+        .send({ operations: [operation()] });
 
       expect(res.status).toBe(401);
     });

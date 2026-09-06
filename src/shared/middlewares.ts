@@ -1,7 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 
-import { DomainValidationError } from "../domain/errors";
-import { ApiError, StaleUpdateError } from "./errors";
+import { describeFailure } from "./errorResponse";
 import logger from "./logger";
 
 const MONGO_UNAVAILABLE_ERROR_NAMES = new Set([
@@ -17,11 +16,6 @@ function isDatabaseUnavailableError(error: Error): boolean {
     (error?.name === "MongooseError" &&
       /buffering timed out|before initial connection/.test(error.message))
   );
-}
-
-interface MongoServerError extends Error {
-  code: number;
-  keyValue?: Record<string, unknown>;
 }
 
 // body-parser rejects a malformed or oversized body before any route runs.
@@ -62,56 +56,10 @@ export const errorMiddleware = (
     res.locals.errorCode = code;
     res.locals.errorMessage = message;
   };
-  if (error instanceof ApiError) {
-    logWhy(error.code, error.message);
-    res.status(error.statusCode).json({
-      error: error.name,
-      message: error.message,
-      ...(error.code && { code: error.code }),
-      ...(error.details !== undefined && { details: error.details }),
-      // The server's version of the resource, so a stale write can be resolved
-      // without a second round trip.
-      ...(error instanceof StaleUpdateError && { current: error.current }),
-    });
-    return;
-  }
-
-  if (error instanceof DomainValidationError) {
-    logWhy(error.code ?? "VALIDATION", error.message);
-    // Same shape as the Zod path: details is always [{field, message}].
-    res.status(400).json({
-      error: "ValidationError",
-      message: error.message,
-      code: error.code ?? "VALIDATION",
-      details: [{ field: error.field ?? "", message: error.message }],
-    });
-    return;
-  }
-
-  // MongoDB duplicate key (code 11000)
-  if (
-    error?.name === "MongoServerError" &&
-    (error as MongoServerError).code === 11000
-  ) {
-    const keyValue = (error as MongoServerError).keyValue;
-    const fields = keyValue ? Object.keys(keyValue).join(", ") : "unknown";
-    logWhy("DUPLICATE", `Duplicate value for: ${fields}`);
-    res.status(409).json({
-      error: "ConflictError",
-      message: `Duplicate value for: ${fields}`,
-      code: "DUPLICATE",
-    });
-    return;
-  }
-
-  // Mongoose CastError (invalid ObjectId / type mismatch)
-  if (error?.name === "CastError") {
-    logWhy("INVALID_ID", "Invalid ID format");
-    res.status(400).json({
-      error: "ValidationError",
-      message: "Invalid ID format",
-      code: "INVALID_ID",
-    });
+  const described = describeFailure(error);
+  if (described) {
+    logWhy(described.body.code, described.body.message);
+    res.status(described.status).json(described.body);
     return;
   }
 

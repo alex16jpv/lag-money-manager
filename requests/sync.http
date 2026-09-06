@@ -100,3 +100,192 @@ Authorization: Bearer {{token}}
 
 ### Sin token (401)
 GET {{baseUrl}}/sync/changes
+
+### ==========================================================
+### POST /sync — el outbox offline como UN lote (O-B4)
+### Cada operación se contesta por separado: applied | duplicate |
+### conflict | rejected | blocked (merged queda reservado). El 200 solo
+### dice que el sobre era válido; el resultado va en results[i].status.
+### payload.body es el body de la ruta equivalente; baseUpdatedAt es su
+### If-Match; payload.query.reference es el reference de budgets.
+### Límites: 1–200 operaciones, 1 MB, opVersion 1.
+### ==========================================================
+
+### Lote: crear una cuenta y un gasto que depende de ella (applied, applied)
+# @name syncBatch
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}",
+      "seq": 1,
+      "occurredAt": "2026-09-05T10:00:00.000Z",
+      "entity": "account",
+      "action": "create",
+      "id": "0195a000-0000-7000-8000-00000000{{$randomInt 1000 9999}}",
+      "payload": { "body": { "name": "Batch {{$randomInt 100 999}}", "type": "CASH", "balance": 100 } },
+      "dependsOn": [],
+      "opVersion": 1
+    }
+  ]
+}
+
+###
+
+@batchAccId = {{syncBatch.response.body.results[0].id}}
+@batchAccVersion = {{syncBatch.response.body.results[0].result.updatedAt}}
+
+### El mismo opId otra vez → duplicate (no se aplica nada). Copia el opId de
+### la respuesta anterior en lugar de {{$guid}} para verlo.
+# POST {{baseUrl}}/sync
+# Authorization: Bearer {{token}}
+# Content-Type: application/json
+#
+# { "operations": [ { "opId": "<opId de arriba>", "seq": 1, "occurredAt": "2026-09-05T10:00:00.000Z",
+#     "entity": "account", "action": "create", "id": "{{batchAccId}}",
+#     "payload": { "body": { "name": "Da igual", "type": "CASH", "balance": 1 } }, "opVersion": 1 } ] }
+
+### Gasto sobre la cuenta del lote anterior, con dependsOn (applied)
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}",
+      "seq": 2,
+      "occurredAt": "2026-09-05T10:01:00.000Z",
+      "entity": "transaction",
+      "action": "create",
+      "id": "{{$guid}}",
+      "payload": { "body": { "type": "EXPENSE", "amount": 12.5, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}" } },
+      "dependsOn": ["{{batchAccId}}"],
+      "opVersion": 1
+    }
+  ]
+}
+
+### Renombrar en otro dispositivo (mueve updatedAt)
+PUT {{baseUrl}}/accounts/{{batchAccId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Renombrada en otro sitio {{$randomInt 100 999}}" }
+
+### Lote con 409 dentro: update con baseUpdatedAt viejo → conflict STALE_UPDATE
+### con `current`; el archive de la misma fila sale blocked (blockedBy = opId
+### del update); la categoría independiente sale applied.
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "0195a000-0000-7000-8000-0000000000a1",
+      "seq": 3,
+      "occurredAt": "2026-09-05T10:02:00.000Z",
+      "entity": "account",
+      "action": "update",
+      "id": "{{batchAccId}}",
+      "payload": { "body": { "name": "Renombrada aquí" } },
+      "baseUpdatedAt": "{{batchAccVersion}}",
+      "opVersion": 1
+    },
+    {
+      "opId": "0195a000-0000-7000-8000-0000000000a2",
+      "seq": 4,
+      "occurredAt": "2026-09-05T10:03:00.000Z",
+      "entity": "account",
+      "action": "archive",
+      "id": "{{batchAccId}}",
+      "baseUpdatedAt": "{{batchAccVersion}}",
+      "opVersion": 1
+    },
+    {
+      "opId": "{{$guid}}",
+      "seq": 5,
+      "occurredAt": "2026-09-05T10:04:00.000Z",
+      "entity": "category",
+      "action": "create",
+      "id": "{{$guid}}",
+      "payload": { "body": { "name": "Batch cat {{$randomInt 100 999}}", "type": "EXPENSE" } },
+      "opVersion": 1
+    }
+  ]
+}
+
+### Dependencia rota: la cuenta no pasa la validación (rejected VALIDATION,
+### details con balance y type), el gasto que la nombra sale blocked.
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}",
+      "seq": 6,
+      "occurredAt": "2026-09-05T10:05:00.000Z",
+      "entity": "account",
+      "action": "create",
+      "id": "0195a000-0000-7000-8000-0000000000b1",
+      "payload": { "body": { "name": "Rota", "type": "NOPE", "balance": 10.555 } },
+      "opVersion": 1
+    },
+    {
+      "opId": "{{$guid}}",
+      "seq": 7,
+      "occurredAt": "2026-09-05T10:06:00.000Z",
+      "entity": "transaction",
+      "action": "create",
+      "id": "{{$guid}}",
+      "payload": { "body": { "type": "EXPENSE", "amount": 5, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "0195a000-0000-7000-8000-0000000000b1" } },
+      "dependsOn": ["0195a000-0000-7000-8000-0000000000b1"],
+      "opVersion": 1
+    }
+  ]
+}
+
+### Acción desconocida → rejected VALIDATION (field "action"); opVersion 7 → rejected
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    { "opId": "{{$guid}}", "seq": 8, "occurredAt": "2026-09-05T10:07:00.000Z", "entity": "category", "action": "setDefault", "id": "{{$guid}}", "opVersion": 1 },
+    { "opId": "{{$guid}}", "seq": 9, "occurredAt": "2026-09-05T10:07:00.000Z", "entity": "account", "action": "archive", "id": "{{$guid}}", "opVersion": 7 }
+  ]
+}
+
+### ---------- Errores del sobre (400, nada se aplica) ----------
+
+### opId repetido (400 VALIDATION)
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    { "opId": "0195a000-0000-7000-8000-0000000000c1", "seq": 1, "occurredAt": "2026-09-05T10:00:00.000Z", "entity": "account", "action": "archive", "id": "{{$guid}}", "opVersion": 1 },
+    { "opId": "0195a000-0000-7000-8000-0000000000c1", "seq": 2, "occurredAt": "2026-09-05T10:00:00.000Z", "entity": "account", "action": "archive", "id": "{{$guid}}", "opVersion": 1 }
+  ]
+}
+
+### Lote vacío (400 VALIDATION)
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "operations": [] }
+
+### Sin token (401)
+POST {{baseUrl}}/sync
+Content-Type: application/json
+
+{ "operations": [] }

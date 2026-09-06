@@ -14,6 +14,11 @@ import { CATEGORY_ICONS } from "../../shared/icons";
 import { Locale, LOCALES } from "../../shared/locale";
 import { MAX_AMOUNT } from "../../shared/money";
 import { MAX_LIMIT } from "../../shared/pagination";
+import {
+  describeSyncActions,
+  SYNC_ENTITIES,
+  SYNC_MAX_OPERATIONS,
+} from "../../shared/syncBatch";
 import { SYNC_MAX_LIMIT } from "../../shared/syncCursor";
 import { isValidTimeZone } from "../../shared/timezone";
 
@@ -486,6 +491,85 @@ export const syncChangesSchema = z.object({
       .optional(),
   }),
 });
+
+/**
+ * The offline outbox, pushed as one batch (O-B4). This validates the
+ * ENVELOPE only: each operation's `payload.body` is checked inside the
+ * service against the same Zod schema its HTTP route uses, so a bad body
+ * rejects that one operation instead of the whole batch.
+ */
+const syncOperationSchema = z.object({
+  opId: z.string().uuid("opId must be a valid UUID"),
+  // The device's monotonic counter: the only ordering criterion (§2.8).
+  seq: z.number().int("seq must be an integer").min(0),
+  occurredAt: z.string().datetime({
+    offset: true,
+    message: "occurredAt must be a valid ISO 8601 date",
+  }),
+  entity: z.enum(SYNC_ENTITIES, {
+    error: `Invalid entity. Available: ${SYNC_ENTITIES.join(", ")}`,
+  }),
+  action: z
+    .string()
+    .min(1)
+    .max(40)
+    .meta({ description: `Per entity — ${describeSyncActions()}` }),
+  // The entity the operation is about: the client-minted id of a create,
+  // the row's id otherwise.
+  id: z.string().uuid("id must be a valid UUID"),
+  payload: z
+    .object({
+      // The request body the matching HTTP route would take, verbatim.
+      body: z.record(z.string(), z.unknown()).optional(),
+      // `reference` for the budget routes that resolve a period.
+      query: z
+        .object({
+          reference: z
+            .string()
+            .datetime({
+              offset: true,
+              message: "reference must be a valid ISO 8601 date",
+            })
+            .optional(),
+        })
+        .optional(),
+    })
+    .optional()
+    .default({}),
+  // The `If-Match` of the matching route: the updatedAt the device had.
+  baseUpdatedAt: z
+    .string()
+    .datetime({
+      offset: true,
+      message: "baseUpdatedAt must be the resource's updatedAt, in ISO 8601",
+    })
+    .optional(),
+  // Ids of rows created offline that this operation names. If their
+  // creating operation fails in this batch, this one comes back `blocked`.
+  dependsOn: z
+    .array(z.string().uuid("Each dependsOn entry must be a valid UUID"))
+    .max(SYNC_MAX_OPERATIONS)
+    .optional()
+    .default([]),
+  opVersion: z.number().int("opVersion must be an integer").min(1),
+});
+
+export const syncBatchSchema = z.object({
+  body: z.object({
+    operations: z
+      .array(syncOperationSchema)
+      .min(1, "operations must not be empty")
+      .max(
+        SYNC_MAX_OPERATIONS,
+        `operations must have at most ${SYNC_MAX_OPERATIONS} entries`,
+      )
+      .refine((ops) => new Set(ops.map((op) => op.opId)).size === ops.length, {
+        message: "operations must not repeat an opId",
+      }),
+  }),
+});
+
+export type SyncOperationInput = z.infer<typeof syncOperationSchema>;
 
 export const restoreSchema = z.object({
   params: z.object({

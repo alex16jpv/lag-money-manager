@@ -79,6 +79,7 @@ import {
   paginationQuerySchema,
   quickAddTransactionSchema,
   registerSchema,
+  syncBatchSchema,
   updateAccountSchema,
   updateCategorySchema,
   updateTransactionSchema,
@@ -1163,5 +1164,100 @@ describe("Validation Schemas", () => {
         expect(result.success).toBe(false);
       },
     );
+  });
+
+  describe("syncBatchSchema (O-B4)", () => {
+    const operation = (
+      n: number,
+      over: Record<string, unknown> = {},
+    ): Record<string, unknown> => ({
+      opId: `01940000-0000-7000-8000-${String(n).padStart(12, "0")}`,
+      seq: n,
+      occurredAt: "2026-09-05T10:00:00.000Z",
+      entity: "account",
+      action: "archive",
+      id: validUUID,
+      opVersion: 1,
+      ...over,
+    });
+
+    it("parses a minimal operation and fills the defaults", () => {
+      const result = syncBatchSchema.safeParse({
+        body: { operations: [operation(1)] },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.body.operations[0]).toMatchObject({
+        payload: {},
+        dependsOn: [],
+      });
+    });
+
+    it("keeps payload.body verbatim: the service validates it per action", () => {
+      const result = syncBatchSchema.safeParse({
+        body: {
+          operations: [
+            operation(1, {
+              action: "create",
+              payload: {
+                body: { name: "x", anything: true },
+                query: { reference: "2026-12-01T00:00:00.000Z" },
+              },
+            }),
+          ],
+        },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.body.operations[0].payload.body).toEqual({
+        name: "x",
+        anything: true,
+      });
+    });
+
+    it("rejects an empty batch and one past 200 operations", () => {
+      expect(
+        syncBatchSchema.safeParse({ body: { operations: [] } }).success,
+      ).toBe(false);
+      const tooMany = Array.from({ length: 201 }, (_, i) => operation(i));
+      const result = syncBatchSchema.safeParse({
+        body: { operations: tooMany },
+      });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0].message).toContain("at most 200");
+    });
+
+    it("rejects a repeated opId", () => {
+      const result = syncBatchSchema.safeParse({
+        body: {
+          operations: [operation(1), operation(2, { opId: operation(1).opId })],
+        },
+      });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0].path).toEqual(["body", "operations"]);
+    });
+
+    it.each([
+      ["entity", "user"],
+      ["opId", "not-a-uuid"],
+      ["id", "42"],
+      ["seq", -1],
+      ["seq", 1.5],
+      ["occurredAt", "2026-09-05"],
+      ["baseUpdatedAt", "yesterday"],
+      ["opVersion", 0],
+      ["dependsOn", ["nope"]],
+      ["payload", { query: { reference: "2026-12-01" } }],
+    ])("rejects %s = %j", (field, value) => {
+      const result = syncBatchSchema.safeParse({
+        body: { operations: [operation(1, { [field]: value })] },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("does not judge the action here: an unknown one is the service's per-operation rejection", () => {
+      const result = syncBatchSchema.safeParse({
+        body: { operations: [operation(1, { action: "teleport" })] },
+      });
+      expect(result.success).toBe(true);
+    });
   });
 });

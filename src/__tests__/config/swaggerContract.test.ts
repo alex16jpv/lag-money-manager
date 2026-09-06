@@ -7,6 +7,7 @@ process.env.MONGO_URI ??= "mongodb://localhost:27017/unused";
 import { swaggerSpec } from "../../config/swagger";
 import { ERROR_CODES } from "../../shared/errorCodes";
 import { CATEGORY_ICONS } from "../../shared/icons";
+import { SYNC_MAX_OPERATIONS, SYNC_OP_STATUSES } from "../../shared/syncBatch";
 
 interface View {
   properties: Record<string, unknown>;
@@ -40,6 +41,8 @@ describe("OpenAPI response views", () => {
     "SyncTransaction",
     "SyncBudget",
     "SyncChangesResponse",
+    "SyncOpResult",
+    "SyncBatchResponse",
   ])("%s declares which fields are always present", (name) => {
     const v = view(name);
     expect(v.required).toBeDefined();
@@ -103,6 +106,44 @@ describe("OpenAPI response views", () => {
     expect(Object.keys(view("SyncTransaction").properties)).toEqual([
       ...tx,
       "deletedAt",
+    ]);
+  });
+
+  // The batch answer is what O-F5b branches on: the status list and the code
+  // list must be the server's, not a transcription.
+  it("publishes the batch statuses and codes as enums", () => {
+    const result = view("SyncOpResult");
+    expect((result.properties.status as { enum: string[] }).enum).toEqual([
+      ...SYNC_OP_STATUSES,
+    ]);
+    expect((result.properties.code as { enum: string[] }).enum).toEqual([
+      ...ERROR_CODES,
+    ]);
+    expect(result.required).toEqual(["opId", "seq", "entity", "id", "status"]);
+    expect(view("SyncBatchResponse").required).toEqual([
+      "serverTime",
+      "results",
+    ]);
+  });
+
+  it("generates the batch request body from the Zod schema", () => {
+    const input = spec.components.schemas.SyncBatchInput as unknown as {
+      properties: {
+        operations: {
+          maxItems: number;
+          items: { required: string[]; properties: Record<string, unknown> };
+        };
+      };
+    };
+    expect(input.properties.operations.maxItems).toBe(SYNC_MAX_OPERATIONS);
+    expect(input.properties.operations.items.required).toEqual([
+      "opId",
+      "seq",
+      "occurredAt",
+      "entity",
+      "action",
+      "id",
+      "opVersion",
     ]);
   });
 

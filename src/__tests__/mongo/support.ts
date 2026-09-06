@@ -158,9 +158,17 @@ export async function connect(): Promise<void> {
   await connectMongo();
 }
 
-/** Leaves nothing behind: this database exists only for the run. */
+/**
+ * Leaves nothing behind: this database exists only for the run. The indexes
+ * go with it — `connectMongo` built them once, before the drop — so they are
+ * rebuilt here: without them a taken name or a second default account is
+ * accepted, and a suite that checks 409 DUPLICATE sees `applied`.
+ */
 export async function dropDatabase(): Promise<void> {
   await mongoose.connection.dropDatabase();
+  await Promise.all(
+    Object.values(mongoose.models).map((model) => model.createIndexes()),
+  );
 }
 
 export async function disconnect(): Promise<void> {

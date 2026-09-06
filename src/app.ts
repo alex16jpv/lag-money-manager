@@ -21,6 +21,7 @@ import userRoutes from "./app/routes/userRoutes";
 import { pingDatabase } from "./config/dbHealth";
 import { swaggerSpec } from "./config/swagger";
 import { ENVIRONMENT } from "./shared/constants";
+import { SYNC_BODY_LIMIT } from "./shared/syncBatch";
 import { errorMiddleware } from "./shared/middlewares";
 import { requestIdMiddleware } from "./shared/requestId";
 
@@ -47,6 +48,9 @@ app.use(
     origin: ENVIRONMENT.CORS_ORIGIN.split(",").map((s) => s.trim()),
   }),
 );
+// A batch of 200 operations does not fit the general cap. body-parser skips
+// a body another parser already read, so this one has to be mounted first.
+app.use("/sync", express.json({ limit: SYNC_BODY_LIMIT }));
 app.use(express.json({ limit: "10kb" }));
 
 if (ENVIRONMENT.NODE_ENV !== "production") {

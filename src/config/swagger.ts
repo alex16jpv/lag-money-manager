@@ -14,6 +14,7 @@ import {
 import { ERROR_CODES } from "../shared/errorCodes";
 import { CATEGORY_ICONS } from "../shared/icons";
 import { LOCALES } from "../shared/locale";
+import { SYNC_ENTITIES, SYNC_OP_STATUSES } from "../shared/syncBatch";
 
 // ---------------------------------------------------------------------------
 // Request bodies: GENERATED from the Zod validation schemas (single source of
@@ -51,6 +52,7 @@ const requestBodies = {
   CreateBudgetInput: bodyOf(v.createBudgetSchema),
   UpdateBudgetInput: bodyOf(v.updateBudgetSchema),
   BudgetAmountOverrideInput: bodyOf(v.budgetAmountOverrideSchema),
+  SyncBatchInput: bodyOf(v.syncBatchSchema),
 };
 
 // ---------------------------------------------------------------------------
@@ -467,6 +469,67 @@ const syncChangesResponse = withRequired({
   },
 });
 
+/** Any of the rows a `POST /sync` operation can be about or answered with. */
+const anyRow = {
+  oneOf: ["Account", "Category", "Transaction", "Budget"].map((view) => ({
+    $ref: `#/components/schemas/${view}`,
+  })),
+};
+
+/** One operation's outcome in a `POST /sync` batch. */
+const syncOpResult = withRequired(
+  {
+    type: "object",
+    properties: {
+      opId: uuid,
+      seq: { type: "integer" },
+      entity: { type: "string", enum: [...SYNC_ENTITIES] },
+      id: { ...uuid, description: "The entity the operation was about." },
+      status: { type: "string", enum: [...SYNC_OP_STATUSES] },
+      code: {
+        type: "string",
+        enum: [...ERROR_CODES],
+        description:
+          "conflict / rejected: the code the matching route would have answered.",
+      },
+      message: { type: "string" },
+      details: responseViews.ErrorResponse.properties.details,
+      current: {
+        ...anyRow,
+        description:
+          "conflict STALE_UPDATE only: the row as the server has it, like the HTTP 409.",
+      },
+      result: {
+        ...anyRow,
+        description:
+          "applied, and duplicate by client-minted id: what the route would " +
+          "have answered. Absent for transaction:delete and for a duplicate opId.",
+      },
+      blockedBy: {
+        ...uuid,
+        description:
+          "blocked only: the opId, in this batch, whose failure blocks this one.",
+      },
+    },
+  },
+  ["code", "message", "details", "current", "result", "blockedBy"],
+);
+
+const syncBatchResponse = withRequired({
+  type: "object",
+  properties: {
+    serverTime: {
+      ...dateTime,
+      description: "The server's clock when the batch started.",
+    },
+    results: {
+      type: "array",
+      items: { $ref: "#/components/schemas/SyncOpResult" },
+      description: "One per operation, in `seq` order.",
+    },
+  },
+});
+
 /**
  * The 409 of a guarded write: the error, plus the resource as the server has it
  * when the code is STALE_UPDATE. Optional, because the same status also covers
@@ -522,6 +585,8 @@ const options: swaggerJsdoc.Options = {
         ...responseViews,
         ...syncViews,
         SyncChangesResponse: syncChangesResponse,
+        SyncOpResult: syncOpResult,
+        SyncBatchResponse: syncBatchResponse,
         AccountList: listOf("Account"),
         CategoryList: listOf("Category"),
         TransactionList: {
