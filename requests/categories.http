@@ -48,7 +48,8 @@ Content-Type: application/json
 
 { "name": "Café y snacks", "color": "AMBER" }
 
-### Archivar (soft delete) — libera el nombre para reuso
+### Archivar (soft delete) — libera el nombre para reuso.
+### Responde la categoría archivada (archivedAt y updatedAt nuevos), no un mensaje (F-22).
 DELETE {{baseUrl}}/categories/{{catId}}
 Authorization: Bearer {{token}}
 

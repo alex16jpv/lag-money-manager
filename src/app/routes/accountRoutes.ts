@@ -262,11 +262,11 @@ router.put(
  *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
- *         description: Account archived
+ *         description: The archived account (also when it was already archived), with its new `updatedAt`
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Message'
+ *               $ref: '#/components/schemas/Account'
  *       400:
  *         description: Invalid ID format (code VALIDATION) or account is the default (code DEFAULT_ACCOUNT_ARCHIVE_BLOCKED, set another default first)
  *         content:

@@ -81,13 +81,13 @@ export class BudgetController {
 
   static deleteBudget = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    await budgetService.deleteBudget(
+    const archived = await budgetService.deleteBudget(
       req.params.id as string,
       userId,
       await resolveContext(req),
       ifMatch(req),
     );
-    res.status(200).json({ message: "Budget archived successfully" });
+    res.status(200).json(archived);
   };
 
   static restoreBudget = async (req: Request, res: Response) => {

@@ -297,11 +297,11 @@ router.put(
  *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
- *         description: Category archived (or already archived)
+ *         description: The archived category (also when it was already archived), with its new `updatedAt`
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Message'
+ *               $ref: '#/components/schemas/Category'
  *       400:
  *         description: Invalid ID format (code VALIDATION)
  *         content:

@@ -122,28 +122,32 @@ export class CategoryService {
 
   // Archive (soft delete); allowed even with linked transactions.
   // Idempotent: archiving an already-archived category is a no-op success.
+  // Answers the archived row: an offline client needs its new `updatedAt` to
+  // guard the restore it may have queued right behind (F-22).
   async deleteCategory(
     id: string,
     userId: string,
     expectedUpdatedAt?: Date,
-  ): Promise<void> {
+  ): Promise<Category> {
     const existing = await this.repo.getByIdIncludingArchived(id);
     if (!existing || existing.userId !== userId) {
       throw new ApiError("NotFound", "Category not found");
     }
     assertFresh(existing, expectedUpdatedAt, (c) => new Category(c));
     if (existing.archivedAt) {
-      return;
+      return new Category(existing);
     }
     try {
-      await this.repo.delete(id, undefined, expectedUpdatedAt);
+      return new Category(
+        await this.repo.delete(id, undefined, expectedUpdatedAt),
+      );
     } catch (err) {
       // Lost the race to a concurrent archive: still a success.
       const current = await this.repo.getByIdIncludingArchived(id);
       if (current?.userId === userId) {
         assertFresh(current, expectedUpdatedAt, (c) => new Category(c));
         if (current.archivedAt) {
-          return;
+          return new Category(current);
         }
       }
       throw err;

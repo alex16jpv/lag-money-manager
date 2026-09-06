@@ -65,7 +65,7 @@ Update a category. Partial updates supported (`name`, `icon` — `null` clears i
 
 ### `DELETE /categories/:id`
 
-Archive the category (soft delete, sets `archivedAt`). Allowed even with linked transactions — they keep pointing at it. Idempotent: archiving an already-archived category is a no-op success.
+Archive the category (soft delete, sets `archivedAt`). Allowed even with linked transactions — they keep pointing at it. Idempotent: archiving an already-archived category is a no-op success. **Answers the archived category** (the same view as `GET`), so a client that queued a restore or a rename right behind the archive has the new `updatedAt` for its `If-Match` without a read in between (F-22).
 
 An archived category can no longer be assigned to a new transaction or budget (`CATEGORY_ARCHIVED`), but a transaction or budget that already had it may keep it.
 

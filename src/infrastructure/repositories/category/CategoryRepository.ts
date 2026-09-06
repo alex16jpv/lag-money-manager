@@ -201,7 +201,7 @@ export class CategoryRepository implements ICategoryRepository {
     id: string,
     session?: TxSession,
     expectedUpdatedAt?: Date,
-  ): Promise<void> {
+  ): Promise<Category> {
     const doc = await CategoryModel.findOneAndUpdate(
       {
         _id: id,
@@ -214,6 +214,7 @@ export class CategoryRepository implements ICategoryRepository {
     if (!doc) {
       throw new ApiError("NotFound", "Category not found");
     }
+    return this.toEntity(doc);
   }
 
   async restore(

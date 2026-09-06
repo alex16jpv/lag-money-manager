@@ -62,12 +62,12 @@ export class AccountController {
 
   static deleteAccount = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    await accountService.deleteAccount(
+    const archived = await accountService.deleteAccount(
       req.params.id as string,
       userId,
       ifMatch(req),
     );
-    res.status(200).json({ message: "Account archived successfully" });
+    res.status(200).json(archived);
   };
 
   static restoreAccount = async (req: Request, res: Response) => {

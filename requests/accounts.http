@@ -61,7 +61,8 @@ Content-Type: application/json
 POST {{baseUrl}}/accounts/{{accountB}}/default
 Authorization: Bearer {{token}}
 
-### Archivar A (soft delete) — solo funciona porque A ya NO es default
+### Archivar A (soft delete) — solo funciona porque A ya NO es default.
+### Responde la cuenta archivada (archivedAt y updatedAt nuevos), no un mensaje (F-22).
 DELETE {{baseUrl}}/accounts/{{accountA}}
 Authorization: Bearer {{token}}
 

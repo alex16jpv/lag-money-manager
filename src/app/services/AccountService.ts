@@ -129,18 +129,20 @@ export class AccountService {
 
   // Archive (soft delete); allowed even with linked transactions.
   // Idempotent: archiving an already-archived account is a no-op success.
+  // Answers the archived row: an offline client needs its new `updatedAt` to
+  // guard the restore it may have queued right behind (F-22).
   async deleteAccount(
     id: string,
     userId: string,
     expectedUpdatedAt?: Date,
-  ): Promise<void> {
+  ): Promise<Account> {
     const existing = await this.repo.getByIdIncludingArchived(id);
     if (!existing || existing.userId !== userId) {
       throw new ApiError("NotFound", "Account not found");
     }
     assertFresh(existing, expectedUpdatedAt, (a) => new Account(a));
     if (existing.archivedAt) {
-      return;
+      return new Account(existing);
     }
     if (existing.isDefault) {
       throw new ApiError(
@@ -155,22 +157,23 @@ export class AccountService {
       userId,
       expectedUpdatedAt,
     );
-    if (!archived) {
-      // Raced with setDefault or another archive since the check above.
-      const current = await this.repo.getByIdIncludingArchived(id);
-      if (!current || current.userId !== userId) {
-        throw new ApiError("NotFound", "Account not found");
-      }
-      assertFresh(current, expectedUpdatedAt, (a) => new Account(a));
-      if (current.archivedAt) {
-        return; // lost the race to another archive: idempotent success
-      }
-      throw new ApiError(
-        "BadRequest",
-        "Cannot archive the default account; set another account as default first",
-        "DEFAULT_ACCOUNT_ARCHIVE_BLOCKED",
-      );
+    if (archived) {
+      return new Account(archived);
     }
+    // Raced with setDefault or another archive since the check above.
+    const current = await this.repo.getByIdIncludingArchived(id);
+    if (!current || current.userId !== userId) {
+      throw new ApiError("NotFound", "Account not found");
+    }
+    assertFresh(current, expectedUpdatedAt, (a) => new Account(a));
+    if (current.archivedAt) {
+      return new Account(current); // lost the race to another archive: idempotent success
+    }
+    throw new ApiError(
+      "BadRequest",
+      "Cannot archive the default account; set another account as default first",
+      "DEFAULT_ACCOUNT_ARCHIVE_BLOCKED",
+    );
   }
 
   // Idempotent: restoring an already-active account returns it unchanged.

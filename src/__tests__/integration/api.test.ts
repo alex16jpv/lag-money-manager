@@ -38,7 +38,7 @@ const mockAccountRepo: jest.Mocked<IAccountRepository> = {
   update: jest.fn(),
   delete: jest.fn(),
   incrementBalance: jest.fn().mockResolvedValue(true),
-  archiveNonDefault: jest.fn().mockResolvedValue(true),
+  archiveNonDefault: jest.fn().mockResolvedValue(null),
   restore: jest.fn(),
   getDefaultByUserId: jest.fn(),
   setDefault: jest.fn(),
@@ -677,9 +677,15 @@ describe("Integration Tests", () => {
   });
 
   describe("DELETE /accounts/:id", () => {
-    it("should delete an account", async () => {
+    it("should archive an account and answer the archived row (F-22)", async () => {
       mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(testAccount);
-      mockAccountRepo.archiveNonDefault.mockResolvedValue(true);
+      mockAccountRepo.archiveNonDefault.mockResolvedValue(
+        new Account({
+          ...testAccount,
+          archivedAt: new Date("2026-09-05T10:00:00.000Z"),
+          updatedAt: new Date("2026-09-05T10:00:00.000Z"),
+        }),
+      );
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [],
         pagination: {
@@ -696,6 +702,9 @@ describe("Integration Tests", () => {
         .set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(200);
+      expect(res.body.id).toBe(testAccount.id);
+      expect(res.body.archivedAt).toBe("2026-09-05T10:00:00.000Z");
+      expect(res.body.updatedAt).toBe("2026-09-05T10:00:00.000Z");
       expect(mockAccountRepo.archiveNonDefault).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
@@ -853,9 +862,14 @@ describe("Integration Tests", () => {
   });
 
   describe("DELETE /categories/:id", () => {
-    it("should delete a category", async () => {
+    it("should archive a category and answer the archived row (F-22)", async () => {
       mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
-      mockCategoryRepo.delete.mockResolvedValue();
+      mockCategoryRepo.delete.mockResolvedValue(
+        new Category({
+          ...testCategory,
+          archivedAt: new Date("2026-09-05T10:00:00.000Z"),
+        }),
+      );
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [],
         pagination: {
@@ -872,6 +886,8 @@ describe("Integration Tests", () => {
         .set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(200);
+      expect(res.body.id).toBe(testCategory.id);
+      expect(res.body.archivedAt).toBe("2026-09-05T10:00:00.000Z");
       expect(mockCategoryRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
         undefined,
@@ -1642,7 +1658,7 @@ describe("Integration Tests", () => {
 
     it("guards the archive, the restore and the default flag", async () => {
       mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(at(V1));
-      mockAccountRepo.archiveNonDefault.mockResolvedValue(true);
+      mockAccountRepo.archiveNonDefault.mockResolvedValue(at(V2));
       await request(app)
         .delete(`/accounts/${ACC}`)
         .set("Authorization", `Bearer ${token}`)

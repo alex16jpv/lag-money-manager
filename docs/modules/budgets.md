@@ -28,7 +28,7 @@ Budgets are archived, never hard-deleted, and can be restored. All budgets are u
 
 ## Public API
 
-Every route accepts an optional `reference` query parameter (ISO 8601, offsets accepted). It selects **which period instance** the response resolves; it defaults to now. `DELETE /budgets/:id` accepts it for uniformity but ignores it.
+Every route accepts an optional `reference` query parameter (ISO 8601, offsets accepted). It selects **which period instance** the response resolves; it defaults to now. `DELETE /budgets/:id` uses it only to resolve the view it answers with.
 
 ### `GET /budgets`
 
@@ -90,7 +90,7 @@ Override side effects:
 
 ### `DELETE /budgets/:id`
 
-Archives the budget (soft delete, sets `archivedAt`). Idempotent: archiving an already-archived budget is a no-op success.
+Archives the budget (soft delete, sets `archivedAt`). Idempotent: archiving an already-archived budget is a no-op success. **Answers the archived `BudgetView`** resolved for `reference`, so a client that queued a restore right behind the archive has the new `updatedAt` for its `If-Match` without a read in between (F-22).
 
 ### `POST /budgets/:id/restore`
 

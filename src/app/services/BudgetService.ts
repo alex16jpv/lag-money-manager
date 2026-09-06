@@ -148,30 +148,34 @@ export class BudgetService {
   }
 
   // Idempotent: archiving an already-archived budget is a no-op success.
+  // Answers the archived view: an offline client needs its new `updatedAt` to
+  // guard the restore it may have queued right behind (F-22).
   async deleteBudget(
     id: string,
     userId: string,
     ctx: ViewContext,
     expectedUpdatedAt?: Date,
-  ): Promise<void> {
+  ): Promise<BudgetView> {
     const existing = await this.getOwned(id, userId);
     await this.assertFreshBudget(existing, expectedUpdatedAt, userId, ctx);
     if (existing.archivedAt) {
-      return;
+      return (await this.toViews(userId, [existing], ctx))[0];
     }
+    let archived: Budget;
     try {
-      await this.repo.delete(id, undefined, expectedUpdatedAt);
+      archived = await this.repo.delete(id, undefined, expectedUpdatedAt);
     } catch (err) {
       // Lost the race to a concurrent archive: still a success.
       const current = await this.repo.getByIdIncludingArchived(id);
       if (current?.userId === userId) {
         await this.assertFreshBudget(current, expectedUpdatedAt, userId, ctx);
         if (current.archivedAt) {
-          return;
+          return (await this.toViews(userId, [current], ctx))[0];
         }
       }
       throw err;
     }
+    return (await this.toViews(userId, [archived], ctx))[0];
   }
 
   /**

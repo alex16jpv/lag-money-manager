@@ -85,7 +85,7 @@ const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   update: jest.fn(),
   delete: jest.fn(),
   incrementBalance: jest.fn().mockResolvedValue(true),
-  archiveNonDefault: jest.fn().mockResolvedValue(true),
+  archiveNonDefault: jest.fn().mockResolvedValue(null),
   restore: jest.fn(),
   getDefaultByUserId: jest.fn(),
   setDefault: jest.fn(),
@@ -387,10 +387,17 @@ describe("AccountService", () => {
     });
 
     it("should archive an account (even when it has transactions)", async () => {
+      const archivedAt = new Date("2026-09-05T10:00:00.000Z");
       repo.getByIdIncludingArchived.mockResolvedValue(mockAccount);
-      repo.archiveNonDefault.mockResolvedValue(true);
+      repo.archiveNonDefault.mockResolvedValue(
+        new Account({
+          ...validAccountProps,
+          archivedAt,
+          updatedAt: archivedAt,
+        }),
+      );
 
-      await service.deleteAccount(
+      const archived = await service.deleteAccount(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         validAccountProps.userId,
       );
@@ -400,6 +407,25 @@ describe("AccountService", () => {
         validAccountProps.userId,
         undefined,
       );
+      // F-22: the archived row comes back so the client learns its new updatedAt.
+      expect(archived).toBeInstanceOf(Account);
+      expect(archived.archivedAt).toEqual(archivedAt);
+      expect(archived.updatedAt).toEqual(archivedAt);
+    });
+
+    it("answers the row unchanged when it was already archived (idempotent)", async () => {
+      const archivedAt = new Date("2026-09-01T00:00:00.000Z");
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...validAccountProps, archivedAt }),
+      );
+
+      const archived = await service.deleteAccount(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        validAccountProps.userId,
+      );
+
+      expect(archived.archivedAt).toEqual(archivedAt);
+      expect(repo.archiveNonDefault).not.toHaveBeenCalled();
     });
 
     it("rejects when the account became default between check and archive (race)", async () => {
@@ -408,7 +434,7 @@ describe("AccountService", () => {
         .mockResolvedValueOnce(
           new Account({ ...validAccountProps, isDefault: true }),
         );
-      repo.archiveNonDefault.mockResolvedValue(false);
+      repo.archiveNonDefault.mockResolvedValue(null);
 
       await expect(
         service.deleteAccount(
@@ -424,14 +450,14 @@ describe("AccountService", () => {
         .mockResolvedValueOnce(
           new Account({ ...validAccountProps, archivedAt: new Date() }),
         );
-      repo.archiveNonDefault.mockResolvedValue(false);
+      repo.archiveNonDefault.mockResolvedValue(null);
 
       await expect(
         service.deleteAccount(
           "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
           validAccountProps.userId,
         ),
-      ).resolves.toBeUndefined();
+      ).resolves.toMatchObject({ archivedAt: expect.any(Date) });
     });
 
     it("should throw NotFound when archiving non-existent account", async () => {

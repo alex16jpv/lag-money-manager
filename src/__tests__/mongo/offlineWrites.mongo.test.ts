@@ -406,4 +406,79 @@ describe("offline write paths", () => {
       expect(slightlyAhead.status).toBe(201);
     });
   });
+
+  // F-22: the client never writes updatedAt, so after an optimistic archive
+  // it only has the pre-archive version. If DELETE answered `{ message }`,
+  // the restore queued right behind would carry that stale guard and 409.
+  describe("archive followed by restore, no pull in between", () => {
+    const flows = [
+      {
+        entity: "accounts",
+        create: (id: string) =>
+          createAccount(alice, id, "Archive then restore", 5),
+        id: uuid("a", 10),
+      },
+      {
+        entity: "categories",
+        create: (id: string) =>
+          as(
+            alice,
+            request(app)
+              .post("/categories")
+              .send({ id, name: "Archive then restore", type: "EXPENSE" }),
+          ),
+        id: uuid("d", 3),
+      },
+      {
+        entity: "budgets",
+        create: (id: string) =>
+          as(
+            alice,
+            request(app).post("/budgets").send({
+              id,
+              name: "Archive then restore",
+              color: "TEAL",
+              categoryIds: [],
+              amount: 100,
+              periodType: "MONTHLY",
+            }),
+          ),
+        id: uuid("b", 20),
+      },
+    ];
+
+    it.each(flows)(
+      "$entity: the archive answers the row and its updatedAt guards the restore",
+      async ({ entity, create, id }) => {
+        const created = await create(id);
+        expect(created.status).toBe(201);
+
+        const archived = await as(
+          alice,
+          request(app).delete(`/${entity}/${id}`),
+          created.body.updatedAt,
+        );
+        expect(archived.status).toBe(200);
+        expect(archived.body.id).toBe(id);
+        expect(archived.body.archivedAt).not.toBeNull();
+        expect(archived.body.updatedAt).not.toBe(created.body.updatedAt);
+
+        const again = await as(
+          alice,
+          request(app).delete(`/${entity}/${id}`),
+          archived.body.updatedAt,
+        );
+        expect(again.status).toBe(200);
+        expect(again.body.updatedAt).toBe(archived.body.updatedAt);
+
+        const restored = await as(
+          alice,
+          request(app).post(`/${entity}/${id}/restore`),
+          archived.body.updatedAt,
+        );
+        expect(restored.status).toBe(200);
+        expect(restored.body.archivedAt).toBeNull();
+      },
+    );
+  });
 });

@@ -48,12 +48,12 @@ export interface IAccountRepository extends IRepository<Account> {
   ): Promise<boolean>;
 
   // Atomic archive that refuses the default account even under races;
-  // false when nothing matched (default, archived or missing).
+  // the archived row, or null when nothing matched (default, archived or missing).
   archiveNonDefault(
     id: string,
     userId: string,
     expectedUpdatedAt?: Date,
-  ): Promise<boolean>;
+  ): Promise<Account | null>;
 
   // Un-archives the user's own archived account; null if none to restore.
   // `name` renames as part of the same write, so the unique index sees the

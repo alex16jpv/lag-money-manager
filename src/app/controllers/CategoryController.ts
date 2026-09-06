@@ -64,12 +64,12 @@ export class CategoryController {
 
   static deleteCategory = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    await categoryService.deleteCategory(
+    const archived = await categoryService.deleteCategory(
       req.params.id as string,
       userId,
       ifMatch(req),
     );
-    res.status(200).json({ message: "Category archived successfully" });
+    res.status(200).json(archived);
   };
 
   static restoreCategory = async (req: Request, res: Response) => {

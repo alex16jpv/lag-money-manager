@@ -208,8 +208,8 @@ router.post("/", validate(createBudgetSchema), BudgetController.createBudget);
  *     summary: Archive a budget
  *     description: |
  *       Soft delete; the budget stays readable via GET /budgets/{id}. Idempotent —
- *       archiving an already-archived budget is a no-op success. There is no restore
- *       endpoint: to recover, create a new budget.
+ *       archiving an already-archived budget is a no-op success. Reversible with
+ *       POST /budgets/{id}/restore.
  *     parameters:
  *       - in: path
  *         name: id
@@ -219,15 +219,15 @@ router.post("/", validate(createBudgetSchema), BudgetController.createBudget);
  *       - in: query
  *         name: reference
  *         schema: { type: string, format: date-time }
- *         description: Accepted for uniformity; not used by this operation
+ *         description: "Resolves the period of the archived view answered (default: now)"
  *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
- *         description: Budget archived (or already archived)
+ *         description: The archived budget view (also when it was already archived), with its new `updatedAt`
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Message'
+ *               $ref: '#/components/schemas/Budget'
  *       400:
  *         description: Invalid ID or reference
  *       401:

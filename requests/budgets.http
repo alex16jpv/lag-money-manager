@@ -161,7 +161,8 @@ Content-Type: application/json
 GET {{baseUrl}}/budgets?includeExpired=true
 Authorization: Bearer {{token}}
 
-### Archivar (soft delete, idempotente) — se puede restaurar más abajo
+### Archivar (soft delete, idempotente) — se puede restaurar más abajo.
+### Responde el view archivado (archivedAt y updatedAt nuevos), no un mensaje (F-22).
 DELETE {{baseUrl}}/budgets/{{budgetId}}
 Authorization: Bearer {{token}}
 

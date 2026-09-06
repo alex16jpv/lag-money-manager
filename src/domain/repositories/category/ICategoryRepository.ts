@@ -18,11 +18,12 @@ export interface ICategoryRepository extends IRepository<Category> {
     session?: unknown,
     expectedUpdatedAt?: Date,
   ): Promise<Category>;
+  // Archives and answers the archived row.
   delete(
     id: string,
     session?: unknown,
     expectedUpdatedAt?: Date,
-  ): Promise<void>;
+  ): Promise<Category>;
 
   getAllByUserId(
     userId: string,

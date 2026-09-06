@@ -164,7 +164,7 @@ export class BudgetRepository implements IBudgetRepository {
     id: string,
     session?: TxSession,
     expectedUpdatedAt?: Date,
-  ): Promise<void> {
+  ): Promise<Budget> {
     const doc = await BudgetModel.findOneAndUpdate(
       {
         _id: id,
@@ -177,6 +177,7 @@ export class BudgetRepository implements IBudgetRepository {
     if (!doc) {
       throw new ApiError("NotFound", "Budget not found");
     }
+    return this.toEntity(doc);
   }
 
   async findOverlapping(

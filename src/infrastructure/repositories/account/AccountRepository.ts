@@ -189,7 +189,7 @@ export class AccountRepository implements IAccountRepository {
     id: string,
     userId: string,
     expectedUpdatedAt?: Date,
-  ): Promise<boolean> {
+  ): Promise<Account | null> {
     const doc = await AccountModel.findOneAndUpdate(
       {
         _id: id,
@@ -201,7 +201,7 @@ export class AccountRepository implements IAccountRepository {
       { archivedAt: new Date() },
       { new: true },
     ).lean();
-    return doc !== null;
+    return doc ? this.toEntity(doc) : null;
   }
 
   async restore(

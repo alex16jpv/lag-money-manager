@@ -59,7 +59,7 @@ Update an account. Partial updates supported (`name`, `type`, `color`). At least
 
 ### `DELETE /accounts/:id`
 
-Archive the account (soft delete, sets `archivedAt`). Allowed even when transactions reference it; those transactions keep pointing at it. Idempotent — archiving an already-archived account is a no-op success.
+Archive the account (soft delete, sets `archivedAt`). Allowed even when transactions reference it; those transactions keep pointing at it. Idempotent — archiving an already-archived account is a no-op success. **Answers the archived account** (the same `Account` view as `GET`), so a client that queued a restore or a rename right behind the archive has the new `updatedAt` for its `If-Match` without a read in between (F-22).
 
 The **default account cannot be archived** (`DEFAULT_ACCOUNT_ARCHIVE_BLOCKED`); promote another account first.
 

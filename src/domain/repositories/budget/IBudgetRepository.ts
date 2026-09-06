@@ -29,11 +29,12 @@ export interface IBudgetRepository extends IRepository<Budget> {
     session?: unknown,
     expectedUpdatedAt?: Date,
   ): Promise<Budget>;
+  // Archives and answers the archived row.
   delete(
     id: string,
     session?: unknown,
     expectedUpdatedAt?: Date,
-  ): Promise<void>;
+  ): Promise<Budget>;
 
   // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
   getOwnById(id: string, userId: string): Promise<Budget | null>;

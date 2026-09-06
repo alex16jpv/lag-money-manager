@@ -230,10 +230,19 @@ describe("CategoryService", () => {
 
   describe("deleteCategory (archive)", () => {
     it("should archive a category (even when it has transactions)", async () => {
+      const archivedAt = new Date("2026-09-05T10:00:00.000Z");
       repo.getByIdIncludingArchived.mockResolvedValue(mockCategory);
-      repo.delete.mockResolvedValue();
+      repo.delete.mockResolvedValue(
+        new Category({
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          name: "Food",
+          userId: testUserId,
+          archivedAt,
+          updatedAt: archivedAt,
+        }),
+      );
 
-      await service.deleteCategory(
+      const archived = await service.deleteCategory(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         testUserId,
       );
@@ -243,6 +252,30 @@ describe("CategoryService", () => {
         undefined,
         undefined,
       );
+      // F-22: the archived row comes back so the client learns its new updatedAt.
+      expect(archived).toBeInstanceOf(Category);
+      expect(archived.archivedAt).toEqual(archivedAt);
+      expect(archived.updatedAt).toEqual(archivedAt);
+    });
+
+    it("answers the row unchanged when it was already archived (idempotent)", async () => {
+      const archivedAt = new Date("2026-09-01T00:00:00.000Z");
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          name: "Food",
+          userId: testUserId,
+          archivedAt,
+        }),
+      );
+
+      const archived = await service.deleteCategory(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        testUserId,
+      );
+
+      expect(archived.archivedAt).toEqual(archivedAt);
+      expect(repo.delete).not.toHaveBeenCalled();
     });
 
     it("resolves when a concurrent archive wins the race (idempotent)", async () => {
@@ -265,7 +298,7 @@ describe("CategoryService", () => {
           "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
           testUserId,
         ),
-      ).resolves.toBeUndefined();
+      ).resolves.toMatchObject({ archivedAt: expect.any(Date) });
     });
 
     it("should throw NotFound when archiving non-existent category", async () => {

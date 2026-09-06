@@ -754,8 +754,26 @@ describe("BudgetService", () => {
 
       await expect(
         service.deleteBudget("b1", USER, CTX),
-      ).resolves.toBeUndefined();
+      ).resolves.toMatchObject({ archivedAt: archived.archivedAt });
       expect(budgetRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it("archiving answers the archived view with its new updatedAt (F-22)", async () => {
+      const archivedAt = new Date("2026-09-05T10:00:00.000Z");
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(makeBudget());
+      budgetRepo.delete.mockResolvedValue(
+        makeBudget({ archivedAt, updatedAt: archivedAt }),
+      );
+
+      const view = await service.deleteBudget("b1", USER, CTX);
+
+      expect(budgetRepo.delete).toHaveBeenCalledWith(
+        "b1",
+        undefined,
+        undefined,
+      );
+      expect(view.archivedAt).toEqual(archivedAt);
+      expect(view.updatedAt).toEqual(archivedAt);
     });
 
     it("writes on an archived budget return RESOURCE_ARCHIVED", async () => {
