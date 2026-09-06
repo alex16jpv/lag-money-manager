@@ -31,6 +31,7 @@ import { BudgetModel } from "../src/infrastructure/models/BudgetModel";
 import { CategoryModel } from "../src/infrastructure/models/CategoryModel";
 import { IdempotencyKeyModel } from "../src/infrastructure/models/IdempotencyKeyModel";
 import { RefreshSessionModel } from "../src/infrastructure/models/RefreshSessionModel";
+import { SyncOpModel } from "../src/infrastructure/models/SyncOpModel";
 import { TransactionModel } from "../src/infrastructure/models/TransactionModel";
 import { UserModel } from "../src/infrastructure/models/UserModel";
 import { ENVIRONMENT } from "../src/shared/constants";
@@ -211,9 +212,23 @@ async function purge(userId: string, email: string): Promise<void> {
     CategoryModel.deleteMany({ userId }),
     BudgetModel.deleteMany({ userId }),
     RefreshSessionModel.deleteMany({ userId }),
+    SyncOpModel.deleteMany({ userId }),
     IdempotencyKeyModel.deleteMany({ _id: new RegExp(`^${userId}:`) }),
   ]);
   await UserModel.deleteMany({ $or: [{ _id: userId }, { email }] });
+}
+
+// The front's browser suite registers a throwaway user per test and nothing else ever removes them
+// (R-5): same disposable fixtures, same non-production database, same sanctioned hard delete.
+const E2E_USER_EMAIL = /^e2e-.+@ledgerflow\.test$/;
+
+async function sweepBrowserSuiteUsers(): Promise<number> {
+  const leftovers = await UserModel.find(
+    { email: E2E_USER_EMAIL },
+    { _id: 1, email: 1 },
+  ).lean();
+  for (const user of leftovers) await purge(String(user._id), user.email);
+  return leftovers.length;
 }
 
 export async function seed(): Promise<Record<string, unknown>> {
@@ -253,6 +268,9 @@ export async function seed(): Promise<Record<string, unknown>> {
   const statsService = new StatsService(transactions);
 
   await purge(SEED_USER.id, SEED_USER.email);
+  const sweptUsers = await sweepBrowserSuiteUsers();
+  if (sweptUsers > 0)
+    console.log(`Swept ${sweptUsers} users the browser suite left behind`);
 
   // The entities accept an explicit id and the services spread the DTO into
   // them, which is how the fixed ids survive; the DTO types do not declare

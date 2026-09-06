@@ -64,6 +64,7 @@ describe("seed:test", () => {
   let second: SeedOutput;
   let counts: Record<string, number>;
   let seededName: string | undefined;
+  let leftovers: number;
   let tombstones: Record<string, number>;
   let updatedAt: number[];
 
@@ -80,9 +81,21 @@ describe("seed:test", () => {
     }
 
     first = runSeed();
+    // What the front's browser suite leaves behind: a throwaway user per test (R-5).
+    await client
+      .db()
+      .collection<{ _id: string; email: string; name: string }>("users")
+      .insertOne({
+        _id: "e2e-leftover-r5",
+        email: "e2e-leftover-r5@ledgerflow.test",
+        name: "Leftover",
+      });
     second = runSeed();
 
     const db = client.db();
+    leftovers = await db
+      .collection("users")
+      .countDocuments({ email: /^e2e-.+@ledgerflow\.test$/ });
     const scoped = { userId: second.user.id };
     seededName = (
       await db.collection("users").findOne({ email: second.user.email })
@@ -136,6 +149,11 @@ describe("seed:test", () => {
   it("leaves one user, not one per run", () => {
     if (!ran()) return;
     expect(counts.users).toBe(1);
+  });
+
+  it("sweeps the users the browser suite left behind", () => {
+    if (!ran()) return;
+    expect(leftovers).toBe(0);
   });
 
   // Owner decision (2026-09-02): the example user is a neutral placeholder,
