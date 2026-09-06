@@ -76,9 +76,10 @@ interface Handler {
   body?: z.ZodType;
   // Creates set the body's id from the envelope and read the replay flag.
   create?: boolean;
-  // Whose active name a DUPLICATE is about (§5.1): a category's create merges
-  // into the row that holds the name when the type matches; an account's
-  // never merges — that would rewrite balances — and only reports it.
+  // Whose active name a DUPLICATE is about (§5.1). The row that holds the
+  // name rides back as `current` on every write that names one; only a
+  // category's CREATE merges into it (same type). An account's never merges —
+  // that would rewrite balances — and no update or restore does either.
   nameOwner?: "category" | "account";
   // Body fields naming a category, redirected when the batch merged it.
   categoryFields?: readonly string[];
@@ -160,6 +161,7 @@ export class SyncBatchService {
       },
       "account:update": {
         body: bodyOf(v.updateAccountSchema),
+        nameOwner: "account",
         run: ({ id, body, ctx, guard }) =>
           this.accounts.updateAccount(id, body as never, ctx.userId, guard),
       },
@@ -169,6 +171,7 @@ export class SyncBatchService {
       },
       "account:restore": {
         body: bodyOf(v.restoreSchema),
+        nameOwner: "account",
         run: ({ id, body, ctx, guard }) =>
           this.accounts.restoreAccount(
             id,
@@ -193,6 +196,7 @@ export class SyncBatchService {
       },
       "category:update": {
         body: bodyOf(v.updateCategorySchema),
+        nameOwner: "category",
         run: ({ id, body, ctx, guard }) =>
           this.categories.updateCategory(id, body as never, ctx.userId, guard),
       },
@@ -202,6 +206,7 @@ export class SyncBatchService {
       },
       "category:restore": {
         body: bodyOf(v.restoreSchema),
+        nameOwner: "category",
         run: ({ id, body, ctx, guard }) =>
           this.categories.restoreCategory(
             id,
@@ -485,7 +490,7 @@ export class SyncBatchService {
     args: RunArgs,
     outcome: Outcome,
   ): Promise<Outcome> {
-    if (outcome.code === "DUPLICATE" && handler.create && handler.nameOwner) {
+    if (outcome.code === "DUPLICATE" && handler.nameOwner) {
       return this.reconcileName(handler, args, outcome);
     }
     if (outcome.code === "CATEGORY_ARCHIVED" && handler.dropsCategory) {
@@ -511,8 +516,9 @@ export class SyncBatchService {
     args: RunArgs,
     outcome: Outcome,
   ): Promise<Outcome> {
-    const { name, type } = args.body as { name?: unknown; type?: unknown };
-    if (typeof name !== "string") return outcome;
+    const { type } = args.body as { type?: unknown };
+    const name = await this.nameWritten(handler, args);
+    if (name === null) return outcome;
     const taken: Account | Category | null =
       handler.nameOwner === "category"
         ? await this.categories.findActiveByName(args.ctx.userId, name)
@@ -521,8 +527,9 @@ export class SyncBatchService {
     if (!taken) return outcome;
 
     // Same name and same type: the two rows ARE the same category, so the
-    // create lands on the server's and the batch redirects to it (§5.1).
-    if (handler.nameOwner === "category") {
+    // create lands on the server's and the batch redirects to it (§5.1). Only
+    // a create: renaming an existing row onto another is not a merge.
+    if (handler.create && handler.nameOwner === "category") {
       const category = taken as Category;
       if ((category.type ?? null) === ((type as string | undefined) ?? null)) {
         return { status: "merged", result: category, mergedInto: category.id };
@@ -531,6 +538,31 @@ export class SyncBatchService {
     // Everything else stays a conflict, the row travelling back so the
     // device can offer the server's version without another round trip.
     return { ...outcome, current: taken };
+  }
+
+  // The name the refused write carried — or, for a restore that sent none, the
+  // archived row's own name, which is what the index refused.
+  private async nameWritten(
+    handler: Handler,
+    args: RunArgs,
+  ): Promise<string | null> {
+    const { name } = args.body as { name?: unknown };
+    if (typeof name === "string") return name;
+    if (handler.create || args.op.action !== "restore") return null;
+    if (handler.nameOwner === "account") {
+      const account = await this.accounts.findOwnAccount(
+        args.id,
+        args.ctx.userId,
+      );
+      return account?.name ?? null;
+    }
+    try {
+      return (await this.categories.getCategoryById(args.id, args.ctx.userId))
+        .name;
+    } catch {
+      // Not the user's row: the 404 the service already answered stands.
+      return null;
+    }
   }
 
   private async dropArchivedCategory(

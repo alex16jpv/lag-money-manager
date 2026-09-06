@@ -40,6 +40,7 @@ const categories = mockService<CategoryService>(
   "deleteCategory",
   "restoreCategory",
   "findActiveByName",
+  "getCategoryById",
 );
 const transactions = mockService<TransactionService>(
   "createTransaction",
@@ -945,6 +946,68 @@ describe("SyncBatchService", () => {
         code: "DUPLICATE",
       });
       expect(results[0].current).toBeUndefined();
+    });
+
+    it("answers a rename onto a taken name with the row that holds it, never merging", async () => {
+      const serverId = uuid(53);
+      categories.updateCategory.mockRejectedValue(nameTaken("Comida"));
+      categories.findActiveByName.mockResolvedValue(category(serverId));
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "category",
+          action: "update",
+          id: uuid(54),
+          payload: { body: { name: "comida" } },
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "conflict",
+        code: "DUPLICATE",
+        current: { id: serverId, name: "Comida" },
+      });
+      expect(results[0].mergedInto).toBeUndefined();
+      expect(categories.findActiveByName).toHaveBeenCalledWith(USER, "comida");
+    });
+
+    it("looks the archived row's own name up when a restore sent none", async () => {
+      const archivedId = uuid(55);
+      const serverId = uuid(56);
+      accounts.restoreAccount.mockRejectedValue(nameTaken("Wallet"));
+      accounts.findOwnAccount.mockResolvedValue(account(archivedId, "Wallet"));
+      accounts.findActiveByName.mockResolvedValue(account(serverId, "Wallet"));
+
+      const { results } = await service.apply(ctx, [
+        op({ entity: "account", action: "restore", id: archivedId }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "conflict",
+        code: "DUPLICATE",
+        current: { id: serverId, name: "Wallet" },
+      });
+      expect(accounts.findActiveByName).toHaveBeenCalledWith(USER, "Wallet");
+    });
+
+    it("leaves a DUPLICATE on an update without a name alone", async () => {
+      accounts.updateAccount.mockRejectedValue(nameTaken("Wallet"));
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "account",
+          action: "update",
+          id: uuid(57),
+          payload: { body: { type: "CARD" } },
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "conflict",
+        code: "DUPLICATE",
+      });
+      expect(results[0].current).toBeUndefined();
+      expect(accounts.findActiveByName).not.toHaveBeenCalled();
     });
 
     it("drops a category archived online and flags the movement for review", async () => {

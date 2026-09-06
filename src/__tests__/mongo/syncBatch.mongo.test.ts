@@ -649,6 +649,42 @@ describe("POST /sync against mongod", () => {
       expect(await AccountModel.findById(uuid("a", 13)).lean()).toBeNull();
     });
 
+    it("restoring an account whose name another took answers the row that holds it", async () => {
+      const archivedId = uuid("a", 40);
+      const liveId = uuid("a", 41);
+      await push(alice, [
+        op({
+          entity: "account",
+          action: "create",
+          id: archivedId,
+          payload: { body: accountBody("Ahorros", 100) },
+        }),
+        op({ entity: "account", action: "archive", id: archivedId }),
+        op({
+          entity: "account",
+          action: "create",
+          id: liveId,
+          payload: { body: accountBody("ahorros", 40) },
+        }),
+      ]);
+
+      const [restore] = await push(alice, [
+        op({ entity: "account", action: "restore", id: archivedId }),
+      ]);
+
+      expect(restore).toMatchObject({
+        status: "conflict",
+        code: "DUPLICATE",
+        current: { id: liveId, name: "ahorros" },
+      });
+      expect(restore.mergedInto).toBeUndefined();
+      // Nothing moved: the archived one stays archived, the live one untouched.
+      expect(
+        (await AccountModel.findById(archivedId).lean())?.archivedAt,
+      ).not.toBeNull();
+      expect(await balanceOf(liveId)).toBe(4_000);
+    });
+
     it("saves a movement whose category was archived online, flagged for review", async () => {
       const cat = uuid("d", 5);
       const txId = uuid("e", 3);
