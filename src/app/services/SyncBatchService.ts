@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { Account } from "../../domain/entities/Account";
+import { Category } from "../../domain/entities/Category";
 import { ISyncOpRepository } from "../../domain/repositories/syncOp/ISyncOpRepository";
 import { ErrorCode } from "../../shared/errorCodes";
 import { describeFailure } from "../../shared/errorResponse";
@@ -9,6 +11,7 @@ import {
   SYNC_SUPPORTED_OP_VERSIONS,
   SyncEntity,
   SyncOpStatus,
+  SyncWarning,
 } from "../../shared/syncBatch";
 import * as v from "../validation/schemas";
 import { SyncOperationInput } from "../validation/schemas";
@@ -26,12 +29,17 @@ export interface SyncOpResult {
   code?: ErrorCode;
   message?: string;
   details?: unknown;
-  // STALE_UPDATE: the row as the server has it, same as the HTTP 409.
+  // STALE_UPDATE, and the conflicts a row explains: the row as the server
+  // has it, same as the HTTP 409.
   current?: unknown;
-  // applied/duplicate: what the matching route would have answered.
+  // applied/merged/duplicate: what the matching route would have answered.
   result?: unknown;
   // blocked: the opId of the operation in this batch that failed first.
   blockedBy?: string;
+  // merged: the server row this operation landed on instead of `id`.
+  mergedInto?: string;
+  // The write landed, but not as it was sent (an archived reference dropped).
+  warnings?: SyncWarning[];
 }
 
 export interface SyncBatchResult {
@@ -52,19 +60,41 @@ type Body = Record<string, unknown>;
 const bodyOf = (schema: z.ZodObject): z.ZodType =>
   (schema.shape as { body: z.ZodType }).body;
 
+interface RunArgs {
+  op: SyncOperationInput;
+  // The row the operation writes: `op.id`, or the server row a merge earlier
+  // in this batch redirected it to.
+  id: string;
+  body: Body;
+  ctx: Context;
+  guard: Date | undefined;
+  outcome: { replayed: boolean };
+}
+
 interface Handler {
   // Undefined: the route takes no body and any sent is ignored, like HTTP.
   body?: z.ZodType;
   // Creates set the body's id from the envelope and read the replay flag.
   create?: boolean;
-  run: (
-    op: SyncOperationInput,
-    body: Body,
-    ctx: Context,
-    guard: Date | undefined,
-    outcome: { replayed: boolean },
-  ) => Promise<unknown>;
+  // Whose active name a DUPLICATE is about (§5.1): a category's create merges
+  // into the row that holds the name when the type matches; an account's
+  // never merges — that would rewrite balances — and only reports it.
+  nameOwner?: "category" | "account";
+  // Body fields naming a category, redirected when the batch merged it.
+  categoryFields?: readonly string[];
+  // A category archived online is dropped instead of refusing the write
+  // (§5.3). Transactions only: a budget without categories is a GLOBAL
+  // budget, so dropping one would silently change what it counts.
+  dropsCategory?: boolean;
+  // Body fields naming an account: one archived online explains a bare 404.
+  accountFields?: readonly string[];
+  // The route removes the row: a 404 may mean the row is already gone, which
+  // is the state the operation wanted (§5.4).
+  removesRow?: boolean;
+  run: (args: RunArgs) => Promise<unknown>;
 }
+
+const ACCOUNT_SIDES = ["fromAccountId", "toAccountId"] as const;
 
 function rejected(field: string, message: string): Outcome {
   return {
@@ -73,6 +103,23 @@ function rejected(field: string, message: string): Outcome {
     message: "Invalid request data",
     details: [{ field, message }],
   };
+}
+
+/** Redirects, inside a body, the ids a merge in this batch replaced. */
+function redirect(
+  body: Body,
+  fields: readonly string[] | undefined,
+  merged: Map<string, string>,
+): Body {
+  if (!fields || merged.size === 0) return body;
+  const swap = (id: unknown): unknown =>
+    typeof id === "string" ? (merged.get(id) ?? id) : id;
+  const next = { ...body };
+  for (const field of fields) {
+    const value = next[field];
+    next[field] = Array.isArray(value) ? value.map(swap) : swap(value);
+  }
+  return next;
 }
 
 /**
@@ -104,7 +151,8 @@ export class SyncBatchService {
       "account:create": {
         body: bodyOf(v.createAccountSchema),
         create: true,
-        run: (_op, body, ctx, _guard, outcome) =>
+        nameOwner: "account",
+        run: ({ body, ctx, outcome }) =>
           this.accounts.createAccount(
             { ...body, userId: ctx.userId } as never,
             outcome,
@@ -112,31 +160,32 @@ export class SyncBatchService {
       },
       "account:update": {
         body: bodyOf(v.updateAccountSchema),
-        run: (op, body, ctx, guard) =>
-          this.accounts.updateAccount(op.id, body as never, ctx.userId, guard),
+        run: ({ id, body, ctx, guard }) =>
+          this.accounts.updateAccount(id, body as never, ctx.userId, guard),
       },
       "account:archive": {
-        run: (op, _body, ctx, guard) =>
-          this.accounts.deleteAccount(op.id, ctx.userId, guard),
+        run: ({ id, ctx, guard }) =>
+          this.accounts.deleteAccount(id, ctx.userId, guard),
       },
       "account:restore": {
         body: bodyOf(v.restoreSchema),
-        run: (op, body, ctx, guard) =>
+        run: ({ id, body, ctx, guard }) =>
           this.accounts.restoreAccount(
-            op.id,
+            id,
             ctx.userId,
             (body as { name?: string }).name,
             guard,
           ),
       },
       "account:setDefault": {
-        run: (op, _body, ctx, guard) =>
-          this.accounts.setDefaultAccount(op.id, ctx.userId, guard),
+        run: ({ id, ctx, guard }) =>
+          this.accounts.setDefaultAccount(id, ctx.userId, guard),
       },
       "category:create": {
         body: bodyOf(v.createCategorySchema),
         create: true,
-        run: (_op, body, ctx, _guard, outcome) =>
+        nameOwner: "category",
+        run: ({ body, ctx, outcome }) =>
           this.categories.createCategory(
             { ...body, userId: ctx.userId } as never,
             outcome,
@@ -144,23 +193,18 @@ export class SyncBatchService {
       },
       "category:update": {
         body: bodyOf(v.updateCategorySchema),
-        run: (op, body, ctx, guard) =>
-          this.categories.updateCategory(
-            op.id,
-            body as never,
-            ctx.userId,
-            guard,
-          ),
+        run: ({ id, body, ctx, guard }) =>
+          this.categories.updateCategory(id, body as never, ctx.userId, guard),
       },
       "category:archive": {
-        run: (op, _body, ctx, guard) =>
-          this.categories.deleteCategory(op.id, ctx.userId, guard),
+        run: ({ id, ctx, guard }) =>
+          this.categories.deleteCategory(id, ctx.userId, guard),
       },
       "category:restore": {
         body: bodyOf(v.restoreSchema),
-        run: (op, body, ctx, guard) =>
+        run: ({ id, body, ctx, guard }) =>
           this.categories.restoreCategory(
-            op.id,
+            id,
             ctx.userId,
             (body as { name?: string }).name,
             guard,
@@ -169,8 +213,11 @@ export class SyncBatchService {
       "transaction:create": {
         body: bodyOf(v.createTransactionSchema),
         create: true,
+        categoryFields: ["categoryId"],
+        dropsCategory: true,
+        accountFields: ACCOUNT_SIDES,
         // No Idempotency-Key: the client-minted id already makes it a replay.
-        run: (_op, body, ctx, _guard, outcome) =>
+        run: ({ body, ctx, outcome }) =>
           this.transactions.createTransaction(
             { ...body, userId: ctx.userId } as never,
             undefined,
@@ -180,7 +227,10 @@ export class SyncBatchService {
       "transaction:quickAdd": {
         body: bodyOf(v.quickAddTransactionSchema),
         create: true,
-        run: (_op, body, ctx, _guard, outcome) =>
+        categoryFields: ["categoryId"],
+        dropsCategory: true,
+        accountFields: ACCOUNT_SIDES,
+        run: ({ body, ctx, outcome }) =>
           this.transactions.quickAddTransaction(
             { ...body, userId: ctx.userId } as never,
             undefined,
@@ -189,22 +239,27 @@ export class SyncBatchService {
       },
       "transaction:update": {
         body: bodyOf(v.updateTransactionSchema),
-        run: (op, body, ctx, guard) =>
+        categoryFields: ["categoryId"],
+        dropsCategory: true,
+        accountFields: ACCOUNT_SIDES,
+        run: ({ id, body, ctx, guard }) =>
           this.transactions.updateTransaction(
-            op.id,
+            id,
             body as never,
             ctx.userId,
             guard,
           ),
       },
       "transaction:delete": {
-        run: (op, _body, ctx, guard) =>
-          this.transactions.deleteTransaction(op.id, ctx.userId, guard),
+        removesRow: true,
+        run: ({ id, ctx, guard }) =>
+          this.transactions.deleteTransaction(id, ctx.userId, guard),
       },
       "budget:create": {
         body: bodyOf(v.createBudgetSchema),
         create: true,
-        run: (op, body, ctx, _guard, outcome) =>
+        categoryFields: ["categoryIds"],
+        run: ({ op, body, ctx, outcome }) =>
           this.budgets.createBudget(
             { ...body, userId: ctx.userId } as never,
             budgetCtx(op, ctx),
@@ -213,9 +268,10 @@ export class SyncBatchService {
       },
       "budget:update": {
         body: bodyOf(v.updateBudgetSchema),
-        run: (op, body, ctx, guard) =>
+        categoryFields: ["categoryIds"],
+        run: ({ op, id, body, ctx, guard }) =>
           this.budgets.updateBudget(
-            op.id,
+            id,
             body as never,
             ctx.userId,
             budgetCtx(op, ctx),
@@ -223,28 +279,18 @@ export class SyncBatchService {
           ),
       },
       "budget:archive": {
-        run: (op, _body, ctx, guard) =>
-          this.budgets.deleteBudget(
-            op.id,
-            ctx.userId,
-            budgetCtx(op, ctx),
-            guard,
-          ),
+        run: ({ op, id, ctx, guard }) =>
+          this.budgets.deleteBudget(id, ctx.userId, budgetCtx(op, ctx), guard),
       },
       "budget:restore": {
-        run: (op, _body, ctx, guard) =>
-          this.budgets.restoreBudget(
-            op.id,
-            ctx.userId,
-            budgetCtx(op, ctx),
-            guard,
-          ),
+        run: ({ op, id, ctx, guard }) =>
+          this.budgets.restoreBudget(id, ctx.userId, budgetCtx(op, ctx), guard),
       },
       "budget:setOverride": {
         body: bodyOf(v.budgetAmountOverrideSchema),
-        run: (op, body, ctx, guard) =>
+        run: ({ op, id, body, ctx, guard }) =>
           this.budgets.setAmountOverride(
-            op.id,
+            id,
             ctx.userId,
             (body as { amount: number }).amount,
             budgetCtx(op, ctx),
@@ -252,9 +298,9 @@ export class SyncBatchService {
           ),
       },
       "budget:clearOverride": {
-        run: (op, _body, ctx, guard) =>
+        run: ({ op, id, ctx, guard }) =>
           this.budgets.clearAmountOverride(
-            op.id,
+            id,
             ctx.userId,
             budgetCtx(op, ctx),
             guard,
@@ -272,17 +318,25 @@ export class SyncBatchService {
     const ordered = [...operations].sort((a, b) => a.seq - b.seq);
     // Entity id → opId of the operation in this batch that failed on it.
     const failed = new Map<string, string>();
+    // Id the device minted → the server row a merge landed it on (§5.1).
+    const merged = new Map<string, string>();
     const results: SyncOpResult[] = [];
 
     for (const op of ordered) {
-      const outcome = await this.applyOne(ctx, op, failed);
+      const id = merged.get(op.id) ?? op.id;
+      const outcome = await this.applyOne(ctx, op, id, failed, merged);
       if (!SYNC_LANDED_STATUSES.includes(outcome.status)) {
-        failed.set(op.id, op.opId);
+        failed.set(id, op.opId);
+      }
+      if (outcome.mergedInto) {
+        merged.set(op.id, outcome.mergedInto);
       }
       results.push({
         opId: op.opId,
         seq: op.seq,
         entity: op.entity,
+        // What the device sent, always: it matches results by it. Where the
+        // write actually landed, when it differs, is `mergedInto`.
         id: op.id,
         ...outcome,
       });
@@ -294,12 +348,15 @@ export class SyncBatchService {
   private async applyOne(
     ctx: Context,
     op: SyncOperationInput,
+    id: string,
     failed: Map<string, string>,
+    merged: Map<string, string>,
   ): Promise<Outcome> {
     // The row itself counts as a dependency: a second write on a row whose
     // first write did not land would only repeat the same failure.
-    const blockedBy = [op.id, ...op.dependsOn]
-      .map((id) => failed.get(id))
+    const rows = [id, ...op.dependsOn.map((dep) => merged.get(dep) ?? dep)];
+    const blockedBy = rows
+      .map((row) => failed.get(row))
       .find((opId) => opId !== undefined);
     if (blockedBy) {
       return { status: "blocked", blockedBy };
@@ -310,14 +367,17 @@ export class SyncBatchService {
       return {
         status: "duplicate",
         ...(seen.code && { code: seen.code as ErrorCode }),
+        // A merge the device may not know about yet (its response was lost);
+        // the rest of this batch still names the id it minted.
+        ...(seen.entityId !== op.id && { mergedInto: seen.entityId }),
       };
     }
 
-    const outcome = await this.execute(ctx, op);
+    const outcome = await this.execute(ctx, op, id, merged);
     if (SYNC_LANDED_STATUSES.includes(outcome.status)) {
       await this.syncOps.record(ctx.userId, op.opId, {
         status: outcome.status,
-        entityId: op.id,
+        entityId: outcome.mergedInto ?? id,
         code: outcome.code ?? null,
       });
     }
@@ -327,6 +387,8 @@ export class SyncBatchService {
   private async execute(
     ctx: Context,
     op: SyncOperationInput,
+    id: string,
+    merged: Map<string, string>,
   ): Promise<Outcome> {
     if (!SYNC_SUPPORTED_OP_VERSIONS.includes(op.opVersion)) {
       return rejected(
@@ -365,15 +427,30 @@ export class SyncBatchService {
           })),
         };
       }
-      body = parsed.data as Body;
+      body = redirect(parsed.data as Body, handler.categoryFields, merged);
     }
 
-    const guard = op.baseUpdatedAt ? new Date(op.baseUpdatedAt) : undefined;
-    const outcome = { replayed: false };
+    const args: RunArgs = {
+      op,
+      id,
+      body,
+      ctx,
+      guard: op.baseUpdatedAt ? new Date(op.baseUpdatedAt) : undefined,
+      outcome: { replayed: false },
+    };
+    const outcome = await this.attempt(handler, args);
+    if (outcome.status === "conflict" || outcome.status === "rejected") {
+      return this.reconcile(handler, args, outcome);
+    }
+    return outcome;
+  }
+
+  /** One pass through the route's own service, answered like the route. */
+  private async attempt(handler: Handler, args: RunArgs): Promise<Outcome> {
     try {
-      const result = await handler.run(op, body, ctx, guard, outcome);
+      const result = await handler.run(args);
       return {
-        status: outcome.replayed ? "duplicate" : "applied",
+        status: args.outcome.replayed ? "duplicate" : "applied",
         ...(result !== undefined && { result }),
       };
     } catch (err) {
@@ -382,17 +459,121 @@ export class SyncBatchService {
       // fails, loudly. What already landed is on record and replays as
       // `duplicate` when the batch is sent again.
       if (!failure) throw err;
-      const { body: b } = failure;
+      const { body } = failure;
       return {
         status: failure.status === 409 ? "conflict" : "rejected",
         // Same default as PATCH /transactions/batch: without an HTTP status
         // per operation, a code-less 404 would leave the client nothing to
         // branch on.
-        code: b.code ?? (failure.status === 404 ? "NOT_FOUND" : "BAD_REQUEST"),
-        message: b.message,
-        ...(b.details !== undefined && { details: b.details }),
-        ...(b.current !== undefined && { current: b.current }),
+        code:
+          body.code ?? (failure.status === 404 ? "NOT_FOUND" : "BAD_REQUEST"),
+        message: body.message,
+        ...(body.details !== undefined && { details: body.details }),
+        ...(body.current !== undefined && { current: body.current }),
       };
     }
+  }
+
+  /**
+   * The reconciliation rules of ESTRATEGIA §5, applied only to what the
+   * services already refused: a name taken online, a reference archived
+   * online. They decide what to answer — and, for a merge, which row the
+   * batch writes from here on — but never write anything themselves.
+   */
+  private async reconcile(
+    handler: Handler,
+    args: RunArgs,
+    outcome: Outcome,
+  ): Promise<Outcome> {
+    if (outcome.code === "DUPLICATE" && handler.create && handler.nameOwner) {
+      return this.reconcileName(handler, args, outcome);
+    }
+    if (outcome.code === "CATEGORY_ARCHIVED" && handler.dropsCategory) {
+      return this.dropArchivedCategory(handler, args);
+    }
+    if (outcome.code === "NOT_FOUND" && handler.accountFields) {
+      return this.explainArchivedAccount(handler, args, outcome);
+    }
+    if (
+      outcome.code === "NOT_FOUND" &&
+      handler.removesRow &&
+      (await this.transactions.isDeleted(args.id, args.ctx.userId))
+    ) {
+      // Another device deleted it first: the state the operation wanted
+      // already holds, so it lands instead of failing (§5.4).
+      return { status: "duplicate" };
+    }
+    return outcome;
+  }
+
+  private async reconcileName(
+    handler: Handler,
+    args: RunArgs,
+    outcome: Outcome,
+  ): Promise<Outcome> {
+    const { name, type } = args.body as { name?: unknown; type?: unknown };
+    if (typeof name !== "string") return outcome;
+    const taken: Account | Category | null =
+      handler.nameOwner === "category"
+        ? await this.categories.findActiveByName(args.ctx.userId, name)
+        : await this.accounts.findActiveByName(args.ctx.userId, name);
+    // Another unique index (the single default account) refused this write.
+    if (!taken) return outcome;
+
+    // Same name and same type: the two rows ARE the same category, so the
+    // create lands on the server's and the batch redirects to it (§5.1).
+    if (handler.nameOwner === "category") {
+      const category = taken as Category;
+      if ((category.type ?? null) === ((type as string | undefined) ?? null)) {
+        return { status: "merged", result: category, mergedInto: category.id };
+      }
+    }
+    // Everything else stays a conflict, the row travelling back so the
+    // device can offer the server's version without another round trip.
+    return { ...outcome, current: taken };
+  }
+
+  private async dropArchivedCategory(
+    handler: Handler,
+    args: RunArgs,
+  ): Promise<Outcome> {
+    // The movement is never lost (§5.3): it lands without the category and
+    // flagged for review, so the user can re-file it. Nothing was written on
+    // the refused attempt — the check runs before the write, and inside the
+    // transaction for an update.
+    const retried = await this.attempt(handler, {
+      ...args,
+      body: { ...args.body, categoryId: null, pendingDetails: true },
+      outcome: { replayed: false },
+    });
+    if (!SYNC_LANDED_STATUSES.includes(retried.status)) {
+      // Something else was in the way; that is the answer the device needs.
+      return retried;
+    }
+    return { ...retried, warnings: ["CATEGORY_ARCHIVED_DROPPED"] };
+  }
+
+  private async explainArchivedAccount(
+    handler: Handler,
+    args: RunArgs,
+    outcome: Outcome,
+  ): Promise<Outcome> {
+    // A bare 404 cannot tell "archived while I was offline" from "never
+    // existed", and only the first one is the user's to resolve (§5.3).
+    for (const field of handler.accountFields ?? []) {
+      const id = args.body[field];
+      if (typeof id !== "string") continue;
+      const account = await this.accounts.findOwnAccount(id, args.ctx.userId);
+      if (account?.archivedAt) {
+        return {
+          ...outcome,
+          status: "conflict",
+          code: "RESOURCE_ARCHIVED",
+          message: "Account is archived; restore it first",
+          current: account,
+        };
+      }
+    }
+    return outcome;
   }
 }

@@ -39,6 +39,10 @@ export interface IAccountRepository extends IRepository<Account> {
   // Unlike getById, also resolves archived accounts (read paths only).
   getByIdIncludingArchived(id: string): Promise<Account | null>;
 
+  // The user's ACTIVE account with this name, matched the way the unique
+  // index refuses it (case-insensitive); null when the name is free.
+  findActiveByName(userId: string, name: string): Promise<Account | null>;
+
   // Atomic balance change (decimal delta) via $inc; false when no account
   // matched — callers must treat that as corruption, never ignore it.
   incrementBalance(

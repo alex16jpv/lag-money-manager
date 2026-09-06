@@ -96,10 +96,22 @@ router.get("/changes", validate(syncChangesSchema), SyncController.getChanges);
  *       |---|---|---|
  *       | `applied` | landed now; `result` is what the route would have answered | drop the operation, keep `result` |
  *       | `duplicate` | already landed: a resent `opId`, or a create whose `id` the user already owns (`result` carries the row in that case) | drop the operation |
- *       | `conflict` | the route would have answered 409: `STALE_UPDATE` (with `current`), `DUPLICATE`, `BUDGET_PERIOD_OVERLAP`, `ID_TAKEN` | keep it; resolve |
- *       | `rejected` | the route would have answered another 4xx (`VALIDATION`, `NOT_FOUND`, `RESOURCE_ARCHIVED`, `CATEGORY_ARCHIVED`, `FUTURE_DATE`…) | keep it; the user fixes or discards |
+ *       | `conflict` | the route would have answered 409 (`STALE_UPDATE` with `current`, `DUPLICATE`, `ID_TAKEN`), or a row the server has explains it: a `DUPLICATE` whose name an active row holds, and `RESOURCE_ARCHIVED` for an account archived online. `current` carries that row | keep it; resolve |
+ *       | `rejected` | the route would have answered another 4xx (`VALIDATION`, `NOT_FOUND`, `CATEGORY_ARCHIVED`, `BUDGET_PERIOD_OVERLAP`, `FUTURE_DATE`…) | keep it; the user fixes or discards |
  *       | `blocked` | a row it names (`dependsOn`, or its own `id`) had an operation fail earlier in this batch; `blockedBy` is that opId | keep it; resend once the blocker is resolved |
- *       | `merged` | reserved for the per-entity reconciliation rules (not produced yet) | — |
+ *       | `merged` | a category create whose name and type an active category already has: it landed on that row, named by `mergedInto`, and the rest of the batch was redirected to it | drop it; point the local row at `mergedInto` |
+ *
+ *       **Reconciliation (per entity).** A category create whose name (case
+ *       folded, like the unique index) and type match an ACTIVE category comes
+ *       back `merged`; same name, another type stays a conflict. Accounts never
+ *       merge — it would rewrite balances — so a taken name is a conflict with
+ *       the server's account in `current`. A movement whose category was
+ *       archived online is saved WITHOUT it, flagged `pendingDetails`, with
+ *       `warnings: ["CATEGORY_ARCHIVED_DROPPED"]`; a budget's category is never
+ *       dropped (no categories means a global budget). A movement whose account
+ *       was archived online is a `conflict` `RESOURCE_ARCHIVED` and is never
+ *       lost. Archiving an already-archived row lands, and deleting a movement
+ *       another device deleted answers `duplicate`.
  *
  *       **Actions per entity:** account: create, update, archive, restore,
  *       setDefault · category: create, update, archive, restore · transaction:

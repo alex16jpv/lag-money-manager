@@ -39,6 +39,22 @@ export class AccountService {
     return new Account(account);
   }
 
+  // The active account holding a name, and the user's own row archived
+  // included: the two lookups a caller needs to tell a taken name and an
+  // archived reference from a row that is simply not there (POST /sync, §5).
+  async findActiveByName(
+    userId: string,
+    name: string,
+  ): Promise<Account | null> {
+    const account = await this.repo.findActiveByName(userId, name);
+    return account && new Account(account);
+  }
+
+  async findOwnAccount(id: string, userId: string): Promise<Account | null> {
+    const account = await this.repo.getOwnById(id, userId);
+    return account && new Account(account);
+  }
+
   async createAccount(
     dto: CreateAccountDTO,
     outcome?: CreateOutcome,

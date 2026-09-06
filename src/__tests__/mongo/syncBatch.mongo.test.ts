@@ -8,7 +8,10 @@ import request from "supertest";
 
 import app from "../../app";
 import { AccountModel } from "../../infrastructure/models/AccountModel";
+import { BudgetModel } from "../../infrastructure/models/BudgetModel";
+import { CategoryModel } from "../../infrastructure/models/CategoryModel";
 import { SyncOpModel } from "../../infrastructure/models/SyncOpModel";
+import { TransactionModel } from "../../infrastructure/models/TransactionModel";
 import { SYNC_OP_TTL_SECONDS } from "../../shared/syncBatch";
 import { connect, disconnect, dropDatabase } from "./support";
 
@@ -42,6 +45,8 @@ interface Result {
   current?: Record<string, unknown>;
   result?: Record<string, unknown>;
   blockedBy?: string;
+  mergedInto?: string;
+  warnings?: string[];
 }
 
 let opCounter = 0;
@@ -367,7 +372,7 @@ describe("POST /sync against mongod", () => {
       expect(tx.status).toBe(404);
     });
 
-    it("answers a business rejection with the route's code, and archives on the row keep working", async () => {
+    it("names the account archived online, and the live one keeps working", async () => {
       const archivedId = uuid("a", 8);
       const liveId = uuid("a", 9);
       await push(alice, [
@@ -401,10 +406,12 @@ describe("POST /sync against mongod", () => {
         }),
       ]);
 
-      // 404 on the route: the same answer as a missing account.
+      // The route answers a bare 404; the batch looks the row up and says
+      // WHY, because only "archived online" is the user's to resolve (§5.3).
       expect(results[0]).toMatchObject({
-        status: "rejected",
-        code: "NOT_FOUND",
+        status: "conflict",
+        code: "RESOURCE_ARCHIVED",
+        current: { id: archivedId, name: "Gone" },
       });
       expect(results[1]).toMatchObject({
         status: "applied",
@@ -493,6 +500,307 @@ describe("POST /sync against mongod", () => {
       );
       expect(over.status).toBe(400);
       expect(over.body.code).toBe("VALIDATION");
+    });
+  });
+  describe("reconciliation rules per entity", () => {
+    const accountId = uuid("a", 11);
+
+    beforeAll(async () => {
+      await push(alice, [
+        op({
+          entity: "account",
+          action: "create",
+          id: accountId,
+          payload: { body: accountBody("Reconcile", 1000) },
+        }),
+      ]);
+    });
+
+    it("merges an offline category into the server's and redirects the batch", async () => {
+      const serverCat = uuid("d", 1);
+      const localCat = uuid("d", 2);
+      const txId = uuid("e", 2);
+      const budgetId = uuid("b", 2);
+      // Created online, in a different casing than the device used.
+      await as(
+        alice,
+        request(app)
+          .post("/categories")
+          .send({ id: serverCat, name: "Comida", type: "EXPENSE" }),
+      ).expect(201);
+
+      const batch = [
+        op({
+          entity: "category",
+          action: "create",
+          id: localCat,
+          payload: { body: { name: "comida", type: "EXPENSE" } },
+        }),
+        op({
+          entity: "transaction",
+          action: "create",
+          id: txId,
+          payload: {
+            body: { ...expense(accountId, 40), categoryId: localCat },
+          },
+          dependsOn: [localCat, accountId],
+        }),
+        op({
+          entity: "budget",
+          action: "create",
+          id: budgetId,
+          payload: {
+            body: {
+              name: "Food",
+              color: "TEAL",
+              categoryIds: [localCat],
+              amount: 100,
+              periodType: "MONTHLY",
+            },
+          },
+          dependsOn: [localCat],
+        }),
+      ];
+      const results = await push(alice, batch);
+
+      expect(statuses(results)).toEqual(["merged", "applied", "applied"]);
+      expect(results[0]).toMatchObject({
+        id: localCat,
+        mergedInto: serverCat,
+        result: { id: serverCat, name: "Comida" },
+      });
+      // Nothing was created under the id the device minted...
+      expect(await CategoryModel.findById(localCat).lean()).toBeNull();
+      // ...and everything that named it landed on the server's row.
+      expect((await TransactionModel.findById(txId).lean())?.categoryId).toBe(
+        serverCat,
+      );
+      expect(
+        (await BudgetModel.findById(budgetId).lean())?.categoryIds,
+      ).toEqual([serverCat]);
+      expect(
+        (await SyncOpModel.findById(`${alice.userId}:${batch[0].opId}`).lean())
+          ?.entityId,
+      ).toBe(serverCat);
+
+      // The response was lost: the resend still learns where it landed.
+      const resent = await push(alice, batch);
+      expect(resent[0]).toMatchObject({
+        status: "duplicate",
+        mergedInto: serverCat,
+      });
+    });
+
+    it("keeps a name held by a category of another type a conflict", async () => {
+      const serverCat = uuid("d", 3);
+      await as(
+        alice,
+        request(app)
+          .post("/categories")
+          .send({ id: serverCat, name: "Salario", type: "INCOME" }),
+      ).expect(201);
+
+      const [result] = await push(alice, [
+        op({
+          entity: "category",
+          action: "create",
+          id: uuid("d", 4),
+          payload: { body: { name: "salario", type: "EXPENSE" } },
+        }),
+      ]);
+
+      expect(result).toMatchObject({
+        status: "conflict",
+        code: "DUPLICATE",
+        current: { id: serverCat, type: "INCOME" },
+      });
+      expect(result.mergedInto).toBeUndefined();
+      expect(await CategoryModel.findById(uuid("d", 4)).lean()).toBeNull();
+    });
+
+    it("never merges an account: the taken name comes back with the server's row", async () => {
+      const serverAcc = uuid("a", 12);
+      await push(alice, [
+        op({
+          entity: "account",
+          action: "create",
+          id: serverAcc,
+          payload: { body: accountBody("Nequi", 700) },
+        }),
+      ]);
+
+      const [result] = await push(alice, [
+        op({
+          entity: "account",
+          action: "create",
+          id: uuid("a", 13),
+          payload: { body: accountBody("nequi", 250) },
+        }),
+      ]);
+
+      expect(result).toMatchObject({
+        status: "conflict",
+        code: "DUPLICATE",
+        current: { id: serverAcc, name: "Nequi", balance: 700 },
+      });
+      expect(result.mergedInto).toBeUndefined();
+      // The offline balance is not folded into anything: no money moved.
+      expect(await balanceOf(serverAcc)).toBe(70_000);
+      expect(await AccountModel.findById(uuid("a", 13)).lean()).toBeNull();
+    });
+
+    it("saves a movement whose category was archived online, flagged for review", async () => {
+      const cat = uuid("d", 5);
+      const txId = uuid("e", 3);
+      await as(
+        alice,
+        request(app)
+          .post("/categories")
+          .send({ id: cat, name: "Gone category", type: "EXPENSE" }),
+      ).expect(201);
+      await as(alice, request(app).delete(`/categories/${cat}`)).expect(200);
+
+      const [result] = await push(alice, [
+        op({
+          entity: "transaction",
+          action: "create",
+          id: txId,
+          payload: { body: { ...expense(accountId, 15), categoryId: cat } },
+        }),
+      ]);
+
+      expect(result).toMatchObject({
+        status: "applied",
+        warnings: ["CATEGORY_ARCHIVED_DROPPED"],
+        result: { id: txId, categoryId: null, pendingDetails: true },
+      });
+      // The movement is never lost, and it moved the money once.
+      const stored = await TransactionModel.findById(txId).lean();
+      expect(stored?.categoryId).toBeNull();
+      expect(stored?.pendingDetails).toBe(true);
+      expect(stored?.amount).toBe(1500);
+    });
+
+    it("refuses a budget whose category was archived online, rather than counting everything", async () => {
+      const cat = uuid("d", 6);
+      await as(
+        alice,
+        request(app)
+          .post("/categories")
+          .send({ id: cat, name: "Gone budget category", type: "EXPENSE" }),
+      ).expect(201);
+      await as(alice, request(app).delete(`/categories/${cat}`)).expect(200);
+
+      const [result] = await push(alice, [
+        op({
+          entity: "budget",
+          action: "create",
+          id: uuid("b", 3),
+          payload: {
+            body: {
+              name: "Would be global",
+              color: "TEAL",
+              categoryIds: [cat],
+              amount: 100,
+              periodType: "MONTHLY",
+            },
+          },
+        }),
+      ]);
+
+      expect(result).toMatchObject({
+        status: "rejected",
+        code: "CATEGORY_ARCHIVED",
+      });
+      expect(await BudgetModel.findById(uuid("b", 3)).lean()).toBeNull();
+    });
+
+    // The route answers 400, not 409, so the batch files it as `rejected`;
+    // part 1's note said `conflict` and had never measured it.
+    it("files an overlapping budget as rejected BUDGET_PERIOD_OVERLAP", async () => {
+      const first = uuid("b", 4);
+      const second = uuid("b", 5);
+      const globalBudget = (name: string): Record<string, unknown> => ({
+        name,
+        color: "TEAL",
+        categoryIds: [],
+        amount: 300,
+        periodType: "MONTHLY",
+      });
+
+      const results = await push(alice, [
+        op({
+          entity: "budget",
+          action: "create",
+          id: first,
+          payload: { body: globalBudget("Global one") },
+        }),
+        op({
+          entity: "budget",
+          action: "create",
+          id: second,
+          payload: { body: globalBudget("Global two") },
+        }),
+      ]);
+
+      expect(statuses(results)).toEqual(["applied", "rejected"]);
+      expect(results[1].code).toBe("BUDGET_PERIOD_OVERLAP");
+      expect(await BudgetModel.findById(second).lean()).toBeNull();
+    });
+
+    it("judges FUTURE_DATE by the server's clock, not the device's", async () => {
+      const future = new Date(Date.now() + 48 * 3_600_000).toISOString();
+
+      const [result] = await push(alice, [
+        op({
+          entity: "transaction",
+          action: "create",
+          id: uuid("e", 4),
+          // A phone two days ahead: occurredAt is data, the date is judged.
+          occurredAt: future,
+          payload: {
+            body: { ...expense(accountId, 5), date: future },
+          },
+        }),
+      ]);
+
+      expect(result).toMatchObject({ status: "rejected", code: "FUTURE_DATE" });
+      expect(await TransactionModel.findById(uuid("e", 4)).lean()).toBeNull();
+    });
+
+    it("lands an archive of an already-archived row and a delete of an already-deleted movement", async () => {
+      const acc = uuid("a", 14);
+      const txId = uuid("e", 5);
+      await push(alice, [
+        op({
+          entity: "account",
+          action: "create",
+          id: acc,
+          payload: { body: accountBody("Twice", 100) },
+        }),
+        op({
+          entity: "transaction",
+          action: "create",
+          id: txId,
+          payload: { body: expense(acc, 10) },
+          dependsOn: [acc],
+        }),
+      ]);
+      // Another device got there first, with its own opIds.
+      await as(alice, request(app).delete(`/transactions/${txId}`)).expect(200);
+      await as(alice, request(app).delete(`/accounts/${acc}`)).expect(200);
+
+      const results = await push(alice, [
+        op({ entity: "transaction", action: "delete", id: txId }),
+        op({ entity: "account", action: "archive", id: acc }),
+      ]);
+
+      // Both wanted a state that already holds, so both land (§5.4): nothing
+      // for the user to resolve, and the queue drains.
+      expect(statuses(results)).toEqual(["duplicate", "applied"]);
+      expect(results[0].result).toBeUndefined();
+      const stored = await AccountModel.findById(acc).lean();
+      expect(stored?.archivedAt).toEqual(expect.any(Date));
     });
   });
 });

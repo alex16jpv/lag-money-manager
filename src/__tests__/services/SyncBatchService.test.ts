@@ -11,6 +11,7 @@ import { SyncBatchService } from "../../app/services/SyncBatchService";
 import { TransactionService } from "../../app/services/TransactionService";
 import { SyncOperationInput } from "../../app/validation/schemas";
 import { Account } from "../../domain/entities/Account";
+import { Category } from "../../domain/entities/Category";
 import { DomainValidationError } from "../../domain/errors";
 import { ISyncOpRepository } from "../../domain/repositories/syncOp/ISyncOpRepository";
 import { ApiError, StaleUpdateError } from "../../shared/errors";
@@ -30,18 +31,22 @@ const accounts = mockService<AccountService>(
   "deleteAccount",
   "restoreAccount",
   "setDefaultAccount",
+  "findActiveByName",
+  "findOwnAccount",
 );
 const categories = mockService<CategoryService>(
   "createCategory",
   "updateCategory",
   "deleteCategory",
   "restoreCategory",
+  "findActiveByName",
 );
 const transactions = mockService<TransactionService>(
   "createTransaction",
   "quickAddTransaction",
   "updateTransaction",
   "deleteTransaction",
+  "isDeleted",
 );
 const budgets = mockService<BudgetService>(
   "createBudget",
@@ -92,11 +97,44 @@ const account = (id: string, name = "Wallet"): Account =>
 
 const accountBody = { name: "Wallet", type: "CASH", balance: 10 };
 
+const category = (id: string, name = "Comida", type = "EXPENSE"): Category =>
+  new Category({
+    id,
+    name,
+    type: type as never,
+    userId: USER,
+    updatedAt: new Date("2026-09-05T09:00:00.000Z"),
+  });
+
+/** What the unique name index throws, which is what the route answers 409 to. */
+const nameTaken = (name: string): Error =>
+  Object.assign(new Error("E11000"), {
+    name: "MongoServerError",
+    code: 11000,
+    keyValue: { userId: USER, name },
+  });
+
+const expense = (
+  fromAccountId: string,
+  categoryId?: string,
+): Record<string, unknown> => ({
+  type: "EXPENSE",
+  amount: 5,
+  date: "2026-09-01T12:00:00.000Z",
+  fromAccountId,
+  ...(categoryId && { categoryId }),
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
   seq = 0;
   syncOps.find.mockResolvedValue(null);
   syncOps.record.mockResolvedValue(undefined);
+  // Nothing holds the name and no reference is archived unless a test says so.
+  accounts.findActiveByName.mockResolvedValue(null);
+  accounts.findOwnAccount.mockResolvedValue(null);
+  categories.findActiveByName.mockResolvedValue(null);
+  transactions.isDeleted.mockResolvedValue(false);
 });
 
 describe("SyncBatchService", () => {
@@ -720,6 +758,423 @@ describe("SyncBatchService", () => {
       ]);
 
       expect(results.map((r) => r.status)).toEqual(["duplicate", "applied"]);
+    });
+  });
+  describe("reconciliation rules per entity", () => {
+    it("merges a category create into the active row of the same name and type", async () => {
+      const localId = uuid(40);
+      const serverId = uuid(41);
+      const txId = uuid(42);
+      categories.createCategory.mockRejectedValue(nameTaken("comida"));
+      categories.findActiveByName.mockResolvedValue(
+        category(serverId, "Comida"),
+      );
+      transactions.createTransaction.mockResolvedValue({ id: txId });
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "category",
+          action: "create",
+          id: localId,
+          payload: { body: { name: "comida", type: "EXPENSE" } },
+        }),
+        op({
+          entity: "transaction",
+          action: "create",
+          id: txId,
+          payload: { body: expense(uuid(1), localId) },
+          dependsOn: [localId],
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "merged",
+        id: localId,
+        mergedInto: serverId,
+        result: { id: serverId, name: "Comida" },
+      });
+      expect(categories.findActiveByName).toHaveBeenCalledWith(USER, "comida");
+      // The movement of the same batch lands against the server's category.
+      expect(transactions.createTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ categoryId: serverId }),
+        undefined,
+        { replayed: false },
+      );
+      // The registry remembers the row it landed on, not the minted id.
+      expect(syncOps.record).toHaveBeenCalledWith(USER, results[0].opId, {
+        status: "merged",
+        entityId: serverId,
+        code: null,
+      });
+      expect(results[1].status).toBe("applied");
+    });
+
+    it("redirects a merged category inside a budget's categoryIds", async () => {
+      const localId = uuid(43);
+      const serverId = uuid(44);
+      const budgetId = uuid(45);
+      categories.createCategory.mockRejectedValue(nameTaken("Comida"));
+      categories.findActiveByName.mockResolvedValue(category(serverId));
+      budgets.createBudget.mockResolvedValue({ id: budgetId });
+
+      await service.apply(ctx, [
+        op({
+          entity: "category",
+          action: "create",
+          id: localId,
+          payload: { body: { name: "Comida", type: "EXPENSE" } },
+        }),
+        op({
+          entity: "budget",
+          action: "create",
+          id: budgetId,
+          payload: {
+            body: {
+              name: "Food",
+              color: "TEAL",
+              categoryIds: [localId],
+              amount: 100,
+              periodType: "MONTHLY",
+            },
+          },
+          dependsOn: [localId],
+        }),
+      ]);
+
+      expect(budgets.createBudget).toHaveBeenCalledWith(
+        expect.objectContaining({ categoryIds: [serverId] }),
+        expect.anything(),
+        { replayed: false },
+      );
+    });
+
+    it("redirects a later write on the merged id to the server's row", async () => {
+      const localId = uuid(46);
+      const serverId = uuid(47);
+      categories.createCategory.mockRejectedValue(nameTaken("Comida"));
+      categories.findActiveByName.mockResolvedValue(category(serverId));
+      categories.updateCategory.mockResolvedValue(category(serverId));
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "category",
+          action: "create",
+          id: localId,
+          payload: { body: { name: "Comida", type: "EXPENSE" } },
+        }),
+        op({
+          entity: "category",
+          action: "update",
+          id: localId,
+          payload: { body: { icon: "utensils" } },
+        }),
+      ]);
+
+      expect(categories.updateCategory).toHaveBeenCalledWith(
+        serverId,
+        { icon: "utensils" },
+        USER,
+        undefined,
+      );
+      // The result still echoes the id the device sent, plus where it went.
+      expect(results[1]).toMatchObject({ id: localId, status: "applied" });
+    });
+
+    it("keeps a name taken by another type a conflict, with the server's row", async () => {
+      const serverId = uuid(48);
+      categories.createCategory.mockRejectedValue(nameTaken("Comida"));
+      categories.findActiveByName.mockResolvedValue(
+        category(serverId, "Comida", "INCOME"),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "category",
+          action: "create",
+          id: uuid(49),
+          payload: { body: { name: "Comida", type: "EXPENSE" } },
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "conflict",
+        code: "DUPLICATE",
+        current: { id: serverId, type: "INCOME" },
+      });
+      expect(results[0].mergedInto).toBeUndefined();
+      expect(syncOps.record).not.toHaveBeenCalled();
+    });
+
+    it("never merges an account: the taken name stays a conflict with `current`", async () => {
+      const serverId = uuid(50);
+      accounts.createAccount.mockRejectedValue(nameTaken("Wallet"));
+      accounts.findActiveByName.mockResolvedValue(account(serverId));
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "account",
+          action: "create",
+          id: uuid(51),
+          payload: { body: accountBody },
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "conflict",
+        code: "DUPLICATE",
+        current: { id: serverId, name: "Wallet" },
+      });
+      expect(results[0].mergedInto).toBeUndefined();
+    });
+
+    it("leaves a DUPLICATE alone when no active row holds the name", async () => {
+      accounts.createAccount.mockRejectedValue(nameTaken("Wallet"));
+      accounts.findActiveByName.mockResolvedValue(null);
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "account",
+          action: "create",
+          id: uuid(52),
+          payload: { body: accountBody },
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "conflict",
+        code: "DUPLICATE",
+      });
+      expect(results[0].current).toBeUndefined();
+    });
+
+    it("drops a category archived online and flags the movement for review", async () => {
+      const txId = uuid(53);
+      transactions.createTransaction
+        .mockRejectedValueOnce(
+          new ApiError(
+            "BadRequest",
+            "Category is archived",
+            "CATEGORY_ARCHIVED",
+          ),
+        )
+        .mockResolvedValueOnce({ id: txId, pendingDetails: true });
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "transaction",
+          action: "create",
+          id: txId,
+          payload: { body: expense(uuid(1), uuid(54)) },
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "applied",
+        warnings: ["CATEGORY_ARCHIVED_DROPPED"],
+        result: { pendingDetails: true },
+      });
+      expect(transactions.createTransaction).toHaveBeenLastCalledWith(
+        expect.objectContaining({ categoryId: null, pendingDetails: true }),
+        undefined,
+        { replayed: false },
+      );
+      expect(syncOps.record).toHaveBeenCalledWith(USER, results[0].opId, {
+        status: "applied",
+        entityId: txId,
+        code: null,
+      });
+    });
+
+    it("answers the real obstacle when the write without the category still fails", async () => {
+      transactions.updateTransaction
+        .mockRejectedValueOnce(
+          new ApiError(
+            "BadRequest",
+            "Category is archived",
+            "CATEGORY_ARCHIVED",
+          ),
+        )
+        .mockRejectedValueOnce(new StaleUpdateError(account(uuid(55))));
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "transaction",
+          action: "update",
+          id: uuid(55),
+          payload: { body: { categoryId: uuid(56) } },
+          baseUpdatedAt: "2026-09-05T08:00:00.000Z",
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "conflict",
+        code: "STALE_UPDATE",
+      });
+      expect(results[0].warnings).toBeUndefined();
+    });
+
+    it("never drops a budget's category: that would make it a global budget", async () => {
+      budgets.createBudget.mockRejectedValue(
+        new ApiError("BadRequest", "Category is archived", "CATEGORY_ARCHIVED"),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "budget",
+          action: "create",
+          id: uuid(57),
+          payload: {
+            body: {
+              name: "Food",
+              color: "TEAL",
+              categoryIds: [uuid(58)],
+              amount: 100,
+              periodType: "MONTHLY",
+            },
+          },
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "rejected",
+        code: "CATEGORY_ARCHIVED",
+      });
+      expect(budgets.createBudget).toHaveBeenCalledTimes(1);
+    });
+
+    it("tells an account archived online from one that never existed", async () => {
+      const archived = new Account({
+        id: uuid(59),
+        name: "Gone",
+        type: "CASH",
+        balance: 10,
+        userId: USER,
+        archivedAt: new Date("2026-09-04T10:00:00.000Z"),
+        updatedAt: new Date("2026-09-04T10:00:00.000Z"),
+      });
+      transactions.createTransaction.mockRejectedValue(
+        new ApiError("NotFound", "Source account not found"),
+      );
+      accounts.findOwnAccount.mockResolvedValue(archived);
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "transaction",
+          action: "create",
+          id: uuid(60),
+          payload: { body: expense(uuid(59)) },
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "conflict",
+        code: "RESOURCE_ARCHIVED",
+        current: { id: uuid(59), archivedAt: archived.archivedAt },
+      });
+      expect(accounts.findOwnAccount).toHaveBeenCalledWith(uuid(59), USER);
+      // Nothing is remembered: the movement is still the device's to resolve.
+      expect(syncOps.record).not.toHaveBeenCalled();
+    });
+
+    it("keeps NOT_FOUND when the account is not the user's at all", async () => {
+      transactions.createTransaction.mockRejectedValue(
+        new ApiError("NotFound", "Source account not found"),
+      );
+      accounts.findOwnAccount.mockResolvedValue(null);
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "transaction",
+          action: "create",
+          id: uuid(61),
+          payload: { body: expense(uuid(62)) },
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "rejected",
+        code: "NOT_FOUND",
+      });
+      expect(results[0].current).toBeUndefined();
+    });
+
+    it("answers a delete of a movement another device already deleted as landed", async () => {
+      const id = uuid(66);
+      transactions.deleteTransaction.mockRejectedValue(
+        new ApiError("NotFound", "Transaction not found"),
+      );
+      transactions.isDeleted.mockResolvedValue(true);
+
+      const { results } = await service.apply(ctx, [
+        op({ entity: "transaction", action: "delete", id }),
+      ]);
+
+      expect(results[0]).toMatchObject({ status: "duplicate", id });
+      expect(results[0].result).toBeUndefined();
+      expect(transactions.isDeleted).toHaveBeenCalledWith(id, USER);
+      expect(syncOps.record).toHaveBeenCalledWith(USER, results[0].opId, {
+        status: "duplicate",
+        entityId: id,
+        code: null,
+      });
+    });
+
+    it("keeps a delete of a movement that never existed a rejection", async () => {
+      transactions.deleteTransaction.mockRejectedValue(
+        new ApiError("NotFound", "Transaction not found"),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({ entity: "transaction", action: "delete", id: uuid(67) }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "rejected",
+        code: "NOT_FOUND",
+      });
+    });
+
+    it("answers a resent merged opId with `duplicate` and where it landed", async () => {
+      const localId = uuid(63);
+      const serverId = uuid(64);
+      const txId = uuid(65);
+      const merged = op({
+        entity: "category",
+        action: "create",
+        id: localId,
+        payload: { body: { name: "Comida", type: "EXPENSE" } },
+      });
+      syncOps.find.mockImplementation(async (_user, opId) =>
+        opId === merged.opId
+          ? { status: "merged", entityId: serverId, code: null }
+          : null,
+      );
+      transactions.createTransaction.mockResolvedValue({ id: txId });
+
+      const { results } = await service.apply(ctx, [
+        merged,
+        op({
+          entity: "transaction",
+          action: "create",
+          id: txId,
+          payload: { body: expense(uuid(1), localId) },
+          dependsOn: [localId],
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "duplicate",
+        id: localId,
+        mergedInto: serverId,
+      });
+      expect(categories.createCategory).not.toHaveBeenCalled();
+      // The mapping survives the lost response: the movement still lands on
+      // the server's category.
+      expect(transactions.createTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ categoryId: serverId }),
+        undefined,
+        { replayed: false },
+      );
     });
   });
 });

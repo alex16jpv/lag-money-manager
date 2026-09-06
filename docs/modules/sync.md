@@ -18,8 +18,9 @@ The feed owns no data and no writes: it is a merge over five repositories. The b
 | `src/app/routes/syncRoutes.ts` | Route definitions with OpenAPI docs (`GET /sync/changes`, `POST /sync`) |
 | `src/app/controllers/SyncController.ts` | Feed: resolves the request's position (`cursor`, else `since`, else a snapshot). Batch: resolves the user's timezone and hands the operations to the batch service |
 | `src/app/services/SyncService.ts` | Merges the five sources into one globally ordered page and mints the next cursor |
-| `src/app/services/SyncBatchService.ts` | Applies a batch in `seq` order through the account, category, transaction and budget services; blocks, remembers and classifies outcomes |
-| `src/shared/syncBatch.ts` | The batch contract: limits, statuses, actions per entity, TTL |
+| `src/app/services/SyncBatchService.ts` | Applies a batch in `seq` order through the account, category, transaction and budget services; blocks, remembers and classifies outcomes, and applies the reconciliation rules below |
+| `src/shared/syncBatch.ts` | The batch contract: limits, statuses, warnings, actions per entity, TTL |
+| `src/shared/collation.ts` | The collation of the unique name indexes, shared by the indexes and by the name lookups the reconciliation uses |
 | `src/shared/errorResponse.ts` | Translates a client-fault error to `{status, body}` — used by the error middleware and by the batch, so both answer the same codes |
 | `src/infrastructure/models/SyncOpModel.ts` · `repositories/syncOp/` | The registry of landed operations, one row per `opId`, 30-day TTL |
 | `src/app/validation/schemas.ts` | `syncChangesSchema`, `syncBatchSchema` |
@@ -142,29 +143,49 @@ Pushes the offline outbox as one batch: 1–200 operations, body up to 1 MB. The
   "results": [
     { "opId": "0195…a1", "seq": 12, "entity": "account", "id": "0195…c1", "status": "applied", "result": { "id": "0195…c1", "name": "Nequi", "updatedAt": "…", "…": "…" } },
     { "opId": "0195…a2", "seq": 13, "entity": "transaction", "id": "0195…c2", "status": "applied", "result": { "…": "…" } },
-    { "opId": "0195…a3", "seq": 14, "entity": "budget", "id": "0195…b7", "status": "conflict", "code": "STALE_UPDATE", "message": "The resource changed since you last read it", "current": { "…": "…" } }
+    { "opId": "0195…a3", "seq": 14, "entity": "budget", "id": "0195…b7", "status": "conflict", "code": "STALE_UPDATE", "message": "The resource changed since you last read it", "current": { "…": "…" } },
+    { "opId": "0195…a4", "seq": 15, "entity": "category", "id": "0195…c9", "status": "merged", "mergedInto": "0195…f1", "result": { "id": "0195…f1", "name": "Comida", "…": "…" } },
+    { "opId": "0195…a5", "seq": 16, "entity": "transaction", "id": "0195…c4", "status": "applied", "warnings": ["CATEGORY_ARCHIVED_DROPPED"], "result": { "categoryId": null, "pendingDetails": true, "…": "…" } }
   ]
 }
 ```
 
 | `status` | Meaning | Extra fields |
 | --- | --- | --- |
-| `applied` | Landed now | `result`: what the route would have answered (absent for `transaction:delete`, whose route answers a message) |
-| `duplicate` | Already landed: a resent `opId` (answered from the registry, no `result`), or a create whose `id` the user already owns (O-B1 replay, `result` carries the row as stored) | `result` in the second case |
-| `conflict` | The route would have answered **409**: `STALE_UPDATE`, `DUPLICATE`, `BUDGET_PERIOD_OVERLAP`, `ID_TAKEN` | `code`, `message`, and `current` for `STALE_UPDATE` — the row as the server has it, exactly like the HTTP 409 |
-| `rejected` | The route would have answered another **4xx**: `VALIDATION` (with `details`), `NOT_FOUND`, `RESOURCE_ARCHIVED`, `CATEGORY_ARCHIVED`, `FUTURE_DATE`, `DEFAULT_ACCOUNT_ARCHIVE_BLOCKED`… | `code`, `message`, `details` when the route sends them |
+| `applied` | Landed now | `result`: what the route would have answered (absent for `transaction:delete`, whose route answers a message); `warnings` when it landed degraded |
+| `duplicate` | Already landed: a resent `opId` (answered from the registry, no `result`), a create whose `id` the user already owns (O-B1 replay, `result` carries the row as stored), or a `transaction:delete` of a movement another device already deleted | `result` in the second case; `mergedInto` when the remembered operation was a merge |
+| `merged` | A `category:create` whose name and type an **active** category of the user already has: the two are the same category, so the create landed on the server's row and the rest of the batch was redirected to it | `mergedInto`: that row's id; `result`: the row |
+| `conflict` | The route would have answered **409** (`STALE_UPDATE`, `DUPLICATE`, `ID_TAKEN`), or a row the server has explains the refusal: a `DUPLICATE` whose name an active row holds, and `RESOURCE_ARCHIVED` for an account archived online | `code`, `message`, and `current` — the row as the server has it, exactly like the HTTP 409 |
+| `rejected` | The route would have answered another **4xx**: `VALIDATION` (with `details`), `NOT_FOUND`, `CATEGORY_ARCHIVED`, `BUDGET_PERIOD_OVERLAP`, `FUTURE_DATE`, `DEFAULT_ACCOUNT_ARCHIVE_BLOCKED`… | `code`, `message`, `details` when the route sends them |
 | `blocked` | Not attempted: a row it names — one of `dependsOn`, **or its own `id`** — had an operation fail (`conflict`, `rejected` or `blocked`) earlier in this batch | `blockedBy`: that operation's `opId` |
-| `merged` | Reserved for the per-entity reconciliation rules (O-B4 part 2). Not produced yet | — |
 
-A code-less 404 from a route (`Account not found`) arrives as `NOT_FOUND`, the same default `PATCH /transactions/batch` uses: with no HTTP status per operation, the client needs a code to branch on.
+A code-less 404 from a route (`Account not found`) arrives as `NOT_FOUND`, the same default `PATCH /transactions/batch` uses: with no HTTP status per operation, the client needs a code to branch on. `BUDGET_PERIOD_OVERLAP` is a `rejected`, not a `conflict`: the budget routes answer it with **400**, and the batch never invents a status the route would not have.
 
 **What the client does with each status** is the O-F5b engine's business, but the intent is: `applied` and `duplicate` leave the queue; `conflict` and `rejected` stay, shown to the user; `blocked` stays and is resent once the blocker is resolved.
 
-**Idempotency.** Every operation that lands (`applied`, `duplicate`, and `merged` when it exists) is remembered as `{opId, status, entityId, code}` for **30 days** (TTL index on `createdAt`); the same `opId` sent again answers `duplicate` from that record without touching the services. This is what turns "resend the whole queue after a lost response" into a no-op — including an `update` whose `If-Match` a bare `PUT` would now refuse with 409. A `conflict`, a `rejected` or a `blocked` operation is **not** remembered: it is still pending on the device, which may resend the same `opId` once fixed or rebased. After the 30 days a resend is applied again, which the client-minted ids (creates) and `baseUpdatedAt` (updates) keep safe.
+**Idempotency.** Every operation that lands (`applied`, `merged`, `duplicate`) is remembered as `{opId, status, entityId, code}` for **30 days** (TTL index on `createdAt`); the same `opId` sent again answers `duplicate` from that record without touching the services — with `mergedInto` when what it landed on was another row. This is what turns "resend the whole queue after a lost response" into a no-op — including an `update` whose `If-Match` a bare `PUT` would now refuse with 409. A `conflict`, a `rejected` or a `blocked` operation is **not** remembered: it is still pending on the device, which may resend the same `opId` once fixed or rebased. After the 30 days a resend is applied again, which the client-minted ids (creates) and `baseUpdatedAt` (updates) keep safe.
 
 **Dependencies.** An operation whose `dependsOn` names a row with no operation in this batch is not blocked — the row is assumed to be on the server already, and the service answers `NOT_FOUND` if it is not. An operation must come **after** the creation it depends on in `seq` order; the client guarantees that (offline plan, O-F4).
 
 **Failure of the request itself.** A database outage or a bug while applying an operation fails the whole request (`503` / `500`) rather than filing it under the operation; what landed before it is on record and replays as `duplicate` when the batch is resent. The operation itself and its record are not written atomically: a crash between the two leaves an applied operation unregistered, and the resend is judged by the route's own rules (a create replays; an update meets 409). That is the same exposure a lost HTTP response has today.
+
+### Reconciliation, per entity
+
+What a service refuses is not always the last word: an operation queued offline can be refused for something that happened online while the device was away. These rules apply **only inside `POST /sync`** — the HTTP routes are unchanged — and they never write anything themselves, they only decide what to answer and, for a merge, which row the rest of the batch writes to.
+
+**Categories merge by name and type.** A `category:create` whose name matches an **active** category of the user — case folded, exactly as the unique index folds it — and whose type is the same one answers `merged`: `result` is the server's category and `mergedInto` is its id. Nothing is created under the id the device minted. Every later operation of the same batch that names that id is applied against the server's row instead: its own `id` (a `category:update` queued behind the create), its `dependsOn`, and the `categoryId` / `categoryIds` of the movements and budgets in the batch. The registry stores the row it landed on, so a resend after a lost response still answers `mergedInto` — which is how the device learns to point its local row at the server's. Same name, **different type** is not the same category: that stays a `conflict` `DUPLICATE`, with the server's category in `current`.
+
+**Accounts never merge.** Folding two accounts would rewrite balances, so a taken name stays a `conflict` `DUPLICATE` — with the server's account in `current`, so the device can offer "use the server's" without another round trip. The offline account's opening balance is never folded into anything.
+
+**Budgets** keep the routes' own answer: an overlap is `rejected` `BUDGET_PERIOD_OVERLAP` (400 on the route, so `rejected` here).
+
+**A reference archived online.** A movement whose category was archived while the device was offline is **saved without the category**, flagged `pendingDetails: true` so it lands in the review inbox, and answered `applied` with `warnings: ["CATEGORY_ARCHIVED_DROPPED"]`. The movement is never lost. A **budget's** category is never dropped: a budget with no categories is a *global* budget, so dropping one would silently change what it counts — that stays `rejected` `CATEGORY_ARCHIVED`. A movement whose **account** was archived online is a `conflict` `RESOURCE_ARCHIVED` with the archived account in `current`: the route answers a bare 404 there, which cannot tell "archived while I was away" from "never existed", and only the first is the user's to resolve (restore the account, or move the movement).
+
+**Already gone.** Archiving a row that is already archived lands (`applied`): the state the operation wanted holds, and archives are idempotent on the routes too. Deleting a movement that another device already deleted answers `duplicate` rather than the route's 404 — same reasoning, and the queue drains instead of filling the tray with movements the user already removed.
+
+**`setDefault` is not last-write-wins.** ESTRATEGIA §5.4 proposed resolving two devices' `setDefault` by `occurredAt`; it is not implemented, on purpose. `occurredAt` is the device's clock and this contract never judges by it (trap 7.4): the batch that reaches the server last wins, as with any other write.
+
+**Dates** are judged by the server's clock, against the movement's own date: `FUTURE_DATE` (more than 24 h ahead) is `rejected` no matter what `occurredAt` says, which is what a phone whose clock runs ahead gets.
 
 **Errors of the envelope (nothing applied):**
 

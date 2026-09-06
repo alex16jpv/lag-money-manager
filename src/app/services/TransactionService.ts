@@ -280,6 +280,12 @@ export class TransactionService {
     return { updated, failed };
   }
 
+  // Whether the movement is the user's own tombstone: the caller that must
+  // tell "already deleted" from "never existed" (POST /sync, §5.4).
+  async isDeleted(id: string, userId: string): Promise<boolean> {
+    return this.transactionRepo.isDeleted(id, userId);
+  }
+
   async updateTransaction(
     id: string,
     dto: UpdateTransactionDTO,

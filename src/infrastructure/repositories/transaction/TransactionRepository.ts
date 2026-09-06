@@ -145,6 +145,17 @@ export class TransactionRepository implements ITransactionRepository {
     return doc ? this.toEntity(doc) : null;
   }
 
+  async isDeleted(id: string, userId: string): Promise<boolean> {
+    const doc = await TransactionModel.findOne({
+      _id: id,
+      userId,
+      deletedAt: { $ne: null },
+    })
+      .select("_id")
+      .lean();
+    return doc !== null;
+  }
+
   async getById(id: string, session?: TxSession): Promise<Transaction | null> {
     const doc = await TransactionModel.findOne({ _id: id, deletedAt: null })
       .session(session ?? null)

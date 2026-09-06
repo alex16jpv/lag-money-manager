@@ -77,6 +77,9 @@ export interface SpendingResult {
 export interface ITransactionRepository extends IRepository<Transaction> {
   // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
   getOwnById(id: string, userId: string): Promise<Transaction | null>;
+  // Whether the id is the user's own tombstone: what tells a movement another
+  // device already deleted from one that never existed (POST /sync, §5.4).
+  isDeleted(id: string, userId: string): Promise<boolean>;
 
   // Offline change feed: everything the user touched after `cursor`, in
   // `(updatedAt, _id)` order, ARCHIVED AND DELETED ROWS INCLUDED — a client

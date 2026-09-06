@@ -42,6 +42,16 @@ export class CategoryService {
     return new Category(category);
   }
 
+  // The active category holding a name, matched case-insensitively like the
+  // unique index: what a DUPLICATE on a create was about (POST /sync, §5.1).
+  async findActiveByName(
+    userId: string,
+    name: string,
+  ): Promise<Category | null> {
+    const category = await this.repo.findActiveByName(userId, name);
+    return category && new Category(category);
+  }
+
   async createCategory(
     dto: CreateCategoryDTO,
     outcome?: CreateOutcome,

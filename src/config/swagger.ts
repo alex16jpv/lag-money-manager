@@ -14,7 +14,11 @@ import {
 import { ERROR_CODES } from "../shared/errorCodes";
 import { CATEGORY_ICONS } from "../shared/icons";
 import { LOCALES } from "../shared/locale";
-import { SYNC_ENTITIES, SYNC_OP_STATUSES } from "../shared/syncBatch";
+import {
+  SYNC_ENTITIES,
+  SYNC_OP_STATUSES,
+  SYNC_WARNINGS,
+} from "../shared/syncBatch";
 
 // ---------------------------------------------------------------------------
 // Request bodies: GENERATED from the Zod validation schemas (single source of
@@ -497,22 +501,48 @@ const syncOpResult = withRequired(
       current: {
         ...anyRow,
         description:
-          "conflict STALE_UPDATE only: the row as the server has it, like the HTTP 409.",
+          "The row as the server has it, like the HTTP 409: STALE_UPDATE, a " +
+          "DUPLICATE whose name an active row holds, and RESOURCE_ARCHIVED.",
       },
       result: {
         ...anyRow,
         description:
-          "applied, and duplicate by client-minted id: what the route would " +
-          "have answered. Absent for transaction:delete and for a duplicate opId.",
+          "applied, merged, and duplicate by client-minted id: what the route " +
+          "would have answered. Absent for transaction:delete and for a " +
+          "duplicate opId.",
       },
       blockedBy: {
         ...uuid,
         description:
           "blocked only: the opId, in this batch, whose failure blocks this one.",
       },
+      mergedInto: {
+        ...uuid,
+        description:
+          "merged (and a resent merged opId): the server row this operation " +
+          "landed on instead of `id`. Later operations of the same batch that " +
+          "name `id` are applied against it.",
+      },
+      warnings: {
+        type: "array",
+        items: { type: "string", enum: [...SYNC_WARNINGS] },
+        description:
+          "The write landed, but not as it was sent: " +
+          "CATEGORY_ARCHIVED_DROPPED — the category was archived online, so " +
+          "the movement was saved without it and flagged pendingDetails.",
+      },
     },
   },
-  ["code", "message", "details", "current", "result", "blockedBy"],
+  [
+    "code",
+    "message",
+    "details",
+    "current",
+    "result",
+    "blockedBy",
+    "mergedInto",
+    "warnings",
+  ],
 );
 
 const syncBatchResponse = withRequired({

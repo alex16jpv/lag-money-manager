@@ -5,6 +5,7 @@ import {
   AccountFilters,
   IAccountRepository,
 } from "../../../domain/repositories/account/IAccountRepository";
+import { NAME_COLLATION } from "../../../shared/collation";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
 import {
@@ -103,6 +104,16 @@ export class AccountRepository implements IAccountRepository {
 
   async getByIdIncludingArchived(id: string): Promise<Account | null> {
     const doc = await AccountModel.findById(id).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async findActiveByName(
+    userId: string,
+    name: string,
+  ): Promise<Account | null> {
+    const doc = await AccountModel.findOne({ userId, name, archivedAt: null })
+      .collation(NAME_COLLATION)
+      .lean();
     return doc ? this.toEntity(doc) : null;
   }
 

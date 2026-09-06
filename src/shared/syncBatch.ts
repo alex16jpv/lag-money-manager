@@ -34,6 +34,11 @@ export const SYNC_LANDED_STATUSES: readonly SyncOpStatus[] = [
   "duplicate",
 ];
 
+// Non-fatal notices a landed operation can carry: the write went in, but not
+// exactly as it was sent. Not error codes — nothing failed.
+export const SYNC_WARNINGS = ["CATEGORY_ARCHIVED_DROPPED"] as const;
+export type SyncWarning = (typeof SYNC_WARNINGS)[number];
+
 // The API's own verbs, one per write route the offline outbox covers. Same
 // names the front's queue uses (`OUTBOX_ACTIONS` in ledger-flow).
 export const SYNC_ACTIONS = {

@@ -1,5 +1,6 @@
 import mongoose, { Schema } from "mongoose";
 
+import { NAME_COLLATION } from "../../shared/collation";
 import {
   ACCOUNT_TYPES,
   AccountType,
@@ -58,7 +59,7 @@ AccountSchema.index(
   {
     unique: true,
     partialFilterExpression: { archivedAt: null },
-    collation: { locale: "es", strength: 2 },
+    collation: NAME_COLLATION,
   },
 );
 // At most one active default account per user.

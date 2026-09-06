@@ -5,6 +5,7 @@ import {
   CategoryFilters,
   ICategoryRepository,
 } from "../../../domain/repositories/category/ICategoryRepository";
+import { NAME_COLLATION } from "../../../shared/collation";
 import { ApiError } from "../../../shared/errors";
 import {
   buildPaginatedResult,
@@ -152,6 +153,16 @@ export class CategoryRepository implements ICategoryRepository {
 
   async countByUserId(userId: string): Promise<number> {
     return CategoryModel.countDocuments({ userId, archivedAt: null });
+  }
+
+  async findActiveByName(
+    userId: string,
+    name: string,
+  ): Promise<Category | null> {
+    const doc = await CategoryModel.findOne({ userId, name, archivedAt: null })
+      .collation(NAME_COLLATION)
+      .lean();
+    return doc ? this.toEntity(doc) : null;
   }
 
   async listArchivedIds(userId: string, ids: string[]): Promise<string[]> {

@@ -47,6 +47,9 @@ export interface ICategoryRepository extends IRepository<Category> {
   createMany(entities: Partial<Category>[]): Promise<Category[]>;
   // Seed keys present for the user, archived included.
   listSeedKeys(userId: string): Promise<string[]>;
+  // The user's ACTIVE category with this name, matched the way the unique
+  // index refuses it (case-insensitive); null when the name is free.
+  findActiveByName(userId: string, name: string): Promise<Category | null>;
   // Which of the given ids are the user's ARCHIVED categories (one query).
   listArchivedIds(userId: string, ids: string[]): Promise<string[]>;
   countByUserId(userId: string): Promise<number>;
