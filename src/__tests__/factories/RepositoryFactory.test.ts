@@ -1,10 +1,10 @@
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
-    DB_TYPE: "SEQ",
+    DB_TYPE: "MONGO",
     LOG_LEVEL: "info",
     NODE_ENV: "test",
   },
-  DB_TYPES: { SEQ: "SEQ", MONGO: "MONGO", LOCAL_STORAGE: "LOCAL_STORAGE" },
+  DB_TYPES: { MONGO: "MONGO" },
 }));
 
 jest.mock("../../shared/logger", () => ({
@@ -12,20 +12,6 @@ jest.mock("../../shared/logger", () => ({
   info: jest.fn(),
   error: jest.fn(),
   warn: jest.fn(),
-}));
-
-jest.mock("../../app/factories/providers/sequelizeProvider", () => ({
-  dbType: "SEQ",
-  registerRepositories: jest.fn(
-    (factory: { register: (key: string, creator: () => unknown) => void }) => {
-      factory.register("user", () => ({ type: "mock-user-seq-repo" }));
-      factory.register("account", () => ({ type: "mock-account-seq-repo" }));
-      factory.register("category", () => ({ type: "mock-category-seq-repo" }));
-      factory.register("transaction", () => ({
-        type: "mock-transaction-seq-repo",
-      }));
-    },
-  ),
 }));
 
 jest.mock("../../app/factories/providers/mongoProvider", () => ({
@@ -45,13 +31,13 @@ jest.mock("../../app/factories/providers/mongoProvider", () => ({
 }));
 
 import {
-  RepositoryFactory,
   REPO_KEYS,
+  RepositoryFactory,
 } from "../../app/factories/RepositoryFactory";
 
 describe("RepositoryFactory", () => {
   describe("construction", () => {
-    it("should create a factory instance using the SEQ provider", () => {
+    it("should create a factory instance using the MONGO provider", () => {
       const factory = new RepositoryFactory();
       expect(factory).toBeDefined();
     });
@@ -65,33 +51,27 @@ describe("RepositoryFactory", () => {
     });
 
     it("should return a user repository", () => {
-      const repo = factory.getUserRepository();
-      expect(repo).toBeDefined();
+      expect(factory.getUserRepository()).toBeDefined();
     });
 
     it("should return an account repository", () => {
-      const repo = factory.getAccountRepository();
-      expect(repo).toBeDefined();
+      expect(factory.getAccountRepository()).toBeDefined();
     });
 
     it("should return a category repository", () => {
-      const repo = factory.getCategoryRepository();
-      expect(repo).toBeDefined();
+      expect(factory.getCategoryRepository()).toBeDefined();
     });
 
     it("should return a transaction repository", () => {
-      const repo = factory.getTransactionRepository();
-      expect(repo).toBeDefined();
+      expect(factory.getTransactionRepository()).toBeDefined();
     });
   });
 
   describe("caching", () => {
     it("should return the same instance on repeated calls", () => {
       const factory = new RepositoryFactory();
-
       const first = factory.getUserRepository();
       const second = factory.getUserRepository();
-
       expect(first).toBe(second);
     });
   });

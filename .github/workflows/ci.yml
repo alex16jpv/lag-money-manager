@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "audit/**", "feat/**"]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Type-check (src)
+        run: npm run typecheck
+      - name: Type-check (tests and scripts)
+        run: npm run typecheck:tests
+      - name: Lint
+        run: npm run lint
+      - name: Format
+        run: npm run format:check
+      - name: Parity fixtures match their generator
+        run: npm run fixtures:check
+      - name: Tests
+        run: npm test
+
+  # The parity fixtures and the offline write paths against a real mongod:
+  # $dateToString with a timezone, $facet, the tag $unwind, partial unique
+  # indexes and transaction rollback are the behaviour under test, and mocks
+  # cannot stand in (offline plan §2.5, invariant 6).
+  mongo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Multi-document transactions need a replica set; service containers cannot pass --replSet.
+      - run: |
+          docker run -d --name mongo -p 27017:27017 mongo:8 --replSet rs0 --bind_ip_all
+          for i in $(seq 1 30); do
+            docker exec mongo mongosh --quiet --eval "rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]})" && break
+            sleep 2
+          done
+      - run: npm ci
+      - name: Tests against mongod
+        run: npm run test:mongo

@@ -1,6 +1,7 @@
 import "dotenv/config";
+
 import app from "./app";
-import { DB_TYPES, ENVIRONMENT } from "./shared/constants";
+import { ENVIRONMENT } from "./shared/constants";
 import logger from "./shared/logger";
 
 const port = ENVIRONMENT.PORT;
@@ -21,15 +22,9 @@ const shutdown = async (signal: string): Promise<void> => {
   });
 
   try {
-    if (ENVIRONMENT.DB_TYPE === DB_TYPES.MONGO) {
-      const mongoose = await import("mongoose");
-      await mongoose.default.disconnect();
-      logger.info("MongoDB connection closed");
-    } else {
-      const sequelize = (await import("./config/sequelizeConnection")).default;
-      await sequelize.close();
-      logger.info("Sequelize connection closed");
-    }
+    const mongoose = await import("mongoose");
+    await mongoose.default.disconnect();
+    logger.info("MongoDB connection closed");
   } catch (err) {
     logger.error({ err }, "Error during database disconnect");
   }

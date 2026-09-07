@@ -1,0 +1,41 @@
+{
+  "generatedBy": "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline",
+  "fixtures": [
+    {
+      "id": "cop-bogota",
+      "file": "cop-bogota.json",
+      "title": "COP · America/Bogota · zero-decimal currency, fixed −05:00 offset",
+      "timezone": "America/Bogota",
+      "currency": "COP",
+      "minorUnits": 0,
+      "transactions": 15
+    },
+    {
+      "id": "eur-madrid",
+      "file": "eur-madrid.json",
+      "title": "EUR · Europe/Madrid · two decimals and the spring DST jump",
+      "timezone": "Europe/Madrid",
+      "currency": "EUR",
+      "minorUnits": 2,
+      "transactions": 10
+    },
+    {
+      "id": "jpy-tokyo",
+      "file": "jpy-tokyo.json",
+      "title": "JPY · Asia/Tokyo · zero decimals, +09:00, quarter and year windows",
+      "timezone": "Asia/Tokyo",
+      "currency": "JPY",
+      "minorUnits": 0,
+      "transactions": 8
+    },
+    {
+      "id": "usd-new-york",
+      "file": "usd-new-york.json",
+      "title": "USD · America/New_York · the repeated hour and an INCOME budget",
+      "timezone": "America/New_York",
+      "currency": "USD",
+      "minorUnits": 2,
+      "transactions": 10
+    }
+  ]
+}

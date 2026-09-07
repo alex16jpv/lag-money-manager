@@ -1,7 +1,7 @@
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
     PORT: 3000,
-    DB_TYPE: "SEQ",
+    DB_TYPE: "MONGO",
     JWT_SECRET: "test",
     BCRYPT_SALT_ROUNDS: 12,
     JWT_EXPIRATION: "24h",
@@ -37,11 +37,22 @@ jest.mock("../../shared/constants", () => ({
     BROWN: "BROWN",
     BLACK: "BLACK",
   },
-  DB_TYPES: { SEQ: "SEQ", MONGO: "MONGO", LOCAL_STORAGE: "LOCAL_STORAGE" },
+  DB_TYPES: { MONGO: "MONGO" },
+  TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
+    ADJUSTMENT: "ADJUSTMENT",
+  },
+  BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
+  BUDGET_PERIOD_TYPES: {
+    WEEKLY: "WEEKLY",
+    BIWEEKLY: "BIWEEKLY",
+    MONTHLY: "MONTHLY",
+    QUARTERLY: "QUARTERLY",
+    YEARLY: "YEARLY",
+    CUSTOM: "CUSTOM",
   },
   CATEGORY_TYPES: {
     INCOME: "INCOME",
@@ -57,19 +68,22 @@ jest.mock("../../shared/constants", () => ({
 }));
 
 import {
-  paginationQuerySchema,
-  registerSchema,
-  loginSchema,
-  updateUserSchema,
   createAccountSchema,
-  updateAccountSchema,
+  createBudgetSchema,
   createCategorySchema,
-  updateCategorySchema,
-  getCategoriesSchema,
-  idParamSchema,
   createTransactionSchema,
-  updateTransactionSchema,
+  getCategoriesSchema,
   getTransactionsSchema,
+  idParamSchema,
+  loginSchema,
+  paginationQuerySchema,
+  quickAddTransactionSchema,
+  registerSchema,
+  syncBatchSchema,
+  updateAccountSchema,
+  updateCategorySchema,
+  updateTransactionSchema,
+  updateUserSchema,
 } from "../../app/validation/schemas";
 
 const validUUID = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
@@ -168,6 +182,20 @@ describe("Validation Schemas", () => {
       },
     };
 
+    it("should accept a supported locale", () => {
+      const result = registerSchema.safeParse({
+        body: { ...validRegister.body, locale: "es" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject an unsupported locale", () => {
+      const result = registerSchema.safeParse({
+        body: { ...validRegister.body, locale: "fr" },
+      });
+      expect(result.success).toBe(false);
+    });
+
     it("should accept valid registration data", () => {
       const result = registerSchema.safeParse(validRegister);
       expect(result.success).toBe(true);
@@ -259,7 +287,7 @@ describe("Validation Schemas", () => {
     it("should accept valid update with email", () => {
       const result = updateUserSchema.safeParse({
         params: { id: validUUID },
-        body: { email: "new@example.com" },
+        body: { email: "new@example.com", currentPassword: "oldpassword" },
       });
       expect(result.success).toBe(true);
     });
@@ -267,7 +295,7 @@ describe("Validation Schemas", () => {
     it("should accept valid update with password", () => {
       const result = updateUserSchema.safeParse({
         params: { id: validUUID },
-        body: { password: "newpassword123" },
+        body: { password: "newpassword123", currentPassword: "oldpassword" },
       });
       expect(result.success).toBe(true);
     });
@@ -337,6 +365,25 @@ describe("Validation Schemas", () => {
     it("should reject empty name", () => {
       const result = createAccountSchema.safeParse({
         body: { name: "", type: "SAVINGS" },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    // The unique index folds case and accents but not whitespace, so an
+    // untrimmed "Savings " would slip past it as a second account.
+    it("trims the name so padding cannot bypass the unique index", () => {
+      const result = createAccountSchema.safeParse({
+        body: { name: "  Savings  ", type: "SAVINGS" },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.body.name).toBe("Savings");
+      }
+    });
+
+    it("should reject a name that is only whitespace", () => {
+      const result = createAccountSchema.safeParse({
+        body: { name: "   ", type: "SAVINGS" },
       });
       expect(result.success).toBe(false);
     });
@@ -497,18 +544,27 @@ describe("Validation Schemas", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should accept valid category with emoji", () => {
+    it("should accept a curated icon key", () => {
       const result = createCategorySchema.safeParse({
-        body: { name: "Food", emoji: "🍔" },
+        body: { name: "Food", icon: "utensils" },
       });
       expect(result.success).toBe(true);
     });
 
-    it("should reject emoji exceeding 8 characters", () => {
+    it("should reject an icon outside the curated set", () => {
       const result = createCategorySchema.safeParse({
-        body: { name: "Food", emoji: "a".repeat(9) },
+        body: { name: "Food", icon: "not-an-icon" },
       });
       expect(result.success).toBe(false);
+    });
+
+    it("should drop the legacy emoji field instead of storing it", () => {
+      const result = createCategorySchema.safeParse({
+        body: { name: "Food", emoji: "x" },
+      });
+      expect(result.success).toBe(true);
+      const body = (result.data as { body: Record<string, unknown> }).body;
+      expect(body).not.toHaveProperty("emoji");
     });
 
     it("should reject empty name", () => {
@@ -575,15 +631,23 @@ describe("Validation Schemas", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should accept update with only emoji", () => {
+    it("should accept update with only icon", () => {
       const result = updateCategorySchema.safeParse({
         params: { id: validUUID },
-        body: { emoji: "🚗" },
+        body: { icon: "car" },
       });
       expect(result.success).toBe(true);
     });
 
-    it("should reject empty body (no name or emoji)", () => {
+    it("should accept update clearing the icon with null", () => {
+      const result = updateCategorySchema.safeParse({
+        params: { id: validUUID },
+        body: { icon: null },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject empty body (no name or icon)", () => {
       const result = updateCategorySchema.safeParse({
         params: { id: validUUID },
         body: {},
@@ -862,7 +926,6 @@ describe("Validation Schemas", () => {
             fromAccountId: validUUID,
             categoryId: null,
             description: null,
-            tags: null,
             note: null,
           },
         });
@@ -882,14 +945,27 @@ describe("Validation Schemas", () => {
         expect(result.success).toBe(false);
       });
 
-      it("should reject tags exceeding 500 characters", () => {
+      it("should accept an array of tags", () => {
         const result = createTransactionSchema.safeParse({
           body: {
             type: "EXPENSE",
             amount: 50,
             date: validDate,
             fromAccountId: validUUID,
-            tags: "a".repeat(501),
+            tags: ["food", "coffee"],
+          },
+        });
+        expect(result.success).toBe(true);
+      });
+
+      it("should reject a tag exceeding 50 characters", () => {
+        const result = createTransactionSchema.safeParse({
+          body: {
+            type: "EXPENSE",
+            amount: 50,
+            date: validDate,
+            fromAccountId: validUUID,
+            tags: ["a".repeat(51)],
           },
         });
         expect(result.success).toBe(false);
@@ -1018,6 +1094,170 @@ describe("Validation Schemas", () => {
         query: { limit: "101" },
       });
       expect(result.success).toBe(false);
+    });
+  });
+
+  // O-B1: an offline client mints the id so its create can be retried.
+  describe("client-minted id on creates", () => {
+    const bodies: [
+      string,
+      {
+        safeParse: (v: unknown) => {
+          success: boolean;
+          data?: { body?: { id?: string } };
+        };
+      },
+      Record<string, unknown>,
+    ][] = [
+      [
+        "createAccountSchema",
+        createAccountSchema,
+        { name: "Cash", type: "CASH" },
+      ],
+      ["createCategorySchema", createCategorySchema, { name: "Food" }],
+      [
+        "createTransactionSchema",
+        createTransactionSchema,
+        {
+          type: "EXPENSE",
+          amount: 10,
+          date: "2026-03-28T00:00:00.000Z",
+          fromAccountId: validUUID2,
+        },
+      ],
+      ["quickAddTransactionSchema", quickAddTransactionSchema, { amount: 10 }],
+      [
+        "createBudgetSchema",
+        createBudgetSchema,
+        {
+          name: "Food",
+          color: "RED",
+          categoryIds: [],
+          amount: 100,
+          periodType: "MONTHLY",
+        },
+      ],
+    ];
+
+    it.each(bodies)("%s keeps a valid id", (_name, schema, body) => {
+      const result = schema.safeParse({
+        query: {},
+        body: { ...body, id: validUUID },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.body?.id).toBe(validUUID);
+    });
+
+    it.each(bodies)("%s stays valid without an id", (_name, schema, body) => {
+      const result = schema.safeParse({ query: {}, body });
+      expect(result.success).toBe(true);
+      expect(result.data?.body?.id).toBeUndefined();
+    });
+
+    it.each(bodies)(
+      "%s rejects an id that is not a UUID",
+      (_name, schema, body) => {
+        const result = schema.safeParse({
+          query: {},
+          body: { ...body, id: "42" },
+        });
+        expect(result.success).toBe(false);
+      },
+    );
+  });
+
+  describe("syncBatchSchema (O-B4)", () => {
+    const operation = (
+      n: number,
+      over: Record<string, unknown> = {},
+    ): Record<string, unknown> => ({
+      opId: `01940000-0000-7000-8000-${String(n).padStart(12, "0")}`,
+      seq: n,
+      occurredAt: "2026-09-05T10:00:00.000Z",
+      entity: "account",
+      action: "archive",
+      id: validUUID,
+      opVersion: 1,
+      ...over,
+    });
+
+    it("parses a minimal operation and fills the defaults", () => {
+      const result = syncBatchSchema.safeParse({
+        body: { operations: [operation(1)] },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.body.operations[0]).toMatchObject({
+        payload: {},
+        dependsOn: [],
+      });
+    });
+
+    it("keeps payload.body verbatim: the service validates it per action", () => {
+      const result = syncBatchSchema.safeParse({
+        body: {
+          operations: [
+            operation(1, {
+              action: "create",
+              payload: {
+                body: { name: "x", anything: true },
+                query: { reference: "2026-12-01T00:00:00.000Z" },
+              },
+            }),
+          ],
+        },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.body.operations[0].payload.body).toEqual({
+        name: "x",
+        anything: true,
+      });
+    });
+
+    it("rejects an empty batch and one past 200 operations", () => {
+      expect(
+        syncBatchSchema.safeParse({ body: { operations: [] } }).success,
+      ).toBe(false);
+      const tooMany = Array.from({ length: 201 }, (_, i) => operation(i));
+      const result = syncBatchSchema.safeParse({
+        body: { operations: tooMany },
+      });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0].message).toContain("at most 200");
+    });
+
+    it("rejects a repeated opId", () => {
+      const result = syncBatchSchema.safeParse({
+        body: {
+          operations: [operation(1), operation(2, { opId: operation(1).opId })],
+        },
+      });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0].path).toEqual(["body", "operations"]);
+    });
+
+    it.each([
+      ["entity", "user"],
+      ["opId", "not-a-uuid"],
+      ["id", "42"],
+      ["seq", -1],
+      ["seq", 1.5],
+      ["occurredAt", "2026-09-05"],
+      ["baseUpdatedAt", "yesterday"],
+      ["opVersion", 0],
+      ["dependsOn", ["nope"]],
+      ["payload", { query: { reference: "2026-12-01" } }],
+    ])("rejects %s = %j", (field, value) => {
+      const result = syncBatchSchema.safeParse({
+        body: { operations: [operation(1, { [field]: value })] },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("does not judge the action here: an unknown one is the service's per-operation rejection", () => {
+      const result = syncBatchSchema.safeParse({
+        body: { operations: [operation(1, { action: "teleport" })] },
+      });
+      expect(result.success).toBe(true);
     });
   });
 });

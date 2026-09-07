@@ -4,16 +4,16 @@
 
 ### Why it is used
 
-Decouples business logic from data access. The service layer works with repository interfaces, unaware of whether data comes from MySQL (Sequelize) or MongoDB (Mongoose). This enables swapping database backends at runtime via the `DB_TYPE` environment variable.
+Decouples business logic from data access. Services depend only on the interfaces in `src/domain/`, so they can be unit-tested against fakes and never see a Mongoose document. MongoDB is the only backend (see ADR-001), so there is exactly one implementation per interface; the seam earns its keep in testing, not in portability.
 
 ### Where it is implemented
 
-| File                                                          | Role                      |
-| ------------------------------------------------------------- | ------------------------- |
-| `src/domain/repositories/IRepository.ts`                      | Generic base interface    |
-| `src/domain/repositories/[entity]/I[Entity]Repository.ts`     | Entity-specific interface |
-| `src/domain/repositories/[entity]/[Entity]SeqRepository.ts`   | Sequelize implementation  |
-| `src/domain/repositories/[entity]/[Entity]MongoRepository.ts` | Mongoose implementation   |
+| File                                                             | Role                          |
+| ---------------------------------------------------------------- | ----------------------------- |
+| `src/domain/repositories/IRepository.ts`                         | Generic base interface        |
+| `src/domain/repositories/[entity]/I[Entity]Repository.ts`        | Entity-specific interface     |
+| `src/infrastructure/repositories/[entity]/[Entity]Repository.ts` | Mongoose implementation       |
+| `src/infrastructure/models/[Entity]Model.ts`                     | The Mongoose schema behind it |
 
 ### Code example
 
@@ -21,15 +21,18 @@ Decouples business logic from data access. The service layer works with reposito
 
 ```typescript
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
+import { TxSession } from "../../shared/unitOfWork";
 
 export interface IRepository<T> {
-  getById(id: string): Promise<T | null>;
+  getById(id: string, session?: TxSession): Promise<T | null>;
   getAll(pagination: PaginationParams): Promise<PaginatedResult<T>>;
-  create(entity: T): Promise<T>;
-  update(id: string, entity: Partial<T>): Promise<T>;
-  delete(id: string): Promise<void>;
+  create(entity: Partial<T>, session?: TxSession): Promise<T>;
+  update(id: string, entity: Partial<T>, session?: TxSession): Promise<T>;
+  delete(id: string, session?: TxSession): Promise<void>;
 }
 ```
+
+The optional `session` is how a service enlists a write in a MongoDB transaction — see the Unit of Work pattern below.
 
 **Entity-specific interface** (`src/domain/repositories/transaction/ITransactionRepository.ts`):
 
@@ -49,17 +52,20 @@ export class TransactionService {
   constructor(
     private transactionRepo: ITransactionRepository,
     private accountRepo: IAccountRepository,
+    private idempotencyRepo: IIdempotencyRepository,
+    private categoryRepo: ICategoryRepository,
   ) {}
-  // ... service methods use this.transactionRepo and this.accountRepo
+  // ... service methods use the injected repositories
 }
 ```
 
 ### Rules for extending
 
-- Every new entity needs: `I[Entity]Repository.ts`, `[Entity]SeqRepository.ts`, `[Entity]MongoRepository.ts`
+- Every new entity needs: `src/domain/repositories/[entity]/I[Entity]Repository.ts` and `src/infrastructure/repositories/[entity]/[Entity]Repository.ts`
 - Entity-specific interfaces must extend `IRepository<T>`
 - If the entity is user-scoped, add `getAllByUserId()` to the interface
-- Repository implementations must map DB records to domain entities (never return raw ORM objects)
+- Repository implementations must map documents to domain entities (never return raw Mongoose docs) and convert money between integer cents and decimals at that boundary
+- Accept an optional `session?: TxSession` on any method a transactional flow might call
 - Throw `ApiError("NotFound", ...)` when update/delete targets don't exist
 
 ---
@@ -68,15 +74,14 @@ export class TransactionService {
 
 ### Why it is used
 
-Centralizes repository creation and supports runtime selection of the database backend. The factory uses lazy caching to avoid creating repository instances until they're needed, and each database backend registers its own set of repository creators via a provider function.
+Centralizes repository creation behind one lazily-cached registry, so controllers wire services from a single place instead of `new`-ing concrete repositories. A provider function registers the creators under a `DB_TYPE` key; only `MONGO` is registered today, and `DB_TYPES` in `src/shared/constants.ts` declares no other value.
 
 ### Where it is implemented
 
-| File                                               | Role                                         |
-| -------------------------------------------------- | -------------------------------------------- |
-| `src/app/factories/RepositoryFactory.ts`           | Central factory with cache and typed getters |
-| `src/app/factories/providers/sequelizeProvider.ts` | Registers Sequelize repository creators      |
-| `src/app/factories/providers/mongoProvider.ts`     | Registers Mongoose repository creators       |
+| File                                           | Role                                         |
+| ---------------------------------------------- | -------------------------------------------- |
+| `src/app/factories/RepositoryFactory.ts`       | Central factory with cache and typed getters |
+| `src/app/factories/providers/mongoProvider.ts` | Registers the Mongoose repository creators   |
 
 ### Code example
 
@@ -119,24 +124,34 @@ export class RepositoryFactory {
 }
 ```
 
-**Provider** (`src/app/factories/providers/sequelizeProvider.ts`):
+**Provider** (`src/app/factories/providers/mongoProvider.ts`):
 
 ```typescript
+export const dbType = DB_TYPES.MONGO;
+
 export function registerRepositories(factory: RegistryTarget): void {
-  loadSequelizeModels();
-  factory.register("user", () => new UserSeqRepository());
-  factory.register("account", () => new AccountSeqRepository());
-  factory.register("category", () => new CategorySeqRepository());
-  factory.register("transaction", () => new TransactionSeqRepository());
+  connectMongo().catch((err) => {
+    logger.error({ err }, "Failed to connect to MongoDB");
+    // Fail fast in a long-lived server; in Lambda, exiting poisons the runtime.
+    if (!IS_LAMBDA) {
+      process.exit(1);
+    }
+  });
+  factory.register("user", () => new UserRepository());
+  factory.register("account", () => new AccountRepository());
+  factory.register("category", () => new CategoryRepository());
+  factory.register("transaction", () => new TransactionRepository());
+  factory.register("idempotency", () => new IdempotencyRepository());
+  factory.register("budget", () => new BudgetRepository());
+  factory.register("refreshSession", () => new RefreshSessionRepository());
 }
 ```
 
 ### Rules for extending
 
-- To add a new entity: register its repository in **both** `sequelizeProvider.ts` and `mongoProvider.ts`
+- To add a new entity: register its repository in `mongoProvider.ts`
 - Add a typed getter method in `RepositoryFactory` (e.g., `getBudgetRepository()`)
-- Add the key to `REPO_KEYS` constant
-- To add a new database backend: create a new provider file and call `RepositoryFactory.registerProvider()`
+- Add the key to the `REPO_KEYS` constant
 
 ---
 
@@ -148,13 +163,17 @@ Separates cross-cutting concerns (security, authentication, request tracking, va
 
 ### Where it is implemented
 
-| File                                    | Middleware                            | Scope                   |
-| --------------------------------------- | ------------------------------------- | ----------------------- |
-| `src/shared/requestId.ts`               | Request correlation ID                | Global (all requests)   |
-| `src/app.ts`                            | Helmet, CORS, rate limit, body parser | Global (all requests)   |
-| `src/app/middlewares/authMiddleware.ts` | JWT authentication                    | Protected routes only   |
-| `src/app/validation/validate.ts`        | Zod schema validation                 | Per-route               |
-| `src/shared/middlewares.ts`             | Global error handler                  | Global (error catching) |
+| File                                             | Middleware                              | Scope                         |
+| ------------------------------------------------ | --------------------------------------- | ----------------------------- |
+| `src/shared/requestId.ts`                        | Request correlation ID                  | Global (all requests)         |
+| `src/app/middlewares/requestLogMiddleware.ts`    | One completion log line per request     | Global (all requests)         |
+| `src/app.ts`                                     | Helmet, compression, CORS, body parser  | Global (all requests)         |
+| `src/app/middlewares/gatewaySecretMiddleware.ts` | `x-api-secret` front-door check         | Everything below the probes   |
+| `src/app/middlewares/dbReadinessMiddleware.ts`   | Ensures the Mongo connection is up      | Everything after `/health/db` |
+| `src/app/middlewares/authRateLimitMiddleware.ts` | Mongo-backed per-key auth rate limiting | `/auth` routes                |
+| `src/app/middlewares/authMiddleware.ts`          | JWT authentication                      | Protected routes only         |
+| `src/app/validation/validate.ts`                 | Zod schema validation                   | Per-route                     |
+| `src/shared/middlewares.ts`                      | Global error handler                    | Global (error catching)       |
 
 ### Code example
 
@@ -175,10 +194,17 @@ export const authMiddleware = (
   }
   const token = authHeader.split(" ")[1];
   try {
-    const decoded = jwt.verify(token, ENVIRONMENT.JWT_SECRET) as AuthPayload;
+    // Pinning the algorithm blocks the "alg: none" / algorithm-confusion class.
+    const decoded = jwt.verify(token, ENVIRONMENT.JWT_SECRET, {
+      algorithms: ["HS256"],
+    });
+    if (!isAuthPayload(decoded)) {
+      throw new ApiError("Unauthorized", "Invalid token payload");
+    }
     req.user = decoded;
     next();
-  } catch {
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
     throw new ApiError("Unauthorized", "Invalid or expired token");
   }
 };
@@ -188,10 +214,24 @@ export const authMiddleware = (
 
 ```typescript
 export const validate =
-  (schema: z.ZodObject<z.ZodRawShape>) =>
+  (schema: z.ZodType) =>
   (req: Request, _res: Response, next: NextFunction): void => {
     try {
-      schema.parse({ body: req.body, query: req.query, params: req.params });
+      const parsed = schema.parse({
+        body: req.body,
+        query: req.query,
+        params: req.params,
+      }) as ParsedRequest;
+
+      // Use the parsed (whitelisted) values so undeclared fields can't reach
+      // services/models (mass-assignment guard). req.query is read-only in Express 5.
+      if (parsed.body !== undefined) {
+        req.body = parsed.body;
+      }
+      if (parsed.params !== undefined) {
+        req.params = parsed.params as Request["params"];
+      }
+
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -199,13 +239,12 @@ export const validate =
           field: issue.path.join("."),
           message: issue.message,
         }));
-        _res
-          .status(400)
-          .json({
-            error: "ValidationError",
-            message: "Invalid request data",
-            details,
-          });
+        _res.status(400).json({
+          error: "ValidationError",
+          message: "Invalid request data",
+          code: "VALIDATION",
+          details,
+        });
         return;
       }
       next(error);
@@ -230,12 +269,13 @@ Defines clear contracts for data flowing into and out of services. Separates the
 
 ### Where it is implemented
 
-| File                             | DTOs                                                |
-| -------------------------------- | --------------------------------------------------- |
-| `src/app/dtos/UserDTO.ts`        | `CreateUserDTO`, `UpdateUserDTO`, `UserResponseDTO` |
-| `src/app/dtos/AccountDTO.ts`     | `CreateAccountDTO`, `UpdateAccountDTO`              |
-| `src/app/dtos/CategoryDTO.ts`    | `CreateCategoryDTO`, `UpdateCategoryDTO`            |
-| `src/app/dtos/TransactionDTO.ts` | `CreateTransactionDTO`, `UpdateTransactionDTO`      |
+| File                             | DTOs                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| `src/app/dtos/UserDTO.ts`        | `CreateUserDTO`, `UpdateUserDTO`, `UserResponseDTO`                      |
+| `src/app/dtos/AccountDTO.ts`     | `CreateAccountDTO`, `UpdateAccountDTO`                                   |
+| `src/app/dtos/CategoryDTO.ts`    | `CreateCategoryDTO`, `UpdateCategoryDTO`                                 |
+| `src/app/dtos/TransactionDTO.ts` | `CreateTransactionDTO`, `UpdateTransactionDTO`, `QuickAddTransactionDTO` |
+| `src/app/dtos/BudgetDTO.ts`      | `CreateBudgetDTO`, `UpdateBudgetDTO`                                     |
 
 ### Code example
 
@@ -250,8 +290,11 @@ export interface CreateTransactionDTO {
   fromAccountId?: string | null;
   toAccountId?: string | null;
   userId: string;
-  tags?: string | null;
+  tags?: string[];
   note?: string | null;
+  pendingDetails?: boolean;
+  // Server-derived (quick-add sets QUICK); the schema never accepts it.
+  source?: TransactionSource;
 }
 
 export interface UpdateTransactionDTO {
@@ -276,7 +319,7 @@ export interface UpdateTransactionDTO {
 
 ### Why it is used
 
-Encapsulates business object structure in plain TypeScript classes. Entities are framework-agnostic — no Sequelize or Mongoose dependencies. Both repository implementations map their database records to these entities before returning.
+Encapsulates business object structure in plain TypeScript classes. Entities are framework-agnostic — no Mongoose dependency. Repositories map documents to these entities before returning, so nothing above `src/infrastructure/` ever holds a raw document. Entity fields carry **decimal** money; the cents conversion happens in the repository.
 
 ### Where it is implemented
 
@@ -286,6 +329,7 @@ Encapsulates business object structure in plain TypeScript classes. Entities are
 | `src/domain/entities/Account.ts`     | `Account`     |
 | `src/domain/entities/Category.ts`    | `Category`    |
 | `src/domain/entities/Transaction.ts` | `Transaction` |
+| `src/domain/entities/Budget.ts`      | `Budget`      |
 
 ### Code example
 
@@ -297,6 +341,10 @@ export interface AccountProps {
   type: AccountType;
   balance?: number;
   userId: string;
+  isDefault?: boolean;
+  // ISO 4217; stamped by the server from the owner's currency at creation.
+  currency?: string;
+  archivedAt?: Date | null;
 }
 
 export class Account {
@@ -305,21 +353,75 @@ export class Account {
   type: AccountType;
   balance: number;
   userId: string;
+  isDefault: boolean;
+  currency?: string;
+  archivedAt: Date | null;
 
-  constructor({ id, name, type, balance, userId }: AccountProps) {
-    this.id = id!;
+  constructor({
+    id,
+    name,
+    type,
+    balance,
+    userId,
+    isDefault,
+    currency,
+    archivedAt,
+  }: AccountProps) {
+    this.id = id ?? uuidv7();
     this.name = name;
     this.type = type;
     this.balance = balance ?? 0;
     this.userId = userId;
+    this.isDefault = isDefault ?? false;
+    this.currency = currency;
+    this.archivedAt = archivedAt ?? null;
   }
 }
 ```
+
+Entities that own invariants expose an `assertValid()` the service calls on create and on the update merge — `Transaction.assertValid()` rejects a non-positive amount, an amount over `MAX_AMOUNT` and a far-future date — throwing `DomainValidationError`, which the error middleware turns into a 400.
 
 ### Rules for extending
 
 - One file per entity in `src/domain/entities/`
 - Define a `[Entity]Props` interface for the constructor
+- Generate the id with `uuidv7()` when the caller doesn't supply one
 - Use `??` (null coalescing) for optional fields with defaults
 - Do not add framework-specific decorators or annotations
-- Do not add methods that depend on external services
+- Do not add methods that depend on external services — invariant checks (`assertValid()`) are fine because they need nothing but the entity itself
+
+---
+
+## 6. Unit of Work
+
+### Why it is used
+
+A single API call can touch several documents that must move together — creating a transaction writes the transaction, `$inc`s one or two account balances, and records the idempotency key. MongoDB multi-document transactions make that atomic; without them a crash mid-flight leaves a balance that disagrees with the ledger. This is the capability that made the single-backend decision in ADR-001 worth taking.
+
+### Where it is implemented
+
+| File                                     | Role                                                         |
+| ---------------------------------------- | ------------------------------------------------------------ |
+| `src/shared/unitOfWork.ts`               | `withTransaction(fn)` — starts a session, commits, cleans up |
+| `src/app/services/TransactionService.ts` | The main consumer (create, update, delete)                   |
+
+### Code example
+
+```typescript
+// src/app/services/TransactionService.ts
+return await withTransaction(async (session) => {
+  await this.adjustBalances(transaction, 1, session);
+  const created = await this.transactionRepo.create(transaction, session);
+  if (idempotency) {
+    await this.idempotencyRepo.record(/* ... */, session);
+  }
+  return created;
+});
+```
+
+### Rules for extending
+
+- Requires a replica set. Local development uses the single-node `rs0` from `docker-compose.yml`; `MONGO_URI` needs `directConnection=true` to talk to it
+- The callback may be retried on a transient conflict, so it must be idempotent — do not put non-database side effects (emails, external calls) inside it
+- Every write in the callback must forward the `session`; one that forgets silently escapes the transaction
+- Throwing inside the callback aborts the whole unit — that is how `adjustBalances` refuses to let a missed `$inc` desync a balance

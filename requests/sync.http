@@ -1,0 +1,458 @@
+### ==========================================================
+### SYNC — tirón incremental y snapshot inicial (mirror offline)
+### Un solo endpoint: sin `since` ni `cursor` = snapshot completo.
+### Trae ARCHIVADOS y BORRADOS (archivedAt / deletedAt): es la única
+### forma de que el cliente se entere de que algo desapareció.
+### Orden (updatedAt, _id); `limit` cuenta filas de TODAS las entidades.
+### El `nextCursor` de un tirón terminado va 60 s por detrás de
+### `serverTime` a propósito: `updatedAt` lo estampa la app, no la BD.
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+
+@token = {{login.response.body.accessToken}}
+
+### Snapshot completo (primer arranque del cliente)
+# @name snapshot
+GET {{baseUrl}}/sync/changes
+Authorization: Bearer {{token}}
+
+###
+
+@nextCursor = {{snapshot.response.body.pagination.nextCursor}}
+
+### Tirón incremental: el nextCursor del anterior, tal cual
+GET {{baseUrl}}/sync/changes?cursor={{nextCursor}}
+Authorization: Bearer {{token}}
+
+### Página pequeña para ver el paginado (hasMore = true)
+# @name firstPage
+GET {{baseUrl}}/sync/changes?limit=2
+Authorization: Bearer {{token}}
+
+###
+
+@pageCursor = {{firstPage.response.body.pagination.nextCursor}}
+
+### Segunda página — no repite ni se salta filas en el borde
+GET {{baseUrl}}/sync/changes?limit=2&cursor={{pageCursor}}
+Authorization: Bearer {{token}}
+
+### Por fecha en vez de cursor: `since` es EXCLUSIVO
+GET {{baseUrl}}/sync/changes?since=2026-01-01T00:00:00.000Z
+Authorization: Bearer {{token}}
+
+### Acepta offset ISO (mismo instante que el de arriba en Bogotá)
+GET {{baseUrl}}/sync/changes?since=2025-12-31T19:00:00-05:00
+Authorization: Bearer {{token}}
+
+### Si llegan los dos, gana `cursor` (es la posición más precisa)
+GET {{baseUrl}}/sync/changes?since=1999-01-01T00:00:00.000Z&cursor={{nextCursor}}
+Authorization: Bearer {{token}}
+
+### Archivar una cuenta y volver a tirar: aparece con archivedAt
+### (crea la cuenta, archívala, y pide los cambios desde antes)
+# @name syncAcc
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Sync demo {{$randomInt 100 999}}", "type": "CASH", "balance": 10 }
+
+###
+
+@syncAccId = {{syncAcc.response.body.id}}
+
+### Archivarla
+DELETE {{baseUrl}}/accounts/{{syncAccId}}
+Authorization: Bearer {{token}}
+
+### Ahora aparece en el feed con archivedAt != null
+GET {{baseUrl}}/sync/changes?since=2026-01-01T00:00:00.000Z
+Authorization: Bearer {{token}}
+
+### ---------- Casos de error ----------
+
+### Cursor ilegible (400, code INVALID_CURSOR) — NO devuelve la página 1
+GET {{baseUrl}}/sync/changes?cursor=no-es-un-cursor
+Authorization: Bearer {{token}}
+
+### limit por encima del techo (400, code VALIDATION, field "limit")
+GET {{baseUrl}}/sync/changes?limit=5000
+Authorization: Bearer {{token}}
+
+### limit 0 (400, code VALIDATION)
+GET {{baseUrl}}/sync/changes?limit=0
+Authorization: Bearer {{token}}
+
+### since sin hora (400, code VALIDATION)
+GET {{baseUrl}}/sync/changes?since=2026-01-01
+Authorization: Bearer {{token}}
+
+### Sin token (401)
+GET {{baseUrl}}/sync/changes
+
+### ==========================================================
+### POST /sync — el outbox offline como UN lote (O-B4)
+### Cada operación se contesta por separado: applied | merged | duplicate |
+### conflict | rejected | blocked. El 200 solo dice que el sobre era
+### válido; el resultado va en results[i].status. `merged` (categoría que
+### ya existía online) trae `mergedInto`; un aviso va en `warnings`.
+### payload.body es el body de la ruta equivalente; baseUpdatedAt es su
+### If-Match; payload.query.reference es el reference de budgets.
+### Límites: 1–200 operaciones, 1 MB, opVersion 1.
+### ==========================================================
+
+### Lote: crear una cuenta y un gasto que depende de ella (applied, applied)
+# @name syncBatch
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}",
+      "seq": 1,
+      "occurredAt": "2026-09-05T10:00:00.000Z",
+      "entity": "account",
+      "action": "create",
+      "id": "0195a000-0000-7000-8000-00000000{{$randomInt 1000 9999}}",
+      "payload": { "body": { "name": "Batch {{$randomInt 100 999}}", "type": "CASH", "balance": 100 } },
+      "dependsOn": [],
+      "opVersion": 1
+    }
+  ]
+}
+
+###
+
+@batchAccId = {{syncBatch.response.body.results[0].id}}
+@batchAccVersion = {{syncBatch.response.body.results[0].result.updatedAt}}
+
+### El mismo opId otra vez → duplicate (no se aplica nada). Copia el opId de
+### la respuesta anterior en lugar de {{$guid}} para verlo.
+# POST {{baseUrl}}/sync
+# Authorization: Bearer {{token}}
+# Content-Type: application/json
+#
+# { "operations": [ { "opId": "<opId de arriba>", "seq": 1, "occurredAt": "2026-09-05T10:00:00.000Z",
+#     "entity": "account", "action": "create", "id": "{{batchAccId}}",
+#     "payload": { "body": { "name": "Da igual", "type": "CASH", "balance": 1 } }, "opVersion": 1 } ] }
+
+### Gasto sobre la cuenta del lote anterior, con dependsOn (applied)
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}",
+      "seq": 2,
+      "occurredAt": "2026-09-05T10:01:00.000Z",
+      "entity": "transaction",
+      "action": "create",
+      "id": "{{$guid}}",
+      "payload": { "body": { "type": "EXPENSE", "amount": 12.5, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}" } },
+      "dependsOn": ["{{batchAccId}}"],
+      "opVersion": 1
+    }
+  ]
+}
+
+### Renombrar en otro dispositivo (mueve updatedAt)
+PUT {{baseUrl}}/accounts/{{batchAccId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Renombrada en otro sitio {{$randomInt 100 999}}" }
+
+### Lote con 409 dentro: update con baseUpdatedAt viejo → conflict STALE_UPDATE
+### con `current`; el archive de la misma fila sale blocked (blockedBy = opId
+### del update); la categoría independiente sale applied.
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "0195a000-0000-7000-8000-0000000000a1",
+      "seq": 3,
+      "occurredAt": "2026-09-05T10:02:00.000Z",
+      "entity": "account",
+      "action": "update",
+      "id": "{{batchAccId}}",
+      "payload": { "body": { "name": "Renombrada aquí" } },
+      "baseUpdatedAt": "{{batchAccVersion}}",
+      "opVersion": 1
+    },
+    {
+      "opId": "0195a000-0000-7000-8000-0000000000a2",
+      "seq": 4,
+      "occurredAt": "2026-09-05T10:03:00.000Z",
+      "entity": "account",
+      "action": "archive",
+      "id": "{{batchAccId}}",
+      "baseUpdatedAt": "{{batchAccVersion}}",
+      "opVersion": 1
+    },
+    {
+      "opId": "{{$guid}}",
+      "seq": 5,
+      "occurredAt": "2026-09-05T10:04:00.000Z",
+      "entity": "category",
+      "action": "create",
+      "id": "{{$guid}}",
+      "payload": { "body": { "name": "Batch cat {{$randomInt 100 999}}", "type": "EXPENSE" } },
+      "opVersion": 1
+    }
+  ]
+}
+
+### Dependencia rota: la cuenta no pasa la validación (rejected VALIDATION,
+### details con balance y type), el gasto que la nombra sale blocked.
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}",
+      "seq": 6,
+      "occurredAt": "2026-09-05T10:05:00.000Z",
+      "entity": "account",
+      "action": "create",
+      "id": "0195a000-0000-7000-8000-0000000000b1",
+      "payload": { "body": { "name": "Rota", "type": "NOPE", "balance": 10.555 } },
+      "opVersion": 1
+    },
+    {
+      "opId": "{{$guid}}",
+      "seq": 7,
+      "occurredAt": "2026-09-05T10:06:00.000Z",
+      "entity": "transaction",
+      "action": "create",
+      "id": "{{$guid}}",
+      "payload": { "body": { "type": "EXPENSE", "amount": 5, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "0195a000-0000-7000-8000-0000000000b1" } },
+      "dependsOn": ["0195a000-0000-7000-8000-0000000000b1"],
+      "opVersion": 1
+    }
+  ]
+}
+
+### Acción desconocida → rejected VALIDATION (field "action"); opVersion 7 → rejected
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    { "opId": "{{$guid}}", "seq": 8, "occurredAt": "2026-09-05T10:07:00.000Z", "entity": "category", "action": "setDefault", "id": "{{$guid}}", "opVersion": 1 },
+    { "opId": "{{$guid}}", "seq": 9, "occurredAt": "2026-09-05T10:07:00.000Z", "entity": "account", "action": "archive", "id": "{{$guid}}", "opVersion": 7 }
+  ]
+}
+
+### ---------- Reglas de reconciliación por entidad (O-B4 parte 2) ----------
+
+### Categoría que ya existe online: MERGE. Primero la creamos por HTTP...
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "0195a000-0000-7000-8000-0000000000d1", "name": "Sync merge cat", "type": "EXPENSE" }
+
+### ...y ahora el lote la crea con OTRO id, el nombre en minúsculas y el mismo
+### tipo: sale `merged`, `mergedInto` = el id del servidor, y el gasto del mismo
+### lote (que nombra el id acuñado) se aplica contra la categoría del servidor.
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}",
+      "seq": 10,
+      "occurredAt": "2026-09-05T11:00:00.000Z",
+      "entity": "category",
+      "action": "create",
+      "id": "0195a000-0000-7000-8000-0000000000d2",
+      "payload": { "body": { "name": "sync merge cat", "type": "EXPENSE" } },
+      "opVersion": 1
+    },
+    {
+      "opId": "{{$guid}}",
+      "seq": 11,
+      "occurredAt": "2026-09-05T11:01:00.000Z",
+      "entity": "transaction",
+      "action": "create",
+      "id": "{{$guid}}",
+      "payload": { "body": { "type": "EXPENSE", "amount": 3.5, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}", "categoryId": "0195a000-0000-7000-8000-0000000000d2" } },
+      "dependsOn": ["0195a000-0000-7000-8000-0000000000d2"],
+      "opVersion": 1
+    }
+  ]
+}
+
+### Mismo nombre, TIPO distinto: no es la misma categoría → conflict DUPLICATE
+### con la categoría del servidor en `current` (nada se crea).
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}",
+      "seq": 12,
+      "occurredAt": "2026-09-05T11:02:00.000Z",
+      "entity": "category",
+      "action": "create",
+      "id": "{{$guid}}",
+      "payload": { "body": { "name": "Sync merge cat", "type": "INCOME" } },
+      "opVersion": 1
+    }
+  ]
+}
+
+### Cuenta con el nombre tomado: NUNCA se fusiona (alteraría saldos) →
+### conflict DUPLICATE con la cuenta del servidor en `current`.
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}",
+      "seq": 13,
+      "occurredAt": "2026-09-05T11:03:00.000Z",
+      "entity": "account",
+      "action": "create",
+      "id": "{{$guid}}",
+      "payload": { "body": { "name": "Sync taken name", "type": "CASH", "balance": 999 } },
+      "opVersion": 1
+    }
+  ]
+}
+
+### (para que la de arriba dé conflict, esta cuenta tiene que existir)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "0195a000-0000-7000-8000-0000000000d3", "name": "Sync taken name", "type": "CASH", "balance": 10 }
+
+### Categoría archivada online: el movimiento se guarda SIN categoría, con
+### pendingDetails y warnings ["CATEGORY_ARCHIVED_DROPPED"]. Primero, archivarla.
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "0195a000-0000-7000-8000-0000000000d4", "name": "Sync archived cat", "type": "EXPENSE" }
+
+### Archivarla
+DELETE {{baseUrl}}/categories/0195a000-0000-7000-8000-0000000000d4
+Authorization: Bearer {{token}}
+
+### El movimiento offline que la nombra: applied, sin categoría, para revisar
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}",
+      "seq": 14,
+      "occurredAt": "2026-09-05T11:04:00.000Z",
+      "entity": "transaction",
+      "action": "create",
+      "id": "{{$guid}}",
+      "payload": { "body": { "type": "EXPENSE", "amount": 2, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}", "categoryId": "0195a000-0000-7000-8000-0000000000d4" } },
+      "opVersion": 1
+    }
+  ]
+}
+
+### Cuenta archivada online: conflict RESOURCE_ARCHIVED con la cuenta en
+### `current` (no un 404 pelado); el movimiento no se pierde, sigue en la cola.
+### Usa una cuenta que hayas archivado: archiva {{batchAccId}} y reintenta.
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}",
+      "seq": 15,
+      "occurredAt": "2026-09-05T11:05:00.000Z",
+      "entity": "transaction",
+      "action": "create",
+      "id": "{{$guid}}",
+      "payload": { "body": { "type": "EXPENSE", "amount": 1, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}" } },
+      "opVersion": 1
+    }
+  ]
+}
+
+### Fecha futura: FUTURE_DATE se evalúa contra el reloj DEL SERVIDOR, aunque
+### el `occurredAt` del teléfono diga otra cosa → rejected.
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}",
+      "seq": 16,
+      "occurredAt": "2099-01-01T12:00:00.000Z",
+      "entity": "transaction",
+      "action": "create",
+      "id": "{{$guid}}",
+      "payload": { "body": { "type": "EXPENSE", "amount": 1, "date": "2099-01-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}" } },
+      "opVersion": 1
+    }
+  ]
+}
+
+### ---------- Errores del sobre (400, nada se aplica) ----------
+
+### opId repetido (400 VALIDATION)
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    { "opId": "0195a000-0000-7000-8000-0000000000c1", "seq": 1, "occurredAt": "2026-09-05T10:00:00.000Z", "entity": "account", "action": "archive", "id": "{{$guid}}", "opVersion": 1 },
+    { "opId": "0195a000-0000-7000-8000-0000000000c1", "seq": 2, "occurredAt": "2026-09-05T10:00:00.000Z", "entity": "account", "action": "archive", "id": "{{$guid}}", "opVersion": 1 }
+  ]
+}
+
+### Lote vacío (400 VALIDATION)
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "operations": [] }
+
+### Sin token (401)
+POST {{baseUrl}}/sync
+Content-Type: application/json
+
+{ "operations": [] }

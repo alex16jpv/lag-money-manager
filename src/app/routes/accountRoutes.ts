@@ -1,12 +1,14 @@
 import { Router } from "express";
+
 import { AccountController } from "../controllers/AccountController";
-import { validate } from "../validation/validate";
 import {
   createAccountSchema,
-  updateAccountSchema,
   idParamSchema,
   paginationQuerySchema,
+  restoreSchema,
+  updateAccountSchema,
 } from "../validation/schemas";
+import { validate } from "../validation/validate";
 
 const router = Router();
 
@@ -16,6 +18,7 @@ const router = Router();
  *   get:
  *     tags: [Accounts]
  *     summary: Get all accounts
+ *     description: Archived accounts are hidden unless includeArchived=true.
  *     parameters:
  *       - in: query
  *         name: limit
@@ -42,16 +45,32 @@ const router = Router();
  *         name: ids
  *         schema:
  *           type: string
- *         description: Comma-separated list of UUIDs to filter by ID
+ *         description: Comma-separated list of account UUIDs to filter by ID (1-100)
+ *       - in: query
+ *         name: includeArchived
+ *         schema:
+ *           type: string
+ *           enum: [true, false]
+ *         description: Include archived accounts in the listing
  *     responses:
  *       200:
  *         description: Paginated list of accounts
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/PaginatedAccounts'
+ *               $ref: '#/components/schemas/AccountList'
+ *       400:
+ *         description: Invalid query parameters (code VALIDATION)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       401:
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.get(
   "/",
@@ -65,13 +84,29 @@ router.get(
  *   post:
  *     tags: [Accounts]
  *     summary: Create a new account
+ *     description: >
+ *       The first account is marked default automatically. Currency is
+ *       stamped from the user (mono-currency mode). Active account names are
+ *       unique per user, case-insensitively ("Efectivo" = "efectivo"; accents
+ *       still distinct) and trimmed; archiving an account frees its name.
+ *
+ *       Accepts an optional client-minted `id` (UUID). An id the user already
+ *       owns replays with 200 and the stored resource, whatever the payload
+ *       says now (the row may have been edited elsewhere since); an id that
+ *       belongs to another user is rejected with 409 ID_TAKEN.
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/CreateAccount'
+ *             $ref: '#/components/schemas/CreateAccountInput'
  *     responses:
+ *       200:
+ *         description: Replay of a create already made with this client-minted id
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Account'
  *       201:
  *         description: Account created
  *         content:
@@ -79,13 +114,23 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/Account'
  *       400:
- *         description: Validation error
+ *         description: Validation error (code VALIDATION) or account limit reached (code ACCOUNT_LIMIT_REACHED)
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ValidationError'
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       401:
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: An active account with this name already exists (code DUPLICATE, case-insensitive), or the client-minted id is already in use (code ID_TAKEN)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post(
   "/",
@@ -99,6 +144,9 @@ router.post(
  *   get:
  *     tags: [Accounts]
  *     summary: Get an account by ID
+ *     description: >
+ *       Also resolves archived accounts (archivedAt tells them apart);
+ *       only the listing hides them by default.
  *     parameters:
  *       - in: path
  *         name: id
@@ -109,17 +157,29 @@ router.post(
  *         description: Account ID
  *     responses:
  *       200:
- *         description: Account found
+ *         description: Account found (may be archived)
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Account'
  *       400:
- *         description: Invalid ID format
+ *         description: Invalid ID format (code VALIDATION)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       401:
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
- *         description: Account not found
+ *         description: Account not found (uniform for missing and not owned)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.get("/:id", validate(idParamSchema), AccountController.getAccountById);
 
@@ -137,12 +197,13 @@ router.get("/:id", validate(idParamSchema), AccountController.getAccountById);
  *           type: string
  *           format: uuid
  *         description: Account ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/UpdateAccount'
+ *             $ref: '#/components/schemas/UpdateAccountInput'
  *     responses:
  *       200:
  *         description: Account updated
@@ -151,11 +212,29 @@ router.get("/:id", validate(idParamSchema), AccountController.getAccountById);
  *             schema:
  *               $ref: '#/components/schemas/Account'
  *       400:
- *         description: Validation error
+ *         description: Validation error (code VALIDATION) or account is archived (code RESOURCE_ARCHIVED, restore it first)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       401:
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
- *         description: Account not found
+ *         description: Account not found (uniform for missing and not owned)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: Another active account already uses this name (code DUPLICATE, case-insensitive), or the resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AccountConflict'
  */
 router.put(
   "/:id",
@@ -168,7 +247,10 @@ router.put(
  * /accounts/{id}:
  *   delete:
  *     tags: [Accounts]
- *     summary: Delete an account
+ *     summary: Archive an account (soft delete)
+ *     description: >
+ *       Idempotent - archiving an already-archived account is a no-op
+ *       success. Allowed even with linked transactions.
  *     parameters:
  *       - in: path
  *         name: id
@@ -177,14 +259,151 @@ router.put(
  *           type: string
  *           format: uuid
  *         description: Account ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
- *       204:
- *         description: Account deleted
+ *       200:
+ *         description: The archived account (also when it was already archived), with its new `updatedAt`
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Account'
  *       400:
- *         description: Invalid ID format
+ *         description: Invalid ID format (code VALIDATION) or account is the default (code DEFAULT_ACCOUNT_ARCHIVE_BLOCKED, set another default first)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       401:
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Account not found (uniform for missing and not owned)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AccountConflict'
  */
 router.delete("/:id", validate(idParamSchema), AccountController.deleteAccount);
+
+/**
+ * @openapi
+ * /accounts/{id}/restore:
+ *   post:
+ *     tags: [Accounts]
+ *     summary: Restore an archived account, optionally under a new name
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/RestoreInput'
+ *     description: >
+ *       Idempotent - restoring an already-active account returns it
+ *       unchanged.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *         description: Account ID
+ *       - $ref: '#/components/parameters/IfMatch'
+ *     responses:
+ *       200:
+ *         description: Account restored (or already active)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Account'
+ *       400:
+ *         description: Invalid ID format (code VALIDATION)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Account not found (uniform for missing and not owned)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: An active account took this name while it was archived (code DUPLICATE) — rename that one first, or the resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AccountConflict'
+ */
+router.post(
+  "/:id/restore",
+  validate(restoreSchema),
+  AccountController.restoreAccount,
+);
+
+/**
+ * @openapi
+ * /accounts/{id}/default:
+ *   post:
+ *     tags: [Accounts]
+ *     summary: Mark an account as the user's default
+ *     description: The previous default account is unmarked automatically.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *         description: Account ID
+ *       - $ref: '#/components/parameters/IfMatch'
+ *     responses:
+ *       200:
+ *         description: Default account set
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Account'
+ *       400:
+ *         description: Invalid ID format (code VALIDATION)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Account not found (uniform for missing, not owned, and archived)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AccountConflict'
+ */
+router.post(
+  "/:id/default",
+  validate(idParamSchema),
+  AccountController.setDefaultAccount,
+);
 
 export default router;

@@ -4,7 +4,7 @@ layout: home
 hero:
   name: lag-money-manager
   text: REST API for personal money management
-  tagline: Track accounts, categories, and transactions with automatic balance adjustments
+  tagline: Accounts, categories, transactions, budgets and stats, with atomic balance adjustments
   actions:
     - theme: brand
       text: Getting Started
@@ -17,10 +17,10 @@ hero:
       link: /docs/agent-context
 
 features:
-  - title: Multi-Database Support
-    details: Switch between MySQL (Sequelize) and MongoDB (Mongoose) at runtime via a single environment variable.
+  - title: MongoDB, Exactly
+    details: Mongoose on a replica set. Money is stored as integer cents and balances move inside real multi-document transactions.
   - title: Full Documentation
     details: Architecture guides, module docs, and AI agent prompts for every aspect of the project.
   - title: Production Ready
-    details: JWT auth, rate limiting, Helmet security headers, structured logging, and comprehensive validation.
+    details: JWT access and refresh tokens, layered rate limiting, Helmet headers, structured logging, and Zod validation on every endpoint.
 ---

@@ -4,8 +4,9 @@
 
 1. Create a branch from `main` for your feature or fix
 2. Make changes following the conventions in `docs/agent-context.md`
-3. Run lint and tests before committing
-4. Submit a pull request with a clear description
+3. Run `npm run ci` before committing — it is the same gate CI enforces
+4. Commit **one item per commit** (one fix, one feature, one audit finding), with the scope in the subject
+5. Submit a pull request with a clear description
 
 ## Code Quality Checks
 
@@ -44,14 +45,30 @@ npm run test:coverage # Run tests with coverage report
 
 All tests must pass before merging.
 
+### The full gate
+
+```bash
+npm run ci    # typecheck + typecheck:tests + lint + test
+```
+
+`.github/workflows/ci.yml` runs exactly these four steps on every push and pull request. Note that `typecheck:tests` is separate: Jest runs with `diagnostics: false`, so a type error inside a test file passes `npm test` and only fails that step.
+
 ## Commit Conventions
 
-Use clear, descriptive commit messages. Prefer the format:
+One commit per item. A commit that fixes two unrelated things is two commits.
 
 ```
-<type>: <short description>
+<type>(<scope>): <short description>
 
-<optional body with more detail>
+<optional body explaining WHY, not what>
+```
+
+The scope is the module or area touched (`accounts`, `budgets`, `auth`, `transactions`, `api`, `logs`, ...). Real examples from the history:
+
+```
+fix(accounts): setDefault unsets the old default BEFORE setting the new one
+feat(logs): one completion log line per request, with the rejection reason
+docs(api): generate OpenAPI request bodies from the Zod schemas
 ```
 
 Common types:
@@ -83,51 +100,38 @@ Common types:
 3. Update `docs/guides/getting-started.md` with the new dependency
 4. Update `docs/architecture/overview.md` if it's a significant addition
 
-## Keeping OpenAPI Specs in Sync with Zod Schemas
+## Keeping the OpenAPI Spec in Sync
 
-The OpenAPI specification is maintained **manually** via `swagger-jsdoc` annotations in route files and component schemas in `src/config/swagger.ts`. Zod validation schemas live separately in `src/app/validation/schemas.ts`. These two are **not automatically synchronized**.
+`src/config/swagger.ts` builds the spec from three sources, and only one of them is hand-written:
 
-### When to Update
+| Part                          | Source                                                                          | Hand-written?                                   |
+| ----------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------- |
+| **Request bodies**            | Generated from the Zod schemas with `z.toJSONSchema(..., { target: "openapi-3.0", io: "input" })` | **No** — never hand-write one                   |
+| **Response views**            | Mirrors of the entities/DTOs the API serializes, in `swagger.ts`                 | Yes                                             |
+| **Paths, params, responses**  | `@openapi` JSDoc blocks above each route in `src/app/routes/*.ts`                | Yes                                             |
 
-Any change to request/response shapes requires updating **both** locations:
+Enum values in the response views come from `src/shared/constants.ts` (`enumOf(...)`), so they cannot drift from the code either.
 
-| Change                        | Update Zod schema (`schemas.ts`) | Update OpenAPI (`swagger.ts` + route JSDoc) |
-| ----------------------------- | -------------------------------- | ------------------------------------------- |
-| Add/remove a request field    | Yes                              | Yes                                         |
-| Change field type/constraints | Yes                              | Yes                                         |
-| Add a new endpoint            | Yes (if validated)               | Yes                                         |
-| Change response shape         | No (DTOs handle this)            | Yes                                         |
+### What that means when you change a shape
 
-### Sync Process
+| Change                             | Zod schema (`schemas.ts`) | `swagger.ts`                        | Route JSDoc                       |
+| ---------------------------------- | ------------------------- | ------------------------------------ | --------------------------------- |
+| Add/remove a **request** field     | Yes — the only edit       | No (regenerated)                     | Only if the description changes    |
+| Change a request field's rules     | Yes — the only edit       | No (regenerated)                     | No                                 |
+| Add a **new endpoint**             | Yes, if validated         | Add the request body to `requestBodies` if it takes one | Yes — a new `@openapi` block       |
+| Change a **response** shape        | No (DTOs/entities)        | Yes — update the response view       | Only if the `$ref` changes         |
+| Add an enum value                  | No (derived from constants) | No (derived from constants)        | No                                 |
 
-1. **Modify the Zod schema** in `src/app/validation/schemas.ts` (source of truth for validation)
-2. **Update the OpenAPI component schema** in `src/config/swagger.ts` to match
-3. **Update the route JSDoc annotations** in `src/app/routes/<module>Routes.ts` if request/response examples changed
-4. **Verify** by starting the dev server and checking `/api-docs` in the browser
+**Verify** with `npm run start:dev` and `/api-docs`. Note that Swagger UI is only mounted when `NODE_ENV !== "production"`, so `/api-docs` does not exist on the deployed API.
 
-### Example
+## Conventions a Review Will Check
 
-If adding a `tags` field to the create-account request:
+These are the recurring ones; `docs/agent-context.md` has the full set.
 
-```typescript
-// 1. Zod schema (schemas.ts)
-export const createAccountSchema = z.object({
-  body: z.object({
-    name: z.string().min(1),
-    type: z.enum([...]),
-    tags: z.string().optional(),  // <-- add here
-  }),
-});
-
-// 2. OpenAPI component (swagger.ts)
-CreateAccount: {
-  type: "object",
-  properties: {
-    name: { type: "string" },
-    type: { type: "string", enum: [...] },
-    tags: { type: "string" },  // <-- add here too
-  },
-}
-```
-
-> **Note:** There is no automated tool to generate OpenAPI from Zod or vice versa. Manual synchronization is required. Consider adding a PR checklist item: _"If request/response schemas changed, did you update both Zod and OpenAPI?"_
+- **Layers.** Domain (`src/domain/`) holds entities and repository *interfaces* and imports nothing from `app/` or `infrastructure/`. Mongoose models and the concrete repositories live in `src/infrastructure/`. Services depend on the interface, never on a model.
+- **Validation.** Every endpoint gets a Zod schema in `src/app/validation/schemas.ts` and `validate(schema)` in the route. `validate` replaces `req.body`/`req.params` with the parsed values, so anything not declared in the schema never reaches a service — do not read undeclared fields off the request.
+- **Repository access.** Controllers get repositories from `repositoryFactory.get<Entity>Repository()` and pass them into the service constructor. No `new SomeRepository()` outside the provider.
+- **Pagination.** List endpoints return `buildPaginatedResult(...)` from `src/shared/pagination.ts` — `{ data, pagination: { limit, offset, total, hasMore, nextCursor } }`. Do not hand-roll that envelope.
+- **Money.** The API speaks decimals with at most 2 places; storage is **integer cents**. Convert with `toCents`/`fromCents` from `src/shared/money.ts` at the repository boundary only, and never let a float amount reach a Mongo document.
+- **Soft delete.** `delete` sets `archivedAt` (transactions use `deletedAt`); it does not remove documents. Listings filter `archivedAt: null` by default and reads resolve archived rows so the client can tell "archived" from "gone".
+- **Errors.** Throw `ApiError(name, message, code)` with a **stable `code`** (`ACCOUNT_LIMIT_REACHED`, `RESOURCE_ARCHIVED`, `RATE_LIMITED`, ...). Clients branch on `code`, never on `message`, so renaming one is a breaking change. A resource owned by someone else is a `404`, not a `403`.

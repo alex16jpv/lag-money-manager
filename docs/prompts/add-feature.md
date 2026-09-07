@@ -34,12 +34,20 @@ Requirements:
 - Include validation following the pattern in docs/examples/full-module-walkthrough.md
 - Include error handling following docs/reference/error-handling.md
 - Write tests following docs/guides/testing.md
+- Keep the OpenAPI spec correct: request bodies are GENERATED from the Zod
+  schemas in src/config/swagger.ts (never hand-write one); response views
+  and the @openapi route blocks are hand-maintained
 - Do not add new dependencies without explicit approval
 
 After implementation:
-1. List every file created with its path and purpose
-2. List every file modified with what changed and why
-3. Update the following docs if applicable:
+1. Run `npm run ci` (typecheck + typecheck:tests + lint + test) and report
+   the result. Jest runs with diagnostics off, so a green `npm test` alone
+   proves nothing about the test files' types.
+2. List every file created with its path and purpose
+3. List every file modified with what changed and why
+4. State whether any MongoDB index was added or changed — if so, say that
+   `npm run db:sync-indexes` must run before the feature reaches production
+5. Update the following docs if applicable:
    - docs/modules/[module].md
    - docs/guides/adding-new-features.md if a new component type was introduced
    - docs/guides/environment-vars.md if new env vars were added

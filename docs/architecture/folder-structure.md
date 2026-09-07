@@ -5,57 +5,63 @@
 ```
 lag-money-manager/
 ├── docs/                          # Project documentation (you are here)
+├── requests/                      # `.http` request examples (REST client)
+├── scripts/                       # Deploy and ops scripts (Lambda, keepalive, index sync)
 ├── src/
 │   ├── app.ts                     # Express app setup and middleware registration
 │   ├── server.ts                  # HTTP server bootstrap and start
+│   ├── lambda.ts                  # AWS Lambda handler (serverless-express adapter)
 │   ├── __tests__/                 # All test files
 │   │   ├── entities/              # Domain entity unit tests
+│   │   ├── factories/             # Repository factory unit tests
 │   │   ├── integration/           # API integration tests (supertest)
 │   │   ├── middleware/            # Middleware unit tests
-│   │   └── services/              # Service layer unit tests
+│   │   ├── services/              # Service layer unit tests
+│   │   ├── shared/                # Shared utility unit tests
+│   │   └── validation/            # Zod schema and validate() unit tests
 │   ├── app/                       # Application layer (HTTP-aware)
 │   │   ├── controllers/           # Route handlers (thin, delegate to services)
 │   │   ├── dtos/                  # Data Transfer Objects (input/output shapes)
 │   │   ├── factories/             # Repository factory and DB providers
-│   │   │   └── providers/         # DB-specific provider registrations
-│   │   ├── middlewares/           # Application-level middleware (auth)
+│   │   │   └── providers/         # DB provider registration (mongoProvider.ts)
+│   │   ├── middlewares/           # Application-level middleware
 │   │   ├── routes/                # Express route definitions with OpenAPI docs
 │   │   ├── services/              # Business logic layer
 │   │   └── validation/            # Zod schemas and validation middleware
-│   ├── config/                    # Configuration and connection setup
-│   ├── database/                  # Database migrations and seeders
-│   │   ├── migrations/            # Sequelize migration files
-│   │   └── seeders/               # Sequelize seed files (empty)
+│   ├── config/                    # Mongo connection, DB health ping, Swagger spec
+│   ├── database/
+│   │   └── seeders/               # Seed files (empty)
 │   ├── domain/                    # Domain layer (framework-agnostic)
 │   │   ├── errors.ts              # Domain validation error class
 │   │   ├── entities/              # Business entity classes
-│   │   ├── models/                # ORM/ODM model definitions
-│   │   │   ├── mongoose/          # Mongoose schema definitions
-│   │   │   └── sequelize/         # Sequelize model definitions
-│   │   └── repositories/          # Repository interfaces and implementations
+│   │   └── repositories/          # Repository INTERFACES only
 │   │       ├── IRepository.ts     # Generic base repository interface
-│   │       ├── account/           # Account repository (interface + 2 impls)
-│   │       ├── category/          # Category repository (interface + 2 impls)
-│   │       ├── transaction/       # Transaction repository (interface + 2 impls)
-│   │       ├── unitOfWork/        # Unit of Work (placeholder, empty)
-│   │       └── user/              # User repository (interface + 2 impls)
+│   │       ├── account/           # IAccountRepository.ts
+│   │       ├── budget/            # IBudgetRepository.ts
+│   │       ├── category/          # ICategoryRepository.ts
+│   │       ├── idempotency/       # IIdempotencyRepository.ts
+│   │       ├── refreshSession/    # IRefreshSessionRepository.ts
+│   │       ├── transaction/       # ITransactionRepository.ts
+│   │       └── user/              # IUserRepository.ts
+│   ├── infrastructure/            # Persistence layer (Mongoose-specific)
+│   │   ├── models/                # Mongoose schemas: [Entity]Model.ts
+│   │   └── repositories/          # Concrete repositories, one dir per entity
 │   └── shared/                    # Cross-cutting utilities and constants
-├── docker-compose.yml             # Local dev containers (MySQL, Mongo, admin tools)
+├── docker-compose.yml             # Local dev containers (Mongo replica set, Mongoku)
 ├── package.json                   # Dependencies and scripts
 ├── tsconfig.json                  # TypeScript compiler config
+├── tsconfig.test.json             # Type-check config for the test sources
 ├── jest.config.js                 # Jest test runner config
-├── eslint.config.mjs              # ESLint + Prettier config
-├── api.http                       # HTTP request examples (REST client)
-└── AUDIT_REPORT.md                # Previous audit findings
+└── eslint.config.mjs              # ESLint + Prettier config
 ```
 
 ## Directory Details
 
 ### `src/`
 
-Root source directory. Contains the two entry-point files (`app.ts`, `server.ts`) and all subdirectories.
+Root source directory. Contains the entry-point files (`app.ts`, `server.ts`, `lambda.ts`) and all subdirectories.
 
-- **What belongs here:** Only `app.ts` and `server.ts` at the root level
+- **What belongs here:** Only `app.ts`, `server.ts` and `lambda.ts` at the root level
 - **What does NOT belong here:** Feature code, utilities, or config files at the root level
 - **Naming:** `camelCase.ts`
 
@@ -79,11 +85,15 @@ Full API integration tests using supertest against the Express app.
 
 #### `src/__tests__/middleware/`
 
-Unit tests for middleware functions (error handling, auth).
+Unit tests for middleware functions (error handling, auth, request id, request log, auth rate limit).
 
 #### `src/__tests__/services/`
 
 Unit tests for service layer business logic with mocked repositories.
+
+#### `src/__tests__/factories/`, `src/__tests__/shared/`, `src/__tests__/validation/`
+
+Unit tests for the repository factory, the shared utilities (e.g. `budgetPeriod`), and the Zod schemas plus the `validate()` middleware.
 
 ---
 
@@ -127,9 +137,9 @@ Repository factory and database provider registrations.
 
 #### `src/app/factories/providers/`
 
-Database-specific provider functions that register repository creators.
+Provider functions that register repository creators with the factory.
 
-- **Files:** `sequelizeProvider.ts`, `mongoProvider.ts`
+- **Files:** `mongoProvider.ts` (the only backend)
 - **Naming:** `camelCase` with `Provider` suffix
 
 ---
@@ -138,8 +148,9 @@ Database-specific provider functions that register repository creators.
 
 Application-level Express middleware.
 
-- **What belongs here:** Authentication middleware, authorization middleware
-- **What does NOT belong here:** Global middleware (those go in `src/shared/`)
+- **What belongs here:** Authentication/authorization, the gateway-secret check, the persistent auth rate limiter, the DB-readiness guard, and the per-request completion log
+- **What does NOT belong here:** Framework-agnostic middleware with no app-layer dependency (`requestId.ts` and the error handler live in `src/shared/`)
+- **Files:** `authMiddleware.ts`, `authRateLimitMiddleware.ts`, `dbReadinessMiddleware.ts`, `gatewaySecretMiddleware.ts`, `requestLogMiddleware.ts`
 - **Naming:** `camelCase` with `Middleware` suffix: `authMiddleware.ts`
 
 ---
@@ -180,18 +191,17 @@ Configuration files for external connections and tools.
 
 - **What belongs here:** Database connections, Swagger config, third-party service configs
 - **What does NOT belong here:** Application logic, middleware
-- **Files:** `database.js` (Sequelize CLI config), `sequelizeConnection.ts`, `mongoConnection.ts`, `swagger.ts`
-- **Naming:** `camelCase.ts` (or `.js` for Sequelize CLI compatibility)
+- **Files:** `mongoConnection.ts` (idempotent connect, buffering disabled), `dbHealth.ts` (`/health/db` ping), `swagger.ts`
+- **Naming:** `camelCase.ts`
 
 ---
 
 ### `src/database/`
 
-Database migration and seed files used by Sequelize CLI.
+Seed data placeholder. There are no migrations: MongoDB is schema-on-write, and indexes are declared on the Mongoose schemas and pushed by `npm run db:sync-indexes` (`scripts/sync-indexes.ts`) at deploy time.
 
-- **What belongs here:** Migration files in `migrations/`, seed files in `seeders/`
+- **What belongs here:** Seed files in `seeders/`
 - **What does NOT belong here:** Model definitions, runtime code
-- **Naming (migrations):** `YYYYMMDDHHMMSS-[description].js` (e.g., `20260328000001-create-users.js`)
 
 ---
 
@@ -199,8 +209,8 @@ Database migration and seed files used by Sequelize CLI.
 
 Domain layer — framework-agnostic business objects.
 
-- **What belongs here:** Entities, repository interfaces, domain errors, ORM/ODM models
-- **What does NOT belong here:** Express-specific code, controllers, routes
+- **What belongs here:** Entities, repository interfaces, domain errors
+- **What does NOT belong here:** Express-specific code, Mongoose models or queries, controllers, routes
 - **Naming:** See subdirectories below
 
 ---
@@ -215,32 +225,41 @@ Plain TypeScript entity classes. No framework dependencies.
 
 ---
 
-### `src/domain/models/sequelize/`
+### `src/domain/repositories/`
 
-Sequelize model definitions.
+Repository **interfaces** only — the contracts services depend on. The implementations live in `src/infrastructure/repositories/`.
 
-- **What belongs here:** One model per entity, plus `models.ts` (re-exports) and `index.ts` (loader)
+- **What belongs here:** `IRepository.ts` (base interface) at root, one subdirectory per entity holding `I[Entity]Repository.ts` and its filter types
+- **What does NOT belong here:** Any Mongoose import or query
+- **Naming (interface):** `I[Entity]Repository.ts`
+
+---
+
+### `src/infrastructure/`
+
+Persistence layer. Everything that knows about MongoDB lives here.
+
+- **What belongs here:** Mongoose schemas/models and the concrete repositories
+- **What does NOT belong here:** Business rules, HTTP concerns
+
+---
+
+### `src/infrastructure/models/`
+
+Mongoose schema and model definitions, including the infrastructure-only collections (`IdempotencyKeyModel`, `RateLimitModel`, `RefreshSessionModel`) that have no domain entity.
+
+- **What belongs here:** One model per collection, exporting the model and its `I[Entity]Document` interface
 - **Naming:** `PascalCase` with `Model` suffix: `TransactionModel.ts`
 
 ---
 
-### `src/domain/models/mongoose/`
+### `src/infrastructure/repositories/`
 
-Mongoose schema and model definitions.
+Concrete repositories implementing the domain interfaces, one subdirectory per entity.
 
-- **What belongs here:** One model per entity
-- **Naming:** `PascalCase` with `MongoModel` suffix: `TransactionMongoModel.ts`
-
----
-
-### `src/domain/repositories/`
-
-Repository interfaces and their database-specific implementations, organized by entity.
-
-- **What belongs here:** `IRepository.ts` (base interface) at root, one subdirectory per entity
-- **Naming (interface):** `I[Entity]Repository.ts`
-- **Naming (Sequelize impl):** `[Entity]SeqRepository.ts`
-- **Naming (Mongoose impl):** `[Entity]MongoRepository.ts`
+- **What belongs here:** `[entity]/[Entity]Repository.ts` — no `Mongo` suffix; MongoDB is the only backend
+- **Responsibilities:** Map documents to domain entities (never return raw Mongoose docs), convert money between integer cents and decimals at this boundary, and accept an optional `TxSession` so callers can enlist the query in a unit of work
+- **Naming:** `PascalCase` with `Repository` suffix: `TransactionRepository.ts`
 
 ---
 
@@ -248,7 +267,7 @@ Repository interfaces and their database-specific implementations, organized by 
 
 Cross-cutting utilities used by multiple layers.
 
-- **What belongs here:** Constants, logger, pagination helpers, error classes, shared middleware
+- **What belongs here:** Constants, logger, pagination helpers, error classes, shared middleware, money/currency/timezone helpers
 - **What does NOT belong here:** Feature-specific logic, database models
-- **Files:** `constants.ts`, `errors.ts`, `logger.ts`, `middlewares.ts`, `pagination.ts`, `requestId.ts`
+- **Files:** `budgetPeriod.ts`, `constants.ts`, `currency.ts`, `defaultCategories.ts`, `errors.ts`, `logger.ts`, `middlewares.ts`, `money.ts`, `pagination.ts`, `requestHash.ts`, `requestId.ts`, `timezone.ts`, `unitOfWork.ts`
 - **Naming:** `camelCase.ts`

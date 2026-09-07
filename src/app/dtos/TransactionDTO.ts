@@ -1,6 +1,7 @@
-import { TransactionType } from "../../shared/constants";
+import { TransactionSource, TransactionType } from "../../shared/constants";
 
 export interface CreateTransactionDTO {
+  id?: string;
   type: TransactionType;
   amount: number;
   date: Date;
@@ -9,8 +10,11 @@ export interface CreateTransactionDTO {
   fromAccountId?: string | null;
   toAccountId?: string | null;
   userId: string;
-  tags?: string | null;
+  tags?: string[];
   note?: string | null;
+  pendingDetails?: boolean;
+  // Server-derived (quick-add sets QUICK); the schema never accepts it.
+  source?: TransactionSource;
 }
 
 export interface UpdateTransactionDTO {
@@ -22,6 +26,18 @@ export interface UpdateTransactionDTO {
   description?: string | null;
   fromAccountId?: string | null;
   toAccountId?: string | null;
-  tags?: string | null;
+  tags?: string[];
   note?: string | null;
+  pendingDetails?: boolean;
+}
+
+export interface QuickAddTransactionDTO {
+  id?: string;
+  amount: number;
+  type?: TransactionType;
+  date?: Date;
+  categoryId?: string | null;
+  fromAccountId?: string | null;
+  toAccountId?: string | null;
+  userId: string;
 }

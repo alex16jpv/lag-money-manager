@@ -1,7 +1,5 @@
 export const DB_TYPES = {
-  SEQ: "SEQ",
   MONGO: "MONGO",
-  LOCAL_STORAGE: "LOCAL_STORAGE",
 } as const;
 
 export type DbType = keyof typeof DB_TYPES;
@@ -10,9 +8,29 @@ export const MODEL_NAMES = {
   USER: "User",
   ACCOUNT: "Account",
   TRANSACTION: "Transaction",
-  BUDGET: "Budget",
   CATEGORY: "Category",
+  BUDGET: "Budget",
 } as const;
+
+export const BUDGET_PERIOD_TYPES = {
+  WEEKLY: "WEEKLY",
+  BIWEEKLY: "BIWEEKLY",
+  MONTHLY: "MONTHLY",
+  QUARTERLY: "QUARTERLY",
+  YEARLY: "YEARLY",
+  CUSTOM: "CUSTOM",
+} as const;
+
+export type BudgetPeriodType = keyof typeof BUDGET_PERIOD_TYPES;
+
+// Backend-ready (R2-16c): INCOME budgets are goals ("earn at least X").
+// The MVP frontend only exposes EXPENSE.
+export const BUDGET_TYPES = {
+  EXPENSE: "EXPENSE",
+  INCOME: "INCOME",
+} as const;
+
+export type BudgetType = keyof typeof BUDGET_TYPES;
 
 export const ACCOUNT_TYPES = {
   CASH: "CASH",
@@ -32,11 +50,29 @@ export const TRANSACTION_TYPES = {
   INCOME: "INCOME",
   EXPENSE: "EXPENSE",
   TRANSFER: "TRANSFER",
+  // Balance reconciliation: excluded from stats and budgets, no category.
+  ADJUSTMENT: "ADJUSTMENT",
 } as const;
 
 export type TransactionType = keyof typeof TRANSACTION_TYPES;
 
-export type CategoryType = keyof typeof TRANSACTION_TYPES;
+// Where a transaction was born; server-derived (never client-settable).
+// IMPORT is reserved for the future bank/CSV import feature.
+export const TRANSACTION_SOURCES = {
+  MANUAL: "MANUAL",
+  QUICK: "QUICK",
+  IMPORT: "IMPORT",
+} as const;
+
+export type TransactionSource = keyof typeof TRANSACTION_SOURCES;
+
+export const CATEGORY_TYPES = {
+  INCOME: "INCOME",
+  EXPENSE: "EXPENSE",
+  TRANSFER: "TRANSFER",
+} as const;
+
+export type CategoryType = keyof typeof CATEGORY_TYPES;
 
 export const COLORS = {
   RED: "RED",
@@ -63,13 +99,18 @@ import { z } from "zod";
 
 const baseEnvSchema = z.object({
   PORT: z.coerce.number().default(3000),
-  DB_TYPE: z.string().default(DB_TYPES.SEQ),
+  DB_TYPE: z.string().default(DB_TYPES.MONGO),
   JWT_SECRET: z.string().min(1, "JWT_SECRET is required"),
+  // Separate secret for refresh tokens; falls back to JWT_SECRET when unset.
+  REFRESH_SECRET: z.string().min(1).optional(),
   API_SECRET: z.string().optional(),
-  JWT_EXPIRATION: z.string().default("24h"),
+  JWT_EXPIRATION: z.string().default("15m"),
+  REFRESH_TOKEN_EXPIRATION: z.string().default("30d"),
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(4).max(20).default(12),
   CORS_ORIGIN: z.string().min(1, "CORS_ORIGIN is required"),
-  RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(200),
+  RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(1000),
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(10),
+  REFRESH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(60),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace"])
     .default("info"),
@@ -78,26 +119,11 @@ const baseEnvSchema = z.object({
     .default("development"),
 });
 
-const seqEnvSchema = baseEnvSchema.extend({
-  SEQ_PORT: z.coerce.number().default(3306),
-  SEQ_HOST: z.string().min(1, "SEQ_HOST is required"),
-  SEQ_DATABASE: z.string().min(1, "SEQ_DATABASE is required"),
-  SEQ_USERNAME: z.string().min(1, "SEQ_USERNAME is required"),
-  SEQ_PASSWORD: z.string().min(1, "SEQ_PASSWORD is required"),
-  SEQ_POOL_MAX: z.coerce.number().int().min(1).default(20),
-  SEQ_POOL_MIN: z.coerce.number().int().min(0).default(5),
-  SEQ_POOL_ACQUIRE: z.coerce.number().int().min(1000).default(30000),
-  SEQ_POOL_IDLE: z.coerce.number().int().min(1000).default(10000),
-});
-
 const mongoEnvSchema = baseEnvSchema.extend({
   MONGO_URI: z.string().min(1, "MONGO_URI is required"),
 });
 
-export const ENVIRONMENT =
-  process.env.DB_TYPE === DB_TYPES.MONGO
-    ? mongoEnvSchema.parse(process.env)
-    : seqEnvSchema.parse(process.env);
+export const ENVIRONMENT = mongoEnvSchema.parse(process.env);
 
 // True when running inside AWS Lambda (the runtime sets this variable).
 export const IS_LAMBDA = Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);

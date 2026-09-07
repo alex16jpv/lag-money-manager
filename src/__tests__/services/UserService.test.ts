@@ -1,7 +1,7 @@
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
     PORT: 3000,
-    DB_TYPE: "SEQ",
+    DB_TYPE: "MONGO",
     JWT_SECRET: "test",
     BCRYPT_SALT_ROUNDS: 12,
     JWT_EXPIRATION: "24h",
@@ -10,13 +10,14 @@ jest.mock("../../shared/constants", () => ({
   },
 }));
 
-import { UserService } from "../../app/services/UserService";
-import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
-import { User } from "../../domain/entities/User";
-import { ApiError } from "../../shared/errors";
 import bcryptjs from "bcryptjs";
+
 import { UpdateUserDTO } from "../../app/dtos/UserDTO";
-import { PaginatedResult, PaginationParams } from "../../shared/pagination";
+import { UserService } from "../../app/services/UserService";
+import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { User } from "../../domain/entities/User";
+import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { ApiError } from "../../shared/errors";
 
 const testUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
 
@@ -33,6 +34,12 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   getAll: jest.fn(),
   getById: jest.fn(),
   getByEmail: jest.fn(),
+  getDeletedByEmail: jest.fn().mockResolvedValue(null),
+  getByIdWithPassword: jest.fn().mockResolvedValue(null),
+  bumpTokenVersion: jest.fn().mockResolvedValue(undefined),
+  updateWithTokenBump: jest.fn(),
+  recordLogin: jest.fn().mockResolvedValue(undefined),
+  reactivate: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -41,54 +48,14 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
 describe("UserService", () => {
   let service: UserService;
   let repo: jest.Mocked<IUserRepository>;
+  let accountRepo: jest.Mocked<IAccountRepository>;
 
   beforeEach(() => {
     repo = createMockRepo();
-    service = new UserService(repo);
-  });
-
-  describe("getAllUsers", () => {
-    const pagination: PaginationParams = { limit: 20, offset: 0 };
-
-    it("should return paginated users", async () => {
-      const paginatedResult: PaginatedResult<User> = {
-        data: [mockUser],
-        pagination: {
-          limit: 20,
-          offset: 0,
-          total: 1,
-          hasMore: false,
-          nextCursor: null,
-        },
-      };
-      repo.getAll.mockResolvedValue(paginatedResult);
-
-      const result = await service.getAllUsers(pagination);
-
-      expect(repo.getAll).toHaveBeenCalledWith(pagination);
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].name).toBe("John Doe");
-      expect(result.pagination.total).toBe(1);
-    });
-
-    it("should return empty list when no users exist", async () => {
-      const paginatedResult: PaginatedResult<User> = {
-        data: [],
-        pagination: {
-          limit: 20,
-          offset: 0,
-          total: 0,
-          hasMore: false,
-          nextCursor: null,
-        },
-      };
-      repo.getAll.mockResolvedValue(paginatedResult);
-
-      const result = await service.getAllUsers(pagination);
-
-      expect(result.data).toHaveLength(0);
-      expect(result.pagination.total).toBe(0);
-    });
+    accountRepo = {
+      countByUserId: jest.fn().mockResolvedValue(0),
+    } as unknown as jest.Mocked<IAccountRepository>;
+    service = new UserService(repo, accountRepo);
   });
 
   describe("getUserById", () => {
@@ -104,7 +71,7 @@ describe("UserService", () => {
     it("should throw Forbidden when accessing another user", async () => {
       await expect(
         service.getUserById("019576a0-d7b6-7d6d-af6a-000000000000", testUserId),
-      ).rejects.toThrow("Access denied");
+      ).rejects.toThrow("User not found");
     });
 
     it("should throw NotFound when user does not exist", async () => {
@@ -146,7 +113,7 @@ describe("UserService", () => {
           },
           testUserId,
         ),
-      ).rejects.toThrow("Access denied");
+      ).rejects.toThrow("User not found");
     });
 
     it("should throw when id in body does not match param id", async () => {
@@ -172,22 +139,51 @@ describe("UserService", () => {
       ).rejects.toThrow("User id does not match");
     });
 
-    it("should hash password when updating with a new password", async () => {
-      repo.update.mockResolvedValue(mockUser);
+    it("should hash password and bump tokenVersion on password change", async () => {
+      const withHash = new User({
+        ...mockUser,
+        password: bcryptjs.hashSync("oldpassword", 12),
+      });
+      repo.getByIdWithPassword.mockResolvedValue(withHash);
+      repo.updateWithTokenBump.mockResolvedValue(mockUser);
 
       await service.updateUser(
         testUserId,
         {
           password: "newpassword",
+          currentPassword: "oldpassword",
         },
         testUserId,
       );
 
-      const updateArg = repo.update.mock.calls[0][1];
+      // Credential changes go through the atomic $set + $inc(tokenVersion)
+      // write so outstanding refresh tokens are revoked without races [M3].
+      expect(repo.update).not.toHaveBeenCalled();
+      const updateArg = repo.updateWithTokenBump.mock.calls[0][1];
       expect(updateArg.password).not.toBe("newpassword");
       expect(await bcryptjs.compare("newpassword", updateArg.password!)).toBe(
         true,
       );
+      // currentPassword is verification-only: never persisted.
+      expect(updateArg).not.toHaveProperty("currentPassword");
+      expect(updateArg).not.toHaveProperty("tokenVersion");
+    });
+
+    it("rejects a credential change with a wrong currentPassword [R2-08]", async () => {
+      const withHash = new User({
+        ...mockUser,
+        password: bcryptjs.hashSync("oldpassword", 12),
+      });
+      repo.getByIdWithPassword.mockResolvedValue(withHash);
+
+      await expect(
+        service.updateUser(
+          testUserId,
+          { email: "attacker@evil.com", currentPassword: "guess" },
+          testUserId,
+        ),
+      ).rejects.toThrow("Current password is incorrect");
+      expect(repo.update).not.toHaveBeenCalled();
     });
   });
 
@@ -205,7 +201,7 @@ describe("UserService", () => {
     it("should throw Forbidden when deleting another user", async () => {
       await expect(
         service.deleteUser("019576a0-d7b6-7d6d-af6a-000000000000", testUserId),
-      ).rejects.toThrow("Access denied");
+      ).rejects.toThrow("User not found");
     });
 
     it("should throw NotFound when user does not exist", async () => {
@@ -218,14 +214,6 @@ describe("UserService", () => {
   });
 
   describe("error propagation", () => {
-    it("should propagate repository error on getAll failure", async () => {
-      repo.getAll.mockRejectedValue(new Error("DB connection lost"));
-
-      await expect(
-        service.getAllUsers({ limit: 20, offset: 0 }),
-      ).rejects.toThrow("DB connection lost");
-    });
-
     it("should propagate repository error on create (update) failure", async () => {
       repo.update.mockRejectedValue(new Error("DB write failed"));
 
@@ -241,6 +229,28 @@ describe("UserService", () => {
       await expect(service.deleteUser(testUserId, testUserId)).rejects.toThrow(
         "DB delete failed",
       );
+    });
+  });
+
+  describe("currency [multi-moneda etapa 1]", () => {
+    it("blocks changing the currency once accounts exist", async () => {
+      repo.getById.mockResolvedValue(mockUser);
+      accountRepo.countByUserId.mockResolvedValue(2);
+
+      await expect(
+        service.updateUser(testUserId, { currency: "USD" }, testUserId),
+      ).rejects.toThrow("Currency cannot be changed");
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it("allows changing the currency while there is no data", async () => {
+      repo.getById.mockResolvedValue(mockUser);
+      accountRepo.countByUserId.mockResolvedValue(0);
+      repo.update.mockResolvedValue(mockUser);
+
+      await expect(
+        service.updateUser(testUserId, { currency: "USD" }, testUserId),
+      ).resolves.toBeDefined();
     });
   });
 });

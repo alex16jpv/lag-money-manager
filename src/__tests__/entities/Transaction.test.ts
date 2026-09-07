@@ -1,7 +1,7 @@
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
     PORT: 3000,
-    DB_TYPE: "SEQ",
+    DB_TYPE: "MONGO",
     JWT_SECRET: "test",
     LOG_LEVEL: "info",
     NODE_ENV: "test",
@@ -18,16 +18,30 @@ jest.mock("../../shared/constants", () => ({
     OTHER: "OTHER",
   },
   COLORS: {
-    RED: "RED", ORANGE: "ORANGE", AMBER: "AMBER", YELLOW: "YELLOW",
-    LIME: "LIME", GREEN: "GREEN", TEAL: "TEAL", CYAN: "CYAN",
-    BLUE: "BLUE", INDIGO: "INDIGO", PURPLE: "PURPLE", PINK: "PINK",
-    ROSE: "ROSE", GRAY: "GRAY", BROWN: "BROWN", BLACK: "BLACK",
+    RED: "RED",
+    ORANGE: "ORANGE",
+    AMBER: "AMBER",
+    YELLOW: "YELLOW",
+    LIME: "LIME",
+    GREEN: "GREEN",
+    TEAL: "TEAL",
+    CYAN: "CYAN",
+    BLUE: "BLUE",
+    INDIGO: "INDIGO",
+    PURPLE: "PURPLE",
+    PINK: "PINK",
+    ROSE: "ROSE",
+    GRAY: "GRAY",
+    BROWN: "BROWN",
+    BLACK: "BLACK",
   },
-  DB_TYPES: { SEQ: "SEQ", MONGO: "MONGO", LOCAL_STORAGE: "LOCAL_STORAGE" },
+  DB_TYPES: { MONGO: "MONGO" },
+  TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
+    ADJUSTMENT: "ADJUSTMENT",
   },
   CATEGORY_TYPES: {
     INCOME: "INCOME",
@@ -55,24 +69,10 @@ describe("Transaction Entity", () => {
     fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
     toAccountId: null,
     userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac74",
-    tags: "food",
+    tags: ["food"],
     note: "Weekly shopping",
     createdAt: new Date(),
     updatedAt: new Date(),
-  };
-
-  const validIncomeProps = {
-    ...validExpenseProps,
-    type: "INCOME" as const,
-    fromAccountId: null,
-    toAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
-  };
-
-  const validTransferProps = {
-    ...validExpenseProps,
-    type: "TRANSFER" as const,
-    fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
-    toAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
   };
 
   describe("constructor", () => {
@@ -88,7 +88,7 @@ describe("Transaction Entity", () => {
       expect(tx.fromAccountId).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac71");
       expect(tx.toAccountId).toBeNull();
       expect(tx.userId).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac74");
-      expect(tx.tags).toBe("food");
+      expect(tx.tags).toEqual(["food"]);
       expect(tx.note).toBe("Weekly shopping");
     });
 
@@ -104,7 +104,7 @@ describe("Transaction Entity", () => {
       expect(tx.categoryId).toBeNull();
       expect(tx.description).toBeNull();
       expect(tx.toAccountId).toBeNull();
-      expect(tx.tags).toBeNull();
+      expect(tx.tags).toEqual([]);
       expect(tx.note).toBeNull();
     });
 
@@ -115,6 +115,77 @@ describe("Transaction Entity", () => {
       });
 
       expect(tx.date).toBeInstanceOf(Date);
+    });
+  });
+
+  describe("assertValid — ADJUSTMENT [R2-06]", () => {
+    const base = {
+      amount: 25,
+      date: new Date("2026-08-31"),
+      userId: validExpenseProps.userId,
+    };
+
+    it("accepts a decrease (fromAccountId only)", () => {
+      const tx = new Transaction({
+        ...base,
+        type: "ADJUSTMENT",
+        fromAccountId: validExpenseProps.fromAccountId,
+      });
+      expect(() => tx.assertValid()).not.toThrow();
+    });
+
+    it("accepts an increase (toAccountId only)", () => {
+      const tx = new Transaction({
+        ...base,
+        type: "ADJUSTMENT",
+        toAccountId: validExpenseProps.fromAccountId,
+      });
+      expect(() => tx.assertValid()).not.toThrow();
+    });
+
+    it("rejects both account sides", () => {
+      const tx = new Transaction({
+        ...base,
+        type: "ADJUSTMENT",
+        fromAccountId: validExpenseProps.fromAccountId,
+        toAccountId: validExpenseProps.categoryId,
+      });
+      expect(() => tx.assertValid()).toThrow("exactly one");
+    });
+
+    it("rejects no account side", () => {
+      const tx = new Transaction({ ...base, type: "ADJUSTMENT" });
+      expect(() => tx.assertValid()).toThrow("exactly one");
+    });
+
+    it("rejects a category", () => {
+      const tx = new Transaction({
+        ...base,
+        type: "ADJUSTMENT",
+        fromAccountId: validExpenseProps.fromAccountId,
+        categoryId: validExpenseProps.categoryId,
+      });
+      expect(() => tx.assertValid()).toThrow(
+        "categoryId is not allowed for adjustment",
+      );
+    });
+  });
+
+  describe("assertValid — future dates [R2-30]", () => {
+    it("rejects a date more than 24h in the future", () => {
+      const tx = new Transaction({
+        ...validExpenseProps,
+        date: new Date(Date.now() + 48 * 60 * 60 * 1000),
+      });
+      expect(() => tx.assertValid()).toThrow("24 hours in the future");
+    });
+
+    it("accepts today and the timezone margin", () => {
+      const tx = new Transaction({
+        ...validExpenseProps,
+        date: new Date(Date.now() + 12 * 60 * 60 * 1000),
+      });
+      expect(() => tx.assertValid()).not.toThrow();
     });
   });
 });

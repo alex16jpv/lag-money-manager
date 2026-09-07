@@ -4,8 +4,9 @@ jest.mock("../../shared/constants", () => ({
   },
 }));
 
-import { Request, Response, NextFunction } from "express";
+import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
+
 import { authMiddleware } from "../../app/middlewares/authMiddleware";
 import { ApiError } from "../../shared/errors";
 
@@ -34,7 +35,10 @@ const validPayload = {
 const createValidToken = (
   payload: object = validPayload,
   expiresIn: string = "1h",
-): string => jwt.sign(payload, "test-secret-key", { expiresIn });
+): string =>
+  jwt.sign(payload, "test-secret-key", {
+    expiresIn: expiresIn as jwt.SignOptions["expiresIn"],
+  });
 
 describe("authMiddleware", () => {
   describe("missing or malformed authorization header", () => {
@@ -162,9 +166,7 @@ describe("authMiddleware", () => {
       ).toString("base64url");
       const noneAlgToken = `${header}.${payload}.`;
 
-      const { req, res, next } = createMockReqResNext(
-        `Bearer ${noneAlgToken}`,
-      );
+      const { req, res, next } = createMockReqResNext(`Bearer ${noneAlgToken}`);
 
       expect(() => authMiddleware(req, res, next)).toThrow(ApiError);
       expect(() => authMiddleware(req, res, next)).toThrow(
@@ -172,12 +174,40 @@ describe("authMiddleware", () => {
       );
     });
 
-    it("should throw Unauthorized for token with valid signature but invalid payload shape", () => {
-      const token = jwt.sign(
-        { foo: "bar", baz: 123 },
-        "test-secret-key",
-        { algorithm: "HS256", expiresIn: "1h" },
+    it("carries sid through to req.user when present [W-30]", () => {
+      const token = createValidToken({ ...validPayload, sid: "fam-1" });
+      const { req, res, next } = createMockReqResNext(`Bearer ${token}`);
+
+      authMiddleware(req, res, next);
+
+      expect(req.user?.sid).toBe("fam-1");
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("still accepts a token without sid (issued before W-30)", () => {
+      const token = createValidToken(validPayload);
+      const { req, res, next } = createMockReqResNext(`Bearer ${token}`);
+
+      authMiddleware(req, res, next);
+
+      expect(req.user?.sid).toBeUndefined();
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("rejects a token whose sid is not a string", () => {
+      const token = createValidToken({ ...validPayload, sid: 42 });
+      const { req, res, next } = createMockReqResNext(`Bearer ${token}`);
+
+      expect(() => authMiddleware(req, res, next)).toThrow(
+        "Invalid token payload",
       );
+    });
+
+    it("should throw Unauthorized for token with valid signature but invalid payload shape", () => {
+      const token = jwt.sign({ foo: "bar", baz: 123 }, "test-secret-key", {
+        algorithm: "HS256",
+        expiresIn: "1h",
+      });
 
       const { req, res, next } = createMockReqResNext(`Bearer ${token}`);
 

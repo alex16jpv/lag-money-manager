@@ -19,77 +19,55 @@ npm install
 
 ## 3. Environment Setup
 
-Create a `.env` file at the project root:
-
 ```bash
-cp .env.example .env  # if .env.example exists, otherwise create manually
+cp .env.example .env
 ```
 
-Required variables (see `docs/guides/environment-vars.md` for full reference):
+Then set a real `JWT_SECRET` (`openssl rand -hex 32`). Only three variables are
+required — everything else has a working default:
 
 ```env
-# Application
-PORT=3000
 NODE_ENV=development
-LOG_LEVEL=info
-CORS_ORIGIN=http://localhost:3000
 
-# Authentication
-JWT_SECRET=your-secure-random-secret-at-least-32-chars
-JWT_EXPIRATION=24h
-BCRYPT_SALT_ROUNDS=12
-
-# Database type: "SEQ" for MySQL/Sequelize or "MONGO" for MongoDB/Mongoose
-DB_TYPE=SEQ
-
-# MySQL (required when DB_TYPE=SEQ)
-SEQ_HOST=localhost
-SEQ_PORT=3306
-SEQ_DATABASE=lag_money_manager
-SEQ_USERNAME=lag_user
-SEQ_PASSWORD=lag_password
-
-# MySQL root password (for Docker)
-MYSQL_ROOT_PASSWORD=root_password
-
-# MongoDB (required when DB_TYPE=MONGO)
-MONGO_URI=mongodb://lag_user:lag_password@localhost:27017/lag_money_manager?authSource=admin
-MONGO_USERNAME=lag_user
-MONGO_PASSWORD=lag_password
-MONGO_DATABASE=lag_money_manager
+JWT_SECRET=<openssl rand -hex 32>
+CORS_ORIGIN=http://localhost:3001
+MONGO_URI=mongodb://localhost:27017/lag_money?replicaSet=rs0&directConnection=true
 ```
+
+See [Environment Variables](./environment-vars.md) for the full reference.
+
+> **Do not set `API_SECRET` locally.** Once it has a value, every request must
+> send a matching `x-api-secret` header or gets 403 — including `/`,
+> `/health/db` and `/auth`.
 
 ## 4. Database Setup
 
-### Start database containers
-
 ```bash
-docker compose up -d
+docker compose up -d mongo
 ```
 
-This starts:
-
-- **MySQL** on port 3306
-- **phpMyAdmin** on port 8080 (admin UI)
-- **MongoDB** on port 27017
-- **Mongoku** on port 3100 (admin UI)
-
-### Run migrations (MySQL/Sequelize only)
+This starts **MongoDB on port 27017** as a **single-node replica set**. The
+replica set is not optional: balance adjustments run inside multi-document
+transactions, which a standalone `mongod` rejects. The container healthcheck
+runs `rs.initiate()` on first boot, so there is nothing to configure by hand —
+give it a few seconds and check it reached `PRIMARY`:
 
 ```bash
-npm run db:migrate
+docker exec lag-money-manager-mongo-1 mongosh --quiet --eval "rs.status().members[0].stateStr"
 ```
 
-MongoDB does not require migrations — schemas are created automatically on first write.
+There are no migrations. Collections and indexes are created automatically on
+first write (`autoIndex` is on outside production), and the first registered
+user gets the default categories seeded. Creation never drops anything, though:
+when a pull changes an index definition, the old index stays on your local
+database until you run `npm run db:sync-indexes`.
 
-### Verify database connections
-
-- MySQL: open http://localhost:8080 (phpMyAdmin)
-- MongoDB: open http://localhost:3100 (Mongoku)
+Optionally, `docker compose up -d` also starts **Mongoku**, a lightweight
+MongoDB web UI, on `http://localhost:3100`.
 
 ## 5. Run the Project
 
-### Development mode (with hot reload)
+### Development mode (hot reload)
 
 ```bash
 npm run start:dev
@@ -106,115 +84,153 @@ npm start
 
 ```
 [INFO] App listening on port 3000
-```
-
-If using MongoDB (`DB_TYPE=MONGO`), you'll also see:
-
-```
 [INFO] Connected to MongoDB
 ```
 
+The MongoDB line appears on the first request that touches the database (the
+connection is established lazily), or at startup if something probes it early.
+
 ## 6. Verify It Works
 
-### Health check
+### Health checks
 
 ```bash
-curl http://localhost:3000/
-```
-
-Expected response:
-
-```json
-{ "hello": "world!" }
+curl http://localhost:3000/           # {"hello":"world!"}
+curl http://localhost:3000/health/db  # {"database":"ok"}
 ```
 
 ### Register a user
 
+Registration is also a login: it returns a token pair, so there is no second
+round-trip.
+
 ```bash
 curl -X POST http://localhost:3000/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"name": "Test User", "email": "test@example.com", "password": "password123"}'
+  -d '{"name":"Test User","email":"test@example.com","password":"password123","timezone":"America/Bogota","currency":"COP"}'
 ```
 
 Expected response (201):
 
 ```json
 {
-  "id": "019576a0-d7b6-7d6d-af6a-...",
-  "name": "Test User",
-  "email": "test@example.com",
-  "createdAt": "2026-03-29T...",
-  "updatedAt": "2026-03-29T..."
-}
-```
-
-### Login
-
-```bash
-curl -X POST http://localhost:3000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email": "test@example.com", "password": "password123"}'
-```
-
-Expected response (200):
-
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIs...",
   "user": {
-    "id": "019576a0-...",
+    "id": "019576a0-d7b6-7d6d-af6a-...",
     "name": "Test User",
-    "email": "test@example.com"
+    "email": "test@example.com",
+    "timezone": "America/Bogota",
+    "currency": "COP",
+    "lastLoginAt": "2026-08-31T...",
+    "createdAt": "2026-08-31T...",
+    "updatedAt": "2026-08-31T..."
   }
 }
 ```
 
+`timezone` and `currency` are optional (they default to `America/Bogota` and
+`COP`). The currency is stamped on every account, transaction and budget, and
+locks once the user has accounts.
+
+### Use the access token
+
+```bash
+TOKEN="<accessToken from the response>"
+
+# The 10 default categories seeded at registration
+curl http://localhost:3000/categories -H "Authorization: Bearer $TOKEN"
+
+# First account becomes the default one automatically
+curl -X POST http://localhost:3000/accounts -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Cash","type":"CASH","balance":50000}'
+
+# Low-friction capture: amount only, everything else inferred
+curl -X POST http://localhost:3000/transactions/quick -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"amount":12500,"description":"Coffee"}'
+```
+
+Access tokens last 15 minutes; renew them with `POST /auth/refresh` using the
+refresh token.
+
 ### API documentation
 
-Open http://localhost:3000/api-docs for the interactive Swagger UI.
+Open `http://localhost:3000/api-docs` for the interactive Swagger UI (not served
+when `NODE_ENV=production`).
 
-## 7. Common Startup Errors
+### Ready-made requests
+
+`requests/*.http` covers every endpoint and runs from VS Code with the REST
+Client extension — usually faster than curl.
+
+## 7. Run the Tests
+
+```bash
+npm test        # the full suite
+npm run ci      # what CI runs: typecheck + typecheck:tests + lint + test
+```
+
+## 8. Common Startup Errors
 
 ```
 ERROR
-Error: JWT_SECRET is required
+ZodError: JWT_SECRET: Invalid input: expected string, received undefined
 
 CAUSE
-The JWT_SECRET environment variable is missing or empty in your .env file.
+A required environment variable is missing. The schema in
+src/shared/constants.ts validates the environment at startup and names the
+offending variable (JWT_SECRET, CORS_ORIGIN or MONGO_URI).
 
 FIX
-Add a JWT_SECRET value to your .env file:
-JWT_SECRET=your-secure-random-secret-at-least-32-chars
+Add the variable to your .env file.
 ```
 
 ---
 
 ```
 ERROR
-SequelizeConnectionRefusedError: connect ECONNREFUSED 127.0.0.1:3306
+MongooseServerSelectionError: connect ECONNREFUSED 127.0.0.1:27017
 
 CAUSE
-MySQL is not running or not reachable on the configured host/port.
+MongoDB is not running, or MONGO_URI points somewhere else.
 
 FIX
-1. Ensure Docker containers are running: docker compose up -d
-2. Wait a few seconds for MySQL to initialize
-3. Verify SEQ_HOST and SEQ_PORT in .env match your Docker setup
+1. Start it: docker compose up -d mongo
+2. Give the healthcheck a few seconds to initiate the replica set
+3. Check the state: docker exec lag-money-manager-mongo-1 mongosh --quiet --eval "rs.status().ok"
 ```
 
 ---
 
 ```
 ERROR
-MongoServerError: Authentication failed
+MongoServerError: Transaction numbers are only allowed on a replica set member or mongos
 
 CAUSE
-MongoDB credentials in MONGO_URI don't match the Docker container configuration.
+MONGO_URI points at a standalone mongod. Balance adjustments need
+multi-document transactions, which require a replica set.
 
 FIX
-1. Verify MONGO_USERNAME and MONGO_PASSWORD in .env match docker-compose.yml
-2. Ensure the URI includes ?authSource=admin
-3. If you changed credentials, recreate the container: docker compose down -v && docker compose up -d
+Use the compose service and keep the replica-set parameters in the URI:
+MONGO_URI=mongodb://localhost:27017/lag_money?replicaSet=rs0&directConnection=true
+(directConnection=true is required for a single-node replica set.)
+```
+
+---
+
+```
+SYMPTOM
+Every request answers 403 Forbidden ("Access denied") and nothing seems wrong.
+
+CAUSE
+API_SECRET is set in your .env, so the gateway middleware demands a matching
+x-api-secret header on every route.
+
+FIX
+Comment API_SECRET out for local development, or send the header.
+The server log shows "request rejected" with the status for each blocked call.
 ```
 
 ---
@@ -229,33 +245,7 @@ Another process is already using port 3000.
 FIX
 1. Find the process: lsof -ti:3000
 2. Kill it: kill -9 $(lsof -ti:3000)
-3. Or change PORT in .env to a different port
-```
-
----
-
-```
-ERROR
-Error: No database provider registered for DB_TYPE: XXX
-
-CAUSE
-The DB_TYPE environment variable has an invalid value. Must be "SEQ" or "MONGO".
-
-FIX
-Set DB_TYPE=SEQ or DB_TYPE=MONGO in your .env file.
-```
-
----
-
-```
-ERROR
-SequelizeDatabaseError: Table 'lag_money_manager.Users' doesn't exist
-
-CAUSE
-Database migrations have not been run.
-
-FIX
-Run migrations: npm run db:migrate
+3. Or change PORT in .env
 ```
 
 ---
@@ -265,7 +255,7 @@ ERROR
 Cannot find module 'xxx'
 
 CAUSE
-Node modules have not been installed after a recent change.
+Dependencies are out of date after a pull.
 
 FIX
 Run: npm install

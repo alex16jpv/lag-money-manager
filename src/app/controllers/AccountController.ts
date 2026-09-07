@@ -1,12 +1,14 @@
 import { Request, Response } from "express";
-import { AccountService } from "../services/AccountService";
-import repositoryFactory from "../factories/RepositoryFactory";
-import { extractPagination } from "../../shared/pagination";
+
 import { AccountFilters } from "../../domain/repositories/account/IAccountRepository";
+import { extractPagination } from "../../shared/pagination";
+import repositoryFactory from "../factories/RepositoryFactory";
+import { AccountService } from "../services/AccountService";
+import { ifMatch } from "./ifMatch";
 
 const accountService = new AccountService(
   repositoryFactory.getAccountRepository(),
-  repositoryFactory.getTransactionRepository(),
+  repositoryFactory.getUserRepository(),
 );
 
 export class AccountController {
@@ -15,6 +17,9 @@ export class AccountController {
     const filters: AccountFilters = {};
     if (req.query.ids) {
       filters.ids = (req.query.ids as string).split(",").map((s) => s.trim());
+    }
+    if (req.query.includeArchived === "true") {
+      filters.includeArchived = true;
     }
     const result = await accountService.getAllAccounts(
       userId,
@@ -26,11 +31,12 @@ export class AccountController {
 
   static createAccount = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    const newAccount = await accountService.createAccount({
-      ...req.body,
-      userId,
-    });
-    res.status(201).json(newAccount);
+    const outcome = { replayed: false };
+    const newAccount = await accountService.createAccount(
+      { ...req.body, userId },
+      outcome,
+    );
+    res.status(outcome.replayed ? 200 : 201).json(newAccount);
   };
 
   static getAccountById = async (req: Request, res: Response) => {
@@ -49,13 +55,39 @@ export class AccountController {
       id,
       req.body,
       userId,
+      ifMatch(req),
     );
     res.status(200).json(updatedAccount);
   };
 
   static deleteAccount = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    await accountService.deleteAccount(req.params.id as string, userId);
-    res.status(200).json({ message: 'Account deleted successfully' });
+    const archived = await accountService.deleteAccount(
+      req.params.id as string,
+      userId,
+      ifMatch(req),
+    );
+    res.status(200).json(archived);
+  };
+
+  static restoreAccount = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const account = await accountService.restoreAccount(
+      req.params.id as string,
+      userId,
+      (req.body as { name?: string } | undefined)?.name,
+      ifMatch(req),
+    );
+    res.status(200).json(account);
+  };
+
+  static setDefaultAccount = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const account = await accountService.setDefaultAccount(
+      req.params.id as string,
+      userId,
+      ifMatch(req),
+    );
+    res.status(200).json(account);
   };
 }
