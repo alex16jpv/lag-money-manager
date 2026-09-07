@@ -6,5 +6,6 @@ export interface IRepository<T> {
   getAll(pagination: PaginationParams): Promise<PaginatedResult<T>>;
   create(entity: Partial<T>, session?: TxSession): Promise<T>;
   update(id: string, entity: Partial<T>, session?: TxSession): Promise<T>;
-  delete(id: string, session?: TxSession): Promise<void>;
+  // Soft-deleting repositories narrow this to the archived row (F-22).
+  delete(id: string, session?: TxSession): Promise<T | void>;
 }

@@ -14,6 +14,12 @@ import { CATEGORY_ICONS } from "../../shared/icons";
 import { Locale, LOCALES } from "../../shared/locale";
 import { MAX_AMOUNT } from "../../shared/money";
 import { MAX_LIMIT } from "../../shared/pagination";
+import {
+  describeSyncActions,
+  SYNC_ENTITIES,
+  SYNC_MAX_OPERATIONS,
+} from "../../shared/syncBatch";
+import { SYNC_MAX_LIMIT } from "../../shared/syncCursor";
 import { isValidTimeZone } from "../../shared/timezone";
 
 const timezoneField = z
@@ -57,6 +63,15 @@ const isoDate = z
   .string()
   .datetime({ offset: true, message: "Must be a valid ISO 8601 date" })
   .transform((s) => new Date(s));
+
+// Offline clients mint the id so a create can be retried without duplicating.
+const clientMintedId = z.string().uuid("id must be a valid UUID").optional();
+
+// Optimistic concurrency: the `updatedAt` the client had, as the API prints it.
+export const ifMatchHeader = z.string().datetime({
+  offset: true,
+  message: "If-Match must be the resource's updatedAt, in ISO 8601",
+});
 
 // Trim + casefold + dedupe: "Café", "café" and "café " must be ONE tag,
 // or the per-tag spending stats fragment into ghost buckets.
@@ -249,6 +264,7 @@ export const updateUserSchema = z.object({
 
 export const createAccountSchema = z.object({
   body: z.object({
+    id: clientMintedId,
     name: accountName,
     type: z.enum(accountTypeValues, {
       error: `Invalid account type. Available: ${accountTypeValues.join(", ")}`,
@@ -288,6 +304,7 @@ export const updateAccountSchema = z.object({
 
 export const createCategorySchema = z.object({
   body: z.object({
+    id: clientMintedId,
     name: z.string().min(1, "Name is required").max(255),
     icon: z
       .enum(CATEGORY_ICONS, {
@@ -390,6 +407,7 @@ export const budgetIdParamSchema = z.object({
 export const createBudgetSchema = z.object({
   query: budgetReferenceQuery,
   body: z.object({
+    id: clientMintedId,
     name: z.string().min(1, "Name is required").max(255),
     color: z.enum(colorValues, {
       error: `Invalid color. Available: ${colorValues.join(", ")}`,
@@ -452,6 +470,107 @@ export const budgetAmountOverrideSchema = z.object({
  * the same request is the only way out that does not force the user to go and
  * edit the *other* resource first.
  */
+// The offline change feed. `since` and `cursor` are two ways of naming the same
+// position: `cursor` wins when both arrive, because it is the more precise one
+// (it can point inside an instant, `since` cannot).
+export const syncChangesSchema = z.object({
+  query: z.object({
+    since: z
+      .string()
+      .datetime({
+        offset: true,
+        message: "since must be a valid ISO 8601 date",
+      })
+      .optional(),
+    cursor: z.string().min(1).max(512).optional(),
+    limit: z.coerce
+      .number()
+      .int("Limit must be an integer")
+      .min(1, "Limit must be at least 1")
+      .max(SYNC_MAX_LIMIT, `Limit must be at most ${SYNC_MAX_LIMIT}`)
+      .optional(),
+  }),
+});
+
+/**
+ * The offline outbox, pushed as one batch (O-B4). This validates the
+ * ENVELOPE only: each operation's `payload.body` is checked inside the
+ * service against the same Zod schema its HTTP route uses, so a bad body
+ * rejects that one operation instead of the whole batch.
+ */
+const syncOperationSchema = z.object({
+  opId: z.string().uuid("opId must be a valid UUID"),
+  // The device's monotonic counter: the only ordering criterion (§2.8).
+  seq: z.number().int("seq must be an integer").min(0),
+  occurredAt: z.string().datetime({
+    offset: true,
+    message: "occurredAt must be a valid ISO 8601 date",
+  }),
+  entity: z.enum(SYNC_ENTITIES, {
+    error: `Invalid entity. Available: ${SYNC_ENTITIES.join(", ")}`,
+  }),
+  action: z
+    .string()
+    .min(1)
+    .max(40)
+    .meta({ description: `Per entity — ${describeSyncActions()}` }),
+  // The entity the operation is about: the client-minted id of a create,
+  // the row's id otherwise.
+  id: z.string().uuid("id must be a valid UUID"),
+  payload: z
+    .object({
+      // The request body the matching HTTP route would take, verbatim.
+      body: z.record(z.string(), z.unknown()).optional(),
+      // `reference` for the budget routes that resolve a period.
+      query: z
+        .object({
+          reference: z
+            .string()
+            .datetime({
+              offset: true,
+              message: "reference must be a valid ISO 8601 date",
+            })
+            .optional(),
+        })
+        .optional(),
+    })
+    .optional()
+    .default({}),
+  // The `If-Match` of the matching route: the updatedAt the device had.
+  baseUpdatedAt: z
+    .string()
+    .datetime({
+      offset: true,
+      message: "baseUpdatedAt must be the resource's updatedAt, in ISO 8601",
+    })
+    .optional(),
+  // Ids of rows created offline that this operation names. If their
+  // creating operation fails in this batch, this one comes back `blocked`.
+  dependsOn: z
+    .array(z.string().uuid("Each dependsOn entry must be a valid UUID"))
+    .max(SYNC_MAX_OPERATIONS)
+    .optional()
+    .default([]),
+  opVersion: z.number().int("opVersion must be an integer").min(1),
+});
+
+export const syncBatchSchema = z.object({
+  body: z.object({
+    operations: z
+      .array(syncOperationSchema)
+      .min(1, "operations must not be empty")
+      .max(
+        SYNC_MAX_OPERATIONS,
+        `operations must have at most ${SYNC_MAX_OPERATIONS} entries`,
+      )
+      .refine((ops) => new Set(ops.map((op) => op.opId)).size === ops.length, {
+        message: "operations must not repeat an opId",
+      }),
+  }),
+});
+
+export type SyncOperationInput = z.infer<typeof syncOperationSchema>;
+
 export const restoreSchema = z.object({
   params: z.object({
     id: z.string().uuid("ID must be a valid UUID"),
@@ -495,6 +614,7 @@ export const registerSchema = z.object({
 export const createTransactionSchema = z.object({
   body: z
     .object({
+      id: clientMintedId,
       type: z.enum(transactionTypeValues, {
         error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
       }),
@@ -674,6 +794,7 @@ export const batchUpdateTransactionsSchema = z.object({
 
 export const quickAddTransactionSchema = z.object({
   body: z.object({
+    id: clientMintedId,
     amount: moneyAmount,
     type: z.enum(quickAddTypeValues).optional(),
     date: z

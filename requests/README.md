@@ -42,6 +42,7 @@ Cada archivo define arriba: `@baseUrl`, `@email`, `@password` y `@apiSecret`.
 | `transactions.http` | Transacciones, ADJUSTMENT, quick-add con idempotencia, hash de payload (422), filtros nuevos (categoría/fechas/tag/uncategorized), `GET /transactions/tags`, FUTURE_DATE |
 | `budgets.http` | Budgets por categoría y GLOBAL, meta INCOME, effectiveFrom, overrides (set/0/DELETE), CUSTOM con expiración, sin restore |
 | `stats.http` | Estadísticas (day cronológico, untagged, total real en tags, ADJUSTMENT excluido, from<=to) |
+| `sync.http` | Tirón incremental y snapshot del mirror offline: `since`/`cursor`/`limit`, archivados y borrados en el feed, `INVALID_CURSOR` |
 
 > Reemplaza al viejo `api.http` (un solo archivo, desactualizado).
 >

@@ -1,0 +1,392 @@
+{
+  "id": "jpy-tokyo",
+  "title": "JPY · Asia/Tokyo · zero decimals, +09:00, quarter and year windows",
+  "pins": [
+    "A local day starts at 15:00Z the day before: 00:10 on 1 April is 31 March in UTC.",
+    "Quarter keys are `2026-Q2`; the year window is the local year, not 1 January UTC.",
+    "A budget with no spend reports 0, not a missing figure.",
+    "JPY has no minor unit: the amounts are the integers as typed."
+  ],
+  "generatedBy": "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline",
+  "user": {
+    "id": "01930003-0000-7000-8000-0000000u0001",
+    "timezone": "Asia/Tokyo",
+    "currency": "JPY",
+    "minorUnits": 0
+  },
+  "accounts": [
+    {
+      "key": "bank",
+      "id": "01930003-0000-7000-8000-0000000a0001",
+      "name": "銀行",
+      "type": "ACCOUNT",
+      "color": "BLUE",
+      "currency": "JPY",
+      "openingBalance": 500000,
+      "isDefault": true,
+      "archivedAt": null
+    },
+    {
+      "key": "wallet",
+      "id": "01930003-0000-7000-8000-0000000a0002",
+      "name": "財布",
+      "type": "CASH",
+      "color": "GRAY",
+      "currency": "JPY",
+      "openingBalance": 20000,
+      "isDefault": false,
+      "archivedAt": null
+    }
+  ],
+  "categories": [
+    {
+      "key": "rent",
+      "id": "01930003-0000-7000-8000-0000000c0001",
+      "name": "家賃",
+      "type": "EXPENSE",
+      "archivedAt": null
+    },
+    {
+      "key": "transit",
+      "id": "01930003-0000-7000-8000-0000000c0002",
+      "name": "交通",
+      "type": "EXPENSE",
+      "archivedAt": null
+    },
+    {
+      "key": "gifts",
+      "id": "01930003-0000-7000-8000-0000000c0003",
+      "name": "贈り物",
+      "type": "EXPENSE",
+      "archivedAt": null
+    },
+    {
+      "key": "salary",
+      "id": "01930003-0000-7000-8000-0000000c0004",
+      "name": "給与",
+      "type": "INCOME",
+      "archivedAt": null
+    }
+  ],
+  "transactions": [
+    {
+      "key": "march-rent",
+      "id": "01930003-0000-7000-8000-0000000t0001",
+      "type": "EXPENSE",
+      "amount": 120000,
+      "date": "2026-03-31T23:30:00+09:00",
+      "description": "3月家賃",
+      "categoryId": "01930003-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930003-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "JPY",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "14:30Z: the last half hour of Q1 in Tokyo."
+    },
+    {
+      "key": "first-ride",
+      "id": "01930003-0000-7000-8000-0000000t0002",
+      "type": "EXPENSE",
+      "amount": 1200,
+      "date": "2026-04-01T00:10:00+09:00",
+      "description": "定期",
+      "categoryId": "01930003-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930003-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "JPY",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "15:10Z on 31 March: Q2 for the user, Q1 in UTC."
+    },
+    {
+      "key": "gift",
+      "id": "01930003-0000-7000-8000-0000000t0003",
+      "type": "EXPENSE",
+      "amount": 8800,
+      "date": "2026-04-15T12:00:00+09:00",
+      "description": "お祝い",
+      "categoryId": "01930003-0000-7000-8000-0000000c0003",
+      "fromAccountId": "01930003-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "JPY",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "quarter-end",
+      "id": "01930003-0000-7000-8000-0000000t0004",
+      "type": "EXPENSE",
+      "amount": 780,
+      "date": "2026-06-30T23:59:00+09:00",
+      "description": "バス",
+      "categoryId": "01930003-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930003-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "JPY",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "Last minute of Q2."
+    },
+    {
+      "key": "next-quarter",
+      "id": "01930003-0000-7000-8000-0000000t0005",
+      "type": "EXPENSE",
+      "amount": 15000,
+      "date": "2026-07-01T00:01:00+09:00",
+      "description": "お中元",
+      "categoryId": "01930003-0000-7000-8000-0000000c0003",
+      "fromAccountId": "01930003-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "JPY",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "One minute into Q3: out of the quarter, inside the year."
+    },
+    {
+      "key": "payday",
+      "id": "01930003-0000-7000-8000-0000000t0006",
+      "type": "INCOME",
+      "amount": 350000,
+      "date": "2026-04-25T09:00:00+09:00",
+      "description": "給与",
+      "categoryId": "01930003-0000-7000-8000-0000000c0004",
+      "fromAccountId": null,
+      "toAccountId": "01930003-0000-7000-8000-0000000a0001",
+      "tags": [],
+      "currency": "JPY",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "pending-lunch",
+      "id": "01930003-0000-7000-8000-0000000t0007",
+      "type": "EXPENSE",
+      "amount": 500,
+      "date": "2026-05-02T12:30:00+09:00",
+      "description": null,
+      "categoryId": null,
+      "fromAccountId": "01930003-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "JPY",
+      "source": "QUICK",
+      "pendingDetails": true,
+      "deletedAt": null
+    },
+    {
+      "key": "void-ride",
+      "id": "01930003-0000-7000-8000-0000000t0008",
+      "type": "EXPENSE",
+      "amount": 300,
+      "date": "2026-05-10T08:00:00+09:00",
+      "description": null,
+      "categoryId": "01930003-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930003-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "JPY",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": "2026-05-11T08:00:00.000+09:00"
+    }
+  ],
+  "budgets": [
+    {
+      "key": "transit-quarter",
+      "id": "01930003-0000-7000-8000-0000000b0001",
+      "name": "交通",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930003-0000-7000-8000-0000000c0002"
+      ],
+      "amount": 5000,
+      "amountOverrides": {},
+      "currency": "JPY",
+      "periodType": "QUARTERLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2026-01-01T00:00:00+09:00",
+      "archivedAt": null
+    },
+    {
+      "key": "year",
+      "id": "01930003-0000-7000-8000-0000000b0002",
+      "name": "年間",
+      "type": "EXPENSE",
+      "categoryIds": [],
+      "amount": 2000000,
+      "amountOverrides": {},
+      "currency": "JPY",
+      "periodType": "YEARLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2026-01-01T00:00:00+09:00",
+      "archivedAt": null
+    },
+    {
+      "key": "gifts-month",
+      "id": "01930003-0000-7000-8000-0000000b0003",
+      "name": "贈り物",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930003-0000-7000-8000-0000000c0003"
+      ],
+      "amount": 10000,
+      "amountOverrides": {},
+      "currency": "JPY",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2026-01-01T00:00:00+09:00",
+      "archivedAt": null,
+      "note": "May has no gift: the budget reports 0 spent."
+    }
+  ],
+  "expected": {
+    "balances": [
+      {
+        "key": "bank",
+        "accountId": "01930003-0000-7000-8000-0000000a0001",
+        "balance": 714500
+      },
+      {
+        "key": "wallet",
+        "accountId": "01930003-0000-7000-8000-0000000a0002",
+        "balance": 9220
+      }
+    ],
+    "pending": {
+      "count": 1,
+      "total": 500,
+      "transactionIds": [
+        "01930003-0000-7000-8000-0000000t0007"
+      ]
+    },
+    "spending": [
+      {
+        "name": "q2-by-category",
+        "query": {
+          "groupBy": "category",
+          "type": "EXPENSE",
+          "from": "2026-04-01T00:00:00+09:00",
+          "to": "2026-07-01T00:00:00+09:00",
+          "timezone": "Asia/Tokyo"
+        },
+        "total": 11280,
+        "buckets": [
+          {
+            "key": "01930003-0000-7000-8000-0000000c0003",
+            "total": 8800,
+            "count": 1,
+            "avg": 8800
+          },
+          {
+            "key": "01930003-0000-7000-8000-0000000c0002",
+            "total": 1980,
+            "count": 2,
+            "avg": 990
+          },
+          {
+            "key": "uncategorized",
+            "total": 500,
+            "count": 1,
+            "avg": 500
+          }
+        ]
+      },
+      {
+        "name": "q2-by-day",
+        "query": {
+          "groupBy": "day",
+          "type": "EXPENSE",
+          "from": "2026-04-01T00:00:00+09:00",
+          "to": "2026-07-01T00:00:00+09:00",
+          "timezone": "Asia/Tokyo"
+        },
+        "total": 11280,
+        "buckets": [
+          {
+            "key": "2026-04-01",
+            "total": 1200,
+            "count": 1,
+            "avg": 1200
+          },
+          {
+            "key": "2026-04-15",
+            "total": 8800,
+            "count": 1,
+            "avg": 8800
+          },
+          {
+            "key": "2026-05-02",
+            "total": 500,
+            "count": 1,
+            "avg": 500
+          },
+          {
+            "key": "2026-06-30",
+            "total": 780,
+            "count": 1,
+            "avg": 780
+          }
+        ]
+      }
+    ],
+    "budgets": {
+      "reference": "2026-05-15T12:00:00+09:00",
+      "views": [
+        {
+          "key": "transit-quarter",
+          "id": "01930003-0000-7000-8000-0000000b0001",
+          "periodKey": "2026-Q2",
+          "periodFrom": "2026-03-31T15:00:00.000Z",
+          "periodTo": "2026-06-30T15:00:00.000Z",
+          "baseAmount": 5000,
+          "amount": 5000,
+          "hasOverride": false,
+          "spent": 1980,
+          "expired": false,
+          "archivedCategoryIds": []
+        },
+        {
+          "key": "year",
+          "id": "01930003-0000-7000-8000-0000000b0002",
+          "periodKey": "2026",
+          "periodFrom": "2025-12-31T15:00:00.000Z",
+          "periodTo": "2026-12-31T15:00:00.000Z",
+          "baseAmount": 2000000,
+          "amount": 2000000,
+          "hasOverride": false,
+          "spent": 146280,
+          "expired": false,
+          "archivedCategoryIds": []
+        },
+        {
+          "key": "gifts-month",
+          "id": "01930003-0000-7000-8000-0000000b0003",
+          "periodKey": "2026-05",
+          "periodFrom": "2026-04-30T15:00:00.000Z",
+          "periodTo": "2026-05-31T15:00:00.000Z",
+          "baseAmount": 10000,
+          "amount": 10000,
+          "hasOverride": false,
+          "spent": 0,
+          "expired": false,
+          "archivedCategoryIds": []
+        }
+      ]
+    }
+  }
+}

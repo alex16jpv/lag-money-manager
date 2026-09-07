@@ -79,11 +79,14 @@ const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  findActiveByName: jest.fn().mockResolvedValue(null),
+  getOwnById: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
   incrementBalance: jest.fn().mockResolvedValue(true),
-  archiveNonDefault: jest.fn().mockResolvedValue(true),
+  archiveNonDefault: jest.fn().mockResolvedValue(null),
   restore: jest.fn(),
   getDefaultByUserId: jest.fn(),
   setDefault: jest.fn(),
@@ -248,6 +251,54 @@ describe("AccountService", () => {
 
       expect(result.isDefault).toBe(true);
     });
+
+    // O-B1: `balance` moves with every transaction, so a replay days later
+    // must be judged against the balance the account was opened with.
+    it("replays a client-minted id against openingBalance, not the live balance [O-B1]", async () => {
+      const outcome = { replayed: false };
+      repo.getOwnById.mockResolvedValue(
+        new Account({
+          ...validAccountProps,
+          balance: 12345,
+          openingBalance: 500,
+        }),
+      );
+
+      const result = await service.createAccount(validAccountProps, outcome);
+
+      expect(outcome.replayed).toBe(true);
+      expect(result.balance).toBe(12345);
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it("replays a client-minted id even when the stored account differs [O-B1]", async () => {
+      const outcome = { replayed: false };
+      repo.getOwnById.mockResolvedValue(
+        new Account({ ...validAccountProps, type: "CASH" }),
+      );
+
+      const result = await service.createAccount(validAccountProps, outcome);
+
+      expect(outcome.replayed).toBe(true);
+      expect(result.type).toBe("CASH");
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it("never reads an id it does not own [O-B1]", async () => {
+      repo.getOwnById.mockResolvedValue(null);
+      repo.create.mockRejectedValue(
+        Object.assign(new Error("E11000"), {
+          code: 11000,
+          keyPattern: { _id: 1 },
+        }),
+      );
+
+      await expect(service.createAccount(validAccountProps)).rejects.toThrow(
+        expect.objectContaining({ code: "ID_TAKEN" }),
+      );
+      expect(repo.getById).not.toHaveBeenCalled();
+      expect(repo.getByIdIncludingArchived).not.toHaveBeenCalled();
+    });
   });
 
   describe("setDefaultAccount [F2]", () => {
@@ -264,6 +315,7 @@ describe("AccountService", () => {
       expect(repo.setDefault).toHaveBeenCalledWith(
         mockAccount.id,
         mockAccount.userId,
+        undefined,
       );
       expect(result.isDefault).toBe(true);
     });
@@ -292,6 +344,8 @@ describe("AccountService", () => {
       expect(repo.update).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         { name: "Updated" },
+        undefined,
+        undefined,
       );
       expect(result.name).toBe("Updated");
     });
@@ -334,10 +388,17 @@ describe("AccountService", () => {
     });
 
     it("should archive an account (even when it has transactions)", async () => {
+      const archivedAt = new Date("2026-09-05T10:00:00.000Z");
       repo.getByIdIncludingArchived.mockResolvedValue(mockAccount);
-      repo.archiveNonDefault.mockResolvedValue(true);
+      repo.archiveNonDefault.mockResolvedValue(
+        new Account({
+          ...validAccountProps,
+          archivedAt,
+          updatedAt: archivedAt,
+        }),
+      );
 
-      await service.deleteAccount(
+      const archived = await service.deleteAccount(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         validAccountProps.userId,
       );
@@ -345,7 +406,27 @@ describe("AccountService", () => {
       expect(repo.archiveNonDefault).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         validAccountProps.userId,
+        undefined,
       );
+      // F-22: the archived row comes back so the client learns its new updatedAt.
+      expect(archived).toBeInstanceOf(Account);
+      expect(archived.archivedAt).toEqual(archivedAt);
+      expect(archived.updatedAt).toEqual(archivedAt);
+    });
+
+    it("answers the row unchanged when it was already archived (idempotent)", async () => {
+      const archivedAt = new Date("2026-09-01T00:00:00.000Z");
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...validAccountProps, archivedAt }),
+      );
+
+      const archived = await service.deleteAccount(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        validAccountProps.userId,
+      );
+
+      expect(archived.archivedAt).toEqual(archivedAt);
+      expect(repo.archiveNonDefault).not.toHaveBeenCalled();
     });
 
     it("rejects when the account became default between check and archive (race)", async () => {
@@ -354,7 +435,7 @@ describe("AccountService", () => {
         .mockResolvedValueOnce(
           new Account({ ...validAccountProps, isDefault: true }),
         );
-      repo.archiveNonDefault.mockResolvedValue(false);
+      repo.archiveNonDefault.mockResolvedValue(null);
 
       await expect(
         service.deleteAccount(
@@ -370,14 +451,14 @@ describe("AccountService", () => {
         .mockResolvedValueOnce(
           new Account({ ...validAccountProps, archivedAt: new Date() }),
         );
-      repo.archiveNonDefault.mockResolvedValue(false);
+      repo.archiveNonDefault.mockResolvedValue(null);
 
       await expect(
         service.deleteAccount(
           "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
           validAccountProps.userId,
         ),
-      ).resolves.toBeUndefined();
+      ).resolves.toMatchObject({ archivedAt: expect.any(Date) });
     });
 
     it("should throw NotFound when archiving non-existent account", async () => {
@@ -423,6 +504,7 @@ describe("AccountService", () => {
         mockAccount.id,
         mockAccount.userId,
         "Nequi antiguo",
+        undefined,
       );
       expect(result.name).toBe("Nequi antiguo");
     });
@@ -438,6 +520,7 @@ describe("AccountService", () => {
       expect(repo.restore).toHaveBeenCalledWith(
         mockAccount.id,
         mockAccount.userId,
+        undefined,
         undefined,
       );
       expect(result.id).toBe(mockAccount.id);

@@ -4,6 +4,8 @@ import {
   ICategoryRepository,
 } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
+import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
+import { assertFresh, guardedWrite } from "../../shared/concurrency";
 import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
@@ -40,7 +42,30 @@ export class CategoryService {
     return new Category(category);
   }
 
-  async createCategory(dto: CreateCategoryDTO): Promise<Category> {
+  // The active category holding a name, matched case-insensitively like the
+  // unique index: what a DUPLICATE on a create was about (POST /sync, §5.1).
+  async findActiveByName(
+    userId: string,
+    name: string,
+  ): Promise<Category | null> {
+    const category = await this.repo.findActiveByName(userId, name);
+    return category && new Category(category);
+  }
+
+  async createCategory(
+    dto: CreateCategoryDTO,
+    outcome?: CreateOutcome,
+  ): Promise<Category> {
+    return createOrReplay({
+      clientId: dto.id,
+      outcome,
+      findOwn: (id) => this.repo.getOwnById(id, dto.userId),
+      replay: async (c) => new Category(c),
+      create: () => this.insertCategory(dto),
+    });
+  }
+
+  private async insertCategory(dto: CreateCategoryDTO): Promise<Category> {
     if (
       (await this.repo.countByUserId(dto.userId)) >= MAX_CATEGORIES_PER_USER
     ) {
@@ -58,6 +83,7 @@ export class CategoryService {
     id: string,
     dto: UpdateCategoryDTO,
     userId: string,
+    expectedUpdatedAt?: Date,
   ): Promise<Category> {
     if (dto.id && dto.id !== id) {
       throw new ApiError("BadRequest", "Category id does not match");
@@ -67,6 +93,9 @@ export class CategoryService {
     if (!existing || existing.userId !== userId) {
       throw new ApiError("NotFound", "Category not found");
     }
+    // Before the archived check: a caller writing against an old version needs
+    // to re-read whatever happened, not a reason it cannot know about yet.
+    assertFresh(existing, expectedUpdatedAt, (c) => new Category(c));
     if (existing.archivedAt) {
       throw new ApiError(
         "BadRequest",
@@ -90,26 +119,46 @@ export class CategoryService {
       }
     }
 
-    return new Category(await this.repo.update(id, dto));
+    return guardedWrite(
+      expectedUpdatedAt,
+      async () =>
+        new Category(
+          await this.repo.update(id, dto, undefined, expectedUpdatedAt),
+        ),
+      () => this.repo.getOwnById(id, userId),
+      (c) => new Category(c),
+    );
   }
 
   // Archive (soft delete); allowed even with linked transactions.
   // Idempotent: archiving an already-archived category is a no-op success.
-  async deleteCategory(id: string, userId: string): Promise<void> {
+  // Answers the archived row: an offline client needs its new `updatedAt` to
+  // guard the restore it may have queued right behind (F-22).
+  async deleteCategory(
+    id: string,
+    userId: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<Category> {
     const existing = await this.repo.getByIdIncludingArchived(id);
     if (!existing || existing.userId !== userId) {
       throw new ApiError("NotFound", "Category not found");
     }
+    assertFresh(existing, expectedUpdatedAt, (c) => new Category(c));
     if (existing.archivedAt) {
-      return;
+      return new Category(existing);
     }
     try {
-      await this.repo.delete(id);
+      return new Category(
+        await this.repo.delete(id, undefined, expectedUpdatedAt),
+      );
     } catch (err) {
       // Lost the race to a concurrent archive: still a success.
       const current = await this.repo.getByIdIncludingArchived(id);
-      if (current?.userId === userId && current.archivedAt) {
-        return;
+      if (current?.userId === userId) {
+        assertFresh(current, expectedUpdatedAt, (c) => new Category(c));
+        if (current.archivedAt) {
+          return new Category(current);
+        }
       }
       throw err;
     }
@@ -120,8 +169,14 @@ export class CategoryService {
     id: string,
     userId: string,
     name?: string,
+    expectedUpdatedAt?: Date,
   ): Promise<Category> {
-    const restored = await this.repo.restore(id, userId, name);
+    const restored = await this.repo.restore(
+      id,
+      userId,
+      name,
+      expectedUpdatedAt,
+    );
     if (restored) {
       return new Category(restored);
     }
@@ -129,6 +184,7 @@ export class CategoryService {
     if (!current || current.userId !== userId) {
       throw new ApiError("NotFound", "Category not found");
     }
+    assertFresh(current, expectedUpdatedAt, (c) => new Category(c));
     return new Category(current);
   }
 

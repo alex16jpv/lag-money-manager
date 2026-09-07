@@ -93,6 +93,11 @@ router.get(
  *     description: >
  *       Active category names are unique per user, case-insensitively
  *       ("Comida" = "comida"; accents still distinct).
+ *
+ *       Accepts an optional client-minted `id` (UUID). An id the user already
+ *       owns replays with 200 and the stored resource, whatever the payload
+ *       says now (the row may have been edited elsewhere since); an id that
+ *       belongs to another user is rejected with 409 ID_TAKEN.
  *     requestBody:
  *       required: true
  *       content:
@@ -100,6 +105,12 @@ router.get(
  *           schema:
  *             $ref: '#/components/schemas/CreateCategoryInput'
  *     responses:
+ *       200:
+ *         description: Replay of a create already made with this client-minted id
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Category'
  *       201:
  *         description: Category created
  *         content:
@@ -119,7 +130,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: An active category with this name already exists (code DUPLICATE, case-insensitive)
+ *         description: An active category with this name already exists (code DUPLICATE, case-insensitive), or the client-minted id is already in use (code ID_TAKEN)
  *         content:
  *           application/json:
  *             schema:
@@ -220,6 +231,7 @@ router.get("/:id", validate(idParamSchema), CategoryController.getCategoryById);
  *           type: string
  *           format: uuid
  *         description: Category ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     requestBody:
  *       required: true
  *       content:
@@ -252,11 +264,11 @@ router.get("/:id", validate(idParamSchema), CategoryController.getCategoryById);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: Another active category already uses this name (code DUPLICATE, case-insensitive)
+ *         description: Another active category already uses this name (code DUPLICATE, case-insensitive), or the resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *               $ref: '#/components/schemas/CategoryConflict'
  */
 router.put(
   "/:id",
@@ -282,13 +294,14 @@ router.put(
  *           type: string
  *           format: uuid
  *         description: Category ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
- *         description: Category archived (or already archived)
+ *         description: The archived category (also when it was already archived), with its new `updatedAt`
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Message'
+ *               $ref: '#/components/schemas/Category'
  *       400:
  *         description: Invalid ID format (code VALIDATION)
  *         content:
@@ -307,6 +320,12 @@ router.put(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CategoryConflict'
  */
 router.delete(
   "/:id",
@@ -335,6 +354,7 @@ router.delete(
  *         required: true
  *         schema: { type: string, format: uuid }
  *         description: Category ID
+ *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
  *         description: Category restored (or already active)
@@ -361,11 +381,11 @@ router.delete(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: An active category already uses this name (code DUPLICATE)
+ *         description: An active category already uses this name (code DUPLICATE), or the resource changed since the `If-Match` version (code STALE_UPDATE; `current` carries the server's copy)
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *               $ref: '#/components/schemas/CategoryConflict'
  */
 router.post(
   "/:id/restore",

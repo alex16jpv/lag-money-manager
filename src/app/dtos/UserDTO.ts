@@ -1,3 +1,4 @@
+import { User } from "../../domain/entities/User";
 import { Locale } from "../../shared/locale";
 
 export interface CreateUserDTO {
@@ -34,3 +35,16 @@ export interface UserResponseDTO {
   // Present (true) only when register revived a soft-deleted account.
   reactivated?: boolean;
 }
+
+/** The user as every response prints them: the entity minus the credentials. */
+export const toUserResponse = (user: User): UserResponseDTO => ({
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  timezone: user.timezone,
+  currency: user.currency,
+  locale: user.locale,
+  lastLoginAt: user.lastLoginAt,
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt,
+});

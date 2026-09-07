@@ -111,6 +111,7 @@ Según lo que toques:
 | Variables de entorno | `docs/guides/environment-vars.md` y `.env.example` |
 | El flujo de despliegue | `docs/guides/deployment.md` |
 | Arranque o setup local | `docs/guides/getting-started.md` |
+| Algo que encontraste y NO vas a arreglar | `auditoria/BITACORA.md` §6 «Deuda técnica identificada»: una entrada, con qué es y qué decidir |
 
 Los request bodies del OpenAPI se generan desde los schemas Zod
 (`src/config/swagger.ts`); las vistas de respuesta se mantienen a mano pero sus
@@ -185,10 +186,18 @@ La regla: **si algo falla, tiene que verse, y el mensaje tiene que ser cierto.**
 - ¿Actualizaste `requests/` si cambió la superficie?
 - ¿Queda algún log de depuración, `console.log` o `TODO` tuyo?
 - ¿El mensaje del commit describe solo lo que efectivamente hiciste?
+- ¿Todo hallazgo que NO arreglas quedó **registrado** como entrada, no solo mencionado?
 
-Si encuentras un problema fuera del alcance de lo que te pidieron: repórtalo,
-no lo arregles por tu cuenta. Y si algo del cambio quedó incompleto o dudoso,
-dilo en vez de dejarlo pasar.
+Si encuentras un problema fuera del alcance de lo que te pidieron: no lo
+arregles por tu cuenta, pero tampoco te baste con mencionarlo. **Regístralo**:
+una entrada en `auditoria/BITACORA.md` §6 «Deuda técnica identificada», o una
+fila en `auditoria/front/BACKEND-DESDE-FRONT.md` si viene del front. Vale para
+fallos, código muerto, guardas que faltan, asperezas e ideas, lo haya pedido el
+dueño o no. Escribirlo solo en un resumen de sesión o en una bitácora de relevo
+**no cuenta**: eso es el diario, nadie lo lee buscando trabajo pendiente, y lo
+que solo vive ahí se copia de sesión en sesión y no se hace nunca. La entrada
+puede decir «ahora no»; lo que no puede es faltar. Y si algo del cambio quedó
+incompleto o dudoso, dilo en vez de dejarlo pasar.
 
 ---
 

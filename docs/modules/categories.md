@@ -46,6 +46,9 @@ Create a new category. Requires: `name` (1–255 chars). Optional: `icon` (one o
 
 Names are unique per user, **case-insensitively** — "Comida" and "comida" collide; accents stay distinct. A user is capped at 200 categories (`CATEGORY_LIMIT_REACHED`).
 
+**Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. An id the user already owns replays with **200** and the stored category **whatever the payload says now** — the row may have been edited from another device between a lost response and the retry, and a 409 there would make the client mint a second id and duplicate it. An id that belongs to **another user** is rejected with **409 `ID_TAKEN`**, worded so the caller cannot tell it exists; the foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
+
+
 ### `POST /categories/restore-defaults`
 
 Recreate the missing default categories. Idempotent by `seedKey`: archived seed categories count as present (the user removed them on purpose) and renamed ones keep their `seedKey`, so neither is duplicated. Responds `200` with `{ "data": [...] }` — an empty array when nothing was missing.
@@ -62,7 +65,7 @@ Update a category. Partial updates supported (`name`, `icon` — `null` clears i
 
 ### `DELETE /categories/:id`
 
-Archive the category (soft delete, sets `archivedAt`). Allowed even with linked transactions — they keep pointing at it. Idempotent: archiving an already-archived category is a no-op success.
+Archive the category (soft delete, sets `archivedAt`). Allowed even with linked transactions — they keep pointing at it. Idempotent: archiving an already-archived category is a no-op success. **Answers the archived category** (the same view as `GET`), so a client that queued a restore or a rename right behind the archive has the new `updatedAt` for its `If-Match` without a read in between (F-22).
 
 An archived category can no longer be assigned to a new transaction or budget (`CATEGORY_ARCHIVED`), but a transaction or budget that already had it may keep it.
 
@@ -142,8 +145,34 @@ None specific to this module.
 | `Unauthorized`            | 401    | Missing, invalid or expired access token                         |
 | `NotFound`                | 404    | Category missing **or owned by another user**                    |
 | `DUPLICATE`               | 409    | An active category already uses this name (case-insensitively)   |
+| `ID_TAKEN`                | 409    | The client-minted `id` belongs to another user (the user's own id always replays with 200) |
+| `STALE_UPDATE`            | 409    | `If-Match` no longer matches the stored version (`current` carries the server's copy) |
 
 > Foreign categories return **404, not 403** — the response is uniform for "missing" and "not yours" so category ids cannot be probed.
+
+## Optimistic concurrency (`If-Match`)
+
+Every write below accepts an optional `If-Match` header carrying the `updatedAt`
+this client last read, verbatim as the API prints it
+(`2026-09-03T18:00:00.000Z`; an ISO 8601 datetime with an offset is also
+accepted, a bare date is not — that is `400 VALIDATION`).
+
+`PUT /categories/:id` · `DELETE /categories/:id` · `POST /categories/:id/restore`
+
+The write only lands if the server still holds that version. Otherwise the answer
+is **409 `STALE_UPDATE`**, and its body carries `current`: the category as the server
+has it now, in the same shape a `GET` would return — so a client can show
+"Server / This device" without a second request.
+
+Two rules worth knowing:
+
+- **The condition travels inside the write's own filter**, not only in a check
+  before it. Two clients holding the same version cannot both win.
+- **`STALE_UPDATE` outranks `RESOURCE_ARCHIVED` and the other write guards.** A
+  caller writing against an old version cannot know about a state it has not
+  read yet; re-reading tells it everything at once.
+
+Without the header nothing changes: the write is unconditional, exactly as before.
 
 ## Default Categories
 

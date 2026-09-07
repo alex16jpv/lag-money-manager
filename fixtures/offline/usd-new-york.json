@@ -1,0 +1,460 @@
+{
+  "id": "usd-new-york",
+  "title": "USD · America/New_York · the repeated hour and an INCOME budget",
+  "pins": [
+    "The autumn DST change repeats an hour: 01:30 happens twice on 2025-11-02, one real hour apart, and both are that same day.",
+    "November opens at −04:00 and closes at −05:00: the month is 721 hours long, not 720.",
+    "`avg` rounds half up in minor units: 10.01 over 2 rows is 5.01, not 5.00.",
+    "A budget's `type` filters the rows: an INCOME budget ignores every expense in its own window.",
+    "A query for `type: INCOME` groups income by category the same way expenses are grouped."
+  ],
+  "generatedBy": "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline",
+  "user": {
+    "id": "01930004-0000-7000-8000-0000000u0001",
+    "timezone": "America/New_York",
+    "currency": "USD",
+    "minorUnits": 2
+  },
+  "accounts": [
+    {
+      "key": "checking",
+      "id": "01930004-0000-7000-8000-0000000a0001",
+      "name": "Checking",
+      "type": "ACCOUNT",
+      "color": "BLUE",
+      "currency": "USD",
+      "openingBalance": 2500,
+      "isDefault": true,
+      "archivedAt": null
+    },
+    {
+      "key": "credit",
+      "id": "01930004-0000-7000-8000-0000000a0002",
+      "name": "Credit card",
+      "type": "CARD",
+      "color": "PURPLE",
+      "currency": "USD",
+      "openingBalance": -875.25,
+      "isDefault": false,
+      "archivedAt": null
+    }
+  ],
+  "categories": [
+    {
+      "key": "rent",
+      "id": "01930004-0000-7000-8000-0000000c0001",
+      "name": "Rent",
+      "type": "EXPENSE",
+      "archivedAt": null
+    },
+    {
+      "key": "dining",
+      "id": "01930004-0000-7000-8000-0000000c0002",
+      "name": "Dining",
+      "type": "EXPENSE",
+      "archivedAt": null
+    },
+    {
+      "key": "salary",
+      "id": "01930004-0000-7000-8000-0000000c0003",
+      "name": "Salary",
+      "type": "INCOME",
+      "archivedAt": null
+    },
+    {
+      "key": "freelance",
+      "id": "01930004-0000-7000-8000-0000000c0004",
+      "name": "Freelance",
+      "type": "INCOME",
+      "archivedAt": null
+    }
+  ],
+  "transactions": [
+    {
+      "key": "first-hour",
+      "id": "01930004-0000-7000-8000-0000000t0001",
+      "type": "EXPENSE",
+      "amount": 12.34,
+      "date": "2025-11-01T00:30:00-04:00",
+      "description": "Late dinner",
+      "categoryId": "01930004-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930004-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "USD",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "04:30Z on 1 November: still October in nothing, but the first row of the month locally."
+    },
+    {
+      "key": "first-one-thirty",
+      "id": "01930004-0000-7000-8000-0000000t0002",
+      "type": "EXPENSE",
+      "amount": 5,
+      "date": "2025-11-02T01:30:00-04:00",
+      "description": "Diner, before the clocks go back",
+      "categoryId": "01930004-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930004-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "USD",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "05:30Z. The first 01:30 of the day: the clocks have not gone back yet."
+    },
+    {
+      "key": "second-one-thirty",
+      "id": "01930004-0000-7000-8000-0000000t0003",
+      "type": "EXPENSE",
+      "amount": 5.01,
+      "date": "2025-11-02T01:30:00-05:00",
+      "description": "Diner, after the clocks go back",
+      "categoryId": "01930004-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930004-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "USD",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "06:30Z. The SECOND 01:30 of the same day: one real hour later, same reading on the clock."
+    },
+    {
+      "key": "rent",
+      "id": "01930004-0000-7000-8000-0000000t0004",
+      "type": "EXPENSE",
+      "amount": 1850,
+      "date": "2025-11-03T09:00:00-05:00",
+      "description": "November rent",
+      "categoryId": "01930004-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930004-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "USD",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "paycheck",
+      "id": "01930004-0000-7000-8000-0000000t0005",
+      "type": "INCOME",
+      "amount": 3200,
+      "date": "2025-11-14T09:00:00-05:00",
+      "description": "Paycheck",
+      "categoryId": "01930004-0000-7000-8000-0000000c0003",
+      "fromAccountId": null,
+      "toAccountId": "01930004-0000-7000-8000-0000000a0001",
+      "tags": [],
+      "currency": "USD",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "side-gig",
+      "id": "01930004-0000-7000-8000-0000000t0006",
+      "type": "INCOME",
+      "amount": 450.5,
+      "date": "2025-11-21T16:00:00-05:00",
+      "description": "Invoice #14",
+      "categoryId": "01930004-0000-7000-8000-0000000c0004",
+      "fromAccountId": null,
+      "toAccountId": "01930004-0000-7000-8000-0000000a0001",
+      "tags": [],
+      "currency": "USD",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "quick-coffee",
+      "id": "01930004-0000-7000-8000-0000000t0007",
+      "type": "EXPENSE",
+      "amount": 8.25,
+      "date": "2025-11-18T15:20:00-05:00",
+      "description": null,
+      "categoryId": null,
+      "fromAccountId": "01930004-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "USD",
+      "source": "QUICK",
+      "pendingDetails": true,
+      "deletedAt": null
+    },
+    {
+      "key": "refunded",
+      "id": "01930004-0000-7000-8000-0000000t0008",
+      "type": "EXPENSE",
+      "amount": 60,
+      "date": "2025-11-10T13:00:00-05:00",
+      "description": "Returned order",
+      "categoryId": "01930004-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930004-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "USD",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": "2025-11-11T13:00:00.000-05:00"
+    },
+    {
+      "key": "last-minute",
+      "id": "01930004-0000-7000-8000-0000000t0009",
+      "type": "EXPENSE",
+      "amount": 27.75,
+      "date": "2025-11-30T23:59:00-05:00",
+      "description": "Sunday takeout",
+      "categoryId": "01930004-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930004-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "USD",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "04:59Z on 1 December: the last minute of November for the user."
+    },
+    {
+      "key": "next-month",
+      "id": "01930004-0000-7000-8000-0000000t0010",
+      "type": "EXPENSE",
+      "amount": 99.99,
+      "date": "2025-12-01T00:10:00-05:00",
+      "description": "December groceries",
+      "categoryId": "01930004-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930004-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "USD",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "Ten minutes into December: out of every November figure."
+    }
+  ],
+  "budgets": [
+    {
+      "key": "income-goal",
+      "id": "01930004-0000-7000-8000-0000000b0001",
+      "name": "Monthly income",
+      "type": "INCOME",
+      "categoryIds": [
+        "01930004-0000-7000-8000-0000000c0003",
+        "01930004-0000-7000-8000-0000000c0004"
+      ],
+      "amount": 3500,
+      "amountOverrides": {},
+      "currency": "USD",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2025-01-01T00:00:00-05:00",
+      "archivedAt": null,
+      "note": "An INCOME budget: the 1 908.35 of expenses in the same window count for nothing here."
+    },
+    {
+      "key": "dining",
+      "id": "01930004-0000-7000-8000-0000000b0002",
+      "name": "Dining out",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930004-0000-7000-8000-0000000c0002"
+      ],
+      "amount": 60,
+      "amountOverrides": {},
+      "currency": "USD",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2025-01-01T00:00:00-05:00",
+      "archivedAt": null
+    },
+    {
+      "key": "everything",
+      "id": "01930004-0000-7000-8000-0000000b0003",
+      "name": "All spending",
+      "type": "EXPENSE",
+      "categoryIds": [],
+      "amount": 2500,
+      "amountOverrides": {},
+      "currency": "USD",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2025-01-01T00:00:00-05:00",
+      "archivedAt": null
+    }
+  ],
+  "expected": {
+    "balances": [
+      {
+        "key": "checking",
+        "accountId": "01930004-0000-7000-8000-0000000a0001",
+        "balance": 4292.25
+      },
+      {
+        "key": "credit",
+        "accountId": "01930004-0000-7000-8000-0000000a0002",
+        "balance": -1025.34
+      }
+    ],
+    "pending": {
+      "count": 1,
+      "total": 8.25,
+      "transactionIds": [
+        "01930004-0000-7000-8000-0000000t0007"
+      ]
+    },
+    "spending": [
+      {
+        "name": "november-by-category",
+        "query": {
+          "groupBy": "category",
+          "type": "EXPENSE",
+          "from": "2025-11-01T00:00:00-04:00",
+          "to": "2025-12-01T00:00:00-05:00",
+          "timezone": "America/New_York"
+        },
+        "total": 1908.35,
+        "buckets": [
+          {
+            "key": "01930004-0000-7000-8000-0000000c0001",
+            "total": 1850,
+            "count": 1,
+            "avg": 1850
+          },
+          {
+            "key": "01930004-0000-7000-8000-0000000c0002",
+            "total": 50.1,
+            "count": 4,
+            "avg": 12.53
+          },
+          {
+            "key": "uncategorized",
+            "total": 8.25,
+            "count": 1,
+            "avg": 8.25
+          }
+        ],
+        "note": "721 hours: the window opens on daylight time and closes on standard time."
+      },
+      {
+        "name": "november-by-day",
+        "query": {
+          "groupBy": "day",
+          "type": "EXPENSE",
+          "from": "2025-11-01T00:00:00-04:00",
+          "to": "2025-12-01T00:00:00-05:00",
+          "timezone": "America/New_York"
+        },
+        "total": 1908.35,
+        "buckets": [
+          {
+            "key": "2025-11-01",
+            "total": 12.34,
+            "count": 1,
+            "avg": 12.34
+          },
+          {
+            "key": "2025-11-02",
+            "total": 10.01,
+            "count": 2,
+            "avg": 5.01
+          },
+          {
+            "key": "2025-11-03",
+            "total": 1850,
+            "count": 1,
+            "avg": 1850
+          },
+          {
+            "key": "2025-11-18",
+            "total": 8.25,
+            "count": 1,
+            "avg": 8.25
+          },
+          {
+            "key": "2025-11-30",
+            "total": 27.75,
+            "count": 1,
+            "avg": 27.75
+          }
+        ],
+        "note": "Both 01:30s land on 2025-11-02, and their average rounds half up."
+      },
+      {
+        "name": "november-income-by-category",
+        "query": {
+          "groupBy": "category",
+          "type": "INCOME",
+          "from": "2025-11-01T00:00:00-04:00",
+          "to": "2025-12-01T00:00:00-05:00",
+          "timezone": "America/New_York"
+        },
+        "total": 3650.5,
+        "buckets": [
+          {
+            "key": "01930004-0000-7000-8000-0000000c0003",
+            "total": 3200,
+            "count": 1,
+            "avg": 3200
+          },
+          {
+            "key": "01930004-0000-7000-8000-0000000c0004",
+            "total": 450.5,
+            "count": 1,
+            "avg": 450.5
+          }
+        ]
+      }
+    ],
+    "budgets": {
+      "reference": "2025-11-15T12:00:00-05:00",
+      "views": [
+        {
+          "key": "income-goal",
+          "id": "01930004-0000-7000-8000-0000000b0001",
+          "periodKey": "2025-11",
+          "periodFrom": "2025-11-01T04:00:00.000Z",
+          "periodTo": "2025-12-01T05:00:00.000Z",
+          "baseAmount": 3500,
+          "amount": 3500,
+          "hasOverride": false,
+          "spent": 3650.5,
+          "expired": false,
+          "archivedCategoryIds": []
+        },
+        {
+          "key": "dining",
+          "id": "01930004-0000-7000-8000-0000000b0002",
+          "periodKey": "2025-11",
+          "periodFrom": "2025-11-01T04:00:00.000Z",
+          "periodTo": "2025-12-01T05:00:00.000Z",
+          "baseAmount": 60,
+          "amount": 60,
+          "hasOverride": false,
+          "spent": 50.1,
+          "expired": false,
+          "archivedCategoryIds": []
+        },
+        {
+          "key": "everything",
+          "id": "01930004-0000-7000-8000-0000000b0003",
+          "periodKey": "2025-11",
+          "periodFrom": "2025-11-01T04:00:00.000Z",
+          "periodTo": "2025-12-01T05:00:00.000Z",
+          "baseAmount": 2500,
+          "amount": 2500,
+          "hasOverride": false,
+          "spent": 1908.35,
+          "expired": false,
+          "archivedCategoryIds": []
+        }
+      ]
+    }
+  }
+}

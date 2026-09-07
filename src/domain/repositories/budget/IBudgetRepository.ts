@@ -1,5 +1,6 @@
 import { BudgetPeriodType, BudgetType } from "../../../shared/constants";
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { Budget } from "../../entities/Budget";
 import { IRepository } from "../IRepository";
 
@@ -20,6 +21,33 @@ export interface OverlapCandidate {
 }
 
 export interface IBudgetRepository extends IRepository<Budget> {
+  // `expectedUpdatedAt` goes into the write's own filter: an optimistic guard
+  // checked before the write would let two racing callers through.
+  update(
+    id: string,
+    entity: Partial<Budget>,
+    session?: unknown,
+    expectedUpdatedAt?: Date,
+  ): Promise<Budget>;
+  // Archives and answers the archived row.
+  delete(
+    id: string,
+    session?: unknown,
+    expectedUpdatedAt?: Date,
+  ): Promise<Budget>;
+
+  // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
+  getOwnById(id: string, userId: string): Promise<Budget | null>;
+
+  // Offline change feed: everything the user touched after `cursor`, in
+  // `(updatedAt, _id)` order, ARCHIVED AND DELETED ROWS INCLUDED — a client
+  // that only sees live rows never learns that something disappeared.
+  changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<Budget[]>;
+
   // Unlike getById, also resolves archived budgets (uniform semantics:
   // archived resources stay readable; writes reject with RESOURCE_ARCHIVED).
   getByIdIncludingArchived(id: string): Promise<Budget | null>;
@@ -42,12 +70,17 @@ export interface IBudgetRepository extends IRepository<Budget> {
   // Un-archives the user's own archived budget; null if there was none to
   // restore. Clearing archivedAt in a single write lets the partial unique
   // index judge the resulting state and catch a concurrent restore.
-  restore(id: string, userId: string): Promise<Budget | null>;
+  restore(
+    id: string,
+    userId: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<Budget | null>;
 
   clearAmountOverride(
     id: string,
     userId: string,
     periodKey: string,
+    expectedUpdatedAt?: Date,
   ): Promise<Budget | null>;
 
   setAmountOverride(
@@ -55,5 +88,6 @@ export interface IBudgetRepository extends IRepository<Budget> {
     userId: string,
     periodKey: string,
     amount: number,
+    expectedUpdatedAt?: Date,
   ): Promise<Budget | null>;
 }

@@ -36,3 +36,18 @@ export class ApiError extends BaseError {
     this.code = code;
   }
 }
+
+/**
+ * A write whose `If-Match` no longer matches the stored version. Carries the
+ * resource as the server has it so the client can show both sides without a
+ * second request.
+ */
+export class StaleUpdateError extends ApiError {
+  constructor(public current: unknown) {
+    super(
+      "Conflict",
+      "The resource changed since you last read it",
+      "STALE_UPDATE",
+    );
+  }
+}

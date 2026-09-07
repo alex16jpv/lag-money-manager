@@ -7,6 +7,8 @@ import {
   ITransactionRepository,
   TransactionFilters,
 } from "../../domain/repositories/transaction/ITransactionRepository";
+import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
+import { assertFresh } from "../../shared/concurrency";
 import { ErrorCode } from "../../shared/errorCodes";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
@@ -105,6 +107,20 @@ export class TransactionService {
   async createTransaction(
     dto: CreateTransactionDTO,
     idempotency?: IdempotencyMeta,
+    outcome?: CreateOutcome,
+  ): Promise<Transaction> {
+    return createOrReplay({
+      clientId: dto.id,
+      outcome,
+      findOwn: (id) => this.transactionRepo.getOwnById(id, dto.userId),
+      replay: async (t) => t,
+      create: () => this.insertTransaction(dto, idempotency),
+    });
+  }
+
+  private async insertTransaction(
+    dto: CreateTransactionDTO,
+    idempotency?: IdempotencyMeta,
   ): Promise<Transaction> {
     if (idempotency) {
       const existing = await this.replayIdempotent(dto.userId, idempotency);
@@ -176,6 +192,20 @@ export class TransactionService {
   async quickAddTransaction(
     dto: QuickAddTransactionDTO,
     idempotency?: IdempotencyMeta,
+    outcome?: CreateOutcome,
+  ): Promise<Transaction> {
+    return createOrReplay({
+      clientId: dto.id,
+      outcome,
+      findOwn: (id) => this.transactionRepo.getOwnById(id, dto.userId),
+      replay: async (t) => t,
+      create: () => this.insertQuickAdd(dto, idempotency),
+    });
+  }
+
+  private async insertQuickAdd(
+    dto: QuickAddTransactionDTO,
+    idempotency?: IdempotencyMeta,
   ): Promise<Transaction> {
     const type = dto.type ?? "EXPENSE";
     let fromAccountId = dto.fromAccountId ?? null;
@@ -188,8 +218,9 @@ export class TransactionService {
       toAccountId = await this.resolveDefaultAccountId(dto.userId);
     }
 
-    return this.createTransaction(
+    return this.insertTransaction(
       {
+        id: dto.id,
         type,
         amount: dto.amount,
         date: dto.date ?? new Date(),
@@ -249,10 +280,17 @@ export class TransactionService {
     return { updated, failed };
   }
 
+  // Whether the movement is the user's own tombstone: the caller that must
+  // tell "already deleted" from "never existed" (POST /sync, §5.4).
+  async isDeleted(id: string, userId: string): Promise<boolean> {
+    return this.transactionRepo.isDeleted(id, userId);
+  }
+
   async updateTransaction(
     id: string,
     dto: UpdateTransactionDTO,
     userId: string,
+    expectedUpdatedAt?: Date,
   ): Promise<Transaction> {
     if (dto.id && dto.id !== id) {
       throw new ApiError("BadRequest", "Transaction id does not match");
@@ -266,6 +304,9 @@ export class TransactionService {
       if (existing.userId !== userId) {
         throw new ApiError("NotFound", "Transaction not found");
       }
+      // Read and write share the session, so this check and the guard in the
+      // update's filter are one atomic decision.
+      assertFresh(existing, expectedUpdatedAt, (t) => t);
 
       const updated = new Transaction({ ...existing, ...dto });
       updated.assertValid();
@@ -301,11 +342,21 @@ export class TransactionService {
           }
         : undefined;
 
-      return await this.transactionRepo.update(id, dto, session, revision);
+      return await this.transactionRepo.update(
+        id,
+        dto,
+        session,
+        revision,
+        expectedUpdatedAt,
+      );
     });
   }
 
-  async deleteTransaction(id: string, userId: string): Promise<void> {
+  async deleteTransaction(
+    id: string,
+    userId: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<void> {
     await withTransaction(async (session) => {
       const transaction = await this.transactionRepo.getById(id, session);
       if (!transaction) {
@@ -314,9 +365,10 @@ export class TransactionService {
       if (transaction.userId !== userId) {
         throw new ApiError("NotFound", "Transaction not found");
       }
+      assertFresh(transaction, expectedUpdatedAt, (t) => t);
 
       await this.adjustBalances(transaction, -1, session);
-      await this.transactionRepo.delete(id, session);
+      await this.transactionRepo.delete(id, session, expectedUpdatedAt);
     });
   }
 

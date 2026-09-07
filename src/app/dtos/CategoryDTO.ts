@@ -2,6 +2,7 @@ import { CategoryType, Color } from "../../shared/constants";
 import { CategoryIcon } from "../../shared/icons";
 
 export interface CreateCategoryDTO {
+  id?: string;
   name: string;
   icon?: CategoryIcon;
   color?: Color;

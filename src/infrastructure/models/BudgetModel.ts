@@ -83,6 +83,10 @@ BudgetSchema.index(
   { unique: true, partialFilterExpression: { archivedAt: null } },
 );
 
+// Offline change feed: keyset pagination over (updatedAt, _id), archived and
+// deleted rows included — the client learns of a disappearance no other way.
+BudgetSchema.index({ userId: 1, updatedAt: 1, _id: 1 });
+
 export const BudgetModel = mongoose.model<IBudgetDocument>(
   MODEL_NAMES.BUDGET,
   BudgetSchema,

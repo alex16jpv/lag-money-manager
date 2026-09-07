@@ -56,6 +56,9 @@ const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
+  getOwnById: jest.fn(),
+  isDeleted: jest.fn().mockResolvedValue(false),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -71,11 +74,14 @@ const createMockAccountRepo = (): jest.Mocked<IAccountRepository> => ({
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  findActiveByName: jest.fn().mockResolvedValue(null),
+  getOwnById: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
   incrementBalance: jest.fn().mockResolvedValue(true),
-  archiveNonDefault: jest.fn().mockResolvedValue(true),
+  archiveNonDefault: jest.fn().mockResolvedValue(null),
   restore: jest.fn(),
   getDefaultByUserId: jest.fn(),
   setDefault: jest.fn(),
@@ -92,6 +98,9 @@ const createMockCategoryRepo = (): jest.Mocked<ICategoryRepository> => ({
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  findActiveByName: jest.fn().mockResolvedValue(null),
+  getOwnById: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   createMany: jest.fn(),
   listSeedKeys: jest.fn().mockResolvedValue([]),
@@ -438,6 +447,7 @@ describe("TransactionService", () => {
         { amount: 175 },
         "test-session",
         expect.objectContaining({ amount: 100, type: "EXPENSE" }),
+        undefined,
       );
 
       txRepo.update.mockClear();
@@ -446,6 +456,7 @@ describe("TransactionService", () => {
         TX_ID,
         { note: "x" },
         "test-session",
+        undefined,
         undefined,
       );
     });
@@ -474,6 +485,7 @@ describe("TransactionService", () => {
         { date: new Date("2026-04-02") },
         "test-session",
         expect.objectContaining({ date: new Date("2026-03-28") }),
+        undefined,
       );
     });
 
@@ -557,7 +569,11 @@ describe("TransactionService", () => {
         100,
         "test-session",
       );
-      expect(txRepo.delete).toHaveBeenCalledWith(TX_ID, "test-session");
+      expect(txRepo.delete).toHaveBeenCalledWith(
+        TX_ID,
+        "test-session",
+        undefined,
+      );
     });
 
     it("denies deleting a transaction owned by another user", async () => {

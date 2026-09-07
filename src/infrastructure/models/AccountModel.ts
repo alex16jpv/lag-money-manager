@@ -1,5 +1,6 @@
 import mongoose, { Schema } from "mongoose";
 
+import { NAME_COLLATION } from "../../shared/collation";
 import {
   ACCOUNT_TYPES,
   AccountType,
@@ -58,7 +59,7 @@ AccountSchema.index(
   {
     unique: true,
     partialFilterExpression: { archivedAt: null },
-    collation: { locale: "es", strength: 2 },
+    collation: NAME_COLLATION,
   },
 );
 // At most one active default account per user.
@@ -69,6 +70,10 @@ AccountSchema.index(
     partialFilterExpression: { isDefault: true, archivedAt: null },
   },
 );
+
+// Offline change feed: keyset pagination over (updatedAt, _id), archived and
+// deleted rows included — the client learns of a disappearance no other way.
+AccountSchema.index({ userId: 1, updatedAt: 1, _id: 1 });
 
 export const AccountModel = mongoose.model<IAccountDocument>(
   MODEL_NAMES.ACCOUNT,

@@ -9,7 +9,11 @@ import { ENVIRONMENT } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
 import logger from "../../shared/logger";
 import { SessionView } from "../dtos/SessionDTO";
-import { CreateUserDTO, UserResponseDTO } from "../dtos/UserDTO";
+import {
+  CreateUserDTO,
+  toUserResponse,
+  UserResponseDTO,
+} from "../dtos/UserDTO";
 import { CategoryService } from "./CategoryService";
 
 const REFRESH_TOKEN_TYPE = "refresh";
@@ -36,20 +40,6 @@ export class AuthService {
     private categoryService: CategoryService,
     private sessions: IRefreshSessionRepository,
   ) {}
-
-  private toResponseDTO(user: User): UserResponseDTO {
-    return {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      timezone: user.timezone,
-      currency: user.currency,
-      locale: user.locale,
-      lastLoginAt: user.lastLoginAt,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
-  }
 
   // `sid` is the refresh family the token was issued for, so the sessions
   // list can point at the caller's own device without a DB lookup.
@@ -134,7 +124,7 @@ export class AuthService {
         const tokens = await this.openSession(reactivated, userAgent);
         return {
           ...tokens,
-          user: { ...this.toResponseDTO(reactivated), reactivated: true },
+          user: { ...toUserResponse(reactivated), reactivated: true },
         };
       } catch (err) {
         // Concurrent register already reactivated it: surface as a conflict.
@@ -163,7 +153,7 @@ export class AuthService {
     }
 
     const tokens = await this.openSession(created, userAgent);
-    return { ...tokens, user: this.toResponseDTO(created) };
+    return { ...tokens, user: toUserResponse(created) };
   }
 
   async login(
@@ -183,7 +173,7 @@ export class AuthService {
     }
 
     const tokens = await this.openSession(user, userAgent);
-    return { ...tokens, user: this.toResponseDTO(user) };
+    return { ...tokens, user: toUserResponse(user) };
   }
 
   private verifyRefreshToken(refreshToken: string): RefreshPayload {

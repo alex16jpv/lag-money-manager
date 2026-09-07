@@ -125,6 +125,9 @@ Create a new transaction. Adjusts affected account balances atomically.
 
 **Optional header:** `Idempotency-Key` — see [Idempotency](#idempotency).
 
+**Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. An id the user already owns replays with **200** and the stored transaction **whatever the payload says now** — the row may have been edited from another device between a lost response and the retry, and a 409 there would make the client mint a second id and duplicate it. An id that belongs to **another user** is rejected with **409 `ID_TAKEN`**, worded so the caller cannot tell it exists; the foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
+
+
 **Validation rules** (Zod `superRefine`, then re-checked by `Transaction.assertValid()` on the merged entity):
 
 - `EXPENSE` requires `fromAccountId`; `toAccountId` is not allowed
@@ -140,7 +143,7 @@ Create a new transaction. Adjusts affected account balances atomically.
 
 Low-friction capture: only `amount` is required. Defaults `type` to `EXPENSE`, `date` to now, and the missing side account to the user's **default account** (`NO_DEFAULT_ACCOUNT` when none is set and no account id was given).
 
-The created transaction is flagged `pendingDetails: true` and `source: QUICK`, so the client can list it later with `?pendingDetails=true`. `ADJUSTMENT` is not allowed here. Accepts the same `Idempotency-Key` header.
+The created transaction is flagged `pendingDetails: true` and `source: QUICK`, so the client can list it later with `?pendingDetails=true`. `ADJUSTMENT` is not allowed here. Accepts the same `Idempotency-Key` header, and the same optional client-minted `id` — a quick-add replay is judged only on the fields the client actually sent, because the unsent `date` and account resolve to *now* and to whichever account is default at that moment.
 
 ### `GET /transactions/tags`
 
@@ -280,10 +283,47 @@ None specific to this module.
 | `Unauthorized`                     | 401    | Missing, invalid or expired access token                            |
 | `NotFound`                         | 404    | Transaction, category, or account missing **or owned by another user** |
 | `IDEMPOTENCY_ORIGINAL_DELETED`     | 409    | The transaction created with this key was deleted; retry with a new key |
+| `ID_TAKEN`                         | 409    | The client-minted `id` belongs to another user (the user's own id always replays with 200) |
+| `STALE_UPDATE`                     | 409    | `If-Match` no longer matches the stored version (`current` carries the server's copy) |
 | `IDEMPOTENCY_PAYLOAD_MISMATCH`     | 422    | The `Idempotency-Key` was already used with a different payload     |
 | `InternalServerError`              | 500    | An account vanished mid-adjustment (aborts the MongoDB transaction) |
 
 > Missing and foreign resources both return **404, never 403** — the response is uniform so ids cannot be probed.
+
+## Optimistic concurrency (`If-Match`)
+
+Every write below accepts an optional `If-Match` header carrying the `updatedAt`
+this client last read, verbatim as the API prints it
+(`2026-09-03T18:00:00.000Z`; an ISO 8601 datetime with an offset is also
+accepted, a bare date is not — that is `400 VALIDATION`).
+
+`PUT /transactions/:id` · `DELETE /transactions/:id`
+
+`PATCH /transactions/batch` is **not** guarded: one header cannot address N
+documents. Each item is a state assignment and is idempotent by construction.
+
+The write only lands if the server still holds that version. Otherwise the answer
+is **409 `STALE_UPDATE`**, and its body carries `current`: the transaction as the server
+has it now, in the same shape a `GET` would return — so a client can show
+"Server / This device" without a second request.
+
+Two rules worth knowing:
+
+- **The condition travels inside the write's own filter**, not only in a check
+  before it. Two clients holding the same version cannot both win.
+- **`STALE_UPDATE` outranks `RESOURCE_ARCHIVED` and the other write guards.** A
+  caller writing against an old version cannot know about a state it has not
+  read yet; re-reading tells it everything at once.
+
+**A deleted transaction answers `404`, not `409`.** Transactions are the only
+guarded entity that disappears from reads once soft-deleted, and the API shape
+has no `deletedAt`, so a `current` would look like a live transaction. An offline
+client should read `404` on a guarded write as "another device deleted this" —
+and, for a `DELETE`, as the state it wanted anyway. Accounts, categories and
+budgets stay readable when archived, so those answer `409` with
+`current.archivedAt` set.
+
+Without the header nothing changes: the write is unconditional, exactly as before.
 
 ## Transaction Types
 
@@ -340,6 +380,8 @@ In both directions, if the `$inc` itself matches no document the service throws 
 ## Idempotency
 
 `POST /transactions` and `POST /transactions/quick` accept an optional `Idempotency-Key` header — 1–200 characters of `[A-Za-z0-9_-]`, typically a UUID generated per create action. A malformed key is rejected with `400 IDEMPOTENCY_KEY_INVALID` (the key becomes part of a stored `_id`).
+
+A create that carries a client-minted `id` does not need the header: the id is already the retry key, and it costs no write in `IdempotencyKeyModel`. Both work together if sent.
 
 | Situation                                        | Result                                                    |
 | ------------------------------------------------ | --------------------------------------------------------- |

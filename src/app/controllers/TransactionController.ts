@@ -11,6 +11,7 @@ import {
   IdempotencyMeta,
   TransactionService,
 } from "../services/TransactionService";
+import { ifMatch } from "./ifMatch";
 
 // Bounded charset/length: the key becomes part of a stored _id.
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]{1,200}$/;
@@ -110,20 +111,24 @@ export class TransactionController {
 
   static createTransaction = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
+    const outcome = { replayed: false };
     const newTransaction = await transactionService.createTransaction(
       { ...req.body, userId },
       idempotencyMeta(req),
+      outcome,
     );
-    res.status(201).json(newTransaction);
+    res.status(outcome.replayed ? 200 : 201).json(newTransaction);
   };
 
   static quickAddTransaction = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
+    const outcome = { replayed: false };
     const newTransaction = await transactionService.quickAddTransaction(
       { ...req.body, userId },
       idempotencyMeta(req),
+      outcome,
     );
-    res.status(201).json(newTransaction);
+    res.status(outcome.replayed ? 200 : 201).json(newTransaction);
   };
 
   static updateTransaction = async (req: Request, res: Response) => {
@@ -133,13 +138,18 @@ export class TransactionController {
       id,
       req.body,
       userId,
+      ifMatch(req),
     );
     res.status(200).json(updatedTransaction);
   };
 
   static deleteTransaction = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    await transactionService.deleteTransaction(req.params.id as string, userId);
+    await transactionService.deleteTransaction(
+      req.params.id as string,
+      userId,
+      ifMatch(req),
+    );
     res.status(200).json({ message: "Transaction deleted successfully" });
   };
 }

@@ -5,13 +5,17 @@ import {
   CategoryFilters,
   ICategoryRepository,
 } from "../../../domain/repositories/category/ICategoryRepository";
+import { NAME_COLLATION } from "../../../shared/collation";
 import { ApiError } from "../../../shared/errors";
 import {
   buildPaginatedResult,
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
+import { TxSession } from "../../../shared/unitOfWork";
 import { CategoryModel, ICategoryDocument } from "../../models/CategoryModel";
+import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
 
 export class CategoryRepository implements ICategoryRepository {
   private toEntity(doc: ICategoryDocument): Category {
@@ -66,6 +70,23 @@ export class CategoryRepository implements ICategoryRepository {
     }).lean();
     if (!doc) return null;
     return this.toEntity(doc);
+  }
+
+  async changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<Category[]> {
+    const docs = await CategoryModel.find(changesSinceFilter(userId, cursor))
+      .sort(CHANGE_FEED_SORT)
+      .limit(limit)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
+  async getOwnById(id: string, userId: string): Promise<Category | null> {
+    const doc = await CategoryModel.findOne({ _id: id, userId }).lean();
+    return doc ? this.toEntity(doc) : null;
   }
 
   async getByIdIncludingArchived(id: string): Promise<Category | null> {
@@ -134,6 +155,16 @@ export class CategoryRepository implements ICategoryRepository {
     return CategoryModel.countDocuments({ userId, archivedAt: null });
   }
 
+  async findActiveByName(
+    userId: string,
+    name: string,
+  ): Promise<Category | null> {
+    const doc = await CategoryModel.findOne({ userId, name, archivedAt: null })
+      .collation(NAME_COLLATION)
+      .lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
   async listArchivedIds(userId: string, ids: string[]): Promise<string[]> {
     if (ids.length === 0) return [];
     const docs = await CategoryModel.find({
@@ -156,11 +187,20 @@ export class CategoryRepository implements ICategoryRepository {
     return keys as string[];
   }
 
-  async update(id: string, category: Partial<Category>): Promise<Category> {
+  async update(
+    id: string,
+    category: Partial<Category>,
+    session?: TxSession,
+    expectedUpdatedAt?: Date,
+  ): Promise<Category> {
     const doc = await CategoryModel.findOneAndUpdate(
-      { _id: id, archivedAt: null },
+      {
+        _id: id,
+        archivedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       category,
-      { new: true },
+      { new: true, session: session ?? undefined },
     ).lean();
     if (!doc) {
       throw new ApiError("NotFound", "Category not found");
@@ -168,24 +208,39 @@ export class CategoryRepository implements ICategoryRepository {
     return this.toEntity(doc);
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(
+    id: string,
+    session?: TxSession,
+    expectedUpdatedAt?: Date,
+  ): Promise<Category> {
     const doc = await CategoryModel.findOneAndUpdate(
-      { _id: id, archivedAt: null },
+      {
+        _id: id,
+        archivedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { archivedAt: new Date() },
-      { new: true },
+      { new: true, session: session ?? undefined },
     ).lean();
     if (!doc) {
       throw new ApiError("NotFound", "Category not found");
     }
+    return this.toEntity(doc);
   }
 
   async restore(
     id: string,
     userId: string,
     name?: string,
+    expectedUpdatedAt?: Date,
   ): Promise<Category | null> {
     const doc = await CategoryModel.findOneAndUpdate(
-      { _id: id, userId, archivedAt: { $ne: null } },
+      {
+        _id: id,
+        userId,
+        archivedAt: { $ne: null },
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { archivedAt: null, ...(name ? { name } : {}) },
       { new: true },
     ).lean();

@@ -4,6 +4,7 @@ import { BudgetRepository } from "../../../infrastructure/repositories/budget/Bu
 import { CategoryRepository } from "../../../infrastructure/repositories/category/CategoryRepository";
 import { IdempotencyRepository } from "../../../infrastructure/repositories/idempotency/IdempotencyRepository";
 import { RefreshSessionRepository } from "../../../infrastructure/repositories/refreshSession/RefreshSessionRepository";
+import { SyncOpRepository } from "../../../infrastructure/repositories/syncOp/SyncOpRepository";
 import { TransactionRepository } from "../../../infrastructure/repositories/transaction/TransactionRepository";
 import { UserRepository } from "../../../infrastructure/repositories/user/UserRepository";
 import { DB_TYPES, IS_LAMBDA } from "../../../shared/constants";
@@ -32,4 +33,5 @@ export function registerRepositories(factory: RegistryTarget): void {
   factory.register("idempotency", () => new IdempotencyRepository());
   factory.register("budget", () => new BudgetRepository());
   factory.register("refreshSession", () => new RefreshSessionRepository());
+  factory.register("syncOp", () => new SyncOpRepository());
 }

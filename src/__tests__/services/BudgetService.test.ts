@@ -34,6 +34,8 @@ const createBudgetRepo = (): jest.Mocked<IBudgetRepository> =>
     getAllByUserId: jest.fn(),
     getById: jest.fn(),
     getByIdIncludingArchived: jest.fn(),
+    getOwnById: jest.fn(),
+    changesSince: jest.fn().mockResolvedValue([]),
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
@@ -406,6 +408,7 @@ describe("BudgetService", () => {
         "b1",
         USER,
         "2026-08",
+        undefined,
       );
       expect(view.hasOverride).toBe(false);
     });
@@ -749,8 +752,28 @@ describe("BudgetService", () => {
       const archived = makeBudget({ archivedAt: new Date("2026-08-01") });
       budgetRepo.getByIdIncludingArchived.mockResolvedValue(archived);
 
-      await expect(service.deleteBudget("b1", USER)).resolves.toBeUndefined();
+      await expect(
+        service.deleteBudget("b1", USER, CTX),
+      ).resolves.toMatchObject({ archivedAt: archived.archivedAt });
       expect(budgetRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it("archiving answers the archived view with its new updatedAt (F-22)", async () => {
+      const archivedAt = new Date("2026-09-05T10:00:00.000Z");
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(makeBudget());
+      budgetRepo.delete.mockResolvedValue(
+        makeBudget({ archivedAt, updatedAt: archivedAt }),
+      );
+
+      const view = await service.deleteBudget("b1", USER, CTX);
+
+      expect(budgetRepo.delete).toHaveBeenCalledWith(
+        "b1",
+        undefined,
+        undefined,
+      );
+      expect(view.archivedAt).toEqual(archivedAt);
+      expect(view.updatedAt).toEqual(archivedAt);
     });
 
     it("writes on an archived budget return RESOURCE_ARCHIVED", async () => {
@@ -781,7 +804,7 @@ describe("BudgetService", () => {
       budgetRepo.getByIdIncludingArchived.mockResolvedValue(archived());
       budgetRepo.restore.mockResolvedValue(makeBudget());
       const view = await service.restoreBudget("b1", USER, CTX);
-      expect(budgetRepo.restore).toHaveBeenCalledWith("b1", USER);
+      expect(budgetRepo.restore).toHaveBeenCalledWith("b1", USER, undefined);
       expect(view.archivedAt).toBeNull();
     });
     it("refuses when another active budget already covers its categories", async () => {

@@ -14,6 +14,11 @@ import {
 import { ERROR_CODES } from "../shared/errorCodes";
 import { CATEGORY_ICONS } from "../shared/icons";
 import { LOCALES } from "../shared/locale";
+import {
+  SYNC_ENTITIES,
+  SYNC_OP_STATUSES,
+  SYNC_WARNINGS,
+} from "../shared/syncBatch";
 
 // ---------------------------------------------------------------------------
 // Request bodies: GENERATED from the Zod validation schemas (single source of
@@ -51,6 +56,7 @@ const requestBodies = {
   CreateBudgetInput: bodyOf(v.createBudgetSchema),
   UpdateBudgetInput: bodyOf(v.updateBudgetSchema),
   BudgetAmountOverrideInput: bodyOf(v.budgetAmountOverrideSchema),
+  SyncBatchInput: bodyOf(v.syncBatchSchema),
 };
 
 // ---------------------------------------------------------------------------
@@ -338,6 +344,60 @@ const responseViews = {
   }),
 };
 
+// Sync-only views. Separate from responseViews because SyncTransaction is
+// derived from the Transaction view and cannot read it while it is still
+// being built.
+const syncViews = {
+  SyncTransaction: withRequired({
+    type: "object",
+    description:
+      "A transaction in the change feed: the usual shape plus the tombstone.",
+    properties: {
+      ...responseViews.Transaction.properties,
+      deletedAt: {
+        ...nullableDateTime,
+        description:
+          "Set when the transaction was deleted. Only the sync feed reports " +
+          "it: everywhere else a deleted transaction simply stops existing.",
+      },
+    },
+  }),
+  SyncBudget: withRequired({
+    type: "object",
+    description:
+      "A budget as STORED, not the view GET /budgets returns: no periodKey, " +
+      "no window and no spent. Those depend on a reference date and on the " +
+      "transactions, so the client derives them from what it already holds.",
+    properties: {
+      id: uuid,
+      name: { type: "string" },
+      color: enumOf(COLORS),
+      categoryIds: {
+        type: "array",
+        items: uuid,
+        description: "Empty array = global budget (all spending counts).",
+      },
+      type: enumOf(BUDGET_TYPES),
+      currency: { type: "string", example: "COP" },
+      amount: { ...money, description: "Base amount, before any override." },
+      amountOverrides: {
+        type: "object",
+        additionalProperties: money,
+        description: 'Period key (e.g. "2026-12") to the amount for it.',
+      },
+      periodType: enumOf(BUDGET_PERIOD_TYPES),
+      periodStartDate: nullableDateTime,
+      periodEndDate: nullableDateTime,
+      effectiveFrom: nullableDateTime,
+      note: { type: "string", nullable: true },
+      userId: uuid,
+      archivedAt: nullableDateTime,
+      createdAt: dateTime,
+      updatedAt: dateTime,
+    },
+  }),
+};
+
 const listOf = (ref: string): object =>
   withRequired({
     type: "object",
@@ -354,6 +414,167 @@ const dataOf = (items: object): object =>
     properties: { data: { type: "array", items } },
   });
 
+/**
+ * The change feed's envelope. `nextCursor` is never null: a finished run still
+ * hands back the watermark for the next one (60 s behind `serverTime`, see the
+ * route's description).
+ */
+const syncChangesResponse = withRequired({
+  type: "object",
+  properties: {
+    serverTime: {
+      ...dateTime,
+      description: "The server's clock when the page was read.",
+    },
+    changes: withRequired({
+      type: "object",
+      properties: {
+        user: {
+          allOf: [{ $ref: "#/components/schemas/User" }],
+          nullable: true,
+          description: "Null when the profile did not change in this page.",
+        },
+        accounts: {
+          type: "array",
+          items: { $ref: "#/components/schemas/Account" },
+        },
+        categories: {
+          type: "array",
+          items: { $ref: "#/components/schemas/Category" },
+        },
+        transactions: {
+          type: "array",
+          items: { $ref: "#/components/schemas/SyncTransaction" },
+        },
+        budgets: {
+          type: "array",
+          items: { $ref: "#/components/schemas/SyncBudget" },
+        },
+      },
+    }),
+    pagination: withRequired({
+      type: "object",
+      properties: {
+        limit: { type: "integer" },
+        count: {
+          type: "integer",
+          description: "Rows in this page, all entities together.",
+        },
+        hasMore: { type: "boolean" },
+        nextCursor: {
+          type: "string",
+          description:
+            "Opaque. Send it back verbatim: as `cursor` to keep paging while " +
+            "`hasMore`, and as the starting `cursor` of the next pull once it " +
+            "is false.",
+        },
+      },
+    }),
+  },
+});
+
+/** Any of the rows a `POST /sync` operation can be about or answered with. */
+const anyRow = {
+  oneOf: ["Account", "Category", "Transaction", "Budget"].map((view) => ({
+    $ref: `#/components/schemas/${view}`,
+  })),
+};
+
+/** One operation's outcome in a `POST /sync` batch. */
+const syncOpResult = withRequired(
+  {
+    type: "object",
+    properties: {
+      opId: uuid,
+      seq: { type: "integer" },
+      entity: { type: "string", enum: [...SYNC_ENTITIES] },
+      id: { ...uuid, description: "The entity the operation was about." },
+      status: { type: "string", enum: [...SYNC_OP_STATUSES] },
+      code: {
+        type: "string",
+        enum: [...ERROR_CODES],
+        description:
+          "conflict / rejected: the code the matching route would have answered.",
+      },
+      message: { type: "string" },
+      details: responseViews.ErrorResponse.properties.details,
+      current: {
+        ...anyRow,
+        description:
+          "The row as the server has it, like the HTTP 409: STALE_UPDATE, a " +
+          "DUPLICATE whose name an active row holds, and RESOURCE_ARCHIVED.",
+      },
+      result: {
+        ...anyRow,
+        description:
+          "applied, merged, and duplicate by client-minted id: what the route " +
+          "would have answered. Absent for transaction:delete and for a " +
+          "duplicate opId.",
+      },
+      blockedBy: {
+        ...uuid,
+        description:
+          "blocked only: the opId, in this batch, whose failure blocks this one.",
+      },
+      mergedInto: {
+        ...uuid,
+        description:
+          "merged (and a resent merged opId): the server row this operation " +
+          "landed on instead of `id`. Later operations of the same batch that " +
+          "name `id` are applied against it.",
+      },
+      warnings: {
+        type: "array",
+        items: { type: "string", enum: [...SYNC_WARNINGS] },
+        description:
+          "The write landed, but not as it was sent: " +
+          "CATEGORY_ARCHIVED_DROPPED — the category was archived online, so " +
+          "the movement was saved without it and flagged pendingDetails.",
+      },
+    },
+  },
+  [
+    "code",
+    "message",
+    "details",
+    "current",
+    "result",
+    "blockedBy",
+    "mergedInto",
+    "warnings",
+  ],
+);
+
+const syncBatchResponse = withRequired({
+  type: "object",
+  properties: {
+    serverTime: {
+      ...dateTime,
+      description: "The server's clock when the batch started.",
+    },
+    results: {
+      type: "array",
+      items: { $ref: "#/components/schemas/SyncOpResult" },
+      description: "One per operation, in `seq` order.",
+    },
+  },
+});
+
+/**
+ * The 409 of a guarded write: the error, plus the resource as the server has it
+ * when the code is STALE_UPDATE. Optional, because the same status also covers
+ * DUPLICATE and ID_TAKEN, which carry nothing.
+ */
+const conflictOf = (view: string): Record<string, unknown> => ({
+  allOf: [
+    { $ref: "#/components/schemas/ErrorResponse" },
+    {
+      type: "object",
+      properties: { current: { $ref: `#/components/schemas/${view}` } },
+    },
+  ],
+});
+
 const options: swaggerJsdoc.Options = {
   definition: {
     openapi: "3.0.3",
@@ -365,16 +586,37 @@ const options: swaggerJsdoc.Options = {
         "at most 2 decimal places (stored as integer cents). Every monetary " +
         "resource carries the user's `currency` (ISO 4217). Errors carry a " +
         "stable machine-readable `code`. Mutating a create twice is safe " +
-        "with the `Idempotency-Key` header on POST /transactions[/quick].",
+        "with the `Idempotency-Key` header on POST /transactions[/quick]. " +
+        "Creates accept a client-minted `id`; writes accept `If-Match: " +
+        "<updatedAt ISO>` and answer 409 STALE_UPDATE with the server's copy " +
+        "in `current`.",
     },
     servers: [{ url: "/", description: "Current server" }],
     components: {
       securitySchemes: {
         bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
       },
+      parameters: {
+        IfMatch: {
+          in: "header",
+          name: "If-Match",
+          required: false,
+          schema: { type: "string", format: "date-time" },
+          description:
+            "Optimistic concurrency: the `updatedAt` this client last read, " +
+            "verbatim (ISO 8601 with a time and an offset). The write only " +
+            "lands if the server still has that version; otherwise 409 " +
+            "STALE_UPDATE, with the server's copy in `current`. Omit the " +
+            "header to write unconditionally, as before.",
+        },
+      },
       schemas: {
         ...requestBodies,
         ...responseViews,
+        ...syncViews,
+        SyncChangesResponse: syncChangesResponse,
+        SyncOpResult: syncOpResult,
+        SyncBatchResponse: syncBatchResponse,
         AccountList: listOf("Account"),
         CategoryList: listOf("Category"),
         TransactionList: {
@@ -400,6 +642,10 @@ const options: swaggerJsdoc.Options = {
         RestoreDefaultsResponse: dataOf({
           $ref: "#/components/schemas/Category",
         }),
+        AccountConflict: conflictOf("Account"),
+        CategoryConflict: conflictOf("Category"),
+        TransactionConflict: conflictOf("Transaction"),
+        BudgetConflict: conflictOf("Budget"),
       },
     },
     security: [{ bearerAuth: [] }],

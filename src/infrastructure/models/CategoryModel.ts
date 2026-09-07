@@ -1,5 +1,6 @@
 import mongoose, { Schema } from "mongoose";
 
+import { NAME_COLLATION } from "../../shared/collation";
 import {
   CATEGORY_TYPES,
   CategoryType,
@@ -45,9 +46,13 @@ CategorySchema.index(
   {
     unique: true,
     partialFilterExpression: { archivedAt: null },
-    collation: { locale: "es", strength: 2 },
+    collation: NAME_COLLATION,
   },
 );
+
+// Offline change feed: keyset pagination over (updatedAt, _id), archived and
+// deleted rows included — the client learns of a disappearance no other way.
+CategorySchema.index({ userId: 1, updatedAt: 1, _id: 1 });
 
 export const CategoryModel = mongoose.model<ICategoryDocument>(
   MODEL_NAMES.CATEGORY,

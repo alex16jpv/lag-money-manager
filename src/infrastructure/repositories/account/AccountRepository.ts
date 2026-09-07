@@ -5,6 +5,7 @@ import {
   AccountFilters,
   IAccountRepository,
 } from "../../../domain/repositories/account/IAccountRepository";
+import { NAME_COLLATION } from "../../../shared/collation";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
 import {
@@ -12,8 +13,10 @@ import {
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession, withTransaction } from "../../../shared/unitOfWork";
 import { AccountModel, IAccountDocument } from "../../models/AccountModel";
+import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
 
 export class AccountRepository implements IAccountRepository {
   private toEntity(doc: IAccountDocument): Account {
@@ -82,8 +85,35 @@ export class AccountRepository implements IAccountRepository {
     return this.toEntity(doc);
   }
 
+  async changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<Account[]> {
+    const docs = await AccountModel.find(changesSinceFilter(userId, cursor))
+      .sort(CHANGE_FEED_SORT)
+      .limit(limit)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
+  async getOwnById(id: string, userId: string): Promise<Account | null> {
+    const doc = await AccountModel.findOne({ _id: id, userId }).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
   async getByIdIncludingArchived(id: string): Promise<Account | null> {
     const doc = await AccountModel.findById(id).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async findActiveByName(
+    userId: string,
+    name: string,
+  ): Promise<Account | null> {
+    const doc = await AccountModel.findOne({ userId, name, archivedAt: null })
+      .collation(NAME_COLLATION)
+      .lean();
     return doc ? this.toEntity(doc) : null;
   }
 
@@ -124,9 +154,14 @@ export class AccountRepository implements IAccountRepository {
     id: string,
     account: Partial<Account>,
     session?: TxSession,
+    expectedUpdatedAt?: Date,
   ): Promise<Account> {
     const doc = await AccountModel.findOneAndUpdate(
-      { _id: id, archivedAt: null },
+      {
+        _id: id,
+        archivedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       this.toStorage(account),
       { new: true, session: session ?? undefined },
     ).lean();
@@ -161,23 +196,39 @@ export class AccountRepository implements IAccountRepository {
     }
   }
 
-  async archiveNonDefault(id: string, userId: string): Promise<boolean> {
+  async archiveNonDefault(
+    id: string,
+    userId: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<Account | null> {
     const doc = await AccountModel.findOneAndUpdate(
-      { _id: id, userId, archivedAt: null, isDefault: false },
+      {
+        _id: id,
+        userId,
+        archivedAt: null,
+        isDefault: false,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { archivedAt: new Date() },
       { new: true },
     ).lean();
-    return doc !== null;
+    return doc ? this.toEntity(doc) : null;
   }
 
   async restore(
     id: string,
     userId: string,
     name?: string,
+    expectedUpdatedAt?: Date,
   ): Promise<Account | null> {
     // Never restore as default: another account may have taken the flag.
     const doc = await AccountModel.findOneAndUpdate(
-      { _id: id, userId, archivedAt: { $ne: null } },
+      {
+        _id: id,
+        userId,
+        archivedAt: { $ne: null },
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { archivedAt: null, isDefault: false, ...(name ? { name } : {}) },
       { new: true },
     ).lean();
@@ -193,12 +244,17 @@ export class AccountRepository implements IAccountRepository {
     return doc ? this.toEntity(doc) : null;
   }
 
-  async setDefault(id: string, userId: string): Promise<Account | null> {
+  async setDefault(
+    id: string,
+    userId: string,
+    expectedUpdatedAt?: Date,
+  ): Promise<Account | null> {
     return withTransaction(async (session) => {
       const exists = await AccountModel.exists({
         _id: id,
         userId,
         archivedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
       }).session(session);
       if (!exists) return null;
       // Unset BEFORE set: the partial unique default index rejects a second
@@ -209,7 +265,12 @@ export class AccountRepository implements IAccountRepository {
         { session },
       );
       const target = await AccountModel.findOneAndUpdate(
-        { _id: id, userId, archivedAt: null },
+        {
+          _id: id,
+          userId,
+          archivedAt: null,
+          ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+        },
         { isDefault: true },
         { new: true, session },
       ).lean();

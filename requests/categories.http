@@ -48,7 +48,8 @@ Content-Type: application/json
 
 { "name": "Café y snacks", "color": "AMBER" }
 
-### Archivar (soft delete) — libera el nombre para reuso
+### Archivar (soft delete) — libera el nombre para reuso.
+### Responde la categoría archivada (archivedAt y updatedAt nuevos), no un mensaje (F-22).
 DELETE {{baseUrl}}/categories/{{catId}}
 Authorization: Bearer {{token}}
 
@@ -135,3 +136,63 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "icon": "coffee" }
+
+### ==========================================================
+### O-B1 — id del cliente (offline). Re-ejecutable: la segunda
+### corrida responde 200 (replay) en vez de 201.
+### ==========================================================
+
+### Crear con id propio (201 la primera vez, 200 el replay)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000c1", "name": "Offline cat", "icon": "coffee", "type": "EXPENSE" }
+
+### Replay idéntico (200)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000c1", "name": "Offline cat", "icon": "coffee", "type": "EXPENSE" }
+
+### Mismo id, icono distinto (200: replay, gana la fila guardada)
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000c1", "name": "Offline cat", "icon": "car", "type": "EXPENSE" }
+
+### ==========================================================
+### O-B2 — If-Match (concurrencia optimista)
+### ==========================================================
+
+### Leer la categoría para quedarse con su updatedAt
+# @name catForIfMatch
+GET {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+
+###
+
+@categoryVersion = {{catForIfMatch.response.body.updatedAt}}
+
+### Escritura con la versión correcta (200)
+PUT {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+If-Match: {{categoryVersion}}
+Content-Type: application/json
+
+{ "color": "LIME" }
+
+### La misma versión otra vez (409 STALE_UPDATE)
+PUT {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+If-Match: {{categoryVersion}}
+Content-Type: application/json
+
+{ "color": "CYAN" }
+
+### Archivar con versión vieja (409 STALE_UPDATE)
+DELETE {{baseUrl}}/categories/{{catId}}
+Authorization: Bearer {{token}}
+If-Match: 2020-01-01T00:00:00.000Z

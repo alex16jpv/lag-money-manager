@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from "uuid";
 
 import { Transaction } from "../../../domain/entities/Transaction";
 import {
+  ChangedTransaction,
   ITransactionRepository,
   SpendingQuery,
   SpendingResult,
@@ -17,11 +18,13 @@ import {
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
 import {
   ITransactionDocument,
   TransactionModel,
 } from "../../models/TransactionModel";
+import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
 
 export class TransactionRepository implements ITransactionRepository {
   private toEntity(doc: ITransactionDocument): Transaction {
@@ -123,6 +126,36 @@ export class TransactionRepository implements ITransactionRepository {
     };
   }
 
+  async changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<ChangedTransaction[]> {
+    const docs = await TransactionModel.find(changesSinceFilter(userId, cursor))
+      .sort(CHANGE_FEED_SORT)
+      .limit(limit)
+      .lean();
+    return docs.map((doc) =>
+      Object.assign(this.toEntity(doc), { deletedAt: doc.deletedAt ?? null }),
+    );
+  }
+
+  async getOwnById(id: string, userId: string): Promise<Transaction | null> {
+    const doc = await TransactionModel.findOne({ _id: id, userId }).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async isDeleted(id: string, userId: string): Promise<boolean> {
+    const doc = await TransactionModel.findOne({
+      _id: id,
+      userId,
+      deletedAt: { $ne: null },
+    })
+      .select("_id")
+      .lean();
+    return doc !== null;
+  }
+
   async getById(id: string, session?: TxSession): Promise<Transaction | null> {
     const doc = await TransactionModel.findOne({ _id: id, deletedAt: null })
       .session(session ?? null)
@@ -197,6 +230,7 @@ export class TransactionRepository implements ITransactionRepository {
     transaction: Partial<Transaction>,
     session?: TxSession,
     revision?: TransactionRevision,
+    expectedUpdatedAt?: Date,
   ): Promise<Transaction> {
     const update: Record<string, unknown> = {
       $set: this.toStorage(transaction),
@@ -211,7 +245,11 @@ export class TransactionRepository implements ITransactionRepository {
       };
     }
     const doc = await TransactionModel.findOneAndUpdate(
-      { _id: id, deletedAt: null },
+      {
+        _id: id,
+        deletedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       update,
       { new: true, session: session ?? undefined },
     ).lean();
@@ -221,9 +259,17 @@ export class TransactionRepository implements ITransactionRepository {
     return this.toEntity(doc);
   }
 
-  async delete(id: string, session?: TxSession): Promise<void> {
+  async delete(
+    id: string,
+    session?: TxSession,
+    expectedUpdatedAt?: Date,
+  ): Promise<void> {
     const doc = await TransactionModel.findOneAndUpdate(
-      { _id: id, deletedAt: null },
+      {
+        _id: id,
+        deletedAt: null,
+        ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
+      },
       { deletedAt: new Date() },
       { new: true, session: session ?? undefined },
     ).lean();

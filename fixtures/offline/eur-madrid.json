@@ -1,0 +1,445 @@
+{
+  "id": "eur-madrid",
+  "title": "EUR · Europe/Madrid · two decimals and the spring DST jump",
+  "pins": [
+    "Amounts with decimals only add up exactly in minor units: the `current` balance, 1000 − 10.10 + 1500 − 7.77 − 100 − 3.45, drifts to 2378.6800000000003 as a float sum.",
+    "A March window opens at +01:00 and closes at +02:00: its ends have different offsets.",
+    "2026-03-29 is a 23-hour day — the local times 02:00–02:59 do not exist.",
+    "A transaction 5 minutes into April is UTC-March: a UTC window would take it and drop the one on 1 March.",
+    "An average is rounded in minor units: 20.29 over 3 rows is 6.76."
+  ],
+  "generatedBy": "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline",
+  "user": {
+    "id": "01930002-0000-7000-8000-0000000u0001",
+    "timezone": "Europe/Madrid",
+    "currency": "EUR",
+    "minorUnits": 2
+  },
+  "accounts": [
+    {
+      "key": "current",
+      "id": "01930002-0000-7000-8000-0000000a0001",
+      "name": "Cuenta corriente",
+      "type": "ACCOUNT",
+      "color": "BLUE",
+      "currency": "EUR",
+      "openingBalance": 1000,
+      "isDefault": true,
+      "archivedAt": null
+    },
+    {
+      "key": "card",
+      "id": "01930002-0000-7000-8000-0000000a0002",
+      "name": "Tarjeta",
+      "type": "CARD",
+      "color": "RED",
+      "currency": "EUR",
+      "openingBalance": -250.5,
+      "isDefault": false,
+      "archivedAt": null
+    }
+  ],
+  "categories": [
+    {
+      "key": "groceries",
+      "id": "01930002-0000-7000-8000-0000000c0001",
+      "name": "Compra",
+      "type": "EXPENSE",
+      "archivedAt": null
+    },
+    {
+      "key": "dining",
+      "id": "01930002-0000-7000-8000-0000000c0002",
+      "name": "Restaurantes",
+      "type": "EXPENSE",
+      "archivedAt": null
+    },
+    {
+      "key": "subs",
+      "id": "01930002-0000-7000-8000-0000000c0003",
+      "name": "Suscripciones",
+      "type": "EXPENSE",
+      "archivedAt": null
+    },
+    {
+      "key": "salary",
+      "id": "01930002-0000-7000-8000-0000000c0004",
+      "name": "Nómina",
+      "type": "INCOME",
+      "archivedAt": null
+    }
+  ],
+  "transactions": [
+    {
+      "key": "first-minutes",
+      "id": "01930002-0000-7000-8000-0000000t0001",
+      "type": "EXPENSE",
+      "amount": 10.1,
+      "date": "2026-03-01T00:15:00+01:00",
+      "description": "Mercadona",
+      "categoryId": "01930002-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930002-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [
+        "compra"
+      ],
+      "currency": "EUR",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "23:15Z on 28 February: inside March for the user, outside it in UTC."
+    },
+    {
+      "key": "payday",
+      "id": "01930002-0000-7000-8000-0000000t0002",
+      "type": "INCOME",
+      "amount": 1500,
+      "date": "2026-03-05T09:00:00+01:00",
+      "description": "Nómina",
+      "categoryId": "01930002-0000-7000-8000-0000000c0004",
+      "fromAccountId": null,
+      "toAccountId": "01930002-0000-7000-8000-0000000a0001",
+      "tags": [],
+      "currency": "EUR",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "before-the-jump",
+      "id": "01930002-0000-7000-8000-0000000t0003",
+      "type": "EXPENSE",
+      "amount": 0.1,
+      "date": "2026-03-29T01:45:00+01:00",
+      "description": "Propina",
+      "categoryId": "01930002-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930002-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "EUR",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "15 minutes before the clocks jump from 02:00 to 03:00."
+    },
+    {
+      "key": "after-the-jump",
+      "id": "01930002-0000-7000-8000-0000000t0004",
+      "type": "EXPENSE",
+      "amount": 0.2,
+      "date": "2026-03-29T03:15:00+02:00",
+      "description": "Café",
+      "categoryId": "01930002-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930002-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "EUR",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "30 real minutes after the previous row, and 1h30 later on the clock."
+    },
+    {
+      "key": "sunday-lunch",
+      "id": "01930002-0000-7000-8000-0000000t0005",
+      "type": "EXPENSE",
+      "amount": 19.99,
+      "date": "2026-03-29T21:00:00+02:00",
+      "description": "Comida",
+      "categoryId": "01930002-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930002-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [
+        "finde"
+      ],
+      "currency": "EUR",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "rounding",
+      "id": "01930002-0000-7000-8000-0000000t0006",
+      "type": "EXPENSE",
+      "amount": 2.3,
+      "date": "2026-03-30T12:00:00+02:00",
+      "description": "Menú",
+      "categoryId": "01930002-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930002-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [
+        "finde"
+      ],
+      "currency": "EUR",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "subscription",
+      "id": "01930002-0000-7000-8000-0000000t0007",
+      "type": "EXPENSE",
+      "amount": 7.77,
+      "date": "2026-03-31T23:59:00+02:00",
+      "description": "Spotify",
+      "categoryId": "01930002-0000-7000-8000-0000000c0003",
+      "fromAccountId": "01930002-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "EUR",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "Last minute of March, local time."
+    },
+    {
+      "key": "next-month",
+      "id": "01930002-0000-7000-8000-0000000t0008",
+      "type": "EXPENSE",
+      "amount": 100,
+      "date": "2026-04-01T00:05:00+02:00",
+      "description": "Compra de abril",
+      "categoryId": "01930002-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930002-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "EUR",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "22:05Z on 31 March: a UTC window would count it in March."
+    },
+    {
+      "key": "void",
+      "id": "01930002-0000-7000-8000-0000000t0009",
+      "type": "EXPENSE",
+      "amount": 50,
+      "date": "2026-03-20T12:00:00+01:00",
+      "description": "Devolución",
+      "categoryId": "01930002-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930002-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "EUR",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": "2026-03-21T12:00:00.000+01:00"
+    },
+    {
+      "key": "pending-coffee",
+      "id": "01930002-0000-7000-8000-0000000t0010",
+      "type": "EXPENSE",
+      "amount": 3.45,
+      "date": "2026-03-27T17:00:00+01:00",
+      "description": null,
+      "categoryId": null,
+      "fromAccountId": "01930002-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "EUR",
+      "source": "QUICK",
+      "pendingDetails": true,
+      "deletedAt": null
+    }
+  ],
+  "budgets": [
+    {
+      "key": "dining-month",
+      "id": "01930002-0000-7000-8000-0000000b0001",
+      "name": "Restaurantes",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930002-0000-7000-8000-0000000c0002"
+      ],
+      "amount": 40,
+      "amountOverrides": {},
+      "currency": "EUR",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2026-01-01T00:00:00+01:00",
+      "archivedAt": null
+    },
+    {
+      "key": "dining-week",
+      "id": "01930002-0000-7000-8000-0000000b0002",
+      "name": "Restaurantes (semana)",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930002-0000-7000-8000-0000000c0002"
+      ],
+      "amount": 25,
+      "amountOverrides": {},
+      "currency": "EUR",
+      "periodType": "WEEKLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2026-01-01T00:00:00+01:00",
+      "archivedAt": null,
+      "note": "The week of the jump lasts 167 hours, not 168."
+    },
+    {
+      "key": "everything",
+      "id": "01930002-0000-7000-8000-0000000b0003",
+      "name": "Todo",
+      "type": "EXPENSE",
+      "categoryIds": [],
+      "amount": 100,
+      "amountOverrides": {},
+      "currency": "EUR",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2026-01-01T00:00:00+01:00",
+      "archivedAt": null
+    }
+  ],
+  "expected": {
+    "balances": [
+      {
+        "key": "current",
+        "accountId": "01930002-0000-7000-8000-0000000a0001",
+        "balance": 2378.68
+      },
+      {
+        "key": "card",
+        "accountId": "01930002-0000-7000-8000-0000000a0002",
+        "balance": -273.09
+      }
+    ],
+    "pending": {
+      "count": 1,
+      "total": 3.45,
+      "transactionIds": [
+        "01930002-0000-7000-8000-0000000t0010"
+      ]
+    },
+    "spending": [
+      {
+        "name": "march-by-category",
+        "query": {
+          "groupBy": "category",
+          "type": "EXPENSE",
+          "from": "2026-03-01T00:00:00+01:00",
+          "to": "2026-04-01T00:00:00+02:00",
+          "timezone": "Europe/Madrid"
+        },
+        "total": 43.91,
+        "buckets": [
+          {
+            "key": "01930002-0000-7000-8000-0000000c0002",
+            "total": 22.59,
+            "count": 4,
+            "avg": 5.65
+          },
+          {
+            "key": "01930002-0000-7000-8000-0000000c0001",
+            "total": 10.1,
+            "count": 1,
+            "avg": 10.1
+          },
+          {
+            "key": "01930002-0000-7000-8000-0000000c0003",
+            "total": 7.77,
+            "count": 1,
+            "avg": 7.77
+          },
+          {
+            "key": "uncategorized",
+            "total": 3.45,
+            "count": 1,
+            "avg": 3.45
+          }
+        ],
+        "note": "The window's ends carry different offsets. That is the point."
+      },
+      {
+        "name": "march-by-day",
+        "query": {
+          "groupBy": "day",
+          "type": "EXPENSE",
+          "from": "2026-03-01T00:00:00+01:00",
+          "to": "2026-04-01T00:00:00+02:00",
+          "timezone": "Europe/Madrid"
+        },
+        "total": 43.91,
+        "buckets": [
+          {
+            "key": "2026-03-01",
+            "total": 10.1,
+            "count": 1,
+            "avg": 10.1
+          },
+          {
+            "key": "2026-03-27",
+            "total": 3.45,
+            "count": 1,
+            "avg": 3.45
+          },
+          {
+            "key": "2026-03-29",
+            "total": 20.29,
+            "count": 3,
+            "avg": 6.76
+          },
+          {
+            "key": "2026-03-30",
+            "total": 2.3,
+            "count": 1,
+            "avg": 2.3
+          },
+          {
+            "key": "2026-03-31",
+            "total": 7.77,
+            "count": 1,
+            "avg": 7.77
+          }
+        ]
+      }
+    ],
+    "budgets": {
+      "reference": "2026-03-25T12:00:00+01:00",
+      "views": [
+        {
+          "key": "dining-month",
+          "id": "01930002-0000-7000-8000-0000000b0001",
+          "periodKey": "2026-03",
+          "periodFrom": "2026-02-28T23:00:00.000Z",
+          "periodTo": "2026-03-31T22:00:00.000Z",
+          "baseAmount": 40,
+          "amount": 40,
+          "hasOverride": false,
+          "spent": 22.59,
+          "expired": false,
+          "archivedCategoryIds": []
+        },
+        {
+          "key": "dining-week",
+          "id": "01930002-0000-7000-8000-0000000b0002",
+          "periodKey": "2026-W13",
+          "periodFrom": "2026-03-22T23:00:00.000Z",
+          "periodTo": "2026-03-29T22:00:00.000Z",
+          "baseAmount": 25,
+          "amount": 25,
+          "hasOverride": false,
+          "spent": 20.29,
+          "expired": false,
+          "archivedCategoryIds": []
+        },
+        {
+          "key": "everything",
+          "id": "01930002-0000-7000-8000-0000000b0003",
+          "periodKey": "2026-03",
+          "periodFrom": "2026-02-28T23:00:00.000Z",
+          "periodTo": "2026-03-31T22:00:00.000Z",
+          "baseAmount": 100,
+          "amount": 100,
+          "hasOverride": false,
+          "spent": 43.91,
+          "expired": false,
+          "archivedCategoryIds": []
+        }
+      ]
+    }
+  }
+}

@@ -15,11 +15,13 @@ import authRoutes from "./app/routes/authRoutes";
 import budgetRoutes from "./app/routes/budgetRoutes";
 import categoryRoutes from "./app/routes/categoryRoutes";
 import statsRoutes from "./app/routes/statsRoutes";
+import syncRoutes from "./app/routes/syncRoutes";
 import transactionRoutes from "./app/routes/transactionRoutes";
 import userRoutes from "./app/routes/userRoutes";
 import { pingDatabase } from "./config/dbHealth";
 import { swaggerSpec } from "./config/swagger";
 import { ENVIRONMENT } from "./shared/constants";
+import { SYNC_BODY_LIMIT } from "./shared/syncBatch";
 import { errorMiddleware } from "./shared/middlewares";
 import { requestIdMiddleware } from "./shared/requestId";
 
@@ -46,6 +48,9 @@ app.use(
     origin: ENVIRONMENT.CORS_ORIGIN.split(",").map((s) => s.trim()),
   }),
 );
+// A batch of 200 operations does not fit the general cap. body-parser skips
+// a body another parser already read, so this one has to be mounted first.
+app.use("/sync", express.json({ limit: SYNC_BODY_LIMIT }));
 app.use(express.json({ limit: "10kb" }));
 
 if (ENVIRONMENT.NODE_ENV !== "production") {
@@ -95,6 +100,7 @@ app.use("/categories", apiLimiter, categoryRoutes);
 app.use("/transactions", apiLimiter, transactionRoutes);
 app.use("/budgets", apiLimiter, budgetRoutes);
 app.use("/stats", apiLimiter, statsRoutes);
+app.use("/sync", apiLimiter, syncRoutes);
 
 app.use(errorMiddleware);
 

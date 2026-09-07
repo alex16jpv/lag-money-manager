@@ -61,7 +61,8 @@ Content-Type: application/json
 POST {{baseUrl}}/accounts/{{accountB}}/default
 Authorization: Bearer {{token}}
 
-### Archivar A (soft delete) — solo funciona porque A ya NO es default
+### Archivar A (soft delete) — solo funciona porque A ya NO es default.
+### Responde la cuenta archivada (archivedAt y updatedAt nuevos), no un mensaje (F-22).
 DELETE {{baseUrl}}/accounts/{{accountA}}
 Authorization: Bearer {{token}}
 
@@ -136,3 +137,90 @@ Content-Type: application/json
 ### Get inexistente o de otro usuario (404 uniforme)
 GET {{baseUrl}}/accounts/00000000-0000-0000-0000-000000000000
 Authorization: Bearer {{token}}
+
+### ==========================================================
+### O-B1 — id del cliente (offline). El id lo pone el cliente y el
+### servidor no lo reemplaza. Este bloque es re-ejecutable: la
+### segunda corrida responde 200 (replay) en vez de 201.
+### ==========================================================
+
+### Crear con id propio (201 la primera vez, 200 el replay)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000a1", "name": "Offline CASH", "type": "CASH", "balance": 100, "color": "TEAL" }
+
+### Replay idéntico (200, mismo recurso, sin escribir de nuevo)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000a1", "name": "Offline CASH", "type": "CASH", "balance": 100, "color": "TEAL" }
+
+### Mismo id, payload distinto (200: replay, gana la fila guardada)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "019a0000-0b01-7000-8000-0000000000a1", "name": "Otro nombre", "type": "CASH", "balance": 100 }
+
+### id que no es UUID (400 VALIDATION)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "no-es-uuid", "name": "X", "type": "CASH" }
+
+### id de OTRO usuario (409 ID_TAKEN opaco, no lee el documento ajeno).
+### Para dispararlo: crea la cuenta con ese id logueado como otro usuario
+### y repite este POST con el token de este.
+
+### ==========================================================
+### O-B2 — If-Match (concurrencia optimista). Sin la cabecera,
+### la escritura es incondicional, como siempre.
+### ==========================================================
+
+### Leer la cuenta para quedarse con su updatedAt
+# @name accForIfMatch
+GET {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+
+###
+
+@accountAVersion = {{accForIfMatch.response.body.updatedAt}}
+
+### Escritura con la versión correcta (200) — ojo: esto cambia updatedAt,
+### así que repetirla tal cual da 409 STALE_UPDATE
+PUT {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+If-Match: {{accountAVersion}}
+Content-Type: application/json
+
+{ "color": "INDIGO" }
+
+### La misma versión otra vez (409 STALE_UPDATE; `current` trae la cuenta del servidor)
+PUT {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+If-Match: {{accountAVersion}}
+Content-Type: application/json
+
+{ "color": "ROSE" }
+
+### Cabecera mal formada — fecha sin hora (400 VALIDATION, no un 409 silencioso)
+PUT {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+If-Match: 2026-09-03
+Content-Type: application/json
+
+{ "color": "ROSE" }
+
+### Archivar con versión vieja (409 STALE_UPDATE)
+DELETE {{baseUrl}}/accounts/{{accountA}}
+Authorization: Bearer {{token}}
+If-Match: 2020-01-01T00:00:00.000Z
+
+### Cuenta default con versión vieja (409 STALE_UPDATE)
+POST {{baseUrl}}/accounts/{{accountA}}/default
+Authorization: Bearer {{token}}
+If-Match: 2020-01-01T00:00:00.000Z

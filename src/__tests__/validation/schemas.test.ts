@@ -69,6 +69,7 @@ jest.mock("../../shared/constants", () => ({
 
 import {
   createAccountSchema,
+  createBudgetSchema,
   createCategorySchema,
   createTransactionSchema,
   getCategoriesSchema,
@@ -76,7 +77,9 @@ import {
   idParamSchema,
   loginSchema,
   paginationQuerySchema,
+  quickAddTransactionSchema,
   registerSchema,
+  syncBatchSchema,
   updateAccountSchema,
   updateCategorySchema,
   updateTransactionSchema,
@@ -1091,6 +1094,170 @@ describe("Validation Schemas", () => {
         query: { limit: "101" },
       });
       expect(result.success).toBe(false);
+    });
+  });
+
+  // O-B1: an offline client mints the id so its create can be retried.
+  describe("client-minted id on creates", () => {
+    const bodies: [
+      string,
+      {
+        safeParse: (v: unknown) => {
+          success: boolean;
+          data?: { body?: { id?: string } };
+        };
+      },
+      Record<string, unknown>,
+    ][] = [
+      [
+        "createAccountSchema",
+        createAccountSchema,
+        { name: "Cash", type: "CASH" },
+      ],
+      ["createCategorySchema", createCategorySchema, { name: "Food" }],
+      [
+        "createTransactionSchema",
+        createTransactionSchema,
+        {
+          type: "EXPENSE",
+          amount: 10,
+          date: "2026-03-28T00:00:00.000Z",
+          fromAccountId: validUUID2,
+        },
+      ],
+      ["quickAddTransactionSchema", quickAddTransactionSchema, { amount: 10 }],
+      [
+        "createBudgetSchema",
+        createBudgetSchema,
+        {
+          name: "Food",
+          color: "RED",
+          categoryIds: [],
+          amount: 100,
+          periodType: "MONTHLY",
+        },
+      ],
+    ];
+
+    it.each(bodies)("%s keeps a valid id", (_name, schema, body) => {
+      const result = schema.safeParse({
+        query: {},
+        body: { ...body, id: validUUID },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.body?.id).toBe(validUUID);
+    });
+
+    it.each(bodies)("%s stays valid without an id", (_name, schema, body) => {
+      const result = schema.safeParse({ query: {}, body });
+      expect(result.success).toBe(true);
+      expect(result.data?.body?.id).toBeUndefined();
+    });
+
+    it.each(bodies)(
+      "%s rejects an id that is not a UUID",
+      (_name, schema, body) => {
+        const result = schema.safeParse({
+          query: {},
+          body: { ...body, id: "42" },
+        });
+        expect(result.success).toBe(false);
+      },
+    );
+  });
+
+  describe("syncBatchSchema (O-B4)", () => {
+    const operation = (
+      n: number,
+      over: Record<string, unknown> = {},
+    ): Record<string, unknown> => ({
+      opId: `01940000-0000-7000-8000-${String(n).padStart(12, "0")}`,
+      seq: n,
+      occurredAt: "2026-09-05T10:00:00.000Z",
+      entity: "account",
+      action: "archive",
+      id: validUUID,
+      opVersion: 1,
+      ...over,
+    });
+
+    it("parses a minimal operation and fills the defaults", () => {
+      const result = syncBatchSchema.safeParse({
+        body: { operations: [operation(1)] },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.body.operations[0]).toMatchObject({
+        payload: {},
+        dependsOn: [],
+      });
+    });
+
+    it("keeps payload.body verbatim: the service validates it per action", () => {
+      const result = syncBatchSchema.safeParse({
+        body: {
+          operations: [
+            operation(1, {
+              action: "create",
+              payload: {
+                body: { name: "x", anything: true },
+                query: { reference: "2026-12-01T00:00:00.000Z" },
+              },
+            }),
+          ],
+        },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.body.operations[0].payload.body).toEqual({
+        name: "x",
+        anything: true,
+      });
+    });
+
+    it("rejects an empty batch and one past 200 operations", () => {
+      expect(
+        syncBatchSchema.safeParse({ body: { operations: [] } }).success,
+      ).toBe(false);
+      const tooMany = Array.from({ length: 201 }, (_, i) => operation(i));
+      const result = syncBatchSchema.safeParse({
+        body: { operations: tooMany },
+      });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0].message).toContain("at most 200");
+    });
+
+    it("rejects a repeated opId", () => {
+      const result = syncBatchSchema.safeParse({
+        body: {
+          operations: [operation(1), operation(2, { opId: operation(1).opId })],
+        },
+      });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0].path).toEqual(["body", "operations"]);
+    });
+
+    it.each([
+      ["entity", "user"],
+      ["opId", "not-a-uuid"],
+      ["id", "42"],
+      ["seq", -1],
+      ["seq", 1.5],
+      ["occurredAt", "2026-09-05"],
+      ["baseUpdatedAt", "yesterday"],
+      ["opVersion", 0],
+      ["dependsOn", ["nope"]],
+      ["payload", { query: { reference: "2026-12-01" } }],
+    ])("rejects %s = %j", (field, value) => {
+      const result = syncBatchSchema.safeParse({
+        body: { operations: [operation(1, { [field]: value })] },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("does not judge the action here: an unknown one is the service's per-operation rejection", () => {
+      const result = syncBatchSchema.safeParse({
+        body: { operations: [operation(1, { action: "teleport" })] },
+      });
+      expect(result.success).toBe(true);
     });
   });
 });

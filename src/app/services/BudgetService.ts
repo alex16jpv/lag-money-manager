@@ -7,10 +7,12 @@ import {
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
-import { DEFAULT_CURRENCY } from "../../shared/currency";
-import { assertAmountPrecision } from "../../shared/money";
 import { resolvePeriod } from "../../shared/budgetPeriod";
+import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
+import { assertFresh, guardedWrite } from "../../shared/concurrency";
+import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { ApiError } from "../../shared/errors";
+import { assertAmountPrecision } from "../../shared/money";
 import { fromCents } from "../../shared/money";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import {
@@ -64,6 +66,20 @@ export class BudgetService {
   async createBudget(
     dto: CreateBudgetDTO,
     ctx: ViewContext,
+    outcome?: CreateOutcome,
+  ): Promise<BudgetView> {
+    return createOrReplay({
+      clientId: dto.id,
+      outcome,
+      findOwn: (id) => this.repo.getOwnById(id, dto.userId),
+      replay: async (b) => (await this.toViews(dto.userId, [b], ctx))[0],
+      create: () => this.insertBudget(dto, ctx),
+    });
+  }
+
+  private async insertBudget(
+    dto: CreateBudgetDTO,
+    ctx: ViewContext,
   ): Promise<BudgetView> {
     const type = dto.type ?? "EXPENSE";
     this.assertValidPeriod(dto);
@@ -83,8 +99,12 @@ export class BudgetService {
     dto: UpdateBudgetDTO,
     userId: string,
     ctx: ViewContext,
+    expectedUpdatedAt?: Date,
   ): Promise<BudgetView> {
     const existing = await this.getOwned(id, userId);
+    // Before assertWritable: a caller writing against an old version needs to
+    // re-read whatever happened, not a reason it cannot know about yet.
+    await this.assertFreshBudget(existing, expectedUpdatedAt, userId, ctx);
     this.assertWritable(existing);
     const patch: Partial<Budget> = { ...dto };
     if (dto.periodType && dto.periodType !== existing.periodType) {
@@ -117,27 +137,45 @@ export class BudgetService {
       );
     }
     await this.assertNoOverlap(userId, merged, id);
-    const updated = await this.repo.update(id, patch);
+    const updated = await guardedWrite(
+      expectedUpdatedAt,
+      () => this.repo.update(id, patch, undefined, expectedUpdatedAt),
+      () => this.repo.getOwnById(id, userId),
+      (b) => this.view(b, userId, ctx),
+    );
     const [view] = await this.toViews(userId, [updated], ctx);
     return view;
   }
 
   // Idempotent: archiving an already-archived budget is a no-op success.
-  async deleteBudget(id: string, userId: string): Promise<void> {
+  // Answers the archived view: an offline client needs its new `updatedAt` to
+  // guard the restore it may have queued right behind (F-22).
+  async deleteBudget(
+    id: string,
+    userId: string,
+    ctx: ViewContext,
+    expectedUpdatedAt?: Date,
+  ): Promise<BudgetView> {
     const existing = await this.getOwned(id, userId);
+    await this.assertFreshBudget(existing, expectedUpdatedAt, userId, ctx);
     if (existing.archivedAt) {
-      return;
+      return (await this.toViews(userId, [existing], ctx))[0];
     }
+    let archived: Budget;
     try {
-      await this.repo.delete(id);
+      archived = await this.repo.delete(id, undefined, expectedUpdatedAt);
     } catch (err) {
       // Lost the race to a concurrent archive: still a success.
       const current = await this.repo.getByIdIncludingArchived(id);
-      if (current?.userId === userId && current.archivedAt) {
-        return;
+      if (current?.userId === userId) {
+        await this.assertFreshBudget(current, expectedUpdatedAt, userId, ctx);
+        if (current.archivedAt) {
+          return (await this.toViews(userId, [current], ctx))[0];
+        }
       }
       throw err;
     }
+    return (await this.toViews(userId, [archived], ctx))[0];
   }
 
   /**
@@ -153,13 +191,15 @@ export class BudgetService {
     id: string,
     userId: string,
     ctx: ViewContext,
+    expectedUpdatedAt?: Date,
   ): Promise<BudgetView> {
     const existing = await this.getOwned(id, userId);
+    await this.assertFreshBudget(existing, expectedUpdatedAt, userId, ctx);
     // Idempotent, like accounts and categories: an active budget comes back
     // unchanged rather than erroring.
     if (existing.archivedAt) {
       await this.assertNoOverlap(userId, existing, existing.id);
-      const restored = await this.repo.restore(id, userId);
+      const restored = await this.repo.restore(id, userId, expectedUpdatedAt);
       if (restored) {
         const [view] = await this.toViews(userId, [restored], ctx);
         return view;
@@ -167,6 +207,7 @@ export class BudgetService {
       // Lost the race to a concurrent restore: whatever is stored now is the
       // answer, and it is no longer archived.
       const current = await this.getOwned(id, userId);
+      await this.assertFreshBudget(current, expectedUpdatedAt, userId, ctx);
       const [view] = await this.toViews(userId, [current], ctx);
       return view;
     }
@@ -178,17 +219,24 @@ export class BudgetService {
     id: string,
     userId: string,
     ctx: ViewContext,
+    expectedUpdatedAt?: Date,
   ): Promise<BudgetView> {
     const budget = await this.getOwned(id, userId);
+    await this.assertFreshBudget(budget, expectedUpdatedAt, userId, ctx);
     this.assertWritable(budget);
     const { key } = resolvePeriod(
       this.periodDef(budget),
       ctx.reference,
       ctx.timezone,
     );
-    const updated = await this.repo.clearAmountOverride(id, userId, key);
+    const updated = await this.repo.clearAmountOverride(
+      id,
+      userId,
+      key,
+      expectedUpdatedAt,
+    );
     if (!updated) {
-      throw new ApiError("NotFound", "Budget not found");
+      return this.assertFreshOrMissing(id, userId, expectedUpdatedAt, ctx);
     }
     const [view] = await this.toViews(userId, [updated], ctx);
     return view;
@@ -199,8 +247,10 @@ export class BudgetService {
     userId: string,
     amount: number,
     ctx: ViewContext,
+    expectedUpdatedAt?: Date,
   ): Promise<BudgetView> {
     const budget = await this.getOwned(id, userId);
+    await this.assertFreshBudget(budget, expectedUpdatedAt, userId, ctx);
     this.assertWritable(budget);
     assertAmountPrecision(
       amount,
@@ -212,12 +262,56 @@ export class BudgetService {
       ctx.reference,
       ctx.timezone,
     );
-    const updated = await this.repo.setAmountOverride(id, userId, key, amount);
+    const updated = await this.repo.setAmountOverride(
+      id,
+      userId,
+      key,
+      amount,
+      expectedUpdatedAt,
+    );
     if (!updated) {
-      throw new ApiError("NotFound", "Budget not found");
+      return this.assertFreshOrMissing(id, userId, expectedUpdatedAt, ctx);
     }
     const [view] = await this.toViews(userId, [updated], ctx);
     return view;
+  }
+
+  private async view(
+    budget: Budget,
+    userId: string,
+    ctx: ViewContext,
+  ): Promise<BudgetView> {
+    const [view] = await this.toViews(userId, [budget], ctx);
+    return view;
+  }
+
+  private async assertFreshBudget(
+    budget: Budget,
+    expectedUpdatedAt: Date | undefined,
+    userId: string,
+    ctx: ViewContext,
+  ): Promise<void> {
+    if (!expectedUpdatedAt) return;
+    // The view costs an aggregation, so it is only built once the guard has
+    // already failed.
+    if (budget.updatedAt?.getTime() !== expectedUpdatedAt.getTime()) {
+      const current = await this.view(budget, userId, ctx);
+      assertFresh(budget, expectedUpdatedAt, () => current);
+    }
+  }
+
+  /** A write whose filter matched nothing: stale if it is still there, 404 if not. */
+  private async assertFreshOrMissing(
+    id: string,
+    userId: string,
+    expectedUpdatedAt: Date | undefined,
+    ctx: ViewContext,
+  ): Promise<never> {
+    const current = await this.repo.getOwnById(id, userId);
+    if (current) {
+      await this.assertFreshBudget(current, expectedUpdatedAt, userId, ctx);
+    }
+    throw new ApiError("NotFound", "Budget not found");
   }
 
   // Uniform semantics: archived budgets stay readable; callers that write

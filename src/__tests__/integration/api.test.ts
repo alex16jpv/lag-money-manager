@@ -9,6 +9,7 @@ import { IAccountRepository } from "../../domain/repositories/account/IAccountRe
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { ApiError } from "../../shared/errors";
 
 // --- Mock repositories ---
 const mockUserRepo: jest.Mocked<IUserRepository> = {
@@ -31,11 +32,14 @@ const mockAccountRepo: jest.Mocked<IAccountRepository> = {
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  findActiveByName: jest.fn().mockResolvedValue(null),
+  getOwnById: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
   incrementBalance: jest.fn().mockResolvedValue(true),
-  archiveNonDefault: jest.fn().mockResolvedValue(true),
+  archiveNonDefault: jest.fn().mockResolvedValue(null),
   restore: jest.fn(),
   getDefaultByUserId: jest.fn(),
   setDefault: jest.fn(),
@@ -47,6 +51,9 @@ const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  findActiveByName: jest.fn().mockResolvedValue(null),
+  getOwnById: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   createMany: jest.fn(),
   listSeedKeys: jest.fn().mockResolvedValue([]),
@@ -61,6 +68,9 @@ const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
+  getOwnById: jest.fn(),
+  isDeleted: jest.fn().mockResolvedValue(false),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -76,6 +86,9 @@ const mockBudgetRepo = {
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  findActiveByName: jest.fn().mockResolvedValue(null),
+  getOwnById: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -85,6 +98,11 @@ const mockBudgetRepo = {
 };
 
 const mockIdempotencyRepo = {
+  find: jest.fn().mockResolvedValue(null),
+  record: jest.fn().mockResolvedValue(undefined),
+};
+
+const mockSyncOpRepo = {
   find: jest.fn().mockResolvedValue(null),
   record: jest.fn().mockResolvedValue(undefined),
 };
@@ -211,6 +229,7 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getIdempotencyRepository: () => mockIdempotencyRepo,
     getBudgetRepository: () => mockBudgetRepo,
     getRefreshSessionRepository: () => mockRefreshSessionRepo,
+    getSyncOpRepository: () => mockSyncOpRepo,
   },
   RepositoryFactory: jest.fn(),
 }));
@@ -668,9 +687,15 @@ describe("Integration Tests", () => {
   });
 
   describe("DELETE /accounts/:id", () => {
-    it("should delete an account", async () => {
+    it("should archive an account and answer the archived row (F-22)", async () => {
       mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(testAccount);
-      mockAccountRepo.archiveNonDefault.mockResolvedValue(true);
+      mockAccountRepo.archiveNonDefault.mockResolvedValue(
+        new Account({
+          ...testAccount,
+          archivedAt: new Date("2026-09-05T10:00:00.000Z"),
+          updatedAt: new Date("2026-09-05T10:00:00.000Z"),
+        }),
+      );
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [],
         pagination: {
@@ -687,9 +712,13 @@ describe("Integration Tests", () => {
         .set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(200);
+      expect(res.body.id).toBe(testAccount.id);
+      expect(res.body.archivedAt).toBe("2026-09-05T10:00:00.000Z");
+      expect(res.body.updatedAt).toBe("2026-09-05T10:00:00.000Z");
       expect(mockAccountRepo.archiveNonDefault).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        undefined,
       );
     });
   });
@@ -706,6 +735,7 @@ describe("Integration Tests", () => {
       expect(mockAccountRepo.restore).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
         testUser.id,
+        undefined,
         undefined,
       );
     });
@@ -725,6 +755,7 @@ describe("Integration Tests", () => {
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
         testUser.id,
         "Nequi antiguo",
+        undefined,
       );
     });
 
@@ -841,9 +872,14 @@ describe("Integration Tests", () => {
   });
 
   describe("DELETE /categories/:id", () => {
-    it("should delete a category", async () => {
+    it("should archive a category and answer the archived row (F-22)", async () => {
       mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(testCategory);
-      mockCategoryRepo.delete.mockResolvedValue();
+      mockCategoryRepo.delete.mockResolvedValue(
+        new Category({
+          ...testCategory,
+          archivedAt: new Date("2026-09-05T10:00:00.000Z"),
+        }),
+      );
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
         data: [],
         pagination: {
@@ -860,8 +896,12 @@ describe("Integration Tests", () => {
         .set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(200);
+      expect(res.body.id).toBe(testCategory.id);
+      expect(res.body.archivedAt).toBe("2026-09-05T10:00:00.000Z");
       expect(mockCategoryRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac73",
+        undefined,
+        undefined,
       );
     });
   });
@@ -1143,6 +1183,7 @@ describe("Integration Tests", () => {
       expect(mockTransactionRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac74",
         expect.anything(),
+        undefined,
       );
     });
   });
@@ -1254,6 +1295,781 @@ describe("Integration Tests", () => {
         });
 
       expect(res.status).toBe(400);
+    });
+  });
+  // ==================== Client-minted ids (O-B1) ====================
+  describe("Client-minted ids [O-B1]", () => {
+    const CLIENT_ID = "019576a0-d7b6-7d6d-af6a-2b7545f5ac71";
+    const dupKey = (keyPattern: Record<string, number>): Error =>
+      Object.assign(new Error("E11000 duplicate key"), {
+        name: "MongoServerError",
+        code: 11000,
+        keyPattern,
+      });
+    const accountBody = {
+      id: CLIENT_ID,
+      name: "Savings",
+      type: "SAVINGS",
+      balance: 1000,
+    };
+
+    beforeEach(() => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+      mockTransactionRepo.sumAmountsByCategory.mockResolvedValue({});
+    });
+
+    it("stores the id the client sent", async () => {
+      mockAccountRepo.getOwnById.mockResolvedValue(null);
+      mockAccountRepo.create.mockResolvedValue(testAccount);
+
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .send(accountBody);
+
+      expect(res.status).toBe(201);
+      expect(mockAccountRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ id: CLIENT_ID }),
+      );
+    });
+
+    it("rejects an id that is not a UUID", async () => {
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ ...accountBody, id: "not-a-uuid" });
+
+      expect(res.status).toBe(400);
+      expect(mockAccountRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("replays an identical create with 200 and does not write again", async () => {
+      mockAccountRepo.getOwnById.mockResolvedValue(testAccount);
+
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .send(accountBody);
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(CLIENT_ID);
+      expect(mockAccountRepo.create).not.toHaveBeenCalled();
+    });
+
+    // The stored row wins: it may have been edited from another device since.
+    it("replays the user's own id with 200 even when the payload differs", async () => {
+      mockAccountRepo.getOwnById.mockResolvedValue(testAccount);
+
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ ...accountBody, name: "Renamed" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.name).toBe(testAccount.name);
+      expect(mockAccountRepo.create).not.toHaveBeenCalled();
+    });
+
+    // A leak here would tell the caller that someone else's resource exists,
+    // and the message would describe it.
+    it("answers an opaque 409 ID_TAKEN for another user's id, without reading it", async () => {
+      mockAccountRepo.getOwnById.mockResolvedValue(null);
+      mockAccountRepo.create.mockRejectedValue(dupKey({ _id: 1 }));
+
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .send(accountBody);
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("ID_TAKEN");
+      expect(res.body).toEqual({
+        error: "ConflictError",
+        message: "That id is already in use; retry with a new one",
+        code: "ID_TAKEN",
+      });
+      expect(mockAccountRepo.getById).not.toHaveBeenCalled();
+      expect(mockAccountRepo.getByIdIncludingArchived).not.toHaveBeenCalled();
+      expect(mockAccountRepo.getOwnById).toHaveBeenCalledWith(
+        CLIENT_ID,
+        testUser.id,
+      );
+    });
+
+    it("still reports a duplicate name as DUPLICATE, not ID_TAKEN", async () => {
+      mockAccountRepo.getOwnById.mockResolvedValue(null);
+      mockAccountRepo.create.mockRejectedValue(dupKey({ userId: 1, name: 1 }));
+
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .send(accountBody);
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("DUPLICATE");
+    });
+
+    it("replays a category create", async () => {
+      mockCategoryRepo.getOwnById.mockResolvedValue(testCategory);
+
+      const res = await request(app)
+        .post("/categories")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ id: testCategory.id, name: "Food", icon: "utensils" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(testCategory.id);
+      expect(mockCategoryRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("replays a category whose icon changed with the stored icon", async () => {
+      mockCategoryRepo.getOwnById.mockResolvedValue(testCategory);
+
+      const res = await request(app)
+        .post("/categories")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ id: testCategory.id, name: "Food", icon: "car" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.icon).toBe(testCategory.icon);
+      expect(mockCategoryRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("replays a transaction create without touching balances", async () => {
+      mockTransactionRepo.getOwnById.mockResolvedValue(testTransaction);
+
+      const res = await request(app)
+        .post("/transactions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          id: testTransaction.id,
+          type: "EXPENSE",
+          amount: 50,
+          date: "2026-03-28T00:00:00.000Z",
+          fromAccountId: testTransaction.fromAccountId,
+          categoryId: testTransaction.categoryId,
+          description: "Groceries",
+        });
+
+      expect(res.status).toBe(200);
+      expect(mockTransactionRepo.create).not.toHaveBeenCalled();
+      expect(mockAccountRepo.incrementBalance).not.toHaveBeenCalled();
+    });
+
+    // The unsent date and account resolve to `now` and to the current default
+    // account, so comparing them would fail every legitimate replay.
+    it("replays a quick-add on the fields the client actually sent", async () => {
+      mockTransactionRepo.getOwnById.mockResolvedValue(
+        new Transaction({ ...testTransaction, source: "QUICK" }),
+      );
+
+      const res = await request(app)
+        .post("/transactions/quick")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ id: testTransaction.id, amount: 50 });
+
+      expect(res.status).toBe(200);
+      expect(mockTransactionRepo.create).not.toHaveBeenCalled();
+      expect(mockAccountRepo.getDefaultByUserId).not.toHaveBeenCalled();
+    });
+
+    it("replays a quick-add against the stored transaction, whatever it became", async () => {
+      mockTransactionRepo.getOwnById.mockResolvedValue(testTransaction);
+
+      const res = await request(app)
+        .post("/transactions/quick")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ id: testTransaction.id, amount: 50 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(testTransaction.id);
+      expect(mockTransactionRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("replays a budget create without re-running the overlap rule", async () => {
+      const budget = new Budget({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac90",
+        name: "Food",
+        color: "RED",
+        categoryIds: [testCategory.id],
+        amount: 500,
+        periodType: "MONTHLY",
+        userId: testUser.id,
+      });
+      mockBudgetRepo.getOwnById.mockResolvedValue(budget);
+
+      const res = await request(app)
+        .post("/budgets")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          id: budget.id,
+          name: "Food",
+          color: "RED",
+          categoryIds: [testCategory.id],
+          amount: 500,
+          periodType: "MONTHLY",
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(budget.id);
+      expect(mockBudgetRepo.create).not.toHaveBeenCalled();
+      expect(mockBudgetRepo.findOverlapping).not.toHaveBeenCalled();
+    });
+
+    it("replays a budget whose amount changed with the stored amount", async () => {
+      const budget = new Budget({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac90",
+        name: "Food",
+        color: "RED",
+        categoryIds: [testCategory.id],
+        amount: 500,
+        periodType: "MONTHLY",
+        userId: testUser.id,
+      });
+      mockBudgetRepo.getOwnById.mockResolvedValue(budget);
+
+      const res = await request(app)
+        .post("/budgets")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          id: budget.id,
+          name: "Food",
+          color: "RED",
+          categoryIds: [testCategory.id],
+          amount: 900,
+          periodType: "MONTHLY",
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.amount).toBe(500);
+      expect(mockBudgetRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==================== Optimistic concurrency (O-B2) ====================
+  describe("If-Match [O-B2]", () => {
+    const V1 = new Date("2026-01-01T00:00:00.000Z");
+    const V2 = new Date("2026-02-02T00:00:00.000Z");
+    const ACC = "019576a0-d7b6-7d6d-af6a-2b7545f5ac71";
+    const at = (updatedAt: Date): Account =>
+      new Account({ ...testAccount, updatedAt, archivedAt: null });
+
+    beforeEach(() => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+      mockTransactionRepo.sumAmountsByCategory.mockResolvedValue({});
+    });
+
+    it("writes normally when the header matches", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(at(V1));
+      mockAccountRepo.update.mockResolvedValue(at(V2));
+
+      const res = await request(app)
+        .put(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ name: "Renamed" });
+
+      expect(res.status).toBe(200);
+      // The guard travels into the write's own filter, not just the check above.
+      expect(mockAccountRepo.update).toHaveBeenCalledWith(
+        ACC,
+        { name: "Renamed" },
+        undefined,
+        V1,
+      );
+    });
+
+    it("answers 409 STALE_UPDATE carrying the server's version", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(at(V2));
+
+      const res = await request(app)
+        .put(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ name: "Renamed" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("STALE_UPDATE");
+      expect(res.body.current).toMatchObject({
+        id: ACC,
+        name: "Savings",
+        updatedAt: V2.toISOString(),
+      });
+      expect(mockAccountRepo.update).not.toHaveBeenCalled();
+    });
+
+    it("rejects a malformed header with 400, not a silent 409", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(at(V1));
+
+      const res = await request(app)
+        .put(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", "2026-01-01")
+        .send({ name: "Renamed" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+      expect(res.body.details).toEqual([
+        { field: "If-Match", message: expect.any(String) },
+      ]);
+      expect(mockAccountRepo.update).not.toHaveBeenCalled();
+    });
+
+    // Losing the race is the case the pre-check cannot see: the filter did.
+    it("turns a write whose filter matched nothing into 409, not 404", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(at(V1));
+      mockAccountRepo.update.mockRejectedValue(
+        new ApiError("NotFound", "Account not found"),
+      );
+      mockAccountRepo.getOwnById.mockResolvedValue(at(V2));
+
+      const res = await request(app)
+        .put(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ name: "Renamed" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("STALE_UPDATE");
+    });
+
+    it("keeps 404 when the resource is really gone", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(at(V1));
+      mockAccountRepo.update.mockRejectedValue(
+        new ApiError("NotFound", "Account not found"),
+      );
+      mockAccountRepo.getOwnById.mockResolvedValue(null);
+
+      const res = await request(app)
+        .put(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ name: "Renamed" });
+
+      expect(res.status).toBe(404);
+    });
+
+    // Stale wins over RESOURCE_ARCHIVED: the caller cannot know about a state
+    // it has not read yet, and re-reading tells it everything.
+    it("prefers STALE_UPDATE over the archived guard", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...testAccount, updatedAt: V2, archivedAt: new Date() }),
+      );
+
+      const res = await request(app)
+        .put(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ name: "Renamed" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("STALE_UPDATE");
+    });
+
+    it("guards the archive, the restore and the default flag", async () => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(at(V1));
+      mockAccountRepo.archiveNonDefault.mockResolvedValue(at(V2));
+      await request(app)
+        .delete(`/accounts/${ACC}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString());
+      expect(mockAccountRepo.archiveNonDefault).toHaveBeenCalledWith(
+        ACC,
+        testUser.id,
+        V1,
+      );
+
+      mockAccountRepo.restore.mockResolvedValue(at(V2));
+      await request(app)
+        .post(`/accounts/${ACC}/restore`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({});
+      expect(mockAccountRepo.restore).toHaveBeenCalledWith(
+        ACC,
+        testUser.id,
+        undefined,
+        V1,
+      );
+
+      mockAccountRepo.setDefault.mockResolvedValue(at(V2));
+      await request(app)
+        .post(`/accounts/${ACC}/default`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString());
+      expect(mockAccountRepo.setDefault).toHaveBeenCalledWith(
+        ACC,
+        testUser.id,
+        V1,
+      );
+    });
+
+    it("guards a category update", async () => {
+      mockCategoryRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({ ...testCategory, updatedAt: V2 }),
+      );
+
+      const res = await request(app)
+        .put(`/categories/${testCategory.id}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ name: "Comida" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("STALE_UPDATE");
+      expect(res.body.current.id).toBe(testCategory.id);
+      expect(mockCategoryRepo.update).not.toHaveBeenCalled();
+    });
+
+    it("guards a transaction update without touching balances", async () => {
+      mockTransactionRepo.getById.mockResolvedValue(
+        new Transaction({ ...testTransaction, updatedAt: V2 }),
+      );
+
+      const res = await request(app)
+        .put(`/transactions/${testTransaction.id}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ amount: 99 });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("STALE_UPDATE");
+      expect(mockTransactionRepo.update).not.toHaveBeenCalled();
+      expect(mockAccountRepo.incrementBalance).not.toHaveBeenCalled();
+    });
+
+    // A deleted transaction has no `deletedAt` in its API shape, so a 409
+    // carrying it would look like a live transaction. 404 is the honest answer,
+    // and it is also what the route says today without a guard.
+    it("answers 404, not 409, when the transaction was already deleted", async () => {
+      mockTransactionRepo.getById.mockResolvedValue(null);
+
+      const res = await request(app)
+        .delete(`/transactions/${testTransaction.id}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString());
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBeUndefined();
+      expect(mockAccountRepo.incrementBalance).not.toHaveBeenCalled();
+    });
+
+    it("guards a budget update and answers with the budget view", async () => {
+      mockBudgetRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Budget({
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac90",
+          name: "Food",
+          color: "RED",
+          categoryIds: [testCategory.id],
+          amount: 500,
+          periodType: "MONTHLY",
+          userId: testUser.id,
+          updatedAt: V2,
+        }),
+      );
+
+      const res = await request(app)
+        .put("/budgets/019576a0-d7b6-7d6d-af6a-2b7545f5ac90")
+        .set("Authorization", `Bearer ${token}`)
+        .set("If-Match", V1.toISOString())
+        .send({ amount: 900 });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("STALE_UPDATE");
+      // The view, not the raw document: same shape as GET /budgets/:id.
+      expect(res.body.current).toMatchObject({
+        baseAmount: 500,
+        spent: 0,
+        periodKey: expect.any(String),
+      });
+      expect(mockBudgetRepo.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==================== Incremental sync feed (O-B3) ====================
+  describe("GET /sync/changes", () => {
+    const SNAPSHOT_CURSOR = undefined;
+
+    beforeEach(() => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+      mockAccountRepo.changesSince.mockResolvedValue([testAccount]);
+      mockCategoryRepo.changesSince.mockResolvedValue([testCategory]);
+      mockTransactionRepo.changesSince.mockResolvedValue([
+        Object.assign(testTransaction, { deletedAt: null }),
+      ]);
+      mockBudgetRepo.changesSince.mockResolvedValue([]);
+    });
+
+    it("returns a full snapshot when no position is given", async () => {
+      const res = await request(app)
+        .get("/sync/changes")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body.changes)).toEqual([
+        "user",
+        "accounts",
+        "categories",
+        "transactions",
+        "budgets",
+      ]);
+      expect(res.body.changes.user.id).toBe(testUser.id);
+      expect(res.body.changes.user.password).toBeUndefined();
+      expect(res.body.serverTime).toEqual(expect.any(String));
+      expect(mockAccountRepo.changesSince).toHaveBeenCalledWith(
+        testUser.id,
+        SNAPSHOT_CURSOR,
+        201,
+      );
+    });
+
+    it("turns ?since= into an exclusive lower bound on updatedAt", async () => {
+      const res = await request(app)
+        .get("/sync/changes?since=2026-05-01T00:00:00.000Z")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(mockAccountRepo.changesSince).toHaveBeenCalledWith(
+        testUser.id,
+        { updatedAt: new Date("2026-05-01T00:00:00.000Z"), id: null },
+        201,
+      );
+    });
+
+    it("lets the cursor win over ?since=: it is the more precise position", async () => {
+      const first = await request(app)
+        .get("/sync/changes?limit=1")
+        .set("Authorization", `Bearer ${token}`);
+      const cursor = first.body.pagination.nextCursor as string;
+
+      const res = await request(app)
+        .get(`/sync/changes?since=1999-01-01T00:00:00.000Z&cursor=${cursor}`)
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      const calls = mockAccountRepo.changesSince.mock.calls;
+      const passed = calls[calls.length - 1]?.[1];
+      expect(passed?.updatedAt.getFullYear()).not.toBe(1999);
+    });
+
+    // Serving page one for a cursor the server cannot read is how a client
+    // silently loops over the same rows forever.
+    it("rejects an unreadable cursor with 400 INVALID_CURSOR", async () => {
+      const res = await request(app)
+        .get("/sync/changes?cursor=not-a-real-cursor")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("INVALID_CURSOR");
+      expect(mockAccountRepo.changesSince).not.toHaveBeenCalled();
+    });
+
+    it("rejects a limit past the ceiling instead of silently clamping it", async () => {
+      const res = await request(app)
+        .get("/sync/changes?limit=5000")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+      expect(res.body.details[0].field).toBe("limit");
+    });
+
+    it("reports deletions and archives, which no other endpoint does", async () => {
+      mockAccountRepo.changesSince.mockResolvedValue([
+        new Account({
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac79",
+          name: "Old wallet",
+          type: "CASH",
+          balance: 0,
+          userId: testUser.id,
+          archivedAt: new Date("2026-02-01"),
+          updatedAt: new Date("2026-02-01"),
+        }),
+      ]);
+      mockTransactionRepo.changesSince.mockResolvedValue([
+        Object.assign(
+          new Transaction({
+            id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac78",
+            type: "EXPENSE",
+            amount: 5,
+            date: new Date("2026-02-01"),
+            fromAccountId: testAccount.id,
+            userId: testUser.id,
+            updatedAt: new Date("2026-02-02"),
+          }),
+          { deletedAt: new Date("2026-02-02") },
+        ),
+      ]);
+
+      const res = await request(app)
+        .get("/sync/changes")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.changes.accounts[0].archivedAt).toBe(
+        new Date("2026-02-01").toISOString(),
+      );
+      expect(res.body.changes.transactions[0].deletedAt).toBe(
+        new Date("2026-02-02").toISOString(),
+      );
+    });
+
+    it("requires authentication", async () => {
+      const res = await request(app).get("/sync/changes");
+
+      expect(res.status).toBe(401);
+    });
+  });
+
+  // ==================== POST /sync (O-B4) ====================
+  describe("POST /sync", () => {
+    const OP = "019576a0-d7b6-7d6d-af6a-2b7545f5ac90";
+    const operation = (
+      over: Record<string, unknown> = {},
+    ): Record<string, unknown> => ({
+      opId: OP,
+      seq: 1,
+      occurredAt: "2026-09-05T10:00:00.000Z",
+      entity: "account",
+      action: "create",
+      id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91",
+      payload: { body: { name: "Offline wallet", type: "CASH", balance: 10 } },
+      opVersion: 1,
+      ...over,
+    });
+
+    beforeEach(() => {
+      mockSyncOpRepo.find.mockResolvedValue(null);
+      mockSyncOpRepo.record.mockResolvedValue(undefined);
+    });
+
+    it("applies a create through the account service and answers per operation", async () => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+      mockAccountRepo.getOwnById.mockResolvedValue(null);
+      mockAccountRepo.create.mockImplementation(
+        async (a) => new Account(a as ConstructorParameters<typeof Account>[0]),
+      );
+
+      const res = await request(app)
+        .post("/sync")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ operations: [operation()] });
+
+      expect(res.status).toBe(200);
+      expect(res.body.serverTime).toBeDefined();
+      expect(res.body.results).toHaveLength(1);
+      expect(res.body.results[0]).toMatchObject({
+        opId: OP,
+        seq: 1,
+        entity: "account",
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91",
+        status: "applied",
+        result: {
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91",
+          name: "Offline wallet",
+        },
+      });
+      // The id came from the envelope, not from the caller's choice of body.
+      expect(mockAccountRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91" }),
+      );
+      expect(mockSyncOpRepo.record).toHaveBeenCalledWith(testUser.id, OP, {
+        status: "applied",
+        entityId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91",
+        code: null,
+      });
+    });
+
+    it("refuses an invalid envelope as a whole (400 VALIDATION) and applies nothing", async () => {
+      const res = await request(app)
+        .post("/sync")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ operations: [operation(), operation({ seq: 2 })] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+      expect(res.body.details[0].message).toContain("repeat an opId");
+      expect(mockAccountRepo.create).not.toHaveBeenCalled();
+      expect(mockSyncOpRepo.find).not.toHaveBeenCalled();
+    });
+
+    it("refuses more than 200 operations", async () => {
+      const operations = Array.from({ length: 201 }, (_, i) =>
+        operation({
+          opId: `019576a0-d7b6-7d6d-af6a-${String(i).padStart(12, "0")}`,
+          seq: i,
+        }),
+      );
+      const res = await request(app)
+        .post("/sync")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ operations });
+
+      expect(res.status).toBe(400);
+      expect(res.body.details[0].message).toContain("at most 200");
+    });
+
+    it("accepts a full batch well past the general 10 kB body cap", async () => {
+      // Unknown action: each is rejected per operation, no repository is hit.
+      const operations = Array.from({ length: 200 }, (_, i) =>
+        operation({
+          opId: `019576a0-d7b6-7d6d-af6a-${String(i).padStart(12, "0")}`,
+          // Distinct rows: a second write on a row whose first failed is `blocked`.
+          id: `019576a0-d7b6-7d6d-bf6a-${String(i).padStart(12, "0")}`,
+          seq: i,
+          action: "teleport",
+        }),
+      );
+      const body = JSON.stringify({ operations });
+      expect(body.length).toBeGreaterThan(10 * 1024);
+
+      const res = await request(app)
+        .post("/sync")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Content-Type", "application/json")
+        .send(body);
+
+      expect(res.status).toBe(200);
+      expect(res.body.results).toHaveLength(200);
+      expect(
+        new Set(res.body.results.map((r: { status: string }) => r.status)),
+      ).toEqual(new Set(["rejected"]));
+      expect(res.body.results[0].code).toBe("VALIDATION");
+    });
+
+    it("still refuses a body over 1 MB (413 PAYLOAD_TOO_LARGE)", async () => {
+      const res = await request(app)
+        .post("/sync")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Content-Type", "application/json")
+        .send(
+          JSON.stringify({
+            operations: [
+              operation({ payload: { body: { note: "x".repeat(1_100_000) } } }),
+            ],
+          }),
+        );
+
+      expect(res.status).toBe(413);
+      expect(res.body.code).toBe("PAYLOAD_TOO_LARGE");
+    });
+
+    it("leaves the other routes' 10 kB cap untouched", async () => {
+      const res = await request(app)
+        .post("/accounts")
+        .set("Authorization", `Bearer ${token}`)
+        .set("Content-Type", "application/json")
+        .send(JSON.stringify({ name: "x".repeat(11_000), type: "CASH" }));
+
+      expect(res.status).toBe(413);
+    });
+
+    it("requires authentication", async () => {
+      const res = await request(app)
+        .post("/sync")
+        .send({ operations: [operation()] });
+
+      expect(res.status).toBe(401);
     });
   });
 });

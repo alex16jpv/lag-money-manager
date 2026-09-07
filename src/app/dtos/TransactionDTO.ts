@@ -1,6 +1,7 @@
 import { TransactionSource, TransactionType } from "../../shared/constants";
 
 export interface CreateTransactionDTO {
+  id?: string;
   type: TransactionType;
   amount: number;
   date: Date;
@@ -31,6 +32,7 @@ export interface UpdateTransactionDTO {
 }
 
 export interface QuickAddTransactionDTO {
+  id?: string;
   amount: number;
   type?: TransactionType;
   date?: Date;

@@ -28,7 +28,7 @@ Budgets are archived, never hard-deleted, and can be restored. All budgets are u
 
 ## Public API
 
-Every route accepts an optional `reference` query parameter (ISO 8601, offsets accepted). It selects **which period instance** the response resolves; it defaults to now. `DELETE /budgets/:id` accepts it for uniformity but ignores it.
+Every route accepts an optional `reference` query parameter (ISO 8601, offsets accepted). It selects **which period instance** the response resolves; it defaults to now. `DELETE /budgets/:id` uses it only to resolve the view it answers with.
 
 ### `GET /budgets`
 
@@ -72,6 +72,9 @@ Create a budget.
 
 Responds `201` with the view resolved for the reference period.
 
+**Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. An id the user already owns replays with **200** and the stored budget **whatever the payload says now** — the row may have been edited from another device between a lost response and the retry, and a 409 there would make the client mint a second id and duplicate it. An id that belongs to **another user** is rejected with **409 `ID_TAKEN`**, worded so the caller cannot tell it exists; the foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
+
+
 ### `GET /budgets/:id`
 
 Always responds for owned budgets: archived ones stay readable (with `archivedAt` set) and expired CUSTOM ones come back with `expired: true`.
@@ -87,7 +90,7 @@ Override side effects:
 
 ### `DELETE /budgets/:id`
 
-Archives the budget (soft delete, sets `archivedAt`). Idempotent: archiving an already-archived budget is a no-op success.
+Archives the budget (soft delete, sets `archivedAt`). Idempotent: archiving an already-archived budget is a no-op success. **Answers the archived `BudgetView`** resolved for `reference`, so a client that queued a restore right behind the archive has the new `updatedAt` for its `If-Match` without a read in between (F-22).
 
 ### `POST /budgets/:id/restore`
 
@@ -246,6 +249,35 @@ None specific to this module.
 | `NotFound`                  | 404    | Budget missing **or owned by another user** (uniform, so ids can't be probed)   |
 | `NotFound`                  | 404    | A referenced category is missing or not owned                                   |
 | `DUPLICATE`                 | 409    | A concurrent create lost the race to the unique partial index (`CUSTOM`: identical window) |
+| `ID_TAKEN`                  | 409    | The client-minted `id` belongs to another user (the user's own id always replays with 200) |
+| `STALE_UPDATE`              | 409    | `If-Match` no longer matches the stored version (`current` carries the budget view) |
+
+## Optimistic concurrency (`If-Match`)
+
+Every write below accepts an optional `If-Match` header carrying the `updatedAt`
+this client last read, verbatim as the API prints it
+(`2026-09-03T18:00:00.000Z`; an ISO 8601 datetime with an offset is also
+accepted, a bare date is not — that is `400 VALIDATION`).
+
+`PUT /budgets/:id` · `DELETE /budgets/:id` · `POST /budgets/:id/restore` · `PUT /budgets/:id/amount` · `DELETE /budgets/:id/amount`
+
+The guard is the **budget's** `updatedAt`, including for the per-period amount
+overrides: an override is a field of the budget document.
+
+The write only lands if the server still holds that version. Otherwise the answer
+is **409 `STALE_UPDATE`**, and its body carries `current`: the budget view as the server
+has it now, in the same shape a `GET` would return — so a client can show
+"Server / This device" without a second request.
+
+Two rules worth knowing:
+
+- **The condition travels inside the write's own filter**, not only in a check
+  before it. Two clients holding the same version cannot both win.
+- **`STALE_UPDATE` outranks `RESOURCE_ARCHIVED` and the other write guards.** A
+  caller writing against an old version cannot know about a state it has not
+  read yet; re-reading tells it everything at once.
+
+Without the header nothing changes: the write is unconditional, exactly as before.
 
 ## Overlap Rule
 
