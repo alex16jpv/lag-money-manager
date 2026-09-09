@@ -3,7 +3,7 @@
  * `npm run seed:test`.
  *
  * Builds one known user whose accounts, categories, transactions and budgets
- * reproduce the dataset the designs were drawn from (auditoria/diseno/). Every
+ * reproduce the dataset the product's designs were drawn from. Every
  * run leaves the database in the same state.
  *
  * It writes through the application services rather than into Mongo directly,
