@@ -28,13 +28,33 @@ directory instead of pruning the one you work in:
 
 ```bash
 npm ci && npm run build
-npm ci --omit=dev --prefix build/lambda-package
+
+rm -rf build/lambda-package
+mkdir -p build/lambda-package
+cp package.json package-lock.json build/lambda-package/
+npm ci --omit=dev --prefix build/lambda-package --no-audit --no-fund
+
 cp -r dist build/lambda-package/dist
 ```
 
-`npm run deploy:lambda` already does exactly this, which is why it never
+Two steps that look like boilerplate but are not:
+
+- **`--prefix` does not imply the manifest.** `npm ci` reads `package.json` and
+  `package-lock.json` from *inside* the prefix directory, so they have to be
+  copied there first. Without them it fails with `npm error code EUSAGE` —
+  "can only install with an existing package-lock.json" — which reads like a
+  problem with the repo lockfile rather than a missing copy.
+- **`rm -rf` before the `cp`.** `cp -r dist <dir>/dist` only does what you mean
+  when the target is absent; if a `dist/` from an earlier run is already there,
+  it copies *into* it and leaves `build/lambda-package/dist/dist`. The zip is
+  then built with the handler one level too deep, and Lambda answers with a
+  module-not-found at invoke time, not at deploy time.
+
+`npm run deploy:lambda` already does all of this, which is why it never
 disturbs your working `node_modules` — prefer it over assembling the package by
-hand.
+hand. Note that the script also syncs the production indexes before uploading
+([Index creation](#index-creation)); assembling the package by hand skips that
+step, so run `npm run db:sync-indexes` yourself if you go that route.
 
 ## AWS Lambda Deployment
 
