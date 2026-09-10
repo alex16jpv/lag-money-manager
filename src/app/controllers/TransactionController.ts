@@ -65,11 +65,15 @@ export class TransactionController {
     if (req.query.uncategorized === "true") {
       filters.uncategorized = true;
     }
-    if (req.query.from) {
-      filters.from = new Date(req.query.from as string);
-    }
-    if (req.query.to) {
-      filters.to = new Date(req.query.to as string);
+    if (req.query.from || req.query.to) {
+      // The window is a run of calendar days in the account's zone (T-14).
+      filters.timezone = await resolveTimezone(req);
+      if (req.query.from) {
+        filters.from = new Date(req.query.from as string);
+      }
+      if (req.query.to) {
+        filters.to = new Date(req.query.to as string);
+      }
     }
     if (req.query.tag) {
       filters.tag = req.query.tag as string;

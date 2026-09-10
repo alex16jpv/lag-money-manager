@@ -450,3 +450,26 @@ rows only (about 2 % of the primary index's size, since the inbox is a handful o
 documents). `type` deliberately has none: an index cannot spare a visit to rows it
 does not exclude. Apply the same test before indexing a new filter — how much does
 it exclude, and does anything count on it?
+
+#### The day window costs the month, not the history
+
+`{userId, deletedAt, dayKey}` serves the calendar windows. Measured over 20 000
+transactions of one user (two years, ~744 a month), asking for a month two years
+back, first page of 20 sorted by date:
+
+| Query | Keys examined | Docs | Time |
+| --- | --- | --- | --- |
+| Instant range (before `dayKey`) | 20 | 20 | 1 ms |
+| `dayKey` range | 744 | 744 | 6 ms |
+| `dayKey` range **or** the legacy instant | 744 | 744 | 14 ms |
+
+The instant range was cheaper because one index gave both the bounds and the sort,
+so it stopped at the twentieth row. A `dayKey` range cannot: the sort is still by
+`date`, so the window's rows are read and sorted in memory. The cost is bounded by
+the **size of the window**, not by how old it is — and it buys a month that no
+longer changes. The aggregations (a budget's `spent`, the day buckets) examine the
+same 744 keys as before, so they pay nothing.
+
+The `$or` that keeps answering rows with `dayKey: null` roughly doubles the page's
+time. Once `npm run db:backfill-day-key` has left no null, dropping that branch
+takes the page back to 6 ms.

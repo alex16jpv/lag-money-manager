@@ -11,6 +11,7 @@ import {
   TransactionPage,
   TransactionRevision,
 } from "../../../domain/repositories/transaction/ITransactionRepository";
+import { dayKeyOf, lastDayKeyOf } from "../../../shared/dayKey";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
 import {
@@ -47,6 +48,30 @@ export class TransactionRepository implements ITransactionRepository {
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });
+  }
+
+  /**
+   * A calendar window is a run of local days, so it matches the frozen
+   * `dayKey`. The second branch answers rows written before that field existed
+   * by their instant, exactly as every read did before it; it matches nothing
+   * once `npm run db:backfill-day-key` has run, and can go then.
+   */
+  private dayWindow(
+    from: Date | undefined,
+    to: Date | undefined,
+    timezone: string,
+  ): Record<string, unknown>[] {
+    const days: Record<string, string> = {};
+    const instants: Record<string, Date> = {};
+    if (from) {
+      days.$gte = dayKeyOf(from, timezone);
+      instants.$gte = from;
+    }
+    if (to) {
+      days.$lte = lastDayKeyOf(to, timezone);
+      instants.$lt = to;
+    }
+    return [{ dayKey: days }, { dayKey: null, date: instants }];
   }
 
   private toStorage(
@@ -180,12 +205,13 @@ export class TransactionRepository implements ITransactionRepository {
     if (filters?.ids?.length) {
       filter._id = { $in: filters.ids };
     }
+    const branches: Record<string, unknown>[][] = [];
     if (filters?.accountId) {
       // userId inside each branch so the planner can index-union the $or.
-      filter.$or = [
+      branches.push([
         { userId, fromAccountId: filters.accountId },
         { userId, toAccountId: filters.accountId },
-      ];
+      ]);
     }
     if (filters?.categoryId) {
       filter.categoryId = filters.categoryId;
@@ -203,13 +229,18 @@ export class TransactionRepository implements ITransactionRepository {
       filter.source = filters.source;
     }
     if (filters?.from || filters?.to) {
-      const range: Record<string, Date> = {};
-      if (filters.from) range.$gte = filters.from;
-      if (filters.to) range.$lt = filters.to;
-      filter.date = range;
+      if (!filters.timezone) {
+        throw new Error("A date range needs the timezone that cuts its days");
+      }
+      branches.push(this.dayWindow(filters.from, filters.to, filters.timezone));
     }
     if (filters?.tag) {
       filter.tags = filters.tag;
+    }
+    if (branches.length === 1) {
+      filter.$or = branches[0];
+    } else if (branches.length > 1) {
+      filter.$and = branches.map((branch) => ({ $or: branch }));
     }
     return this.paginatedFind(filter, pagination, filters?.includeSummary);
   }
@@ -303,21 +334,22 @@ export class TransactionRepository implements ITransactionRepository {
     // ADJUSTMENT is reconciliation, not real cash flow: hidden unless asked for.
     match.type = query.type ?? { $ne: "ADJUSTMENT" };
     if (query.from || query.to) {
-      // Half-open range [from, to), consistent with budget windows.
-      const range: Record<string, Date> = {};
-      if (query.from) range.$gte = query.from;
-      if (query.to) range.$lt = query.to;
-      match.date = range;
+      match.$or = this.dayWindow(query.from, query.to, query.timezone);
     }
 
     const groupId =
       query.groupBy === "day"
         ? {
-            $dateToString: {
-              format: "%Y-%m-%d",
-              date: "$date",
-              timezone: query.timezone,
-            },
+            $ifNull: [
+              "$dayKey",
+              {
+                $dateToString: {
+                  format: "%Y-%m-%d",
+                  date: "$date",
+                  timezone: query.timezone,
+                },
+              },
+            ],
           }
         : query.groupBy === "tag"
           ? { $ifNull: ["$tags", "untagged"] }
@@ -375,6 +407,7 @@ export class TransactionRepository implements ITransactionRepository {
     to: Date,
     categoryIds: string[],
     type: "EXPENSE" | "INCOME",
+    timezone: string,
   ): Promise<Record<string, number>> {
     const rows = await TransactionModel.aggregate<{
       _id: string;
@@ -386,7 +419,7 @@ export class TransactionRepository implements ITransactionRepository {
           type,
           deletedAt: null,
           categoryId: { $in: categoryIds },
-          date: { $gte: from, $lt: to },
+          $or: this.dayWindow(from, to, timezone),
         },
       },
       { $group: { _id: "$categoryId", total: { $sum: "$amount" } } },
@@ -403,6 +436,7 @@ export class TransactionRepository implements ITransactionRepository {
     from: Date,
     to: Date,
     type: "EXPENSE" | "INCOME",
+    timezone: string,
   ): Promise<number> {
     const rows = await TransactionModel.aggregate<{ total: number }>([
       {
@@ -410,7 +444,7 @@ export class TransactionRepository implements ITransactionRepository {
           userId,
           type,
           deletedAt: null,
-          date: { $gte: from, $lt: to },
+          $or: this.dayWindow(from, to, timezone),
         },
       },
       { $group: { _id: null, total: { $sum: "$amount" } } },

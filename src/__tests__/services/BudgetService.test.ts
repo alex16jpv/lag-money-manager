@@ -496,6 +496,7 @@ describe("BudgetService", () => {
         expect.any(Date),
         expect.any(Date),
         "INCOME",
+        CTX.timezone,
       );
       expect(result.data[0].type).toBe("INCOME");
       expect(result.data[0].spent).toBe(2000);

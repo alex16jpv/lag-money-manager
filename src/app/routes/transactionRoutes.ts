@@ -77,11 +77,15 @@ const router = Router();
  *       - in: query
  *         name: from
  *         schema: { type: string, format: date-time }
- *         description: Start of the date range, inclusive (half-open range [from, to))
+ *         description: >
+ *           Start of the range, inclusive. The range is matched as the run of
+ *           calendar days it covers in the account's time zone, against each
+ *           transaction's frozen `dayKey`, so a bound that is not local
+ *           midnight is widened to the whole day.
  *       - in: query
  *         name: to
  *         schema: { type: string, format: date-time }
- *         description: End of the date range, exclusive (half-open range [from, to))
+ *         description: End of the range, exclusive (the day it falls on is included).
  *       - in: query
  *         name: includeSummary
  *         schema: { type: string, enum: ["true", "false"] }

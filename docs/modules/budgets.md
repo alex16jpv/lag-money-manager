@@ -129,7 +129,7 @@ Drops the override for the period containing `reference`, so the period falls ba
 
 ## Period Types
 
-Windows are half-open `[from, to)` and computed in the **user's IANA timezone**, so a month starts at their local midnight, not UTC's.
+Windows are half-open `[from, to)` and computed in the **user's IANA timezone**, so a month starts at their local midnight, not UTC's. `spent` then aggregates the transactions whose frozen accounting day (`dayKey`, see `transactions.md`) falls inside the **local days** that window covers, so a past period's `spent` no longer changes when the account moves to another timezone.
 
 | Type        | Window                                                         | Period key example  | Expires |
 | ----------- | -------------------------------------------------------------- | ------------------- | ------- |

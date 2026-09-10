@@ -13,10 +13,13 @@ const router = Router();
  *     tags: [Stats]
  *     summary: Aggregate spending grouped by category, day or tag
  *     description: |
- *       Buckets are computed in the user's timezone (from the token claim), so
- *       a day boundary is their midnight, not UTC's. Deleted transactions are
- *       excluded, and ADJUSTMENT ones only appear when asked for explicitly
- *       with `type=ADJUSTMENT` (they are balance reconciliations, not spending).
+ *       A `day` bucket is the transaction's own accounting day (`dayKey`),
+ *       frozen when it was written, so a later change of the account's time
+ *       zone cannot move past spending between buckets or months; the zone
+ *       (from the token claim) resolves the days the range covers. Deleted
+ *       transactions are excluded, and ADJUSTMENT ones only appear when asked
+ *       for explicitly with `type=ADJUSTMENT` (they are balance
+ *       reconciliations, not spending).
  *
  *       Bucket semantics: `groupBy=day` comes back ascending by date and skips
  *       days without transactions (the client fills the gaps); the other
@@ -41,7 +44,9 @@ const router = Router();
  *       - in: query
  *         name: to
  *         schema: { type: string, format: date-time }
- *         description: End of the range, EXCLUSIVE — the range is half-open [from, to)
+ *         description: >
+ *           End of the range, EXCLUSIVE — the range is half-open [from, to) and
+ *           is matched as the whole calendar days it covers.
  *     responses:
  *       200:
  *         description: Spending buckets with totals

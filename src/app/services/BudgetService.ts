@@ -475,13 +475,20 @@ export class BudgetService {
             w.to,
             Array.from(w.categoryIds),
             w.type,
+            ctx.timezone,
           );
           sums.set(wk, map);
         }
         if (w.hasGlobal) {
           totals.set(
             wk,
-            await this.transactionRepo.sumAmounts(userId, w.from, w.to, w.type),
+            await this.transactionRepo.sumAmounts(
+              userId,
+              w.from,
+              w.to,
+              w.type,
+              ctx.timezone,
+            ),
           );
         }
       }),
