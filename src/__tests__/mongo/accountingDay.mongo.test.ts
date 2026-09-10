@@ -11,12 +11,15 @@
 import request from "supertest";
 
 import app from "../../app";
+import { TransactionModel } from "../../infrastructure/models/TransactionModel";
 import { connect, disconnect, dropDatabase } from "./support";
 
 const ACCOUNT_ID = "01940000-0000-7000-8000-c00000000001";
 const TX_ID = "01940000-0000-7000-8000-c00000000002";
 const BUDGET_ID = "01940000-0000-7000-8000-c00000000003";
+const LEGACY_ID = "01940000-0000-7000-8000-c00000000004";
 const AMOUNT = 40_000;
+const LEGACY_AMOUNT = 11_000;
 
 // 11pm on Aug 31 in Bogota (UTC-5).
 const LATE_NIGHT = "2026-09-01T04:00:00.000Z";
@@ -150,6 +153,42 @@ describe("the accounting day survives a change of timezone", () => {
     ]);
     expect(seen.listed).toEqual([TX_ID]);
     expect(seen.spent).toBe(AMOUNT);
+  });
+
+  it("keeps counting a row written before the field existed, by its instant", async () => {
+    // The shape of a legacy row: written by the API, then stripped of the field the way every row
+    // in the database looked before it existed. `npm run db:backfill-day-key` is what fills them.
+    const created = await as(
+      session,
+      request(app).post("/transactions").send({
+        id: LEGACY_ID,
+        type: "EXPENSE",
+        amount: LEGACY_AMOUNT,
+        date: "2026-08-15T17:00:00.000Z",
+        fromAccountId: ACCOUNT_ID,
+      }),
+    );
+    expect(created.status).toBe(201);
+    await TransactionModel.updateOne(
+      { _id: LEGACY_ID },
+      { $unset: { dayKey: 1 } },
+      { timestamps: false },
+    );
+    expect(
+      (await TransactionModel.findById(LEGACY_ID).lean())?.dayKey,
+    ).toBeUndefined();
+
+    const seen = await august(session, AUGUST.bogota);
+    expect(seen.total).toBe(AMOUNT + LEGACY_AMOUNT);
+    expect(seen.listed).toContain(LEGACY_ID);
+    expect(seen.spent).toBe(AMOUNT + LEGACY_AMOUNT);
+    // Its bucket is still derived from the instant, in the zone of the account.
+    expect(seen.buckets.map((bucket) => bucket.key)).toEqual([
+      "2026-08-15",
+      "2026-08-31",
+    ]);
+
+    await TransactionModel.deleteOne({ _id: LEGACY_ID });
   });
 
   it("still counts it there after the account moves to Madrid", async () => {
