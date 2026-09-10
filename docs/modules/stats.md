@@ -72,7 +72,7 @@ Applied in the pipeline's `$match`:
 - **Ownership** — `userId` always scopes the aggregation.
 - **Soft deletes** — `deletedAt: null`; deleted transactions never appear.
 - **`ADJUSTMENT` exclusion** — adjustments are balance reconciliations, not real cash flow. Because `type` defaults to `EXPENSE`, they are invisible by default; and when no type resolves, the match falls back to `{ $ne: "ADJUSTMENT" }`. They only show up when asked for explicitly with `type=ADJUSTMENT`.
-- **Date range** — the run of **local days** that the half-open `[from, to)` covers in the account's timezone, compared against each transaction's frozen `dayKey` (see `transactions.md`), not against `createdAt`, so backdated transactions land in the period they belong to. A window that does not start and end at local midnight is widened to whole days. Rows written before `dayKey` existed are still answered by their instant, so nothing disappears before `npm run db:backfill-day-key` runs.
+- **Date range** — the run of **local days** that the half-open `[from, to)` covers in the account's timezone, compared against each transaction's frozen `dayKey` (see `transactions.md`), not against `createdAt`, so backdated transactions land in the period they belong to. A window that does not start and end at local midnight is widened to whole days. Rows written before `dayKey` existed are still answered by their instant, so nothing disappears before `npx tsx scripts/backfill-day-key.ts` runs.
 
 ## Timezone Handling
 

@@ -31,8 +31,12 @@ account's timezone at the moment it was written, and that value is **frozen**:
   the account's timezone does, and a window that does not start and end at local midnight is widened
   to whole days.
 - Rows written before the field existed have `dayKey: null`. Every day window keeps a second branch
-  that answers them by their instant, exactly as before, so nothing disappears while
-  `npm run db:backfill-day-key` has not run. That branch can go once no row has a null.
+  that answers them by their instant, exactly as before, so nothing disappears. **That branch is the
+  design, not a migration waiting to happen:** the owner decided on 2026-09-10 not to backfill those
+  rows, because the read path derives the same day the backfill would write. What it would add is
+  freezing it, which only matters if the account's timezone changes — and then it would have to run
+  *before* the change to be worth anything. `scripts/backfill-day-key.ts` is there for that day; it
+  has no npm alias so it does not sit in `npm run` unused.
 
 The reason it is stored rather than derived: with a change of timezone, deriving it moves money
 between months and budget periods retroactively. An expense logged at 11pm on Sep 30 in Bogota is
@@ -471,5 +475,5 @@ longer changes. The aggregations (a budget's `spent`, the day buckets) examine t
 same 744 keys as before, so they pay nothing.
 
 The `$or` that keeps answering rows with `dayKey: null` roughly doubles the page's
-time. Once `npm run db:backfill-day-key` has left no null, dropping that branch
-takes the page back to 6 ms.
+time. It stays: those 8 ms are the price of not migrating rows whose day the read
+path can derive anyway. Dropping the branch means backfilling first.

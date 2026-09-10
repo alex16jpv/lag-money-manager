@@ -54,7 +54,7 @@ export class TransactionRepository implements ITransactionRepository {
    * A calendar window is a run of local days, so it matches the frozen
    * `dayKey`. The second branch answers rows written before that field existed
    * by their instant, exactly as every read did before it; it matches nothing
-   * once `npm run db:backfill-day-key` has run, and can go then.
+   * once `npx tsx scripts/backfill-day-key.ts` has run, and can go then.
    */
   private dayWindow(
     from: Date | undefined,

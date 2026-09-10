@@ -1,9 +1,12 @@
 // Fills `dayKey` on transactions written before the field existed, using the
-// timezone of each row's owner: npm run db:backfill-day-key [-- --dry-run]
+// timezone of each row's owner: npx tsx scripts/backfill-day-key.ts [--dry-run]
 //
-// Until it runs, a calendar window still answers those rows through the legacy
-// branch of the filter (their instant), so nothing disappears — but their day
-// is not frozen yet, which is the whole point of the field.
+// It has no npm alias on purpose (the owner decided on 2026-09-10 not to run
+// it): the read path already derives the same day for a row that has none, so
+// this only *freezes* it. Freezing matters if the account's timezone ever
+// changes — and then it has to run BEFORE the change, because afterwards the
+// day it would freeze is the one the new zone reports, not the one the user
+// saw. That is the only reason this file still exists.
 import "dotenv/config";
 import "../src/infrastructure/models";
 

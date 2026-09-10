@@ -47,7 +47,7 @@ const TransactionSchema = new Schema<ITransactionDocument>(
     },
     amount: { type: Number, required: true },
     date: { type: Date, required: true },
-    // Null only on rows written before the field existed; `npm run db:backfill-day-key` fills them.
+    // Null only on rows written before the field existed; `npx tsx scripts/backfill-day-key.ts` fills them.
     dayKey: { type: String, default: null },
     categoryId: { type: String, default: null },
     description: { type: String, default: null },

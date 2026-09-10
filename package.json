@@ -21,7 +21,6 @@
     "format": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\"",
     "db:sync-indexes": "tsx scripts/sync-indexes.ts",
-    "db:backfill-day-key": "tsx scripts/backfill-day-key.ts",
     "test:mongo": "jest -c jest.mongo.config.js",
     "fixtures:offline": "tsx scripts/offline-fixtures/build.ts",
     "fixtures:check": "tsx scripts/offline-fixtures/build.ts --check",
