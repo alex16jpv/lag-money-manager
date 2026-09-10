@@ -121,6 +121,8 @@ export interface FixtureTransaction {
   type: TransactionType;
   amount: number;
   date: string;
+  // The local accounting day the API froze on the row, in the user's zone.
+  dayKey: string;
   description: string | null;
   categoryId: string | null;
   fromAccountId: string | null;
