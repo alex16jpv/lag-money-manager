@@ -26,6 +26,7 @@ const service = new TransactionService(
   {} as never,
 );
 
+const TZ = "America/Bogota";
 const item = (id: string) => ({ id, description: "detail" });
 
 // Each item stands alone (the owner's decision): one failure must not cost the
@@ -41,6 +42,7 @@ describe("batchUpdateDetails", () => {
     const result = await service.batchUpdateDetails(
       [item("a"), item("b"), item("c")],
       "u1",
+      TZ,
     );
 
     expect(result.updated.map((t) => t.id)).toEqual(["a", "c"]);
@@ -60,7 +62,7 @@ describe("batchUpdateDetails", () => {
         ),
       );
 
-    const { failed } = await service.batchUpdateDetails([item("a")], "u1");
+    const { failed } = await service.batchUpdateDetails([item("a")], "u1", TZ);
 
     expect(failed[0].code).toBe("CATEGORY_ARCHIVED");
   });
@@ -72,7 +74,7 @@ describe("batchUpdateDetails", () => {
         new ApiError("BadRequest", "archived", "RESOURCE_ARCHIVED"),
       );
 
-    const { failed } = await service.batchUpdateDetails([item("a")], "u1");
+    const { failed } = await service.batchUpdateDetails([item("a")], "u1", TZ);
 
     expect(failed[0].code).toBe("RESOURCE_ARCHIVED");
   });
@@ -84,9 +86,9 @@ describe("batchUpdateDetails", () => {
       .spyOn(service, "updateTransaction")
       .mockRejectedValueOnce(new Error("connection lost"));
 
-    await expect(service.batchUpdateDetails([item("a")], "u1")).rejects.toThrow(
-      "connection lost",
-    );
+    await expect(
+      service.batchUpdateDetails([item("a")], "u1", TZ),
+    ).rejects.toThrow("connection lost");
   });
 
   it("stops nothing when every item works", async () => {
@@ -97,6 +99,7 @@ describe("batchUpdateDetails", () => {
     const { updated, failed } = await service.batchUpdateDetails(
       [item("a"), item("b")],
       "u1",
+      TZ,
     );
 
     expect(updated).toHaveLength(2);

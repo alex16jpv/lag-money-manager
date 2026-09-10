@@ -33,6 +33,7 @@ export class TransactionRepository implements ITransactionRepository {
       type: doc.type,
       amount: fromCents(doc.amount),
       date: doc.date,
+      dayKey: doc.dayKey ?? null,
       categoryId: doc.categoryId ?? null,
       description: doc.description ?? null,
       fromAccountId: doc.fromAccountId ?? null,

@@ -2,10 +2,10 @@ import { Request, Response } from "express";
 
 import { BudgetFilters } from "../../domain/repositories/budget/IBudgetRepository";
 import { extractPagination } from "../../shared/pagination";
-import { DEFAULT_TIMEZONE } from "../../shared/timezone";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { BudgetService } from "../services/BudgetService";
 import { ifMatch } from "./ifMatch";
+import { resolveTimezone } from "./timezone";
 
 const budgetService = new BudgetService(
   repositoryFactory.getBudgetRepository(),
@@ -13,14 +13,8 @@ const budgetService = new BudgetService(
   repositoryFactory.getCategoryRepository(),
   repositoryFactory.getUserRepository(),
 );
-const userRepository = repositoryFactory.getUserRepository();
-
 async function resolveContext(req: Request) {
-  // Token claim first (R2-23); DB fallback covers tokens minted before it.
-  const timezone =
-    req.user!.timezone ??
-    (await userRepository.getById(req.user!.userId))?.timezone ??
-    DEFAULT_TIMEZONE;
+  const timezone = await resolveTimezone(req);
   const reference = req.query.reference
     ? new Date(req.query.reference as string)
     : new Date();

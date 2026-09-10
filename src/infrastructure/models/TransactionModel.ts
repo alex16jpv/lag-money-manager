@@ -13,6 +13,7 @@ export interface ITransactionDocument {
   type: TransactionType;
   amount: number; // integer cents
   date: Date;
+  dayKey: string | null;
   categoryId: string | null;
   description: string | null;
   fromAccountId: string | null;
@@ -46,6 +47,8 @@ const TransactionSchema = new Schema<ITransactionDocument>(
     },
     amount: { type: Number, required: true },
     date: { type: Date, required: true },
+    // Null only on rows written before the field existed; `npm run db:backfill-day-key` fills them.
+    dayKey: { type: String, default: null },
     categoryId: { type: String, default: null },
     description: { type: String, default: null },
     fromAccountId: { type: String, default: null },

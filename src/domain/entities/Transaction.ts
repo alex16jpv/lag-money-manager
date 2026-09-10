@@ -10,6 +10,10 @@ export interface TransactionProps {
   type: TransactionType;
   amount: number;
   date: Date | string;
+  // Local accounting day of `date` ("YYYY-MM-DD"), stamped by the service from
+  // the account's timezone. Carried as data here: only a change of `date` may
+  // move it, and the entity cannot tell a merge from a fresh write.
+  dayKey?: string | null;
   categoryId?: string | null;
   description?: string | null;
   fromAccountId?: string | null;
@@ -30,6 +34,7 @@ export class Transaction {
   type: TransactionType;
   amount: number;
   date: Date;
+  dayKey: string | null;
   categoryId: string | null;
   description: string | null;
   fromAccountId: string | null;
@@ -48,6 +53,7 @@ export class Transaction {
     this.type = props.type;
     this.amount = props.amount;
     this.date = props.date instanceof Date ? props.date : new Date(props.date);
+    this.dayKey = props.dayKey ?? null;
     this.categoryId = props.categoryId ?? null;
     this.description = props.description ?? null;
     this.fromAccountId = props.fromAccountId ?? null;

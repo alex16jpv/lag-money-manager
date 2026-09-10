@@ -11,10 +11,33 @@ The most complex module in the system. Records financial transactions and automa
 
 Create, update, and delete all run inside a **MongoDB transaction**, so the ledger and the account balances can never drift apart. On update, the original balance adjustments are reversed before applying new ones. Deletes are **soft** (`deletedAt`). All transactions are user-scoped.
 
-Two fields are server-derived and never accepted from the client:
+Three fields are server-derived and never accepted from the client:
 
 - **`source`** — `MANUAL` (normal create), `QUICK` (via `/transactions/quick`), or `IMPORT` (reserved for the future bank/CSV import).
 - **`currency`** — stamped from the involved account when balances are applied.
+- **`dayKey`** — the local accounting day (`YYYY-MM-DD`), see below.
+
+## The accounting day (`dayKey`)
+
+`date` is an **instant**. The day it belongs to is not: it depends on a timezone, and the account's
+one can change. So every transaction also carries **`dayKey`**, the local day of `date` in the
+account's timezone at the moment it was written, and that value is **frozen**:
+
+- It is stamped on create and on quick-add (`TransactionService`, from the zone the controller
+  resolved) and **re-stamped only when `date` changes**. An edit that touches anything else leaves it
+  alone, even if the account has since moved to another zone.
+- A calendar window — a month, a budget period, the day buckets of the chart — is a **run of calendar
+  days**, so it filters on `dayKey`. Two consequences: a past month's total can no longer change when
+  the account's timezone does, and a window that does not start and end at local midnight is widened
+  to whole days.
+- Rows written before the field existed have `dayKey: null`. Every day window keeps a second branch
+  that answers them by their instant, exactly as before, so nothing disappears while
+  `npm run db:backfill-day-key` has not run. That branch can go once no row has a null.
+
+The reason it is stored rather than derived: with a change of timezone, deriving it moves money
+between months and budget periods retroactively. An expense logged at 11pm on Sep 30 in Bogota is
+Oct 1 in UTC and Oct 1 in Madrid — reading it in another zone would take it out of September's total
+and out of the budget period that already counted it.
 
 ## Files and Responsibilities
 

@@ -222,26 +222,32 @@ export async function seedFixture(fixture: Fixture): Promise<void> {
 
   for (const t of fixture.transactions) {
     if (t.source === "QUICK") {
-      await transactions.quickAddTransaction({
-        id: t.id,
-        amount: t.amount,
-        date: new Date(t.date),
-        userId,
-      } as never);
+      await transactions.quickAddTransaction(
+        {
+          id: t.id,
+          amount: t.amount,
+          date: new Date(t.date),
+          userId,
+        } as never,
+        fixture.user.timezone,
+      );
       continue;
     }
-    await transactions.createTransaction({
-      id: t.id,
-      type: t.type,
-      amount: t.amount,
-      date: new Date(t.date),
-      description: t.description,
-      categoryId: t.categoryId,
-      fromAccountId: t.fromAccountId,
-      toAccountId: t.toAccountId,
-      tags: t.tags,
-      userId,
-    } as never);
+    await transactions.createTransaction(
+      {
+        id: t.id,
+        type: t.type,
+        amount: t.amount,
+        date: new Date(t.date),
+        description: t.description,
+        categoryId: t.categoryId,
+        fromAccountId: t.fromAccountId,
+        toAccountId: t.toAccountId,
+        tags: t.tags,
+        userId,
+      } as never,
+      fixture.user.timezone,
+    );
   }
 
   // Deleted before anything is archived: a row is deleted the way a user

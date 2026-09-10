@@ -234,6 +234,16 @@ const responseViews = {
       type: enumOf(TRANSACTION_TYPES),
       amount: money,
       date: dateTime,
+      dayKey: {
+        type: "string",
+        nullable: true,
+        example: "2026-09-30",
+        description:
+          "The local accounting day of `date` in the account's time zone, " +
+          "frozen when the transaction was written: a later change of that " +
+          "zone cannot move it to another day, month or budget period. Null " +
+          "only on rows written before the field existed.",
+      },
       categoryId: { ...uuid, nullable: true },
       description: { type: "string", nullable: true },
       fromAccountId: { ...uuid, nullable: true },
