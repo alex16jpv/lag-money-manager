@@ -360,26 +360,32 @@ export async function seed(): Promise<Record<string, unknown>> {
 
   for (const t of planned) {
     if (t.quick) {
-      await transactionService.quickAddTransaction({
-        id: t.id,
-        amount: t.amount,
-        date: t.date,
-        userId: SEED_USER.id,
-      } as never);
+      await transactionService.quickAddTransaction(
+        {
+          id: t.id,
+          amount: t.amount,
+          date: t.date,
+          userId: SEED_USER.id,
+        } as never,
+        SEED_USER.timezone,
+      );
       continue;
     }
-    await transactionService.createTransaction({
-      id: t.id,
-      type: t.type,
-      amount: t.amount,
-      date: t.date,
-      description: t.description ?? null,
-      categoryId: t.categoryKey ? categoryId(t.categoryKey) : null,
-      fromAccountId: t.fromAccount ? accountId(t.fromAccount) : null,
-      toAccountId: t.toAccount ? accountId(t.toAccount) : null,
-      tags: t.tags ?? [],
-      userId: SEED_USER.id,
-    } as never);
+    await transactionService.createTransaction(
+      {
+        id: t.id,
+        type: t.type,
+        amount: t.amount,
+        date: t.date,
+        description: t.description ?? null,
+        categoryId: t.categoryKey ? categoryId(t.categoryKey) : null,
+        fromAccountId: t.fromAccount ? accountId(t.fromAccount) : null,
+        toAccountId: t.toAccount ? accountId(t.toAccount) : null,
+        tags: t.tags ?? [],
+        userId: SEED_USER.id,
+      } as never,
+      SEED_USER.timezone,
+    );
   }
 
   // Deleted through the service, so the balances it moved are reversed and

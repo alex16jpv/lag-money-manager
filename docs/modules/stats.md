@@ -58,7 +58,7 @@ Aggregate spending for the authenticated user.
 | `groupBy`  | Bucket key                                          | Ordering                                        | Fallback bucket  |
 | ---------- | --------------------------------------------------- | ----------------------------------------------- | ---------------- |
 | `category` | `categoryId`                                        | `total` descending                              | `uncategorized`  |
-| `day`      | `YYYY-MM-DD` in the user's timezone                 | Date ascending                                  | —                |
+| `day`      | The transaction's frozen `dayKey`                   | Date ascending                                  | —                |
 | `tag`      | One bucket per tag (the transaction is unwound)     | `total` descending                              | `untagged`       |
 
 - **`day`** is a time series: it comes back ascending and **skips days with no transactions**. The client fills the gaps — the API does not emit zero rows.
@@ -72,7 +72,7 @@ Applied in the pipeline's `$match`:
 - **Ownership** — `userId` always scopes the aggregation.
 - **Soft deletes** — `deletedAt: null`; deleted transactions never appear.
 - **`ADJUSTMENT` exclusion** — adjustments are balance reconciliations, not real cash flow. Because `type` defaults to `EXPENSE`, they are invisible by default; and when no type resolves, the match falls back to `{ $ne: "ADJUSTMENT" }`. They only show up when asked for explicitly with `type=ADJUSTMENT`.
-- **Date range** — half-open `[from, to)` (`$gte` / `$lt`), consistent with budget windows. Bounds are compared against the transaction's `date`, not `createdAt`, so backdated transactions land in the period they belong to.
+- **Date range** — the run of **local days** that the half-open `[from, to)` covers in the account's timezone, compared against each transaction's frozen `dayKey` (see `transactions.md`), not against `createdAt`, so backdated transactions land in the period they belong to. A window that does not start and end at local midnight is widened to whole days. Rows written before `dayKey` existed are still answered by their instant, so nothing disappears before `npx tsx scripts/backfill-day-key.ts` runs.
 
 ## Timezone Handling
 
@@ -82,7 +82,7 @@ The controller resolves the timezone in this order:
 2. The user record's `timezone` — covers tokens minted before the claim existed.
 3. `DEFAULT_TIMEZONE` (`America/Bogota`).
 
-Only `groupBy=day` uses it, via `$dateToString`'s `timezone` option, so day boundaries are the user's local midnight. Note the token carries up to ~15 minutes of staleness: changing the timezone takes full effect on the next access token.
+It resolves the **days of the window**, and it is the fallback bucket key for a row whose `dayKey` is still null (through `$dateToString`). A stamped row does not use it at all: its day was frozen when it was written, so a change of timezone no longer moves past spending between buckets or months. Note the token carries up to ~15 minutes of staleness: changing the timezone takes full effect on the next access token, and until then the window is still cut with the old zone.
 
 ## Internal Flow
 

@@ -13,6 +13,7 @@ export interface ITransactionDocument {
   type: TransactionType;
   amount: number; // integer cents
   date: Date;
+  dayKey: string | null;
   categoryId: string | null;
   description: string | null;
   fromAccountId: string | null;
@@ -46,6 +47,8 @@ const TransactionSchema = new Schema<ITransactionDocument>(
     },
     amount: { type: Number, required: true },
     date: { type: Date, required: true },
+    // Null only on rows written before the field existed; `npx tsx scripts/backfill-day-key.ts` fills them.
+    dayKey: { type: String, default: null },
     categoryId: { type: String, default: null },
     description: { type: String, default: null },
     fromAccountId: { type: String, default: null },
@@ -109,6 +112,11 @@ TransactionSchema.index(
   { userId: 1, date: -1 },
   { partialFilterExpression: { pendingDetails: true, deletedAt: null } },
 );
+
+// Calendar windows (a month, a budget period, the day buckets of the chart) filter by the frozen
+// accounting day. The listing still sorts by `date`, so a day-filtered page pays an in-memory sort
+// of that window's rows; the unfiltered listing keeps using the primary index above.
+TransactionSchema.index({ userId: 1, deletedAt: 1, dayKey: 1 });
 
 // Offline change feed: keyset pagination over (updatedAt, _id), archived and
 // deleted rows included — the client learns of a disappearance no other way.

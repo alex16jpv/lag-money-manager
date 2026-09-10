@@ -11,10 +11,37 @@ The most complex module in the system. Records financial transactions and automa
 
 Create, update, and delete all run inside a **MongoDB transaction**, so the ledger and the account balances can never drift apart. On update, the original balance adjustments are reversed before applying new ones. Deletes are **soft** (`deletedAt`). All transactions are user-scoped.
 
-Two fields are server-derived and never accepted from the client:
+Three fields are server-derived and never accepted from the client:
 
 - **`source`** — `MANUAL` (normal create), `QUICK` (via `/transactions/quick`), or `IMPORT` (reserved for the future bank/CSV import).
 - **`currency`** — stamped from the involved account when balances are applied.
+- **`dayKey`** — the local accounting day (`YYYY-MM-DD`), see below.
+
+## The accounting day (`dayKey`)
+
+`date` is an **instant**. The day it belongs to is not: it depends on a timezone, and the account's
+one can change. So every transaction also carries **`dayKey`**, the local day of `date` in the
+account's timezone at the moment it was written, and that value is **frozen**:
+
+- It is stamped on create and on quick-add (`TransactionService`, from the zone the controller
+  resolved) and **re-stamped only when `date` changes**. An edit that touches anything else leaves it
+  alone, even if the account has since moved to another zone.
+- A calendar window — a month, a budget period, the day buckets of the chart — is a **run of calendar
+  days**, so it filters on `dayKey`. Two consequences: a past month's total can no longer change when
+  the account's timezone does, and a window that does not start and end at local midnight is widened
+  to whole days.
+- Rows written before the field existed have `dayKey: null`. Every day window keeps a second branch
+  that answers them by their instant, exactly as before, so nothing disappears. **That branch is the
+  design, not a migration waiting to happen:** the owner decided on 2026-09-10 not to backfill those
+  rows, because the read path derives the same day the backfill would write. What it would add is
+  freezing it, which only matters if the account's timezone changes — and then it would have to run
+  *before* the change to be worth anything. `scripts/backfill-day-key.ts` is there for that day; it
+  has no npm alias so it does not sit in `npm run` unused.
+
+The reason it is stored rather than derived: with a change of timezone, deriving it moves money
+between months and budget periods retroactively. An expense logged at 11pm on Sep 30 in Bogota is
+Oct 1 in UTC and Oct 1 in Madrid — reading it in another zone would take it out of September's total
+and out of the budget period that already counted it.
 
 ## Files and Responsibilities
 
@@ -427,3 +454,26 @@ rows only (about 2 % of the primary index's size, since the inbox is a handful o
 documents). `type` deliberately has none: an index cannot spare a visit to rows it
 does not exclude. Apply the same test before indexing a new filter — how much does
 it exclude, and does anything count on it?
+
+#### The day window costs the month, not the history
+
+`{userId, deletedAt, dayKey}` serves the calendar windows. Measured over 20 000
+transactions of one user (two years, ~744 a month), asking for a month two years
+back, first page of 20 sorted by date:
+
+| Query | Keys examined | Docs | Time |
+| --- | --- | --- | --- |
+| Instant range (before `dayKey`) | 20 | 20 | 1 ms |
+| `dayKey` range | 744 | 744 | 6 ms |
+| `dayKey` range **or** the legacy instant | 744 | 744 | 14 ms |
+
+The instant range was cheaper because one index gave both the bounds and the sort,
+so it stopped at the twentieth row. A `dayKey` range cannot: the sort is still by
+`date`, so the window's rows are read and sorted in memory. The cost is bounded by
+the **size of the window**, not by how old it is — and it buys a month that no
+longer changes. The aggregations (a budget's `spent`, the day buckets) examine the
+same 744 keys as before, so they pay nothing.
+
+The `$or` that keeps answering rows with `dayKey: null` roughly doubles the page's
+time. It stays: those 8 ms are the price of not migrating rows whose day the read
+path can derive anyway. Dropping the branch means backfilling first.

@@ -291,6 +291,7 @@ describe("SyncBatchService", () => {
 
       expect(transactions.createTransaction).toHaveBeenCalledWith(
         { ...body, id, userId: USER },
+        TZ,
         undefined,
         { replayed: false },
       );
@@ -798,6 +799,7 @@ describe("SyncBatchService", () => {
       // The movement of the same batch lands against the server's category.
       expect(transactions.createTransaction).toHaveBeenCalledWith(
         expect.objectContaining({ categoryId: serverId }),
+        TZ,
         undefined,
         { replayed: false },
       );
@@ -1038,6 +1040,7 @@ describe("SyncBatchService", () => {
       });
       expect(transactions.createTransaction).toHaveBeenLastCalledWith(
         expect.objectContaining({ categoryId: null, pendingDetails: true }),
+        TZ,
         undefined,
         { replayed: false },
       );
@@ -1235,6 +1238,7 @@ describe("SyncBatchService", () => {
       // the server's category.
       expect(transactions.createTransaction).toHaveBeenCalledWith(
         expect.objectContaining({ categoryId: serverId }),
+        TZ,
         undefined,
         { replayed: false },
       );

@@ -32,6 +32,26 @@ export const fromCents = (cents: number): number => cents / 100;
 const live = (t: FixtureTransaction): boolean => t.deletedAt === null;
 const instant = (iso: string): number => new Date(iso).getTime();
 
+const dayOf = (iso: string, timezone: string): string =>
+  DateTime.fromJSDate(new Date(iso), { zone: timezone }).toFormat("yyyy-MM-dd");
+
+/** The run of local days a half-open instant window covers (see `transactions.md`). */
+const dayBounds = (
+  from: string,
+  to: string,
+  timezone: string,
+): { fromDay: string; toDay: string } => ({
+  fromDay: dayOf(from, timezone),
+  toDay: DateTime.fromMillis(instant(to) - 1, { zone: timezone }).toFormat(
+    "yyyy-MM-dd",
+  ),
+});
+
+const withinDays = (
+  t: FixtureTransaction,
+  bounds: { fromDay: string; toDay: string },
+): boolean => t.dayKey >= bounds.fromDay && t.dayKey <= bounds.toDay;
+
 export function deriveBalances(
   accounts: FixtureAccount[],
   transactions: FixtureTransaction[],
@@ -90,17 +110,16 @@ export function deriveSpending(
   transactions: FixtureTransaction[],
   window: SpendingWindow,
 ): { total: number; buckets: ExpectedBucket[] } {
-  const from = instant(window.from);
-  const to = instant(window.to);
+  // The window is the run of calendar days it covers, matched against the day
+  // the API froze on each row: a change of the account's zone must not move a
+  // past transaction into another window.
+  const bounds = dayBounds(window.from, window.to, window.timezone);
   const matched = transactions.filter((t) => {
     if (!live(t)) return false;
     if (window.type ? t.type !== window.type : t.type === "ADJUSTMENT") {
       return false;
     }
-    const at = instant(t.date);
-    // Half-open [from, to): a transaction at the closing instant belongs to
-    // the next window, never to two.
-    return at >= from && at < to;
+    return withinDays(t, bounds);
   });
 
   const totals = new Map<string, { cents: number; count: number }>();
@@ -114,12 +133,7 @@ export function deriveSpending(
   for (const t of matched) {
     const cents = toCents(t.amount);
     if (window.groupBy === "day") {
-      add(
-        DateTime.fromJSDate(new Date(t.date), {
-          zone: window.timezone,
-        }).toFormat("yyyy-MM-dd"),
-        cents,
-      );
+      add(t.dayKey, cents);
     } else if (window.groupBy === "category") {
       add(t.categoryId ?? "uncategorized", cents);
     } else if (t.tags.length === 0) {
@@ -252,13 +266,14 @@ export function deriveBudgetViews(
     .filter((b) => b.archivedAt === null)
     .map((b) => {
       const period = resolvePeriod(b, reference, timezone);
-      const from = period.from.getTime();
-      const to = period.to.getTime();
-      const inWindow = transactions.filter((t) => {
-        if (!live(t) || t.type !== b.type) return false;
-        const at = instant(t.date);
-        return at >= from && at < to;
-      });
+      const bounds = dayBounds(
+        period.from.toISOString(),
+        period.to.toISOString(),
+        timezone,
+      );
+      const inWindow = transactions.filter(
+        (t) => live(t) && t.type === b.type && withinDays(t, bounds),
+      );
       // A budget with no categories is global: the window's whole spend,
       // uncategorized rows included. A per-category one sums only its own.
       const spentCents = inWindow

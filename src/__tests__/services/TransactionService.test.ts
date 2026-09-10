@@ -48,6 +48,7 @@ import { IIdempotencyRepository } from "../../domain/repositories/idempotency/II
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 
 const USER = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
+const TZ = "America/Bogota";
 const ACC_A = "019576a0-d7b6-7d6d-af6a-2b7545f5ac71";
 const ACC_B = "019576a0-d7b6-7d6d-af6a-2b7545f5ac72";
 const TX_ID = "019576a0-d7b6-7d6d-af6a-2b7545f5ac80";
@@ -143,30 +144,55 @@ describe("TransactionService", () => {
   });
 
   describe("createTransaction", () => {
+    it("freezes the accounting day of the account's zone, not the UTC one [T-14]", async () => {
+      acctRepo.getById.mockResolvedValue(account());
+      txRepo.create.mockImplementation(async (tx) => tx as Transaction);
+
+      // 11pm on Aug 31 in Bogota is already Sep 1 in UTC.
+      const created = await service.createTransaction(
+        {
+          type: "EXPENSE",
+          amount: 30,
+          date: new Date("2026-09-01T04:00:00.000Z"),
+          fromAccountId: ACC_A,
+          userId: USER,
+        },
+        TZ,
+      );
+
+      expect(created.dayKey).toBe("2026-08-31");
+    });
+
     it("applies an ADJUSTMENT as a signed increment on the single account [R2-06]", async () => {
       acctRepo.getById.mockResolvedValue(account());
       txRepo.create.mockImplementation(async (tx) => tx as Transaction);
 
-      await service.createTransaction({
-        type: "ADJUSTMENT",
-        amount: 30,
-        date: new Date("2026-08-31"),
-        fromAccountId: ACC_A,
-        userId: USER,
-      });
+      await service.createTransaction(
+        {
+          type: "ADJUSTMENT",
+          amount: 30,
+          date: new Date("2026-08-31"),
+          fromAccountId: ACC_A,
+          userId: USER,
+        },
+        TZ,
+      );
       expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
         ACC_A,
         -30,
         "test-session",
       );
 
-      await service.createTransaction({
-        type: "ADJUSTMENT",
-        amount: 30,
-        date: new Date("2026-08-31"),
-        toAccountId: ACC_B,
-        userId: USER,
-      });
+      await service.createTransaction(
+        {
+          type: "ADJUSTMENT",
+          amount: 30,
+          date: new Date("2026-08-31"),
+          toAccountId: ACC_B,
+          userId: USER,
+        },
+        TZ,
+      );
       expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
         ACC_B,
         30,
@@ -185,7 +211,7 @@ describe("TransactionService", () => {
       };
       txRepo.create.mockResolvedValue(new Transaction({ id: TX_ID, ...dto }));
 
-      await service.createTransaction(dto);
+      await service.createTransaction(dto, TZ);
 
       expect(acctRepo.incrementBalance).toHaveBeenCalledTimes(1);
       expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
@@ -210,7 +236,7 @@ describe("TransactionService", () => {
       };
       txRepo.create.mockResolvedValue(new Transaction({ id: TX_ID, ...dto }));
 
-      await service.createTransaction(dto);
+      await service.createTransaction(dto, TZ);
 
       expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
         ACC_B,
@@ -233,7 +259,7 @@ describe("TransactionService", () => {
       };
       txRepo.create.mockResolvedValue(new Transaction({ id: TX_ID, ...dto }));
 
-      await service.createTransaction(dto);
+      await service.createTransaction(dto, TZ);
 
       expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
         ACC_A,
@@ -258,7 +284,7 @@ describe("TransactionService", () => {
       };
       txRepo.create.mockResolvedValue(new Transaction({ id: TX_ID, ...dto }));
 
-      await service.createTransaction(dto);
+      await service.createTransaction(dto, TZ);
 
       expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
         ACC_A,
@@ -270,13 +296,16 @@ describe("TransactionService", () => {
     it("rejects when the source account does not exist", async () => {
       acctRepo.getById.mockResolvedValue(null);
       await expect(
-        service.createTransaction({
-          type: "EXPENSE",
-          amount: 100,
-          date: new Date("2026-03-28"),
-          fromAccountId: ACC_A,
-          userId: USER,
-        }),
+        service.createTransaction(
+          {
+            type: "EXPENSE",
+            amount: 100,
+            date: new Date("2026-03-28"),
+            fromAccountId: ACC_A,
+            userId: USER,
+          },
+          TZ,
+        ),
       ).rejects.toThrow("Source account not found");
       expect(txRepo.create).not.toHaveBeenCalled();
     });
@@ -284,40 +313,49 @@ describe("TransactionService", () => {
     it("rejects when the account belongs to another user", async () => {
       acctRepo.getById.mockResolvedValue(account({ userId: "someone-else" }));
       await expect(
-        service.createTransaction({
-          type: "EXPENSE",
-          amount: 100,
-          date: new Date("2026-03-28"),
-          fromAccountId: ACC_A,
-          userId: USER,
-        }),
+        service.createTransaction(
+          {
+            type: "EXPENSE",
+            amount: 100,
+            date: new Date("2026-03-28"),
+            fromAccountId: ACC_A,
+            userId: USER,
+          },
+          TZ,
+        ),
       ).rejects.toThrow("Source account not found");
       expect(txRepo.create).not.toHaveBeenCalled();
     });
 
     it("rejects an invalid amount before touching balances", async () => {
       await expect(
-        service.createTransaction({
-          type: "EXPENSE",
-          amount: 0,
-          date: new Date("2026-03-28"),
-          fromAccountId: ACC_A,
-          userId: USER,
-        }),
+        service.createTransaction(
+          {
+            type: "EXPENSE",
+            amount: 0,
+            date: new Date("2026-03-28"),
+            fromAccountId: ACC_A,
+            userId: USER,
+          },
+          TZ,
+        ),
       ).rejects.toThrow("Amount must be greater than 0");
       expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
     });
 
     it("rejects an EXPENSE that also carries a destination account [B10]", async () => {
       await expect(
-        service.createTransaction({
-          type: "EXPENSE",
-          amount: 50,
-          date: new Date("2026-03-28"),
-          fromAccountId: ACC_A,
-          toAccountId: ACC_B,
-          userId: USER,
-        }),
+        service.createTransaction(
+          {
+            type: "EXPENSE",
+            amount: 50,
+            date: new Date("2026-03-28"),
+            fromAccountId: ACC_A,
+            toAccountId: ACC_B,
+            userId: USER,
+          },
+          TZ,
+        ),
       ).rejects.toThrow("toAccountId is not allowed");
       expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
     });
@@ -345,6 +383,7 @@ describe("TransactionService", () => {
           fromAccountId: ACC_A,
           userId: USER,
         },
+        TZ,
         { key: "key-1", requestHash: "h1" },
       );
 
@@ -368,6 +407,7 @@ describe("TransactionService", () => {
             fromAccountId: ACC_A,
             userId: USER,
           },
+          TZ,
           { key: "key-1", requestHash: "hash-of-different-body" },
         ),
       ).rejects.toThrow("different payload");
@@ -390,6 +430,7 @@ describe("TransactionService", () => {
             fromAccountId: ACC_A,
             userId: USER,
           },
+          TZ,
           { key: "key-1", requestHash: "h1" },
         ),
       ).rejects.toThrow("was deleted");
@@ -413,7 +454,7 @@ describe("TransactionService", () => {
         new Transaction({ ...existing, amount: 175 }),
       );
 
-      await service.updateTransaction(TX_ID, { amount: 175 }, USER);
+      await service.updateTransaction(TX_ID, { amount: 175 }, USER, TZ);
 
       // reverse old (+100 back), then apply new (-175)
       expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
@@ -441,7 +482,7 @@ describe("TransactionService", () => {
       acctRepo.getById.mockResolvedValue(account());
       txRepo.update.mockResolvedValue(existing);
 
-      await service.updateTransaction(TX_ID, { amount: 175 }, USER);
+      await service.updateTransaction(TX_ID, { amount: 175 }, USER, TZ);
       expect(txRepo.update).toHaveBeenCalledWith(
         TX_ID,
         { amount: 175 },
@@ -451,7 +492,7 @@ describe("TransactionService", () => {
       );
 
       txRepo.update.mockClear();
-      await service.updateTransaction(TX_ID, { note: "x" }, USER);
+      await service.updateTransaction(TX_ID, { note: "x" }, USER, TZ);
       expect(txRepo.update).toHaveBeenCalledWith(
         TX_ID,
         { note: "x" },
@@ -477,14 +518,48 @@ describe("TransactionService", () => {
         TX_ID,
         { date: new Date("2026-04-02") },
         USER,
+        TZ,
       );
 
       expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
       expect(txRepo.update).toHaveBeenCalledWith(
         TX_ID,
-        { date: new Date("2026-04-02") },
+        // The day is re-stamped because the date moved: midnight UTC on Apr 2
+        // is still Apr 1 in Bogota (T-14).
+        { date: new Date("2026-04-02"), dayKey: "2026-04-01" },
         "test-session",
         expect.objectContaining({ date: new Date("2026-03-28") }),
+        undefined,
+      );
+    });
+
+    it("leaves the accounting day alone when the edit does not move the date [T-14]", async () => {
+      const existing = new Transaction({
+        id: TX_ID,
+        type: "EXPENSE",
+        amount: 100,
+        date: new Date("2026-03-28T04:30:00.000Z"),
+        dayKey: "2026-03-27",
+        fromAccountId: ACC_A,
+        userId: USER,
+      });
+      txRepo.getById.mockResolvedValue(existing);
+      txRepo.update.mockResolvedValue(existing);
+
+      // The account moved to a zone where that instant is another day: an
+      // unrelated edit must not re-book a past expense.
+      await service.updateTransaction(
+        TX_ID,
+        { description: "renamed" },
+        USER,
+        "Europe/Madrid",
+      );
+
+      expect(txRepo.update).toHaveBeenCalledWith(
+        TX_ID,
+        { description: "renamed" },
+        "test-session",
+        undefined,
         undefined,
       );
     });
@@ -506,7 +581,7 @@ describe("TransactionService", () => {
       // Works even if the account is archived: no account lookup happens.
       acctRepo.getById.mockResolvedValue(null);
 
-      await service.updateTransaction(TX_ID, { note: "coffee" }, USER);
+      await service.updateTransaction(TX_ID, { note: "coffee" }, USER, TZ);
 
       expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
       expect(acctRepo.getById).not.toHaveBeenCalled();
@@ -525,7 +600,7 @@ describe("TransactionService", () => {
       txRepo.getById.mockResolvedValue(existing);
 
       await expect(
-        service.updateTransaction(TX_ID, { type: "INCOME" }, USER),
+        service.updateTransaction(TX_ID, { type: "INCOME" }, USER, TZ),
       ).rejects.toThrow("toAccountId is required");
       expect(txRepo.update).not.toHaveBeenCalled();
     });
@@ -543,7 +618,7 @@ describe("TransactionService", () => {
       );
 
       await expect(
-        service.updateTransaction(TX_ID, { amount: 50 }, USER),
+        service.updateTransaction(TX_ID, { amount: 50 }, USER, TZ),
       ).rejects.toThrow("Transaction not found");
     });
   });
@@ -603,7 +678,7 @@ describe("TransactionService", () => {
         async (t) => new Transaction({ ...(t as object), id: TX_ID } as never),
       );
 
-      await service.quickAddTransaction({ amount: 20, userId: USER });
+      await service.quickAddTransaction({ amount: 20, userId: USER }, TZ);
 
       expect(acctRepo.getDefaultByUserId).toHaveBeenCalledWith(USER);
       const created = txRepo.create.mock.calls[0][0];
@@ -616,7 +691,7 @@ describe("TransactionService", () => {
       acctRepo.getDefaultByUserId.mockResolvedValue(null);
 
       await expect(
-        service.quickAddTransaction({ amount: 20, userId: USER }),
+        service.quickAddTransaction({ amount: 20, userId: USER }, TZ),
       ).rejects.toThrow("No default account");
       expect(txRepo.create).not.toHaveBeenCalled();
     });
@@ -627,13 +702,16 @@ describe("TransactionService", () => {
       acctRepo.getById.mockResolvedValue(account({ currency: "COP" }));
       txRepo.create.mockImplementation(async (tx) => tx as Transaction);
 
-      const created = await service.createTransaction({
-        type: "EXPENSE",
-        amount: 10,
-        date: new Date("2026-03-28"),
-        fromAccountId: ACC_A,
-        userId: USER,
-      });
+      const created = await service.createTransaction(
+        {
+          type: "EXPENSE",
+          amount: 10,
+          date: new Date("2026-03-28"),
+          fromAccountId: ACC_A,
+          userId: USER,
+        },
+        TZ,
+      );
 
       expect(created.currency).toBe("COP");
     });
@@ -646,14 +724,17 @@ describe("TransactionService", () => {
       );
 
       await expect(
-        service.createTransaction({
-          type: "TRANSFER",
-          amount: 10,
-          date: new Date("2026-03-28"),
-          fromAccountId: ACC_A,
-          toAccountId: ACC_B,
-          userId: USER,
-        }),
+        service.createTransaction(
+          {
+            type: "TRANSFER",
+            amount: 10,
+            date: new Date("2026-03-28"),
+            fromAccountId: ACC_A,
+            toAccountId: ACC_B,
+            userId: USER,
+          },
+          TZ,
+        ),
       ).rejects.toThrow("different currencies");
       expect(txRepo.create).not.toHaveBeenCalled();
     });
@@ -665,19 +746,25 @@ describe("TransactionService", () => {
       acctRepo.getDefaultByUserId.mockResolvedValue(account());
       txRepo.create.mockImplementation(async (tx) => tx as Transaction);
 
-      const quick = await service.quickAddTransaction({
-        amount: 5,
-        userId: USER,
-      });
+      const quick = await service.quickAddTransaction(
+        {
+          amount: 5,
+          userId: USER,
+        },
+        TZ,
+      );
       expect(quick.source).toBe("QUICK");
 
-      const manual = await service.createTransaction({
-        type: "EXPENSE",
-        amount: 10,
-        date: new Date("2026-03-28"),
-        fromAccountId: ACC_A,
-        userId: USER,
-      });
+      const manual = await service.createTransaction(
+        {
+          type: "EXPENSE",
+          amount: 10,
+          date: new Date("2026-03-28"),
+          fromAccountId: ACC_A,
+          userId: USER,
+        },
+        TZ,
+      );
       expect(manual.source).toBe("MANUAL");
     });
   });
@@ -701,7 +788,7 @@ describe("TransactionService", () => {
     it("rejects a nonexistent category", async () => {
       categoryRepo.getByIdIncludingArchived.mockResolvedValue(null);
 
-      await expect(service.createTransaction(expenseDto())).rejects.toThrow(
+      await expect(service.createTransaction(expenseDto(), TZ)).rejects.toThrow(
         "Category not found",
       );
       expect(txRepo.create).not.toHaveBeenCalled();
@@ -712,7 +799,7 @@ describe("TransactionService", () => {
         new Category({ id: CAT, name: "Food", userId: "someone-else" }),
       );
 
-      await expect(service.createTransaction(expenseDto())).rejects.toThrow(
+      await expect(service.createTransaction(expenseDto(), TZ)).rejects.toThrow(
         "Category not found",
       );
     });
@@ -727,7 +814,7 @@ describe("TransactionService", () => {
         }),
       );
 
-      await expect(service.createTransaction(expenseDto())).rejects.toThrow(
+      await expect(service.createTransaction(expenseDto(), TZ)).rejects.toThrow(
         "Category is archived",
       );
     });
@@ -737,7 +824,7 @@ describe("TransactionService", () => {
         new Category({ id: CAT, name: "Salary", type: "INCOME", userId: USER }),
       );
 
-      await expect(service.createTransaction(expenseDto())).rejects.toThrow(
+      await expect(service.createTransaction(expenseDto(), TZ)).rejects.toThrow(
         "does not match transaction type",
       );
     });
@@ -748,7 +835,7 @@ describe("TransactionService", () => {
       );
 
       await expect(
-        service.createTransaction(expenseDto()),
+        service.createTransaction(expenseDto(), TZ),
       ).resolves.toBeDefined();
       expect(txRepo.create).toHaveBeenCalled();
     });
@@ -777,7 +864,7 @@ describe("TransactionService", () => {
       );
 
       await expect(
-        service.updateTransaction(TX_ID, { amount: 175 }, USER),
+        service.updateTransaction(TX_ID, { amount: 175 }, USER, TZ),
       ).resolves.toBeDefined();
     });
   });

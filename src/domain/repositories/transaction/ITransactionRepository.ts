@@ -29,9 +29,11 @@ export interface TransactionFilters {
   type?: TransactionType;
   pendingDetails?: boolean;
   source?: TransactionSource;
-  // Half-open date range [from, to).
+  // Half-open date range [from, to), matched as the run of local days it covers
+  // in `timezone`, which is required with either bound.
   from?: Date;
   to?: Date;
+  timezone?: string;
   tag?: string;
   uncategorized?: boolean;
   // Opt-in: adds the sum over the whole filtered set (one extra aggregation).
@@ -122,22 +124,26 @@ export interface ITransactionRepository extends IRepository<Transaction> {
 
   countByCategory(userId: string, categoryId: string): Promise<number>;
 
-  // Sum of amounts (integer cents) of the given flow type per category in
-  // [from, to), restricted to the given categories. Budget spend/earned.
+  // Sum of amounts (integer cents) of the given flow type per category over the
+  // local days [from, to) covers in `timezone`, restricted to the given
+  // categories. Budget spend/earned.
   sumAmountsByCategory(
     userId: string,
     from: Date,
     to: Date,
     categoryIds: string[],
     type: "EXPENSE" | "INCOME",
+    timezone: string,
   ): Promise<Record<string, number>>;
 
-  // Total cents of the given flow type in [from, to) regardless of category
-  // (uncategorized included) — a global budget sees quick-adds immediately.
+  // Total cents of the given flow type over the same days regardless of
+  // category (uncategorized included) — a global budget sees quick-adds
+  // immediately.
   sumAmounts(
     userId: string,
     from: Date,
     to: Date,
     type: "EXPENSE" | "INCOME",
+    timezone: string,
   ): Promise<number>;
 }

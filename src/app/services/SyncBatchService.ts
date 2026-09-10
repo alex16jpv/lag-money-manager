@@ -225,6 +225,7 @@ export class SyncBatchService {
         run: ({ body, ctx, outcome }) =>
           this.transactions.createTransaction(
             { ...body, userId: ctx.userId } as never,
+            ctx.timezone,
             undefined,
             outcome,
           ),
@@ -238,6 +239,7 @@ export class SyncBatchService {
         run: ({ body, ctx, outcome }) =>
           this.transactions.quickAddTransaction(
             { ...body, userId: ctx.userId } as never,
+            ctx.timezone,
             undefined,
             outcome,
           ),
@@ -252,6 +254,7 @@ export class SyncBatchService {
             id,
             body as never,
             ctx.userId,
+            ctx.timezone,
             guard,
           ),
       },

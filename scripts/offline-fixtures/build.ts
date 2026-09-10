@@ -99,6 +99,9 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
         type: t.type,
         amount: t.amount,
         date: t.date,
+        dayKey: DateTime.fromISO(t.date, { setZone: true })
+          .setZone(user.timezone)
+          .toFormat("yyyy-MM-dd"),
         description: t.description ?? null,
         categoryId: t.quick === true ? null : categoryId(t.category),
         // A quick-add is charged to the default account by the server, not by

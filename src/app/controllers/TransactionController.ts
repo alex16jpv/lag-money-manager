@@ -12,6 +12,7 @@ import {
   TransactionService,
 } from "../services/TransactionService";
 import { ifMatch } from "./ifMatch";
+import { resolveTimezone } from "./timezone";
 
 // Bounded charset/length: the key becomes part of a stored _id.
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]{1,200}$/;
@@ -64,11 +65,15 @@ export class TransactionController {
     if (req.query.uncategorized === "true") {
       filters.uncategorized = true;
     }
-    if (req.query.from) {
-      filters.from = new Date(req.query.from as string);
-    }
-    if (req.query.to) {
-      filters.to = new Date(req.query.to as string);
+    if (req.query.from || req.query.to) {
+      // The window is a run of calendar days in the account's zone (T-14).
+      filters.timezone = await resolveTimezone(req);
+      if (req.query.from) {
+        filters.from = new Date(req.query.from as string);
+      }
+      if (req.query.to) {
+        filters.to = new Date(req.query.to as string);
+      }
     }
     if (req.query.tag) {
       filters.tag = req.query.tag as string;
@@ -96,6 +101,7 @@ export class TransactionController {
     const result = await transactionService.batchUpdateDetails(
       items,
       req.user!.userId,
+      await resolveTimezone(req),
     );
     res.status(200).json(result);
   };
@@ -114,6 +120,7 @@ export class TransactionController {
     const outcome = { replayed: false };
     const newTransaction = await transactionService.createTransaction(
       { ...req.body, userId },
+      await resolveTimezone(req),
       idempotencyMeta(req),
       outcome,
     );
@@ -125,6 +132,7 @@ export class TransactionController {
     const outcome = { replayed: false };
     const newTransaction = await transactionService.quickAddTransaction(
       { ...req.body, userId },
+      await resolveTimezone(req),
       idempotencyMeta(req),
       outcome,
     );
@@ -138,6 +146,7 @@ export class TransactionController {
       id,
       req.body,
       userId,
+      await resolveTimezone(req),
       ifMatch(req),
     );
     res.status(200).json(updatedTransaction);

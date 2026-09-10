@@ -9,6 +9,7 @@ import {
 } from "../../domain/repositories/transaction/ITransactionRepository";
 import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { assertFresh } from "../../shared/concurrency";
+import { dayKeyOf } from "../../shared/dayKey";
 import { ErrorCode } from "../../shared/errorCodes";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
@@ -106,6 +107,7 @@ export class TransactionService {
 
   async createTransaction(
     dto: CreateTransactionDTO,
+    timezone: string,
     idempotency?: IdempotencyMeta,
     outcome?: CreateOutcome,
   ): Promise<Transaction> {
@@ -114,12 +116,13 @@ export class TransactionService {
       outcome,
       findOwn: (id) => this.transactionRepo.getOwnById(id, dto.userId),
       replay: async (t) => t,
-      create: () => this.insertTransaction(dto, idempotency),
+      create: () => this.insertTransaction(dto, timezone, idempotency),
     });
   }
 
   private async insertTransaction(
     dto: CreateTransactionDTO,
+    timezone: string,
     idempotency?: IdempotencyMeta,
   ): Promise<Transaction> {
     if (idempotency) {
@@ -127,7 +130,10 @@ export class TransactionService {
       if (existing) return existing;
     }
 
-    const transaction = new Transaction(dto);
+    const transaction = new Transaction({
+      ...dto,
+      dayKey: dayKeyOf(new Date(dto.date), timezone),
+    });
     transaction.assertValid();
     await this.assertCategoryUsable(transaction);
 
@@ -191,6 +197,7 @@ export class TransactionService {
   // pendingDetails so the client can list these for later detailing.
   async quickAddTransaction(
     dto: QuickAddTransactionDTO,
+    timezone: string,
     idempotency?: IdempotencyMeta,
     outcome?: CreateOutcome,
   ): Promise<Transaction> {
@@ -199,12 +206,13 @@ export class TransactionService {
       outcome,
       findOwn: (id) => this.transactionRepo.getOwnById(id, dto.userId),
       replay: async (t) => t,
-      create: () => this.insertQuickAdd(dto, idempotency),
+      create: () => this.insertQuickAdd(dto, timezone, idempotency),
     });
   }
 
   private async insertQuickAdd(
     dto: QuickAddTransactionDTO,
+    timezone: string,
     idempotency?: IdempotencyMeta,
   ): Promise<Transaction> {
     const type = dto.type ?? "EXPENSE";
@@ -231,6 +239,7 @@ export class TransactionService {
         pendingDetails: true,
         source: "QUICK",
       },
+      timezone,
       idempotency,
     );
   }
@@ -261,13 +270,16 @@ export class TransactionService {
   async batchUpdateDetails(
     items: BatchDetailUpdate[],
     userId: string,
+    timezone: string,
   ): Promise<BatchUpdateResult> {
     const updated: Transaction[] = [];
     const failed: BatchUpdateFailure[] = [];
 
     for (const { id, ...detail } of items) {
       try {
-        updated.push(await this.updateTransaction(id, detail, userId));
+        updated.push(
+          await this.updateTransaction(id, detail, userId, timezone),
+        );
       } catch (err) {
         const failure = describeItemFailure(id, err);
         // Only the failures this endpoint promises to report per item are
@@ -290,6 +302,7 @@ export class TransactionService {
     id: string,
     dto: UpdateTransactionDTO,
     userId: string,
+    timezone: string,
     expectedUpdatedAt?: Date,
   ): Promise<Transaction> {
     if (dto.id && dto.id !== id) {
@@ -329,8 +342,14 @@ export class TransactionService {
       // Monetary edits keep a pre-update snapshot (audit trail, R2-27).
       // The date counts here: moving money between periods reshapes budgets
       // and stats even though balances don't move.
-      const auditableChange =
-        monetaryChanged || updated.date.getTime() !== existing.date.getTime();
+      // The accounting day only moves when the date does: an unrelated edit must not re-book a
+      // past expense with a timezone the account changed to in the meantime.
+      const dateChanged = updated.date.getTime() !== existing.date.getTime();
+      const patch = dateChanged
+        ? { ...dto, dayKey: dayKeyOf(updated.date, timezone) }
+        : dto;
+
+      const auditableChange = monetaryChanged || dateChanged;
       const revision = auditableChange
         ? {
             at: new Date(),
@@ -344,7 +363,7 @@ export class TransactionService {
 
       return await this.transactionRepo.update(
         id,
-        dto,
+        patch,
         session,
         revision,
         expectedUpdatedAt,
