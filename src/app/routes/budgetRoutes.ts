@@ -51,7 +51,7 @@ const router = Router();
  *       - in: query
  *         name: cursor
  *         schema: { type: string, format: uuid }
- *         description: ID of the last item of the previous page (cursor-based pagination; overrides offset)
+ *         description: ID of the last item of the previous page; must name a row of the caller's (cursor-based pagination; overrides offset)
  *     responses:
  *       200:
  *         description: Paginated list of budget views
@@ -60,7 +60,7 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/BudgetList'
  *       400:
- *         description: Invalid query parameters
+ *         description: Invalid query parameters (code VALIDATION), or a cursor that names no budget of the caller's (code INVALID_CURSOR)
  *         content:
  *           application/json:
  *             schema:

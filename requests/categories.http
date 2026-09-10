@@ -93,6 +93,12 @@ Authorization: Bearer {{token}}
 
 ### ---------- Casos de error ----------
 
+### Cursor de paginación que no nombra ninguna fila propia (400 INVALID_CURSOR)
+### No devuelve la página 1: eso hacía que un scroll infinito repitiera filas.
+GET {{baseUrl}}/categories?cursor=00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{token}}
+
+
 ### Duplicado case-insensitive — "CAFÉ Y SNACKS" ya existe como "Café y snacks" (409 DUPLICATE)
 POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}

@@ -10,6 +10,7 @@ import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
 import {
   buildPaginatedResult,
+  pageQueryLimit,
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
@@ -17,6 +18,7 @@ import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession, withTransaction } from "../../../shared/unitOfWork";
 import { AccountModel, IAccountDocument } from "../../models/AccountModel";
 import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
+import { ID_CURSOR_SORT, idCursorFilter } from "../keysetCursor";
 
 export class AccountRepository implements IAccountRepository {
   private toEntity(doc: IAccountDocument): Account {
@@ -52,20 +54,15 @@ export class AccountRepository implements IAccountRepository {
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Account>> {
     const { limit, offset, cursor } = pagination;
-    const filter = { ...baseFilter };
-    if (cursor) {
-      // Merge with an ids ($in) filter instead of clobbering it.
-      filter._id =
-        filter._id && typeof filter._id === "object"
-          ? { ...(filter._id as Record<string, unknown>), $gt: cursor }
-          : { $gt: cursor };
-    }
+    const filter = cursor
+      ? await idCursorFilter(AccountModel, baseFilter, cursor)
+      : { ...baseFilter };
 
     const [docs, total] = await Promise.all([
       AccountModel.find(filter)
-        .sort({ _id: 1 })
+        .sort(ID_CURSOR_SORT)
         .skip(cursor ? 0 : offset)
-        .limit(limit)
+        .limit(pageQueryLimit(limit))
         .lean(),
       AccountModel.countDocuments(baseFilter),
     ]);

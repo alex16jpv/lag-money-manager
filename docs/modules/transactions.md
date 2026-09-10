@@ -127,7 +127,7 @@ fetching the rows: `GET /transactions?<filters>&limit=1` and read `pagination.to
 | `tag`            | string | No       | Only transactions carrying this tag (tags are stored trimmed and lowercased)  |
 | `type`           | string | No       | `INCOME`, `EXPENSE`, `TRANSFER`, or `ADJUSTMENT`                              |
 
-Filters can be combined. An unknown or foreign `cursor` is rejected with `400 INVALID_CURSOR` rather than silently serving page 1 — that silent fallback used to make infinite scroll duplicate items.
+Filters can be combined. An unknown or foreign `cursor` is rejected with `400 INVALID_CURSOR` rather than silently serving page 1 — that silent fallback used to make infinite scroll duplicate items; every list endpoint answers the same way. `hasMore` is read from one row past the page, so a last page that is exactly `limit` long says `hasMore: false`.
 
 Soft-deleted transactions are excluded from every listing and read.
 
