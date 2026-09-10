@@ -249,6 +249,141 @@ describe("POST /sync against mongod", () => {
     });
   });
 
+  // T-09: the write and its registry row are two commits, so a crash between
+  // them leaves the operation on the server with nothing remembering it. The
+  // resend then met the guard its own write had already moved.
+  describe("a replay whose registry row was lost", () => {
+    const lose = async (opId: string): Promise<void> => {
+      const { deletedCount } = await SyncOpModel.deleteMany({ opId });
+      expect(deletedCount).toBe(1);
+    };
+
+    const statusOf = async (opId: string): Promise<string | undefined> =>
+      (await SyncOpModel.findById(`${alice.userId}:${opId}`).lean())?.status;
+
+    it("answers a guarded movement update that already landed with `duplicate`", async () => {
+      const accountId = uuid("a", 20);
+      const txId = uuid("e", 20);
+      await push(alice, [
+        op({
+          entity: "account",
+          action: "create",
+          id: accountId,
+          payload: { body: accountBody("Lost record", 1000) },
+        }),
+      ]);
+      const [movement] = await push(alice, [
+        op({
+          entity: "transaction",
+          action: "create",
+          id: txId,
+          payload: { body: expense(accountId, 100) },
+        }),
+      ]);
+      const update = op({
+        entity: "transaction",
+        action: "update",
+        id: txId,
+        payload: { body: { amount: 300 } },
+        baseUpdatedAt: versionOf(movement),
+      });
+
+      expect(statuses(await push(alice, [update]))).toEqual(["applied"]);
+      expect(await balanceOf(accountId)).toBe(70_000);
+
+      await lose(update.opId);
+      const again = await push(alice, [update]);
+
+      expect(statuses(again)).toEqual(["duplicate"]);
+      expect(again[0].code).toBeUndefined();
+      // The money moved once, and the operation is back on record so the next
+      // resend is answered from the registry again.
+      expect(await balanceOf(accountId)).toBe(70_000);
+      expect(await statusOf(update.opId)).toBe("duplicate");
+    });
+
+    it("answers a guarded archive that already landed with `duplicate`", async () => {
+      const id = uuid("a", 21);
+      const [created] = await push(alice, [
+        op({
+          entity: "account",
+          action: "create",
+          id,
+          payload: { body: accountBody("Archived once", 5) },
+        }),
+      ]);
+      const archive = op({
+        entity: "account",
+        action: "archive",
+        id,
+        baseUpdatedAt: versionOf(created),
+      });
+
+      expect(statuses(await push(alice, [archive]))).toEqual(["applied"]);
+      await lose(archive.opId);
+
+      expect(statuses(await push(alice, [archive]))).toEqual(["duplicate"]);
+      expect(
+        (await AccountModel.findById(id).lean())?.archivedAt,
+      ).not.toBeNull();
+    });
+
+    it("lands the same change another device already made, instead of asking", async () => {
+      const id = uuid("a", 22);
+      const [created] = await push(alice, [
+        op({
+          entity: "account",
+          action: "create",
+          id,
+          payload: { body: accountBody("Same edit", 5) },
+        }),
+      ]);
+      const mine = op({
+        entity: "account",
+        action: "update",
+        id,
+        payload: { body: { name: "Groceries" } },
+        baseUpdatedAt: versionOf(created),
+      });
+      await as(
+        alice,
+        request(app).put(`/accounts/${id}`).send({ name: "Groceries" }),
+      ).expect(200);
+
+      expect(statuses(await push(alice, [mine]))).toEqual(["duplicate"]);
+    });
+
+    it("keeps the conflict when the server holds something else", async () => {
+      const id = uuid("a", 23);
+      const [created] = await push(alice, [
+        op({
+          entity: "account",
+          action: "create",
+          id,
+          payload: { body: accountBody("Other edit", 5) },
+        }),
+      ]);
+      const mine = op({
+        entity: "account",
+        action: "update",
+        id,
+        payload: { body: { name: "Mine" } },
+        baseUpdatedAt: versionOf(created),
+      });
+      await as(
+        alice,
+        request(app).put(`/accounts/${id}`).send({ name: "Theirs" }),
+      ).expect(200);
+
+      const results = await push(alice, [mine]);
+
+      expect(statuses(results)).toEqual(["conflict"]);
+      expect(results[0].code).toBe("STALE_UPDATE");
+      expect(results[0].current).toMatchObject({ id, name: "Theirs" });
+      expect(await statusOf(mine.opId)).toBeUndefined();
+    });
+  });
+
   describe("a batch with a 409 inside", () => {
     it("files the stale write as `conflict` with `current`, blocks its row, drains the rest", async () => {
       const id = uuid("a", 4);
