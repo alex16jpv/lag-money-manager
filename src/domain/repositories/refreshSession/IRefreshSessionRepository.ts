@@ -5,6 +5,8 @@ export interface RefreshSession {
   expiresAt: Date;
   replacedBy: string | null;
   revokedAt: Date | null;
+  // When this row was rotated away; null while it is the live tip of its chain.
+  lastUsedAt: Date | null;
 }
 
 // One row per live device session (rotation family), for the sessions UI.

@@ -35,7 +35,7 @@ Cada archivo define arriba: `@baseUrl`, `@email`, `@password` y `@apiSecret`.
 | Archivo | Módulo |
 |---|---|
 | `health.http` | Health check |
-| `auth.http` | Registro (devuelve tokens, reactivación), login, refresh con rotación real, logout/logout-all, sesiones activas |
+| `auth.http` | Registro (devuelve tokens, reactivación), login, refresh con rotación real y su ventana de gracia, logout/logout-all, sesiones activas |
 | `users.http` | Perfil (currency, lastLoginAt), timezone, currency con bloqueo, credenciales con `currentPassword` |
 | `accounts.http` | Cuentas (currency estampada), default (bloqueo al archivarla), archivar/restaurar idempotentes, lectura de archivadas, `INVALID_CURSOR` |
 | `categories.http` | Categorías, seedKey/restore-defaults, type bloqueado con historial, unicidad case-insensitive, archivar idempotente, `INVALID_CURSOR` |

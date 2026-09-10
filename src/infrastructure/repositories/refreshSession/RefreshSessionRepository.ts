@@ -17,6 +17,7 @@ export class RefreshSessionRepository implements IRefreshSessionRepository {
       expiresAt: doc.expiresAt,
       replacedBy: doc.replacedBy,
       revokedAt: doc.revokedAt,
+      lastUsedAt: doc.lastUsedAt,
     };
   }
 

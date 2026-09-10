@@ -9,7 +9,7 @@ Every successful register or login issues a **token pair**:
 - **Access token** — short-lived (`JWT_EXPIRATION`, default 15m), carries `{ userId, email, timezone, sid }`, sent as `Authorization: Bearer <token>`. `sid` is the refresh family the token was issued for; refreshing keeps it, so it identifies the device across rotations.
 - **Refresh token** — long-lived (`REFRESH_TOKEN_EXPIRATION`, default 30d), signed with `REFRESH_SECRET` (falling back to `JWT_SECRET`), carries a `jti` that identifies one row in the sessions collection.
 
-Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the presented token and issues a new pair. Replaying an already-rotated token is treated as theft and revokes the entire device session family.
+Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the presented token and issues a new pair. Replaying an already-rotated token is treated as theft and revokes the entire device session family — with one exception, the **grace window** below, which is what tells a replay apart from an answer that never arrived.
 
 ## Files and Responsibilities
 
@@ -98,6 +98,24 @@ Failed logins pay the same bcrypt cost whether the email exists or not, so timin
 Exchange a refresh token for a **new** access + refresh pair. Public (no access token needed); the body is `{ "refreshToken": "..." }`. The response carries no `user`.
 
 Always store the new refresh token — the old one is dead the moment it is used. Rotation never extends the family past its original absolute expiry.
+
+#### The grace window for a lost answer
+
+Rotation is written before the answer is sent, so a client that never receives it keeps a token the server has already
+rotated, and its next attempt looks exactly like a replay: same `jti`, already spent. It happens for real — the tab
+reloads mid-request when a deployment changes the build id, or a phone drops the connection — and paying for it with the
+whole 30-day family means a password prompt for a lost packet.
+
+What tells the two apart is the **successor**: nobody can have used the token that never arrived. So when the presented
+row is already rotated, the request is answered with the successor's own pair — no new row, no new rotation — as long as
+all of this holds:
+
+- the rotation happened less than **60 seconds** ago (`lastUsedAt`),
+- the successor still exists, is not revoked, and has not itself been rotated,
+- neither row is revoked and the family has not expired.
+
+Anything else is still a replay and still revokes the family. A stolen token therefore buys nothing once the legitimate
+client has rotated again, which is the case replay detection exists for.
 
 ### `POST /auth/logout`
 
@@ -196,9 +214,15 @@ sequenceDiagram
         Note over SVC: New refresh token expires with the family,<br/>never later — no sliding sessions
         SVC->>C: 200 { accessToken, refreshToken }
     else rotate returned null, but the jti exists
-        Note over SVC: Reuse of a rotated/revoked token — theft or a duplicated client
-        SVC->>SESS: revokeFamily(familyId)
-        SVC->>C: 401 REFRESH_REVOKED (re-login required)
+        SVC->>SESS: findById(replacedBy) — the successor of the presented row
+        alt Rotated < 60s ago and the successor is untouched
+            Note over SVC: The answer that carried it never arrived:<br/>same client asking again, not a replay
+            SVC->>C: 200 { accessToken, refreshToken } — the successor's own pair
+        else Anything else
+            Note over SVC: Reuse of a rotated/revoked token — theft or a duplicated client
+            SVC->>SESS: revokeFamily(familyId)
+            SVC->>C: 401 REFRESH_REVOKED (re-login required)
+        end
     else jti unknown
         SVC->>C: 401 REFRESH_INVALID
     end
@@ -255,7 +279,7 @@ Login is limited on two dimensions because a distributed attack on one account r
 | `VALIDATION`                 | 400    | Invalid email format, password shorter than 8 chars, invalid timezone/currency/locale   |
 | `Unauthorized`               | 401    | Invalid email or password on login (uniform for unknown email and wrong password) |
 | `REFRESH_INVALID`            | 401    | Refresh token malformed, expired, or its `jti` is unknown                        |
-| `REFRESH_REVOKED`            | 401    | Reuse of a rotated token, or the token predates a logout-all / credential change  |
+| `REFRESH_REVOKED`            | 401    | Reuse of a rotated token outside the grace window, or the token predates a logout-all / credential change |
 | `Unauthorized`               | 401    | Missing or malformed `Authorization` header, or an invalid/expired access token   |
 | `NotFound`                   | 404    | `DELETE /auth/sessions/:id` for a family that is not the user's                   |
 | `EMAIL_TAKEN`                | 409    | A concurrent register reactivated the same soft-deleted account                   |
