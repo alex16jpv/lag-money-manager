@@ -107,11 +107,11 @@ Según lo que toques:
 | --- | --- |
 | Un endpoint (params, body, respuesta, códigos) | El bloque `@openapi` de su ruta |
 | Comportamiento de un módulo | `docs/modules/<módulo>.md` |
-| Algo que el frontend debe adoptar | `auditoria/FASE-2-CONTRATO-FRONTEND.md` |
+| Algo que el frontend debe adoptar | El bloque `@openapi` de su ruta y `docs/modules/<módulo>.md`: el front genera sus tipos y sus códigos de error desde ahí. Avísale también al dueño |
 | Variables de entorno | `docs/guides/environment-vars.md` y `.env.example` |
 | El flujo de despliegue | `docs/guides/deployment.md` |
 | Arranque o setup local | `docs/guides/getting-started.md` |
-| Algo que encontraste y NO vas a arreglar | `auditoria/BITACORA.md` §6 «Deuda técnica identificada»: una entrada, con qué es y qué decidir |
+| Algo que encontraste y NO vas a arreglar | Repórtaselo al dueño como hallazgo (§7): qué es, dónde, y qué habría que decidir |
 
 Los request bodies del OpenAPI se generan desde los schemas Zod
 (`src/config/swagger.ts`); las vistas de respuesta se mantienen a mano pero sus
@@ -189,11 +189,11 @@ La regla: **si algo falla, tiene que verse, y el mensaje tiene que ser cierto.**
 - ¿Todo hallazgo que NO arreglas quedó **registrado** como entrada, no solo mencionado?
 
 Si encuentras un problema fuera del alcance de lo que te pidieron: no lo
-arregles por tu cuenta, pero tampoco te baste con mencionarlo. **Regístralo**:
-una entrada en `auditoria/BITACORA.md` §6 «Deuda técnica identificada», o una
-fila en `auditoria/front/BACKEND-DESDE-FRONT.md` si viene del front. Vale para
-fallos, código muerto, guardas que faltan, asperezas e ideas, lo haya pedido el
-dueño o no. Escribirlo solo en un resumen de sesión o en una bitácora de relevo
+arregles por tu cuenta, pero tampoco te baste con mencionarlo. **Repórtaselo al
+dueño como hallazgo**, para que entre en la lista de tareas del proyecto: qué
+es, dónde está y qué costaría. Vale para fallos, código muerto, guardas que
+faltan, asperezas e ideas, lo haya pedido el dueño o no, y vale igual si lo que
+falla es del front. Escribirlo solo en un resumen de sesión o en un relevo
 **no cuenta**: eso es el diario, nadie lo lee buscando trabajo pendiente, y lo
 que solo vive ahí se copia de sesión en sesión y no se hace nunca. La entrada
 puede decir «ahora no»; lo que no puede es faltar. Y si algo del cambio quedó

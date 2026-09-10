@@ -12,12 +12,7 @@ export type TransactionType = "EXPENSE" | "INCOME" | "TRANSFER" | "ADJUSTMENT";
 export type MoneyType = "EXPENSE" | "INCOME";
 export type GroupBy = "day" | "category" | "tag";
 export type PeriodType =
-  | "WEEKLY"
-  | "BIWEEKLY"
-  | "MONTHLY"
-  | "QUARTERLY"
-  | "YEARLY"
-  | "CUSTOM";
+  "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "CUSTOM";
 
 /* ---------- authored form ---------- */
 

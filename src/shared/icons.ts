@@ -1,4 +1,4 @@
-// Curated Lucide icon keys a category may use. Source of truth: auditoria/diseno/DESIGN.md §4.3.
+// Curated Lucide icon keys a category may use. The set is fixed by the product's design system.
 // The front renders them with lucide-react; unknown keys are rejected at validation time.
 export const CATEGORY_ICONS = [
   "apple",
