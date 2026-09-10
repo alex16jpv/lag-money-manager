@@ -5,6 +5,7 @@ import { AuthService } from "../../app/services/AuthService";
 import { CategoryService } from "../../app/services/CategoryService";
 import {
   IRefreshSessionRepository,
+  RefreshSession,
   SessionSummary,
 } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { User } from "../../domain/entities/User";
@@ -286,7 +287,33 @@ describe("AuthService", () => {
       expiresAt: new Date(Date.now() + 86_400_000),
       replacedBy: null,
       revokedAt: null,
+      lastUsedAt: null,
     });
+
+    // The state a rotation leaves behind: the presented row points at its
+    // successor, and the successor is the live tip of the same family.
+    const rotatedSession = (
+      overrides: Partial<RefreshSession> = {},
+    ): RefreshSession => ({
+      ...activeSession(),
+      replacedBy: "jti-2",
+      lastUsedAt: new Date(),
+      ...overrides,
+    });
+
+    const successorSession = (
+      overrides: Partial<RefreshSession> = {},
+    ): RefreshSession => ({
+      ...activeSession(),
+      jti: "jti-2",
+      ...overrides,
+    });
+
+    const chainIs = (rows: RefreshSession[]): void => {
+      sessions.findById.mockImplementation(
+        async (id: string) => rows.find((row) => row.jti === id) ?? null,
+      );
+    };
 
     it("issues a new token pair and rotates the session [R2-08]", async () => {
       repo.getById.mockResolvedValue(user);
@@ -318,6 +345,68 @@ describe("AuthService", () => {
         ...activeSession(),
         replacedBy: "jti-2",
       });
+
+      await expect(service.refresh(signRefresh(2))).rejects.toThrow("revoked");
+      expect(sessions.revokeFamily).toHaveBeenCalledWith("fam-1");
+    });
+
+    it("re-issues the pair whose answer never reached the client [H-37]", async () => {
+      repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue(null);
+      chainIs([rotatedSession(), successorSession()]);
+
+      const result = await service.refresh(signRefresh(2));
+
+      // The successor is handed over as it is: no new row, no new rotation.
+      const reissued = jwt.verify(result.refreshToken, "test-secret-key") as {
+        jti: string;
+      };
+      expect(reissued.jti).toBe("jti-2");
+      const access = jwt.verify(result.accessToken, "test-secret-key") as {
+        sid: string;
+      };
+      expect(access.sid).toBe("fam-1");
+      expect(sessions.create).not.toHaveBeenCalled();
+      expect(sessions.revokeFamily).not.toHaveBeenCalled();
+    });
+
+    it("revokes the family when the successor was already used [H-37]", async () => {
+      repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue(null);
+      chainIs([
+        rotatedSession(),
+        successorSession({ replacedBy: "jti-3", lastUsedAt: new Date() }),
+      ]);
+
+      await expect(service.refresh(signRefresh(2))).rejects.toThrow("revoked");
+      expect(sessions.revokeFamily).toHaveBeenCalledWith("fam-1");
+    });
+
+    it("revokes the family when the successor is revoked [H-37]", async () => {
+      repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue(null);
+      chainIs([rotatedSession(), successorSession({ revokedAt: new Date() })]);
+
+      await expect(service.refresh(signRefresh(2))).rejects.toThrow("revoked");
+      expect(sessions.revokeFamily).toHaveBeenCalledWith("fam-1");
+    });
+
+    it("revokes the family when the rotation is older than the grace window [H-37]", async () => {
+      repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue(null);
+      chainIs([
+        rotatedSession({ lastUsedAt: new Date(Date.now() - 61_000) }),
+        successorSession(),
+      ]);
+
+      await expect(service.refresh(signRefresh(2))).rejects.toThrow("revoked");
+      expect(sessions.revokeFamily).toHaveBeenCalledWith("fam-1");
+    });
+
+    it("revokes the family when the successor is gone [H-37]", async () => {
+      repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue(null);
+      chainIs([rotatedSession()]);
 
       await expect(service.refresh(signRefresh(2))).rejects.toThrow("revoked");
       expect(sessions.revokeFamily).toHaveBeenCalledWith("fam-1");
@@ -383,6 +472,7 @@ describe("AuthService", () => {
         expiresAt: new Date(Date.now() + 1000),
         replacedBy: null,
         revokedAt: null,
+        lastUsedAt: null,
       });
 
       await service.logout(token);

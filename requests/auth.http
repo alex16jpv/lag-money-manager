@@ -55,8 +55,34 @@ Content-Type: application/json
 
 @rotatedRefresh = {{refresh.response.body.refreshToken}}
 
-### Reuso de un refresh YA ROTADO (401 REFRESH_REVOKED) — detección de robo:
-### revoca la familia completa de la sesión. Corre después del refresh de arriba.
+### Reuso de un refresh ya rotado DENTRO DE LA VENTANA (200) — la respuesta que
+### llevaba el token nuevo se perdió, así que contesta el MISMO par del sucesor.
+### Corre antes de un minuto desde el refresh de arriba.
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+###
+
+### Reuso de verdad (401 REFRESH_REVOKED) — detección de robo: revoca la familia
+### completa. Rota una segunda vez y presenta el original, cuyo sucesor ya se usó.
+# @name secondRotation
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{rotatedRefresh}}"
+}
+
+###
+
+@twiceRotatedRefresh = {{secondRotation.response.body.refreshToken}}
+
+###
+
 POST {{baseUrl}}/auth/refresh
 Content-Type: application/json
 
@@ -78,12 +104,13 @@ Authorization: Bearer {{accessToken}}
 DELETE {{baseUrl}}/auth/sessions/{{sessionId}}
 Authorization: Bearer {{accessToken}}
 
-### Logout del dispositivo actual — revoca la familia del refresh presentado
+### Logout del dispositivo actual — revoca la familia del refresh presentado.
+### Con la familia ya revocada por el reuso de arriba, vuelve a hacer login antes.
 POST {{baseUrl}}/auth/logout
 Content-Type: application/json
 
 {
-  "refreshToken": "{{rotatedRefresh}}"
+  "refreshToken": "{{twiceRotatedRefresh}}"
 }
 
 ### Logout-all — revoca TODAS las sesiones (bump de tokenVersion)

@@ -3,7 +3,10 @@ import jwt from "jsonwebtoken";
 import { v7 as uuidv7 } from "uuid";
 
 import { User } from "../../domain/entities/User";
-import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
+import {
+  IRefreshSessionRepository,
+  RefreshSession,
+} from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
@@ -17,6 +20,10 @@ import {
 import { CategoryService } from "./CategoryService";
 
 const REFRESH_TOKEN_TYPE = "refresh";
+
+// How long after a rotation the presented token may still be the client's, when
+// the answer that carried its replacement never arrived.
+const REFRESH_REPLAY_GRACE_MS = 60_000;
 
 // Real cost-12 hash of a throwaway string: login pays the same bcrypt time
 // whether the email exists or not (no user enumeration by timing).
@@ -211,6 +218,32 @@ export class AuthService {
     return payload as unknown as RefreshPayload;
   }
 
+  // Nobody can have used the successor of an answer that never arrived: an
+  // untouched one is what tells a lost rotation apart from a replay.
+  private async tokensOfLostAnswer(
+    user: User,
+    stale: RefreshSession,
+  ): Promise<AuthTokens | null> {
+    if (!stale.replacedBy || stale.revokedAt || !stale.lastUsedAt) return null;
+    if (Date.now() - stale.lastUsedAt.getTime() > REFRESH_REPLAY_GRACE_MS) {
+      return null;
+    }
+    const successor = await this.sessions.findById(stale.replacedBy);
+    if (!successor || successor.revokedAt || successor.replacedBy) return null;
+    const remainingSeconds = Math.floor(
+      (successor.expiresAt.getTime() - Date.now()) / 1000,
+    );
+    if (remainingSeconds <= 0) return null;
+    return {
+      accessToken: this.signAccessToken(user, successor.familyId),
+      refreshToken: this.signRefreshToken(
+        user,
+        successor.jti,
+        remainingSeconds,
+      ),
+    };
+  }
+
   async refresh(refreshToken: string): Promise<AuthTokens> {
     const { userId, tokenVersion, jti } = this.verifyRefreshToken(refreshToken);
 
@@ -235,6 +268,8 @@ export class AuthService {
     if (!session) {
       const stale = await this.sessions.findById(jti);
       if (stale) {
+        const replayed = await this.tokensOfLostAnswer(user, stale);
+        if (replayed) return replayed;
         // Reuse of a rotated/revoked token: someone replayed an old refresh
         // (theft or a duplicated client). Kill the whole chain.
         await this.sessions.revokeFamily(stale.familyId);
