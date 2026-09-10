@@ -16,6 +16,7 @@ import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
 import {
   buildPaginatedResult,
+  pageQueryLimit,
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
@@ -26,6 +27,7 @@ import {
   TransactionModel,
 } from "../../models/TransactionModel";
 import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
+import { invalidCursor } from "../keysetCursor";
 
 export class TransactionRepository implements ITransactionRepository {
   private toEntity(doc: ITransactionDocument): Transaction {
@@ -101,14 +103,7 @@ export class TransactionRepository implements ITransactionRepository {
       })
         .select("date")
         .lean();
-      if (!cursorDoc) {
-        // Silently serving page 1 made infinite scroll duplicate items.
-        throw new ApiError(
-          "BadRequest",
-          "Invalid pagination cursor",
-          "INVALID_CURSOR",
-        );
-      }
+      if (!cursorDoc) throw invalidCursor();
       filter = {
         $and: [
           baseFilter,
@@ -126,7 +121,7 @@ export class TransactionRepository implements ITransactionRepository {
       TransactionModel.find(filter)
         .sort({ date: -1, _id: -1 })
         .skip(cursor ? 0 : offset)
-        .limit(limit)
+        .limit(pageQueryLimit(limit))
         .lean(),
       TransactionModel.countDocuments(baseFilter),
       // Same filter as the count, deliberately without the cursor: the sum

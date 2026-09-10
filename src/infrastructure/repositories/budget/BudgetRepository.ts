@@ -10,6 +10,7 @@ import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
 import {
   buildPaginatedResult,
+  pageQueryLimit,
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
@@ -17,6 +18,7 @@ import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
 import { BudgetModel, IBudgetDocument } from "../../models/BudgetModel";
 import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
+import { ID_CURSOR_SORT, idCursorFilter } from "../keysetCursor";
 
 export class BudgetRepository implements IBudgetRepository {
   private toEntity(doc: IBudgetDocument): Budget {
@@ -102,22 +104,18 @@ export class BudgetRepository implements IBudgetRepository {
     filters?: BudgetFilters,
   ): Promise<PaginatedResult<Budget>> {
     const { limit, offset, cursor } = pagination;
-    const filter: Record<string, unknown> = { userId };
+    const baseFilter: Record<string, unknown> = { userId };
     if (!filters?.includeArchived) {
-      filter.archivedAt = null;
+      baseFilter.archivedAt = null;
     }
-    if (cursor) {
-      // Merge with an ids ($in) filter instead of clobbering it.
-      filter._id =
-        filter._id && typeof filter._id === "object"
-          ? { ...(filter._id as Record<string, unknown>), $gt: cursor }
-          : { $gt: cursor };
-    }
+    const filter = cursor
+      ? await idCursorFilter(BudgetModel, baseFilter, cursor)
+      : baseFilter;
     const [docs, total] = await Promise.all([
       BudgetModel.find(filter)
-        .sort({ _id: 1 })
+        .sort(ID_CURSOR_SORT)
         .skip(cursor ? 0 : offset)
-        .limit(limit)
+        .limit(pageQueryLimit(limit))
         .lean(),
       BudgetModel.countDocuments(
         filters?.includeArchived ? { userId } : { userId, archivedAt: null },

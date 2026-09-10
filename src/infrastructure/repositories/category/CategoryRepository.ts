@@ -9,6 +9,7 @@ import { NAME_COLLATION } from "../../../shared/collation";
 import { ApiError } from "../../../shared/errors";
 import {
   buildPaginatedResult,
+  pageQueryLimit,
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
@@ -16,6 +17,7 @@ import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
 import { CategoryModel, ICategoryDocument } from "../../models/CategoryModel";
 import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
+import { ID_CURSOR_SORT, idCursorFilter } from "../keysetCursor";
 
 export class CategoryRepository implements ICategoryRepository {
   private toEntity(doc: ICategoryDocument): Category {
@@ -38,20 +40,15 @@ export class CategoryRepository implements ICategoryRepository {
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Category>> {
     const { limit, offset, cursor } = pagination;
-    const filter = { ...baseFilter };
-    if (cursor) {
-      // Merge with an ids ($in) filter instead of clobbering it.
-      filter._id =
-        filter._id && typeof filter._id === "object"
-          ? { ...(filter._id as Record<string, unknown>), $gt: cursor }
-          : { $gt: cursor };
-    }
+    const filter = cursor
+      ? await idCursorFilter(CategoryModel, baseFilter, cursor)
+      : { ...baseFilter };
 
     const [docs, total] = await Promise.all([
       CategoryModel.find(filter)
-        .sort({ _id: 1 })
+        .sort(ID_CURSOR_SORT)
         .skip(cursor ? 0 : offset)
-        .limit(limit)
+        .limit(pageQueryLimit(limit))
         .lean(),
       CategoryModel.countDocuments(baseFilter),
     ]);

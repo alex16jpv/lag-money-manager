@@ -6,10 +6,12 @@ import { ApiError } from "../../../shared/errors";
 import { Locale } from "../../../shared/locale";
 import {
   buildPaginatedResult,
+  pageQueryLimit,
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
 import { UserModel } from "../../models/UserModel";
+import { ID_CURSOR_SORT, idCursorFilter } from "../keysetCursor";
 
 export class UserRepository implements IUserRepository {
   private toEntity(doc: {
@@ -114,20 +116,16 @@ export class UserRepository implements IUserRepository {
 
   async getAll(pagination: PaginationParams): Promise<PaginatedResult<User>> {
     const { limit, offset, cursor } = pagination;
-    const filter: Record<string, unknown> = { deletedAt: null };
-    if (cursor) {
-      // Merge with an ids ($in) filter instead of clobbering it.
-      filter._id =
-        filter._id && typeof filter._id === "object"
-          ? { ...(filter._id as Record<string, unknown>), $gt: cursor }
-          : { $gt: cursor };
-    }
+    const baseFilter: Record<string, unknown> = { deletedAt: null };
+    const filter = cursor
+      ? await idCursorFilter(UserModel, baseFilter, cursor)
+      : baseFilter;
 
     const [docs, total] = await Promise.all([
       UserModel.find(filter)
-        .sort({ _id: 1 })
+        .sort(ID_CURSOR_SORT)
         .skip(cursor ? 0 : offset)
-        .limit(limit)
+        .limit(pageQueryLimit(limit))
         .lean(),
       UserModel.countDocuments({ deletedAt: null }),
     ]);

@@ -34,7 +34,7 @@ A class with static methods that handle HTTP requests. Extracts data from the re
 Each user has one ISO 4217 `currency`. It is stamped onto accounts and budgets at creation from the owner's value, and onto a transaction from the account whose balance it moves. It can be changed only while the user has no accounts (`CURRENCY_LOCKED` otherwise), and a transfer between accounts of different currencies is rejected with `CURRENCY_MISMATCH`. Multi-currency is a future feature; until then amounts are 2-decimal for every currency. Default: `COP` (`src/shared/currency.ts`).
 
 **Cursor-based Pagination**
-Pagination using the last item's ID as a cursor for the next page. Works because UUID v7 ids sort chronologically. More efficient than offset for large datasets. Supported alongside offset pagination in all list endpoints.
+Pagination using the last item's ID as a cursor for the next page. Works because UUID v7 ids sort chronologically. More efficient than offset for large datasets. Supported alongside offset pagination in all list endpoints. The cursor has to name a row the caller owns — one that names none is `400 INVALID_CURSOR`, not page one — and `hasMore` comes from asking for one row past the page (`pageQueryLimit`), so a full last page is not mistaken for a page with more behind it.
 
 **DB_TYPE**
 Environment variable naming the database backend. `MONGO` is the only supported value; the variable survives as the provider-registry key rather than as a real choice. See ADR-001.

@@ -44,7 +44,7 @@ const router = Router();
  *         schema:
  *           type: string
  *           format: uuid
- *         description: ID of the last item of the previous page (cursor-based pagination; overrides offset)
+ *         description: ID of the last item of the previous page; must name a row of the caller's (cursor-based pagination; overrides offset)
  *       - in: query
  *         name: ids
  *         schema:

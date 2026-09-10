@@ -274,7 +274,7 @@ Codes raised by the services and middleware. Anything not listed here has no `co
 | --------------------------------- | ------ | ------------------------------------------------------------------------ |
 | `VALIDATION`                      | 400    | Zod schema rejection, or a domain invariant with no specific code        |
 | `INVALID_ID`                      | 400    | Mongoose `CastError`                                                     |
-| `INVALID_CURSOR`                  | 400    | Malformed pagination cursor                                              |
+| `INVALID_CURSOR`                  | 400    | Pagination cursor that names no row of the caller's                      |
 | `FUTURE_DATE`                     | 400    | Transaction date more than 24h in the future                             |
 | `CURRENCY_MISMATCH`               | 400    | Transfer between accounts of different currencies (mono-currency mode)   |
 | `CURRENCY_LOCKED`                 | 400    | Changing the user currency once accounts exist                           |

@@ -47,6 +47,8 @@ Excluded by default: archived budgets, expired CUSTOM budgets, and budgets whose
 
 > The `expired` / lifetime filters run **after** pagination, so a page can hold fewer than `limit` items while `pagination.hasMore` is still `true`. Follow `hasMore` / `nextCursor`, never `data.length`.
 
+> A `cursor` has to name a row the caller owns. One that names none is `400 INVALID_CURSOR`, never a silent page one — that fallback used to restart the list from the top and make an infinite scroll repeat itself. `hasMore` is read from one row past the page, so a last page that is exactly `limit` long says `hasMore: false` and `nextCursor: null`.
+
 ### `POST /budgets`
 
 Create a budget.

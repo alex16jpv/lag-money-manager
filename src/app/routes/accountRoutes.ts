@@ -40,7 +40,7 @@ const router = Router();
  *         schema:
  *           type: string
  *           format: uuid
- *         description: Cursor ID for cursor-based pagination (overrides offset)
+ *         description: ID of the last item of the previous page; must name a row of the caller's (cursor-based pagination; overrides offset)
  *       - in: query
  *         name: ids
  *         schema:
@@ -60,7 +60,7 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/AccountList'
  *       400:
- *         description: Invalid query parameters (code VALIDATION)
+ *         description: Invalid query parameters (code VALIDATION), or a cursor that names no account of the caller's (code INVALID_CURSOR)
  *         content:
  *           application/json:
  *             schema:

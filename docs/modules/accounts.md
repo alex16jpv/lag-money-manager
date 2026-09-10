@@ -39,6 +39,8 @@ Get all accounts for the authenticated user (paginated, offset + cursor).
 | `ids`             | string | Comma-separated list of account UUIDs (1–100)                    |
 | `includeArchived` | enum   | `"true"` also returns archived accounts (hidden by default)      |
 
+> A `cursor` has to name a row the caller owns. One that names none is `400 INVALID_CURSOR`, never a silent page one — that fallback used to restart the list from the top and make an infinite scroll repeat itself. `hasMore` is read from one row past the page, so a last page that is exactly `limit` long says `hasMore: false` and `nextCursor: null`.
+
 ### `POST /accounts`
 
 Create a new account. Requires: `name`, `type`. Optional: `balance` (defaults to 0, becomes the immutable `openingBalance`) and `color`.

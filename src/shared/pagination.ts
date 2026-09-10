@@ -20,16 +20,20 @@ export interface PaginatedResult<T> {
 export const DEFAULT_LIMIT = 20;
 export const MAX_LIMIT = 100;
 
+// One row past the page, the way the change feed already asks for it: a full
+// page and a full page with more behind it are otherwise the same answer.
+export const pageQueryLimit = (limit: number): number => limit + 1;
+
+/** Takes the `pageQueryLimit` rows and hands back the page inside them. */
 export function buildPaginatedResult<T extends { id: string }>(
-  data: T[],
+  fetched: T[],
   total: number,
   pagination: PaginationParams,
 ): PaginatedResult<T> {
   const { limit, offset, cursor } = pagination;
   const effectiveOffset = cursor ? 0 : offset;
-  const hasMore = cursor
-    ? data.length === limit
-    : effectiveOffset + data.length < total;
+  const hasMore = fetched.length > limit;
+  const data = hasMore ? fetched.slice(0, limit) : fetched;
   return {
     data,
     pagination: {

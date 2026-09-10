@@ -224,3 +224,8 @@ If-Match: 2020-01-01T00:00:00.000Z
 POST {{baseUrl}}/accounts/{{accountA}}/default
 Authorization: Bearer {{token}}
 If-Match: 2020-01-01T00:00:00.000Z
+
+### Cursor de paginación que no nombra ninguna fila propia (400 INVALID_CURSOR)
+### No devuelve la página 1: eso hacía que un scroll infinito repitiera filas.
+GET {{baseUrl}}/accounts?cursor=00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{token}}
