@@ -206,3 +206,15 @@ The index has **no partial filter**: a filter on `archivedAt`/`deletedAt` would 
 Adding a new entity to the sync feed means adding this index to it in the same change. It is invariant 5 of the offline contract, not an optimization.
 
 `syncops` carries a TTL index on `createdAt` (`expireAfterSeconds` = 30 days) and is keyed by `${userId}:${opId}`, so two users' opIds can never collide and the lookup per operation is a primary-key read.
+
+## What the offline client still needs outside this module
+
+The web client mirrors the feed of this module and answers its screens from that copy, so those screens no longer call the endpoints below on every render. **They must not be retired for that reason.**
+
+| Endpoint | Why it stays |
+| --- | --- |
+| `GET /stats/spending` | The client derives its spending buckets from the mirror and checks that derivation against the parity fixtures this repository produces. This endpoint is the reference those fixtures come from, and the answer for any grouping or range the mirror does not hold |
+| `GET /transactions`, `/accounts`, `/categories`, `/budgets` | The mirror is the client's primary path, not its only one: with no vault yet, or before the first snapshot has drained, it falls back to these. A device that has just signed in reads nothing else |
+
+Retiring or reshaping any of them is a breaking change for the client even when its screens look quiet. It goes through the owner first.
+

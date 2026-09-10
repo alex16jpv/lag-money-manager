@@ -155,3 +155,8 @@ The pipeline sums the stored **integer cents**. `avg` is rounded to the nearest 
 - To compare periods: issue two calls rather than adding a second range to the pipeline; the response is small and cacheable client-side
 - To include `ADJUSTMENT` in a combined view: it must stay opt-in — never fold it into the default `EXPENSE` aggregation, or reconciliations would read as spending
 - Any new filter belongs in the `$match` stage, before the `$facet`, so both branches see it
+
+## Why This Endpoint Stays
+
+The web client derives its own spending buckets from the offline mirror, so its screens no longer call this endpoint on every render. It is still the reference that derivation is checked against — the parity fixtures come from here — and the answer for any grouping or range the mirror cannot hold. See `sync.md`, "What the offline client still needs outside this module".
+
