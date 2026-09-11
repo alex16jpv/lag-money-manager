@@ -11,7 +11,7 @@ que harías por defecto, gana lo de aquí.
 
 ## 1. Definición de "terminado"
 
-Un cambio no está listo hasta que **las seis** se cumplen. No es una lista de
+Un cambio no está listo hasta que **las siete** se cumplen. No es una lista de
 deseos: es el mínimo. Si algo no aplica, dilo explícitamente y por qué.
 
 1. **`npm run ci` en verde.** Incluye typecheck de src y de tests, lint, formato,
@@ -30,6 +30,10 @@ deseos: es el mínimo. Si algo no aplica, dilo explícitamente y por qué.
 5. **Documentación actualizada** (§4). Un cambio de comportamiento sin doc está
    incompleto.
 6. **`requests/*.http` actualizadas** (§5) si cambiaste la superficie del API.
+7. **Revisado por un revisor independiente** (§9): un subagente nuevo que
+   recibe la tarea y lo producido, no tu razonamiento, y dice si era la mejor
+   manera. Lo que señale se arregla en la misma rama, o se reporta como
+   hallazgo, antes de cerrar.
 
 ---
 
@@ -196,6 +200,8 @@ La regla: **si algo falla, tiene que verse, y el mensaje tiene que ser cierto.**
 - ¿Actualizaste `requests/` si cambió la superficie?
 - ¿Queda algún log de depuración, `console.log` o `TODO` tuyo?
 - ¿El mensaje del commit describe solo lo que efectivamente hiciste?
+- ¿Un revisor independiente vio la tarea y el resultado, y actuaste sobre lo
+  que dijo (§9)?
 - ¿Todo hallazgo que NO arreglas quedó **registrado** como entrada, no solo mencionado?
 
 Si encuentras un problema fuera del alcance de lo que te pidieron: no lo
@@ -208,6 +214,159 @@ falla es del front. Escribirlo solo en un resumen de sesión o en un relevo
 que solo vive ahí se copia de sesión en sesión y no se hace nunca. La entrada
 puede decir «ahora no»; lo que no puede es faltar. Y si algo del cambio quedó
 incompleto o dudoso, dilo en vez de dejarlo pasar.
+
+---
+
+## 9. Reglas de la casa
+
+Las treinta reglas a las que se sujeta todo el producto, y tres sobre cómo se
+trabaja. Son las mismas treinta en los dos repositorios, con el mismo número;
+las marcadas «(Solo front)» se cumplen allí y aquí se dice qué toca a este
+lado. Las secciones anteriores son su detalle; *Vigila* dice qué la comprueba
+hoy, y «manual» significa que nada lo hace todavía.
+
+**El dinero**
+
+1. El dinero son enteros y solo se mueve en una operación atómica dentro de una
+   transacción. Nunca decimales, nunca leer un saldo para volver a escribirlo
+   (§2). *Vigila: `currencyPrecision.test.ts`, pruebas de `TransactionService`,
+   suite Mongo.*
+2. Nada se borra: se archiva o se marca, y toda lectura normal lo filtra (§2).
+   *Vigila: pruebas puntuales; el barrido de «toda lectura filtra» es manual.*
+3. Repetir una petición no repite su efecto: ids del cliente, `Idempotency-
+   Key`, resultados guardados de `POST /sync`. *Vigila:
+   `clientMintedId.test.ts`, `offlineWrites.mongo.test.ts`,
+   `SyncBatchService.test.ts`.*
+4. La misma cifra sale igual en el servidor y sin conexión, y el cliente nunca
+   calcula dinero salvo la proyección offline, marcada como tal; los fixtures
+   de paridad son el contrato entre los dos. *Vigila: `fixtures:check` en el
+   gate y en CI; `parityFixtures.mongo.test.ts`.*
+5. Las fechas se juzgan en la zona horaria del usuario y cada movimiento
+   congela su día contable (`dayKey`). *Vigila: `dayKey.test.ts`,
+   `accountingDay.mongo.test.ts`.*
+6. (Solo front) Sin conexión no se mienta: la copia local es desechable, lo
+   escrito sin red es sagrado, y el espejo nunca inventa una cifra que nadie
+   calculó. Aquí: los endpoints que el espejo sustituye no se retiran sin el
+   dueño (`docs/modules/sync.md`). *Vigila: manual.*
+
+**Cada usuario ve solo lo suyo**
+
+7. Toda consulta lleva el usuario, y lo ajeno contesta igual que lo
+   inexistente: 404 (§3). *Vigila: `tsc` cuando el usuario está en la firma; la
+   comparación en el servicio es manual.*
+8. Solo entra lo declarado: cada ruta valida con su esquema y lo no declarado
+   desaparece; lo que deriva el servidor no se acepta del cliente (§3).
+   *Vigila: `schemas.test.ts`, `validate.test.ts`, `openapiCoverage.test.ts`.*
+9. (Solo front) La sesión vive en cookies httpOnly y el navegador nunca ve un
+   token ni la URL del back. Aquí: JWT HS256 explícito, refresh rotado por
+   familia, `tokenVersion` como interruptor (`docs/modules/auth.md`). *Vigila:
+   `AuthService.test.ts`, `refreshRotation.mongo.test.ts`.*
+10. Los secretos no aparecen en logs ni en el repositorio (§2). *Vigila:
+    `requestLogMiddleware.test.ts` (redacción de pino); nada escanea el repo:
+    manual.*
+11. La configuración se lee una vez y se valida al arrancar en
+    `shared/constants.ts`; falta una variable y el proceso no arranca (§4).
+    *Vigila: Zod al importar.*
+
+**Cada cosa en su sitio**
+
+12. Las capas se respetan y la dependencia va hacia dentro: rutas →
+    controladores → servicios → interfaces de repositorio; solo
+    `infrastructure/` conoce Mongoose (§3). *Vigila: manual: ESLint no tiene
+    reglas de límites.*
+13. Una sola fuente para cada verdad: constantes en un sitio, OpenAPI generado
+    desde Zod y desde las constantes, fixtures generados. Nada se copia a mano
+    (§4). *Vigila: `swaggerContract.test.ts`, `fixtures:check`.*
+14. Se hace como ya se hace: repositorio por interfaz, un helper de paginación,
+    un traductor de errores. Un módulo nuevo tiene la misma forma que los demás
+    (`docs/guides/adding-new-features.md`). *Vigila: `tsc` (el `implements`);
+    el resto es manual.*
+
+**El código se lee solo**
+
+15. Ningún comentario por defecto; si es imprescindible, una línea con una
+    restricción que el código no puede decir. El porqué va a `docs/modules/` o
+    a un ADR en `docs/architecture/decisions/` (§3). *Vigila: manual.*
+16. Nombres que dicen su papel, formato automático, números con nombre y nada
+    muerto: ni `TODO`, ni código comentado, ni exports que nadie importa, ni
+    flags que nadie lee. *Vigila: Prettier, `noUnusedLocals`; el orden de
+    imports solo avisa; los exports sin uso son manual.*
+17. Tipos estrictos y sin escapes: sin `any`, sin `!`, y cada aserción
+    justificada. *Vigila: `tsc` estricto; ESLint solo avisa: manual.*
+
+**Los fallos se ven**
+
+18. Nunca se silencia un error y el mensaje dice la verdad. Un fallo de red no
+    es un conflicto de datos (§7). *Vigila: `errorMiddleware.test.ts`; manual.*
+19. Todo error lleva un `code` estable y el cliente branchea por él, nunca por
+    el texto (§3). *Vigila: `tsc` (el `code` está tipado contra `ERROR_CODES`);
+    `swaggerContract.test.ts`.*
+
+**Las pruebas prueban**
+
+20. Todo cambio trae pruebas del camino feliz y de los bordes, y un arreglo
+    empieza por la prueba que falla (§1). *Vigila: manual.*
+21. Lo que los mocks no ven se prueba de verdad: índices, transacciones y
+    colación contra Mongo real (§1.4, `npm run test:mongo`). *Vigila: el job
+    `mongo` del CI; en local solo si se corre.*
+22. Las pruebas son deterministas, no dependen del orden, y la cobertura tiene
+    un umbral que alguien ejecuta. *Vigila: manual: Jest no baraja y no hay
+    `coverageThreshold`.*
+
+**Barato de mantener funcionando**
+
+23. El código se escribe pensando en el coste, no solo se indexa: cada consulta
+    pide únicamente lo que se va a usar, tiene su índice, y se mide con datos
+    realistas. Si se puede acelerar sin empeorar el código ni el resultado, se
+    hace (§3). *Vigila: pruebas que leen `schema.indexes()`; cronometrar es
+    manual.*
+24. La capa gratuita se protege por diseño: pocas conexiones, respuestas
+    justas, una petición por dato, sin peticiones repetidas ni temporizadores
+    que despierten la nube sin motivo. *Vigila: `mongoConnection.test.ts`; el
+    consumo real es manual.*
+25. (Solo front) El front respeta sus presupuestos de peso y de Lighthouse.
+    Aquí: las respuestas salen sin campos internos y paginadas
+    (`swaggerContract.test.ts`). *Vigila: `swaggerContract.test.ts`.*
+
+**La pantalla es la del diseño**
+
+26. (Solo front) Nada llega a una pantalla sin estar antes en el diseño.
+    *Vigila: no aplica.*
+27. (Solo front) Todo color por token, todo texto en los dos idiomas, todo
+    control accesible. Aquí: los enums que la UI pinta salen de `constants.ts`
+    y viajan por el OpenAPI. *Vigila: `swaggerContract.test.ts`.*
+28. (Solo front) Toda vista tiene sus cuatro estados. Aquí: todo error que el
+    front deba distinguir lleva `code` (regla 19). *Vigila: `tsc`.*
+
+**Se puede seguir y se puede mantener**
+
+29. Un fallo se sigue de punta a punta: una línea de log por petición y un
+    `x-request-id` que el cliente manda y el log recoge, sin ruido ni datos
+    personales (§2). *Vigila: `requestLogMiddleware.test.ts`,
+    `requestIdMiddleware.test.ts`.*
+30. La documentación dice lo que el código hace hoy, cada decisión no obvia
+    queda escrita, una decisión revertida se marca en la original y un
+    documento que ya no es verdad se retira (§4). *Vigila:
+    `openapiCoverage.test.ts` para las rutas; el resto es manual.*
+
+**Las reglas sobre las reglas**
+
+- Toda regla tiene quien la vigile. Una regla cuyo *Vigila* dice «manual» se
+  comprueba en la revisión independiente de abajo, y decirlo aquí es el mínimo.
+  *Vigila: esta lista.*
+- Un cambio no está terminado hasta que se cumple §1: gate verde y leído,
+  verificado contra lo real, un commit por ítem, sin defectos conocidos
+  callados. Lo que se encuentra y no se arregla se reporta al dueño como
+  hallazgo (§8), y él le pone número en su lista. *Vigila: el gate,
+  `commitlint`, `lefthook`.*
+- Cada cambio terminado lo revisa un revisor independiente antes de cerrarlo:
+  un subagente nuevo cuando el trabajo lo hizo un agente, otra persona cuando
+  lo hizo un humano. Recibe la tarea y lo producido (el diff, la salida del
+  gate, la verificación real, los docs), no el razonamiento de quien lo hizo, y
+  dice si se hizo de la mejor manera y qué cambiaría. Lo que señale se arregla
+  en la misma rama antes de entregar el commit (`amend`, o un commit más si el
+  primero ya se reportó); lo que no se arregla se reporta como hallazgo.
+  *Vigila: manual.*
 
 ---
 
