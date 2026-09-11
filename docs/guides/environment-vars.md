@@ -44,7 +44,7 @@ misconfiguration instead of a skipped check.
 | Variable                 | Default | Description                                                                              |
 | ------------------------ | ------- | ----------------------------------------------------------------------------------------- |
 | `API_SECRET`             | —       | Shared secret expected in the `x-api-secret` header. **See the warning below.**            |
-| `RATE_LIMIT_MAX`         | `1000`  | Global limit per 15-minute window (in-memory, per-instance under Lambda). Keyed by **user** once authenticated, and on the public routes by the client IP the gateway states in `x-client-ip` (`req.ip` there is the frontend's server, shared by everyone). |
+| `RATE_LIMIT_MAX`         | `1000`  | Per-container brake per 15-minute window, **not a global ceiling**: the store is in memory, so each Lambda container counts on its own (see `deployment.md`). Keyed by **user** once authenticated, and on the public routes by the client IP the gateway states in `x-client-ip` (`req.ip` there is the frontend's server, shared by everyone). |
 | `AUTH_RATE_LIMIT_MAX`    | `10`    | Per-email limit for `/auth/login` per 15-minute window (MongoDB-backed, shared across instances). Only failed attempts burn it, so it is the budget of an attack aimed at one account. |
 | `AUTH_IP_RATE_LIMIT_MAX` | `60`    | Per-IP limit for `/auth/login` and `/auth/register` per 15-minute window. Higher than the per-email one on purpose: a carrier NAT puts thousands of unrelated users behind a single address. |
 | `REFRESH_RATE_LIMIT_MAX` | `60`    | Separate, higher limit for `POST /auth/refresh` (a legitimate device refreshes every ~15 min). |

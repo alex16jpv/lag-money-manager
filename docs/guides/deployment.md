@@ -457,16 +457,18 @@ readinessProbe:
 
 ## Rate Limiting
 
-Two layers, both with a 15-minute window:
+Two layers, both with a 15-minute window. **Only one of them is a ceiling** — see below the table:
 
 | Layer                                                | Applies to                                    | Limit                                          | Store                                                              |
 | ---------------------------------------------------- | --------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------ |
-| Global limiter (`express-rate-limit`, `src/app.ts`)  | Every mounted route, `/` and `/health/db` too | `RATE_LIMIT_MAX` per user, or per client IP where there is no session (default `1000`) | In-memory — **per Lambda instance**, so the effective ceiling scales with concurrency |
+| Global limiter (`express-rate-limit`, `src/app.ts`)  | Every mounted route, `/` and `/health/db` too | `RATE_LIMIT_MAX` per user, or per client IP where there is no session (default `1000`) | In-memory — **per Lambda instance**, so it is a brake, not a ceiling |
 | Auth limiter (`authRateLimitMiddleware.ts`)          | `/auth/login`, `/auth/register`, `/auth/refresh` | `AUTH_IP_RATE_LIMIT_MAX` per IP (default `60`) and `AUTH_RATE_LIMIT_MAX` per email on login (default `10`); refresh uses `REFRESH_RATE_LIMIT_MAX` (default `60`) | MongoDB (`RateLimitModel`), so the limit holds across instances     |
 
 Login is limited on two dimensions: per IP and per target email. The per-email counter is refunded on success, so only failed logins burn that budget. Over-limit responses are `429` with `code: "RATE_LIMITED"` and a `Retry-After` header; the store failing open is deliberate — a Mongo error must not lock everyone out of login.
 
-The global limiter emits standard `RateLimit-*` headers.
+**What the global limiter does and does not protect.** Its store is `express-rate-limit`'s default `MemoryStore`: two `Map`s in the process, so every Lambda container counts on its own and loses the count on each cold start. `RATE_LIMIT_MAX` is therefore multiplied by however many containers are alive, a number nobody knows, and requests spread across containers by themselves. Read it as what it is: a brake that stops one client hammering one container — a runaway loop in the frontend, say — and not a defence against deliberate abuse, which would need a ceiling in front of the function (a WAF, a throttling gateway, a CDN) or, cheaper, a cap on the function's reserved concurrency. Keeping it costs nothing: no I/O, no database, and its only timer fires once per window and is `unref`ed. The protection that has to hold, the one on login, is the auth limiter, and that one lives in MongoDB and does hold across instances.
+
+The global limiter emits standard `RateLimit-*` headers, which describe that per-container count, not a global one.
 
 **Where the client IP comes from.** `trust proxy` is `1` in production, but behind a Lambda Function URL `req.ip` is the address of whatever called the API — for the web client, the frontend's own server on Vercel, the same one for every user of the app. So an IP-keyed budget on `req.ip` is shared by all of them and one busy user locks the rest out. The gateway therefore states the real client address in an `x-client-ip` header, and `clientIp` (`src/app/middlewares/clientIp.ts`) is what both limiters key on:
 
