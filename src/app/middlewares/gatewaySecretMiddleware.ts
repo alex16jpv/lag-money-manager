@@ -28,6 +28,8 @@ export const gatewaySecretMiddleware = (
     throw new ApiError("Forbidden", "Access denied");
   }
 
+  // Only a caller holding the secret may state the client IP the limiters count against.
+  req.gatewayTrusted = true;
   next();
 };
 

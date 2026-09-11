@@ -15,9 +15,10 @@ import { validate } from "../validation/validate";
 const router = Router();
 
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
+// A carrier NAT puts thousands of unrelated users behind one address, so the per-IP budget cannot be the per-account one.
 const loginLimiter = authRateLimit({
   keyPrefix: "login",
-  max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
+  max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
 // A distributed attack on ONE account rotates IPs, so the target email needs its own counter.
@@ -37,7 +38,7 @@ const loginEmailLimiter = authRateLimit({
 });
 const registerLimiter = authRateLimit({
   keyPrefix: "register",
-  max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
+  max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
 // Refresh is legitimate high-frequency traffic (~15 min per device), so its threshold is higher.
@@ -91,7 +92,7 @@ const refreshLimiter = authRateLimit({
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       429:
- *         description: Too many attempts from this IP (code RATE_LIMITED)
+ *         description: Too many attempts from this client IP (code RATE_LIMITED)
  *         content:
  *           application/json:
  *             schema:
