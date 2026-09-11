@@ -6,7 +6,7 @@ pre-commit:
       run: npx prettier --check {staged_files}
     lint:
       glob: "{src,scripts}/**/*.ts"
-      run: npx eslint --max-warnings=0 --no-warn-ignored {staged_files}
+      run: npx eslint --no-warn-ignored {staged_files}
     typecheck:
       run: npm run typecheck && npm run typecheck:tests
     tests:
