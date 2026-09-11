@@ -1244,4 +1244,254 @@ describe("SyncBatchService", () => {
       );
     });
   });
+
+  describe("a guard that failed on a state the row already carries", () => {
+    const GUARD = "2026-09-05T08:00:00.000Z";
+    const budgetView = (
+      over: Record<string, unknown> = {},
+    ): Record<string, unknown> => ({
+      id: uuid(70),
+      name: "Food",
+      color: "TEAL",
+      categoryIds: [],
+      type: "EXPENSE",
+      periodType: "MONTHLY",
+      baseAmount: 100,
+      amount: 100,
+      hasOverride: false,
+      archivedAt: null,
+      updatedAt: new Date("2026-09-05T09:00:00.000Z"),
+      ...over,
+    });
+
+    it("answers `duplicate` for an update the row already reads, and records it", async () => {
+      const id = uuid(60);
+      accounts.updateAccount.mockRejectedValue(
+        new StaleUpdateError(account(id, "Renamed once")),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "account",
+          action: "update",
+          id,
+          payload: { body: { name: "Renamed once" } },
+          baseUpdatedAt: GUARD,
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({ status: "duplicate", id });
+      expect(results[0].code).toBeUndefined();
+      expect(results[0].current).toBeUndefined();
+      // On record, so the next resend is answered from the registry.
+      expect(syncOps.record).toHaveBeenCalledWith(USER, results[0].opId, {
+        status: "duplicate",
+        entityId: id,
+        code: null,
+      });
+    });
+
+    it("keeps the conflict when one of the fields sent reads differently", async () => {
+      const id = uuid(61);
+      accounts.updateAccount.mockRejectedValue(
+        new StaleUpdateError(account(id, "Renamed once")),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "account",
+          action: "update",
+          id,
+          payload: { body: { name: "Renamed once", type: "SAVINGS" } },
+          baseUpdatedAt: GUARD,
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "conflict",
+        code: "STALE_UPDATE",
+        current: { id, name: "Renamed once" },
+      });
+      expect(syncOps.record).not.toHaveBeenCalled();
+    });
+
+    it("answers `duplicate` for an archive of a row already archived", async () => {
+      const id = uuid(62);
+      accounts.deleteAccount.mockRejectedValue(
+        new StaleUpdateError(
+          new Account({
+            ...account(id),
+            archivedAt: new Date("2026-09-05T09:30:00.000Z"),
+          }),
+        ),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({ entity: "account", action: "archive", id, baseUpdatedAt: GUARD }),
+      ]);
+
+      expect(results[0]).toMatchObject({ status: "duplicate", id });
+    });
+
+    it("keeps the conflict when the archive's row is still active", async () => {
+      const id = uuid(63);
+      accounts.deleteAccount.mockRejectedValue(
+        new StaleUpdateError(account(id, "Still here")),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({ entity: "account", action: "archive", id, baseUpdatedAt: GUARD }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "conflict",
+        code: "STALE_UPDATE",
+      });
+    });
+
+    it("answers `duplicate` for a restore whose row is active again", async () => {
+      const id = uuid(64);
+      categories.restoreCategory.mockRejectedValue(
+        new StaleUpdateError(category(id)),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({ entity: "category", action: "restore", id, baseUpdatedAt: GUARD }),
+      ]);
+
+      expect(results[0]).toMatchObject({ status: "duplicate", id });
+    });
+
+    it("answers `duplicate` for a setDefault the row already holds", async () => {
+      const id = uuid(65);
+      accounts.setDefaultAccount.mockRejectedValue(
+        new StaleUpdateError(new Account({ ...account(id), isDefault: true })),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "account",
+          action: "setDefault",
+          id,
+          baseUpdatedAt: GUARD,
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({ status: "duplicate", id });
+    });
+
+    it("answers `duplicate` for a movement update the row already reads", async () => {
+      const id = uuid(66);
+      transactions.updateTransaction.mockRejectedValue(
+        new StaleUpdateError({
+          id,
+          amount: 300,
+          date: new Date("2026-09-01T12:00:00.000Z"),
+          userId: USER,
+        }),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "transaction",
+          action: "update",
+          id,
+          payload: {
+            body: { amount: 300, date: "2026-09-01T12:00:00.000Z" },
+          },
+          baseUpdatedAt: GUARD,
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({ status: "duplicate", id });
+    });
+
+    it("answers `duplicate` for an override the period already carries", async () => {
+      const id = uuid(67);
+      budgets.setAmountOverride.mockRejectedValue(
+        new StaleUpdateError(
+          budgetView({ id, amount: 900, hasOverride: true }),
+        ),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "budget",
+          action: "setOverride",
+          id,
+          payload: { body: { amount: 900 } },
+          baseUpdatedAt: GUARD,
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({ status: "duplicate", id });
+    });
+
+    it("answers `duplicate` for a clearOverride on a period without one", async () => {
+      const id = uuid(68);
+      budgets.clearAmountOverride.mockRejectedValue(
+        new StaleUpdateError(budgetView({ id })),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "budget",
+          action: "clearOverride",
+          id,
+          baseUpdatedAt: GUARD,
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({ status: "duplicate", id });
+    });
+
+    it("compares a budget's `amount` against the base, not the resolved one", async () => {
+      const id = uuid(69);
+      budgets.updateBudget.mockRejectedValue(
+        new StaleUpdateError(
+          budgetView({ id, baseAmount: 500, amount: 900, hasOverride: true }),
+        ),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "budget",
+          action: "update",
+          id,
+          payload: { body: { amount: 500 } },
+          baseUpdatedAt: GUARD,
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({ status: "duplicate", id });
+    });
+
+    it("keeps the conflict for a field the period view cannot answer for", async () => {
+      const id = uuid(71);
+      budgets.updateBudget.mockRejectedValue(
+        new StaleUpdateError(budgetView({ id, periodType: "CUSTOM" })),
+      );
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "budget",
+          action: "update",
+          id,
+          payload: {
+            body: {
+              periodType: "CUSTOM",
+              periodStartDate: "2026-09-01T00:00:00.000Z",
+              periodEndDate: "2026-09-30T00:00:00.000Z",
+            },
+          },
+          baseUpdatedAt: GUARD,
+        }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "conflict",
+        code: "STALE_UPDATE",
+      });
+    });
+  });
 });

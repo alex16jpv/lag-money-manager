@@ -92,10 +92,63 @@ interface Handler {
   // The route removes the row: a 404 may mean the row is already gone, which
   // is the state the operation wanted (§5.4).
   removesRow?: boolean;
+  // Whether the row the server has already carries what the operation asked
+  // for, read from the `current` of its refused guard. Conservative: what it
+  // cannot compare answers false and the conflict stands.
+  holds?: (current: unknown, body: Body) => boolean;
   run: (args: RunArgs) => Promise<unknown>;
 }
 
 const ACCOUNT_SIDES = ["fromAccountId", "toAccountId"] as const;
+
+function sameValue(stored: unknown, sent: unknown): boolean {
+  if (sent === null || sent === undefined) {
+    return stored === null || stored === undefined;
+  }
+  if (stored instanceof Date) {
+    return new Date(sent as string | Date).getTime() === stored.getTime();
+  }
+  if (Array.isArray(sent)) {
+    return (
+      Array.isArray(stored) &&
+      stored.length === sent.length &&
+      sent.every((value, i) => (stored as unknown[])[i] === value)
+    );
+  }
+  return stored === sent;
+}
+
+/**
+ * Every field the body sent already reads that way on the row. `as` maps a
+ * body field onto the row field that stores it; a field named in `opaque` is
+ * one the row cannot answer for, and one of those in the body fails the whole
+ * check rather than guess.
+ */
+const fieldsHold =
+  (as: Record<string, string> = {}, opaque: readonly string[] = []) =>
+  (current: unknown, body: Body): boolean => {
+    const row = current as Record<string, unknown>;
+    const sent = Object.keys(body).filter((field) => body[field] !== undefined);
+    if (sent.length === 0 || sent.some((field) => opaque.includes(field))) {
+      return false;
+    }
+    return sent.every((field) =>
+      sameValue(row[as[field] ?? field], body[field]),
+    );
+  };
+
+const isArchived = (current: unknown): boolean =>
+  (current as { archivedAt?: Date | null }).archivedAt != null;
+
+const isActive = (current: unknown): boolean =>
+  (current as { archivedAt?: Date | null }).archivedAt == null;
+
+// A restore's body may carry a new name; without one, being active is the
+// whole of what it asked for.
+const isRestored = (current: unknown, body: Body): boolean =>
+  isActive(current) &&
+  (body.name === undefined ||
+    sameValue((current as { name?: unknown }).name, body.name));
 
 function rejected(field: string, message: string): Outcome {
   return {
@@ -162,16 +215,19 @@ export class SyncBatchService {
       "account:update": {
         body: bodyOf(v.updateAccountSchema),
         nameOwner: "account",
+        holds: fieldsHold(),
         run: ({ id, body, ctx, guard }) =>
           this.accounts.updateAccount(id, body as never, ctx.userId, guard),
       },
       "account:archive": {
+        holds: isArchived,
         run: ({ id, ctx, guard }) =>
           this.accounts.deleteAccount(id, ctx.userId, guard),
       },
       "account:restore": {
         body: bodyOf(v.restoreSchema),
         nameOwner: "account",
+        holds: isRestored,
         run: ({ id, body, ctx, guard }) =>
           this.accounts.restoreAccount(
             id,
@@ -181,6 +237,8 @@ export class SyncBatchService {
           ),
       },
       "account:setDefault": {
+        holds: (current) =>
+          (current as { isDefault?: boolean }).isDefault === true,
         run: ({ id, ctx, guard }) =>
           this.accounts.setDefaultAccount(id, ctx.userId, guard),
       },
@@ -197,16 +255,19 @@ export class SyncBatchService {
       "category:update": {
         body: bodyOf(v.updateCategorySchema),
         nameOwner: "category",
+        holds: fieldsHold(),
         run: ({ id, body, ctx, guard }) =>
           this.categories.updateCategory(id, body as never, ctx.userId, guard),
       },
       "category:archive": {
+        holds: isArchived,
         run: ({ id, ctx, guard }) =>
           this.categories.deleteCategory(id, ctx.userId, guard),
       },
       "category:restore": {
         body: bodyOf(v.restoreSchema),
         nameOwner: "category",
+        holds: isRestored,
         run: ({ id, body, ctx, guard }) =>
           this.categories.restoreCategory(
             id,
@@ -249,6 +310,7 @@ export class SyncBatchService {
         categoryFields: ["categoryId"],
         dropsCategory: true,
         accountFields: ACCOUNT_SIDES,
+        holds: fieldsHold(),
         run: ({ id, body, ctx, guard }) =>
           this.transactions.updateTransaction(
             id,
@@ -277,6 +339,12 @@ export class SyncBatchService {
       "budget:update": {
         body: bodyOf(v.updateBudgetSchema),
         categoryFields: ["categoryIds"],
+        // `current` is the period view: the body's `amount` is its
+        // `baseAmount`, and the fixed window is not on the view at all.
+        holds: fieldsHold({ amount: "baseAmount" }, [
+          "periodStartDate",
+          "periodEndDate",
+        ]),
         run: ({ op, id, body, ctx, guard }) =>
           this.budgets.updateBudget(
             id,
@@ -287,15 +355,21 @@ export class SyncBatchService {
           ),
       },
       "budget:archive": {
+        holds: isArchived,
         run: ({ op, id, ctx, guard }) =>
           this.budgets.deleteBudget(id, ctx.userId, budgetCtx(op, ctx), guard),
       },
       "budget:restore": {
+        holds: isActive,
         run: ({ op, id, ctx, guard }) =>
           this.budgets.restoreBudget(id, ctx.userId, budgetCtx(op, ctx), guard),
       },
       "budget:setOverride": {
         body: bodyOf(v.budgetAmountOverrideSchema),
+        holds: (current, body) => {
+          const view = current as { hasOverride?: boolean; amount?: number };
+          return view.hasOverride === true && view.amount === body.amount;
+        },
         run: ({ op, id, body, ctx, guard }) =>
           this.budgets.setAmountOverride(
             id,
@@ -306,6 +380,8 @@ export class SyncBatchService {
           ),
       },
       "budget:clearOverride": {
+        holds: (current) =>
+          (current as { hasOverride?: boolean }).hasOverride === false,
         run: ({ op, id, ctx, guard }) =>
           this.budgets.clearAmountOverride(
             id,
@@ -493,6 +569,19 @@ export class SyncBatchService {
     args: RunArgs,
     outcome: Outcome,
   ): Promise<Outcome> {
+    if (
+      outcome.code === "STALE_UPDATE" &&
+      outcome.current !== undefined &&
+      handler.holds?.(outcome.current, args.body)
+    ) {
+      // The guard failed, but the row already carries what the operation
+      // asked for: its own write landed and the registry row did not (a crash
+      // between the two), or another device made the same change. Either way
+      // the state the operation wanted holds, so it lands (§5.4) instead of
+      // sending the user to the conflict sheet for an edit already on the
+      // server.
+      return { status: "duplicate" };
+    }
     if (outcome.code === "DUPLICATE" && handler.nameOwner) {
       return this.reconcileName(handler, args, outcome);
     }
