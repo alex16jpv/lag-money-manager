@@ -14,8 +14,10 @@ que harías por defecto, gana lo de aquí.
 Un cambio no está listo hasta que **las seis** se cumplen. No es una lista de
 deseos: es el mínimo. Si algo no aplica, dilo explícitamente y por qué.
 
-1. **`npm run ci` en verde.** Incluye typecheck de src y de tests, lint, formato
-   y la suite completa. Nunca reportes "listo" sin haberlo corrido.
+1. **`npm run ci` en verde.** Incluye typecheck de src y de tests, lint, formato,
+   `fixtures:check` y la suite completa. **No incluye `npm run test:mongo`**, que es
+   obligatorio aparte si tocaste índices, transacciones o paginación (§1.4). Nunca
+   reportes "listo" sin haberlo corrido.
 2. **Pruebas unitarias de lo nuevo**, cubriendo el camino feliz y los bordes
    (valor inválido, ausente, `null`, límite).
 3. **Prueba de no-regresión**: algo que falle si el cambio rompe lo que ya
@@ -55,6 +57,10 @@ deseos: es el mínimo. Si algo no aplica, dilo explícitamente y por qué.
 - **No agrupes features en un commit.** Un commit por ítem (§6).
 - **No borres datos del usuario** sin confirmación explícita, ni siquiera en
   desarrollo.
+- **Nunca `git push` y nunca despliegues.** El dueño empuja y abre cada pull request:
+  di en qué rama quedó el trabajo y para ahí. Leer del remoto (`fetch`, `pull`) es libre.
+- **Nunca toques la base de datos del dueño.** La `MONGO_URI` del `.env` apunta a su
+  Atlas; para trabajar se pasa por delante la URI del Mongo de Docker.
 
 ---
 
@@ -79,14 +85,16 @@ Zod corre **antes** de saber quién es el usuario: lo que dependa de sus datos
 `[{field, message}]`. Recurso ajeno o inexistente → **404 uniforme**, nunca 403
 (no se puede sondear si un id existe).
 
-**Comentarios: mínimos.** Comenta la restricción no evidente o el porqué de una
-decisión, no lo que el código ya dice. Una o dos líneas. Nada de changelog en
-comentarios: para eso está git.
+**Comentarios: ninguno por defecto.** Escribe uno solo cuando sea estrictamente
+necesario, y entonces es **una línea física** que documenta una restricción que el
+código no puede expresar. Nunca envuelto en dos líneas, nunca un párrafo, y nunca el
+porqué de una decisión: eso va a `docs/`. Nada de separadores, `TODO`, código
+comentado ni changelog en comentarios. Si un comentario se puede borrar sin perder
+una restricción, bórralo.
 
 ```ts
-// Bien: explica una restricción invisible en el código
-// Los índices parciales se validan por operación, incluso dentro de una
-// transacción: hay que desmarcar la default vieja ANTES de marcar la nueva.
+// Bien: una línea, una restricción que el código no dice
+// Los índices parciales se validan por operación: desmarca la default antes de marcar la nueva.
 
 // Mal: repite el código
 // Incrementa el balance de la cuenta
@@ -149,7 +157,9 @@ categorías tienen nombre único por usuario.
 - **Uno por ítem.** Que varias cosas salgan de la misma revisión no las hace un
   solo cambio. Si tocan entidades distintas y no dependen entre sí, son commits
   distintos. Se agrupan solo si comparten el arreglo.
-- Formato `tipo(alcance): descripción` en inglés, imperativo.
+- Formato `tipo(alcance): descripción (T-nn)` en inglés, imperativo. `lefthook` corre
+  formato, lint, typecheck y las pruebas relacionadas antes de cada commit, y
+  `commitlint` exige la referencia. No te saltes los hooks (`--no-verify` está prohibido).
 - El cuerpo explica **por qué**, y qué se rompía antes. Si la investigación
   reveló una causa no obvia, escríbela: es lo que evita repetir el error.
 - No afirmes en el mensaje algo que no hiciste. Si dice "documented", que exista
@@ -210,5 +220,6 @@ npm run ci               # gate completo: typecheck x2, lint, formato, tests
 npm test                 # solo la suite
 npm run format           # aplica Prettier
 npm run db:sync-indexes  # crea/borra índices según los esquemas
+npm run test:mongo       # suite contra Mongo real (NO la incluye `npm run ci`)
 npm run seed:test        # semilla determinística para las pruebas del front
 ```

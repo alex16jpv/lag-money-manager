@@ -1,0 +1,18 @@
+pre-commit:
+  parallel: false
+  commands:
+    format:
+      glob: "{src,scripts}/**/*.ts"
+      run: npx prettier --check {staged_files}
+    lint:
+      glob: "{src,scripts}/**/*.ts"
+      run: npx eslint --max-warnings=0 --no-warn-ignored {staged_files}
+    typecheck:
+      run: npm run typecheck && npm run typecheck:tests
+    tests:
+      glob: "{src,scripts}/**/*.ts"
+      run: npx jest --forceExit --findRelatedTests --passWithNoTests {staged_files}
+commit-msg:
+  commands:
+    commitlint:
+      run: npx commitlint --edit {1}
