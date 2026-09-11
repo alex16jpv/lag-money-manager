@@ -13,8 +13,7 @@ import { TransactionModel } from "../../infrastructure/models/TransactionModel";
 
 type IndexSpec = [Record<string, number>, Record<string, unknown>?];
 
-// Indexes are correctness and cost, not decoration, and the suite mocks the
-// repositories — nothing else here would notice one disappearing.
+// The suite mocks the repositories, so nothing else here would notice an index disappearing.
 describe("TransactionModel indexes", () => {
   const declared = TransactionModel.schema.indexes() as IndexSpec[];
 
@@ -34,8 +33,7 @@ describe("TransactionModel indexes", () => {
     expect(has(keys as Record<string, number>)).toBeDefined();
   });
 
-  // Measured over 50k transactions: without it the filter sheet's count
-  // fetches every live document (45 ms) instead of reading the index (1 ms).
+  // Measured over 50k rows: without it the filter count reads every document, 45 ms against 1 ms.
   it("backs the source filter so its count stays index-only", () => {
     expect(has({ userId: 1, deletedAt: 1, source: 1, date: -1 })).toBeDefined();
   });

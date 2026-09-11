@@ -1,5 +1,4 @@
-// Real services are imported (their constructors read the environment);
-// nothing here touches the database.
+// Real services are imported (their constructors read the environment); nothing touches Mongo.
 process.env.JWT_SECRET ??= "sync-batch-test";
 process.env.CORS_ORIGIN ??= "http://localhost";
 process.env.MONGO_URI ??= "mongodb://localhost:27017/unused";
@@ -1234,8 +1233,7 @@ describe("SyncBatchService", () => {
         mergedInto: serverId,
       });
       expect(categories.createCategory).not.toHaveBeenCalled();
-      // The mapping survives the lost response: the movement still lands on
-      // the server's category.
+      // The mapping survives the lost response: the movement still lands on the server's category.
       expect(transactions.createTransaction).toHaveBeenCalledWith(
         expect.objectContaining({ categoryId: serverId }),
         TZ,

@@ -72,8 +72,7 @@ describe("refresh rotation [H-37]", () => {
     const first = await register("stale-rotation@example.com");
     await refresh(first);
 
-    // Sixty-one seconds after the rotation, the same token is no longer the
-    // answer that was lost; only the clock is moved.
+    // Sixty-one seconds on, that token is no longer the answer that was lost; only the clock moved.
     const realNow = Date.now;
     Date.now = () => realNow() + 61_000;
     try {

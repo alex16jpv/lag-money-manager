@@ -32,8 +32,7 @@ export class CategoryService {
     };
   }
 
-  // Reads resolve archived categories too (archivedAt tells them apart);
-  // only the listing hides them by default.
+  // Reads resolve archived categories too; only the listing hides them by default.
   async getCategoryById(id: string, userId: string): Promise<Category> {
     const category = await this.repo.getByIdIncludingArchived(id);
     if (!category || category.userId !== userId) {
@@ -42,8 +41,7 @@ export class CategoryService {
     return new Category(category);
   }
 
-  // The active category holding a name, matched case-insensitively like the
-  // unique index: what a DUPLICATE on a create was about (POST /sync, §5.1).
+  // Matched case-insensitively like the unique index: what a DUPLICATE on a create is about (§5.1).
   async findActiveByName(
     userId: string,
     name: string,
@@ -93,8 +91,7 @@ export class CategoryService {
     if (!existing || existing.userId !== userId) {
       throw new ApiError("NotFound", "Category not found");
     }
-    // Before the archived check: a caller writing against an old version needs
-    // to re-read whatever happened, not a reason it cannot know about yet.
+    // Before the archived check: an old-version caller needs to re-read, not a reason it cannot know.
     assertFresh(existing, expectedUpdatedAt, (c) => new Category(c));
     if (existing.archivedAt) {
       throw new ApiError(
@@ -104,8 +101,7 @@ export class CategoryService {
       );
     }
 
-    // The type of a category with history IS part of that history: changing
-    // it would silently reclassify stats and contradict typed transactions.
+    // A category's type is part of its history: changing it would silently reclassify stats.
     const typeChanged =
       dto.type !== undefined && (dto.type ?? null) !== (existing.type ?? null);
     if (typeChanged) {
@@ -130,10 +126,7 @@ export class CategoryService {
     );
   }
 
-  // Archive (soft delete); allowed even with linked transactions.
-  // Idempotent: archiving an already-archived category is a no-op success.
-  // Answers the archived row: an offline client needs its new `updatedAt` to
-  // guard the restore it may have queued right behind (F-22).
+  // F-22: idempotent, and it answers the archived row so a queued restore can guard on its updatedAt.
   async deleteCategory(
     id: string,
     userId: string,
@@ -196,9 +189,7 @@ export class CategoryService {
     return created.map((c) => new Category(c));
   }
 
-  // Idempotent by seedKey: creates only the missing defaults. Archived seed
-  // categories count as present (the user removed them on purpose) and
-  // renamed ones keep their seedKey, so neither gets duplicated.
+  // Idempotent by seedKey: archived seeds count as present and renamed ones keep theirs.
   async restoreDefaults(userId: string): Promise<Category[]> {
     const existing = new Set(await this.repo.listSeedKeys(userId));
     const missing = DEFAULT_CATEGORIES.filter((c) => !existing.has(c.seedKey));

@@ -7,8 +7,7 @@ export interface AccountProps {
   name: string;
   type: AccountType;
   balance?: number;
-  // Balance at creation; fixed thereafter. Enables a future integrity check
-  // (stored balance vs openingBalance + aggregated transaction effects).
+  // Fixed after creation: enables a future check of stored balance against the aggregated effects.
   openingBalance?: number;
   color?: Color;
   userId: string;

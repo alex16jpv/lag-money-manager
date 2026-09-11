@@ -10,8 +10,7 @@ export interface BudgetFilters {
   includeExpired?: boolean;
 }
 
-// What a create, update or restore would leave active, as the overlap rule
-// judges it.
+// What a create, update or restore would leave active, as the overlap rule judges it.
 export interface OverlapCandidate {
   type: BudgetType;
   periodType: BudgetPeriodType;
@@ -21,8 +20,7 @@ export interface OverlapCandidate {
 }
 
 export interface IBudgetRepository extends IRepository<Budget> {
-  // `expectedUpdatedAt` goes into the write's own filter: an optimistic guard
-  // checked before the write would let two racing callers through.
+  // `expectedUpdatedAt` goes in the write's own filter: a guard checked before would race.
   update(
     id: string,
     entity: Partial<Budget>,
@@ -39,17 +37,14 @@ export interface IBudgetRepository extends IRepository<Budget> {
   // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
   getOwnById(id: string, userId: string): Promise<Budget | null>;
 
-  // Offline change feed: everything the user touched after `cursor`, in
-  // `(updatedAt, _id)` order, ARCHIVED AND DELETED ROWS INCLUDED — a client
-  // that only sees live rows never learns that something disappeared.
+  // Change feed after `cursor` in (updatedAt, _id) order, archived and deleted rows included.
   changesSince(
     userId: string,
     cursor: ChangeCursor | undefined,
     limit: number,
   ): Promise<Budget[]>;
 
-  // Unlike getById, also resolves archived budgets (uniform semantics:
-  // archived resources stay readable; writes reject with RESOURCE_ARCHIVED).
+  // Unlike getById, resolves archived budgets too: writes are what reject with RESOURCE_ARCHIVED.
   getByIdIncludingArchived(id: string): Promise<Budget | null>;
 
   getAllByUserId(
@@ -58,18 +53,14 @@ export interface IBudgetRepository extends IRepository<Budget> {
     filters?: BudgetFilters,
   ): Promise<PaginatedResult<Budget>>;
 
-  // Active budgets the candidate would overlap: same type and period type,
-  // sharing a category (or both global); CUSTOM ones only when their date
-  // windows intersect. `excludeId` skips the budget being updated or restored.
+  // CUSTOM ones collide only when their windows intersect; `excludeId` skips the row being written.
   findOverlapping(
     userId: string,
     candidate: OverlapCandidate,
     excludeId?: string,
   ): Promise<Budget[]>;
 
-  // Un-archives the user's own archived budget; null if there was none to
-  // restore. Clearing archivedAt in a single write lets the partial unique
-  // index judge the resulting state and catch a concurrent restore.
+  // Clearing archivedAt in one write lets the partial index catch a concurrent restore.
   restore(
     id: string,
     userId: string,

@@ -20,14 +20,12 @@ const loginLimiter = authRateLimit({
   max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
-// Second dimension for login: a distributed attack on ONE account rotates
-// IPs, so the target email needs its own counter.
+// A distributed attack on ONE account rotates IPs, so the target email needs its own counter.
 const loginEmailLimiter = authRateLimit({
   keyPrefix: "login-email",
   max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
-  // Only failed logins burn the per-account budget (no lockout-DoS by a
-  // third party spamming the victim's email, no cost for real logins).
+  // Only failed logins burn the per-account budget: no lockout-DoS, no cost for real logins.
   refundOnSuccess: true,
   // Runs before Zod: normalize the same way the schema will.
   keyFrom: (req) => {
@@ -42,8 +40,7 @@ const registerLimiter = authRateLimit({
   max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
-// Refresh is legitimate high-frequency traffic (every ~15 min per device):
-// it gets its own, higher threshold.
+// Refresh is legitimate high-frequency traffic (~15 min per device), so its threshold is higher.
 const refreshLimiter = authRateLimit({
   keyPrefix: "refresh",
   max: ENVIRONMENT.REFRESH_RATE_LIMIT_MAX,

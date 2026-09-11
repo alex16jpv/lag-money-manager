@@ -249,9 +249,7 @@ describe("POST /sync against mongod", () => {
     });
   });
 
-  // T-09: the write and its registry row are two commits, so a crash between
-  // them leaves the operation on the server with nothing remembering it. The
-  // resend then met the guard its own write had already moved.
+  // T-09: the write and its registry row are two commits, so a crash between them loses the record.
   describe("a replay whose registry row was lost", () => {
     const lose = async (opId: string): Promise<void> => {
       const { deletedCount } = await SyncOpModel.deleteMany({ opId });
@@ -296,8 +294,7 @@ describe("POST /sync against mongod", () => {
 
       expect(statuses(again)).toEqual(["duplicate"]);
       expect(again[0].code).toBeUndefined();
-      // The money moved once, and the operation is back on record so the next
-      // resend is answered from the registry again.
+      // The money moved once, and the operation is on record so the next resend reads it there.
       expect(await balanceOf(accountId)).toBe(70_000);
       expect(await statusOf(update.opId)).toBe("duplicate");
     });
@@ -541,8 +538,7 @@ describe("POST /sync against mongod", () => {
         }),
       ]);
 
-      // The route answers a bare 404; the batch looks the row up and says
-      // WHY, because only "archived online" is the user's to resolve (§5.3).
+      // The route answers a bare 404; the batch says why, since only archived-online is the user's.
       expect(results[0]).toMatchObject({
         status: "conflict",
         code: "RESOURCE_ARCHIVED",
@@ -886,8 +882,7 @@ describe("POST /sync against mongod", () => {
       expect(await BudgetModel.findById(uuid("b", 3)).lean()).toBeNull();
     });
 
-    // The route answers 400, not 409, so the batch files it as `rejected`;
-    // part 1's note said `conflict` and had never measured it.
+    // The route answers 400, not 409, so the batch files it as `rejected`.
     it("files an overlapping budget as rejected BUDGET_PERIOD_OVERLAP", async () => {
       const first = uuid("b", 4);
       const second = uuid("b", 5);
@@ -966,8 +961,7 @@ describe("POST /sync against mongod", () => {
         op({ entity: "account", action: "archive", id: acc }),
       ]);
 
-      // Both wanted a state that already holds, so both land (§5.4): nothing
-      // for the user to resolve, and the queue drains.
+      // Both wanted a state that already holds, so both land (§5.4) and the queue drains.
       expect(statuses(results)).toEqual(["duplicate", "applied"]);
       expect(results[0].result).toBeUndefined();
       const stored = await AccountModel.findById(acc).lean();

@@ -156,8 +156,7 @@ describe("seed:test", () => {
     expect(leftovers).toBe(0);
   });
 
-  // Owner decision (2026-09-02): the example user is a neutral placeholder,
-  // the same one the front shows.
+  // Owner decision (2026-09-02): a neutral placeholder, the same one the front shows.
   it("names the example user John Doe", () => {
     if (!ran()) return;
     expect(seededName).toBe("John Doe");
@@ -193,9 +192,7 @@ describe("seed:test", () => {
     expect(second.totals.monthSpending).toBe(1_286_000);
   });
 
-  // Everything below is what makes the dataset usable by GET /sync/changes.
-  // A seed where every row shares one instant lets an incremental pull look
-  // correct while returning everything, or nothing.
+  // A seed where every row shares one instant lets an incremental pull look right while it is not.
   it("spreads updatedAt instead of stamping one instant", () => {
     if (!ran()) return;
     expect(new Set(updatedAt).size).toBeGreaterThan(1);

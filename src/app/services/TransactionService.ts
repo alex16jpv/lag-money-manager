@@ -192,9 +192,7 @@ export class TransactionService {
     return transaction;
   }
 
-  // Low-friction create: only amount is required; type defaults to EXPENSE, date
-  // to now, and the missing side account to the user's default. Flagged
-  // pendingDetails so the client can list these for later detailing.
+  // Only amount is required; the rest defaults, and the row is flagged pendingDetails for later.
   async quickAddTransaction(
     dto: QuickAddTransactionDTO,
     timezone: string,
@@ -282,8 +280,7 @@ export class TransactionService {
         );
       } catch (err) {
         const failure = describeItemFailure(id, err);
-        // Only the failures this endpoint promises to report per item are
-        // swallowed; anything else is a real fault and must surface as one.
+        // Only the per-item failures this endpoint promises are swallowed; anything else must surface.
         if (!failure) throw err;
         failed.push(failure);
       }
@@ -292,8 +289,7 @@ export class TransactionService {
     return { updated, failed };
   }
 
-  // Whether the movement is the user's own tombstone: the caller that must
-  // tell "already deleted" from "never existed" (POST /sync, §5.4).
+  // §5.4: the caller must tell "already deleted" from "never existed".
   async isDeleted(id: string, userId: string): Promise<boolean> {
     return this.transactionRepo.isDeleted(id, userId);
   }
@@ -317,8 +313,7 @@ export class TransactionService {
       if (existing.userId !== userId) {
         throw new ApiError("NotFound", "Transaction not found");
       }
-      // Read and write share the session, so this check and the guard in the
-      // update's filter are one atomic decision.
+      // Read and write share the session, so this and the update's filter are one atomic decision.
       assertFresh(existing, expectedUpdatedAt, (t) => t);
 
       const updated = new Transaction({ ...existing, ...dto });
@@ -327,8 +322,7 @@ export class TransactionService {
         await this.assertCategoryUsable(updated, existing.categoryId);
       }
 
-      // Reverse+reapply only when money moves change; this also lets
-      // non-monetary edits succeed on transactions of archived accounts.
+      // Reverse+reapply only when money moves: non-monetary edits work on archived accounts.
       const monetaryChanged =
         updated.type !== existing.type ||
         updated.amount !== existing.amount ||
@@ -339,11 +333,7 @@ export class TransactionService {
         await this.adjustBalances(updated, 1, session);
       }
 
-      // Monetary edits keep a pre-update snapshot (audit trail, R2-27).
-      // The date counts here: moving money between periods reshapes budgets
-      // and stats even though balances don't move.
-      // The accounting day only moves when the date does: an unrelated edit must not re-book a
-      // past expense with a timezone the account changed to in the meantime.
+      // R2-27: the day only moves when the date does, or an unrelated edit re-books a past expense.
       const dateChanged = updated.date.getTime() !== existing.date.getTime();
       const patch = dateChanged
         ? { ...dto, dayKey: dayKeyOf(updated.date, timezone) }
@@ -391,8 +381,7 @@ export class TransactionService {
     });
   }
 
-  // 404 covers both missing and foreign categories so ids can't be probed.
-  // An archived category stays valid only while the transaction already had it.
+  // 404 for missing and foreign alike so ids cannot be probed; archived stays valid only if already set.
   private async assertCategoryUsable(
     transaction: Transaction,
     previousCategoryId: string | null = null,
@@ -432,8 +421,7 @@ export class TransactionService {
       accountId: string,
       sign: number,
     ): Promise<void> => {
-      // Only check existence/ownership on apply; reversals must work even if the
-      // account was archived meanwhile.
+      // Existence is only checked on apply: a reversal must work on an account archived meanwhile.
       if (direction === 1) {
         const account = await this.accountRepo.getById(accountId, session);
         if (!account) {
@@ -453,8 +441,7 @@ export class TransactionService {
               : "Destination account not found",
           );
         }
-        // Mono-currency mode: the transaction carries its account's currency;
-        // cross-currency transfers arrive with the multi-currency feature.
+        // Mono-currency: the transaction carries its account's currency.
         if (
           account.currency &&
           transaction.currency &&
@@ -467,9 +454,7 @@ export class TransactionService {
           );
         }
         transaction.currency = transaction.currency ?? account.currency;
-        // The currency is only known here, once the account is read, so this
-        // is the first point where the minor-unit rule can be applied. Only
-        // when applying: a reversal replays an amount already validated.
+        // The currency is only known once the account is read, and a reversal replays a validated amount.
         if (direction === 1) {
           transaction.assertValidPrecision();
         }
@@ -481,8 +466,7 @@ export class TransactionService {
         session,
       );
       if (!applied) {
-        // Aborts the Mongo transaction: a silently skipped increment would
-        // desync the stored balance from the ledger.
+        // Aborts the Mongo transaction: a skipped increment would desync the balance from the ledger.
         throw new ApiError(
           "InternalServerError",
           "Account missing during balance adjustment",

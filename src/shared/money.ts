@@ -1,16 +1,7 @@
 import { DomainValidationError } from "../domain/errors";
 import { currencyDecimals } from "./currency";
 
-// Money is stored as integer cents and exposed as a decimal amount; convert
-// only at the persistence boundary. Integer storage keeps $inc balance updates
-// exact.
-//
-// The ceiling is where integer cents stop being exact in JavaScript: a value of
-// 1e13 is 1e15 cents, and Number.MAX_SAFE_INTEGER is ~9.007e15. Single amounts
-// therefore have two orders of magnitude of room, and a *balance* — which
-// accumulates — stays exact up to about 9e13. Currencies with no minor unit and
-// large everyday numbers (COP, IRR, VND, IDR) need this much: a house in COP
-// costs more than the old 1e9 cap allowed.
+// Integer cents are exact to ~9e13 (Number.MAX_SAFE_INTEGER); convert only at persistence.
 export const MAX_AMOUNT = 10_000_000_000_000;
 
 export function toCents(amount: number): number {
@@ -21,8 +12,7 @@ export function fromCents(cents: number): number {
   return cents / 100;
 }
 
-// True when the amount fits the currency's minor unit. Cannot live in the Zod
-// schema: the body is validated before the request's currency is known.
+// Cannot live in the Zod schema: the body is validated before the request's currency is known.
 export function hasValidPrecision(amount: number, decimals: number): boolean {
   const factor = 10 ** decimals;
   return Math.abs(amount * factor - Math.round(amount * factor)) < 1e-9;

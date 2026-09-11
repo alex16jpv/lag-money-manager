@@ -12,14 +12,12 @@ export interface BudgetProps {
   // ISO 4217; stamped by the server from the owner's currency at creation.
   currency?: string;
   amount: number;
-  // Per-period amount overrides keyed by period key (e.g. "2026-12"): the
-  // limit for that specific instance instead of the base amount.
+  // Per-period overrides keyed by period key ("2026-12"): that instance's limit, not the base amount.
   amountOverrides?: Record<string, number>;
   periodType: BudgetPeriodType;
   periodStartDate?: Date | null; // CUSTOM only
   periodEndDate?: Date | null; // CUSTOM only
-  // The budget "exists" from here on: past references before this date don't
-  // list it. Defaults to createdAt; editable for backdating.
+  // The budget exists from here on; defaults to createdAt and is editable for backdating.
   effectiveFrom?: Date | null;
   note?: string | null;
   userId: string;
@@ -70,8 +68,7 @@ export class Budget {
   // Windows that end on or before this instant predate the budget.
   lifetimeFloor(): Date {
     const floor = this.effectiveFrom ?? this.createdAt;
-    // A CUSTOM window is explicit: a budget backdated before its creation
-    // must still list, so the window start caps the floor.
+    // A CUSTOM window is explicit, so it caps the floor and a backdated budget still lists.
     if (
       this.periodType === "CUSTOM" &&
       this.periodStartDate &&

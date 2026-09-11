@@ -1,9 +1,4 @@
-// Syncs MongoDB indexes to the Mongoose schemas (creates missing, drops removed).
-// Run as a deploy step: npm run db:sync-indexes
-//
-// The model list comes from the registry, not from a list kept here: a
-// hand-maintained one had already lost RefreshSession, so its TTL and
-// familyId indexes were never created in production.
+// npm run db:sync-indexes — the model list comes from the registry, never a hand-kept one.
 import "dotenv/config";
 import "../src/infrastructure/models";
 

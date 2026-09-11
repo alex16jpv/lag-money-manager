@@ -60,8 +60,7 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
     currency: user.currency,
     openingBalance: a.openingBalance,
     isDefault: a.isDefault === true,
-    // Archived rows carry a stamp: the mirror needs it to hide them, and the
-    // sync feed is the only place it ever arrives.
+    // Archived rows carry a stamp: the sync feed is the only place it ever arrives.
     archivedAt: a.archived === true ? scenario.reference : null,
   }));
 
@@ -104,8 +103,7 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
           .toFormat("yyyy-MM-dd"),
         description: t.description ?? null,
         categoryId: t.quick === true ? null : categoryId(t.category),
-        // A quick-add is charged to the default account by the server, not by
-        // the client: the fixture spells out where it landed.
+        // The server charges a quick-add to the default account, so the fixture spells out where it landed.
         fromAccountId:
           t.quick === true ? (defaultAccount?.id ?? null) : accountId(t.from),
         toAccountId: t.quick === true ? null : accountId(t.to),
@@ -144,8 +142,7 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
     };
     if (b.override !== undefined) {
       assertPrecision(scenario, b.key, b.override, decimals);
-      // Overrides are keyed by the period they belong to, which is why the
-      // key format is part of this contract and not an implementation detail.
+      // Overrides are keyed by period, so the key format is part of this contract.
       stored.amountOverrides[
         resolvePeriod(stored, reference, user.timezone).key
       ] = b.override;

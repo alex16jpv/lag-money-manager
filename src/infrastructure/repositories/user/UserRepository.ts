@@ -156,8 +156,7 @@ export class UserRepository implements IUserRepository {
   }
 
   async delete(id: string): Promise<void> {
-    // tokenVersion bump revokes live refresh tokens; the access token still
-    // survives its remaining ~15 min (stateless middleware by design).
+    // The access token still survives its remaining ~15 min: the middleware is stateless by design.
     const doc = await UserModel.findOneAndUpdate(
       { _id: id, deletedAt: null },
       { $set: { deletedAt: new Date() }, $inc: { tokenVersion: 1 } },

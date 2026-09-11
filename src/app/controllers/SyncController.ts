@@ -30,8 +30,7 @@ const syncService = new SyncService(
   budgetRepository,
 );
 
-// The very same service instances' wiring the HTTP controllers use: the
-// batch must answer exactly what the routes would (trap 7.8).
+// The same service wiring the HTTP controllers use: the batch must answer what the routes would.
 const syncBatchService = new SyncBatchService(
   new AccountService(accountRepository, userRepository),
   new CategoryService(categoryRepository, transactionRepository),
@@ -61,8 +60,7 @@ function position(req: Request): ChangeCursor | undefined {
 // Behind authMiddleware the principal is always set.
 const principal = (req: Request): AuthPayload => req.user as AuthPayload;
 
-// Same resolution as the budget routes: token claim first, DB fallback for
-// tokens minted before the claim existed.
+// Token claim first, DB fallback for tokens minted before the claim existed.
 async function timezoneOf(req: Request): Promise<string> {
   const { userId, timezone } = principal(req);
   return (

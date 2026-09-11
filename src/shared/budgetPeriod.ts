@@ -15,15 +15,13 @@ export interface ResolvedPeriod {
   key: string;
 }
 
-// Resolves the concrete window [from, to) and a stable key for the period
-// instance that `reference` falls into, computed in the user's timezone.
+// Window [from, to) and a stable key for the instance `reference` falls into, in the user's zone.
 export function resolvePeriod(
   period: BudgetPeriodDef,
   reference: Date,
   timezone: string,
 ): ResolvedPeriod {
-  // Guard: an Invalid Date would otherwise produce the literal period key
-  // "Invalid DateTime" and persist corrupt override entries.
+  // An Invalid Date would produce the key "Invalid DateTime" and persist corrupt overrides.
   if (isNaN(reference.getTime())) {
     throw new DomainValidationError("Invalid reference date", "reference");
   }
@@ -87,8 +85,7 @@ function periodKey(type: BudgetPeriodType, start: DateTime): string {
     case "YEARLY":
       return start.toFormat("yyyy");
     default:
-      // Keys are Mongo $set paths: a fallback like toISO() (dots) would corrupt
-      // amountOverrides for any future period type. Fail loudly instead.
+      // Keys are Mongo $set paths: a fallback with dots would corrupt amountOverrides. Fail loudly.
       throw new Error(`No period key format defined for period type ${type}`);
   }
 }

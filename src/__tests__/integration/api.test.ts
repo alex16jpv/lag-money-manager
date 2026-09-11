@@ -202,8 +202,7 @@ jest.mock("../../config/swagger", () => ({
   swaggerSpec: {},
 }));
 
-// No real MongoDB in these tests: stub the connection and the transaction
-// runner so the service layer runs against the mocked repositories.
+// No real MongoDB here: the connection and the transaction runner are stubbed.
 jest.mock("../../config/mongoConnection", () => ({
   connectMongo: jest.fn().mockResolvedValue(undefined),
 }));
@@ -296,7 +295,6 @@ describe("Integration Tests", () => {
     jest.clearAllMocks();
   });
 
-  // ==================== Health Check ====================
   describe("GET /", () => {
     it("should return hello world", async () => {
       const res = await request(app).get("/");
@@ -306,7 +304,6 @@ describe("Integration Tests", () => {
     });
   });
 
-  // ==================== Auth Routes ====================
   describe("POST /auth/register", () => {
     it("should register a new user", async () => {
       mockUserRepo.create.mockResolvedValue(testUser);
@@ -444,7 +441,6 @@ describe("Integration Tests", () => {
     });
   });
 
-  // ==================== Auth Middleware ====================
   describe("Auth Middleware", () => {
     it("should return 401 when no token provided", async () => {
       const res = await request(app).get("/users");
@@ -503,7 +499,6 @@ describe("Integration Tests", () => {
     });
   });
 
-  // ==================== User Routes ====================
   describe("GET /users", () => {
     it("should be removed (user enumeration) and return 404", async () => {
       const res = await request(app)
@@ -584,7 +579,6 @@ describe("Integration Tests", () => {
     });
   });
 
-  // ==================== Account Routes ====================
   describe("GET /accounts", () => {
     it("should return accounts for the authenticated user", async () => {
       mockAccountRepo.getAllByUserId.mockResolvedValue({
@@ -740,8 +734,7 @@ describe("Integration Tests", () => {
       );
     });
 
-    // The way out of a restore that 409s because the name was taken while the
-    // account sat archived: rename it on the way out, in the same write.
+    // The way out of a restore that 409s on a taken name: rename it on the way out, in one write.
     it("restores under a new name when the body carries one", async () => {
       mockAccountRepo.restore.mockResolvedValue(testAccount);
 
@@ -780,7 +773,6 @@ describe("Integration Tests", () => {
     });
   });
 
-  // ==================== Category Routes ====================
   describe("GET /categories", () => {
     it("should return categories for the authenticated user", async () => {
       mockCategoryRepo.getAllByUserId.mockResolvedValue({
@@ -906,7 +898,6 @@ describe("Integration Tests", () => {
     });
   });
 
-  // ==================== Transaction Routes ====================
   describe("GET /transactions", () => {
     it("passes the source filter through to the repository", async () => {
       mockTransactionRepo.getAllByUserId.mockResolvedValue({
@@ -1188,7 +1179,6 @@ describe("Integration Tests", () => {
     });
   });
 
-  // ==================== Stats Routes ====================
   describe("GET /stats/spending [F1]", () => {
     it("returns spending buckets grouped by category", async () => {
       mockTransactionRepo.aggregateSpending.mockResolvedValue({
@@ -1219,7 +1209,6 @@ describe("Integration Tests", () => {
     });
   });
 
-  // ==================== Budget Routes ====================
   describe("Budgets [F3]", () => {
     const testBudget = new Budget({
       id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac90",
@@ -1297,7 +1286,6 @@ describe("Integration Tests", () => {
       expect(res.status).toBe(400);
     });
   });
-  // ==================== Client-minted ids (O-B1) ====================
   describe("Client-minted ids [O-B1]", () => {
     const CLIENT_ID = "019576a0-d7b6-7d6d-af6a-2b7545f5ac71";
     const dupKey = (keyPattern: Record<string, number>): Error =>
@@ -1370,8 +1358,7 @@ describe("Integration Tests", () => {
       expect(mockAccountRepo.create).not.toHaveBeenCalled();
     });
 
-    // A leak here would tell the caller that someone else's resource exists,
-    // and the message would describe it.
+    // A leak here would tell the caller that someone else's resource exists.
     it("answers an opaque 409 ID_TAKEN for another user's id, without reading it", async () => {
       mockAccountRepo.getOwnById.mockResolvedValue(null);
       mockAccountRepo.create.mockRejectedValue(dupKey({ _id: 1 }));
@@ -1456,8 +1443,7 @@ describe("Integration Tests", () => {
       expect(mockAccountRepo.incrementBalance).not.toHaveBeenCalled();
     });
 
-    // The unsent date and account resolve to `now` and to the current default
-    // account, so comparing them would fail every legitimate replay.
+    // The unsent date and account resolve to now and the default, so comparing them fails a replay.
     it("replays a quick-add on the fields the client actually sent", async () => {
       mockTransactionRepo.getOwnById.mockResolvedValue(
         new Transaction({ ...testTransaction, source: "QUICK" }),
@@ -1546,7 +1532,6 @@ describe("Integration Tests", () => {
     });
   });
 
-  // ==================== Optimistic concurrency (O-B2) ====================
   describe("If-Match [O-B2]", () => {
     const V1 = new Date("2026-01-01T00:00:00.000Z");
     const V2 = new Date("2026-02-02T00:00:00.000Z");
@@ -1649,8 +1634,7 @@ describe("Integration Tests", () => {
       expect(res.status).toBe(404);
     });
 
-    // Stale wins over RESOURCE_ARCHIVED: the caller cannot know about a state
-    // it has not read yet, and re-reading tells it everything.
+    // Stale wins over RESOURCE_ARCHIVED: the caller cannot know about a state it has not read yet.
     it("prefers STALE_UPDATE over the archived guard", async () => {
       mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(
         new Account({ ...testAccount, updatedAt: V2, archivedAt: new Date() }),
@@ -1738,9 +1722,7 @@ describe("Integration Tests", () => {
       expect(mockAccountRepo.incrementBalance).not.toHaveBeenCalled();
     });
 
-    // A deleted transaction has no `deletedAt` in its API shape, so a 409
-    // carrying it would look like a live transaction. 404 is the honest answer,
-    // and it is also what the route says today without a guard.
+    // A deleted transaction has no `deletedAt` in its API shape, so a 409 with it would look live.
     it("answers 404, not 409, when the transaction was already deleted", async () => {
       mockTransactionRepo.getById.mockResolvedValue(null);
 
@@ -1786,7 +1768,6 @@ describe("Integration Tests", () => {
     });
   });
 
-  // ==================== Incremental sync feed (O-B3) ====================
   describe("GET /sync/changes", () => {
     const SNAPSHOT_CURSOR = undefined;
 
@@ -1852,8 +1833,7 @@ describe("Integration Tests", () => {
       expect(passed?.updatedAt.getFullYear()).not.toBe(1999);
     });
 
-    // Serving page one for a cursor the server cannot read is how a client
-    // silently loops over the same rows forever.
+    // Serving page one for an unreadable cursor is how a client silently loops over the same rows.
     it("rejects an unreadable cursor with 400 INVALID_CURSOR", async () => {
       const res = await request(app)
         .get("/sync/changes?cursor=not-a-real-cursor")
@@ -1921,7 +1901,6 @@ describe("Integration Tests", () => {
     });
   });
 
-  // ==================== POST /sync (O-B4) ====================
   describe("POST /sync", () => {
     const OP = "019576a0-d7b6-7d6d-af6a-2b7545f5ac90";
     const operation = (

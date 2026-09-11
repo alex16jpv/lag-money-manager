@@ -1,5 +1,4 @@
-// The real modules: the point is to compare the routes Express mounts with
-// the paths the OpenAPI document publishes. Only the environment is stubbed.
+// Real modules, not mocks: this compares the routes Express mounts with the OpenAPI paths.
 process.env.JWT_SECRET ??= "openapi-coverage-test";
 process.env.CORS_ORIGIN ??= "http://localhost";
 process.env.MONGO_URI ??= "mongodb://localhost:27017/unused";
@@ -26,8 +25,7 @@ import transactionRoutes from "../../app/routes/transactionRoutes";
 import userRoutes from "../../app/routes/userRoutes";
 import { swaggerSpec } from "../../config/swagger";
 
-// Mirrors app.ts. A router mounted there and not here is caught by the count
-// assertion below only if it adds paths; keep the two lists in step.
+// Mirrors app.ts: a router mounted there and not here is only caught if it adds paths.
 const MOUNTS: Record<string, Router> = {
   "/auth": authRoutes,
   "/users": userRoutes,
@@ -64,10 +62,7 @@ const documented = (): string[] => {
   );
 };
 
-// swagger-jsdoc drops a whole file when one of its YAML blocks does not
-// parse, and only says so on stdout. A colon inside a description did exactly
-// that to budgetRoutes.ts (F-22): every budget path vanished from the document
-// and the suite stayed green.
+// F-22: swagger-jsdoc drops a whole file when a YAML block fails to parse, and only warns on stdout.
 describe("OpenAPI covers every mounted route", () => {
   it("documents each route the app mounts, with its method", () => {
     const missing = mounted().filter((r) => !documented().includes(r));

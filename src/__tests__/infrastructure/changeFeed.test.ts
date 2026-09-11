@@ -18,8 +18,7 @@ describe("changesSinceFilter", () => {
     });
   });
 
-  // Both branches keep userId as their prefix so each is answered by
-  // (userId, updatedAt, _id) already sorted, instead of a blocking sort.
+  // Both keep userId first so (userId, updatedAt, _id) answers them sorted, with no blocking sort.
   it("keeps every $or branch owner-prefixed", () => {
     const filter = changesSinceFilter(USER, { updatedAt: t, id: "abc" });
 

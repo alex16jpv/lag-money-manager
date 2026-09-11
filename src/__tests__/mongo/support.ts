@@ -190,8 +190,7 @@ export async function seedFixture(fixture: Fixture): Promise<void> {
     locale: "en",
   });
 
-  // The first account created is the default one, so a fixture whose default
-  // is not first would describe a state this seeding cannot reach.
+  // The first account created is the default, so a fixture with another default is unreachable.
   const defaultIndex = fixture.accounts.findIndex((a) => a.isDefault);
   if (defaultIndex > 0) {
     throw new Error(
@@ -250,8 +249,7 @@ export async function seedFixture(fixture: Fixture): Promise<void> {
     );
   }
 
-  // Deleted before anything is archived: a row is deleted the way a user
-  // deletes it, while its account and category are still active.
+  // Deleted while its account and category are still active, the way a user deletes a row.
   for (const t of fixture.transactions) {
     if (t.deletedAt !== null) {
       await transactions.deleteTransaction(t.id, userId);
@@ -288,8 +286,7 @@ export async function seedFixture(fixture: Fixture): Promise<void> {
     }
   }
 
-  // Archived last: a budget cannot be given an already-archived category, so
-  // the fixture reaches its state the way a user would.
+  // Archived last: a budget cannot take an already-archived category.
   for (const category of fixture.categories) {
     if (category.archivedAt !== null) {
       await categories.deleteCategory(category.id, userId);

@@ -369,8 +369,7 @@ describe("Validation Schemas", () => {
       expect(result.success).toBe(false);
     });
 
-    // The unique index folds case and accents but not whitespace, so an
-    // untrimmed "Savings " would slip past it as a second account.
+    // The unique index folds case and accents but not whitespace, so "Savings " would slip past.
     it("trims the name so padding cannot bypass the unique index", () => {
       const result = createAccountSchema.safeParse({
         body: { name: "  Savings  ", type: "SAVINGS" },

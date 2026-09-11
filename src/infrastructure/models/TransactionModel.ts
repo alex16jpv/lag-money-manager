@@ -92,34 +92,25 @@ const TransactionSchema = new Schema<ITransactionDocument>(
   { timestamps: true },
 );
 
-// Primary listing sort; deletedAt included so the per-page count is
-// resolved from the index instead of fetching every document.
+// deletedAt is in the key so the per-page count resolves from the index, not from documents.
 TransactionSchema.index({ userId: 1, deletedAt: 1, date: -1, _id: -1 });
 TransactionSchema.index({ userId: 1, categoryId: 1, date: -1 });
 TransactionSchema.index({ userId: 1, tags: 1, date: -1 });
 // Each $or branch of the accountId filter needs its own userId-prefixed index.
 TransactionSchema.index({ userId: 1, fromAccountId: 1, date: -1 });
 TransactionSchema.index({ userId: 1, toAccountId: 1, date: -1 });
-// The filter sheet previews its result count with limit=1, so the count matters
-// more than the page. Measured over 50k transactions: without this the count
-// fetches every live document (45 ms); with it, it is answered from the index
-// alone (1 ms). `type` gets no such index on purpose — it matches almost every
-// document, so an index cannot save the visit.
+// Measured over 50k rows: the filter count reads the index (1 ms) instead of every document (45 ms).
 TransactionSchema.index({ userId: 1, deletedAt: 1, source: 1, date: -1 });
-// The review inbox is a hot screen and a tiny slice: a partial index over just
-// the pending rows is ~2% of the primary index's size.
+// A partial index over just the pending rows is ~2% of the primary index's size.
 TransactionSchema.index(
   { userId: 1, date: -1 },
   { partialFilterExpression: { pendingDetails: true, deletedAt: null } },
 );
 
-// Calendar windows (a month, a budget period, the day buckets of the chart) filter by the frozen
-// accounting day. The listing still sorts by `date`, so a day-filtered page pays an in-memory sort
-// of that window's rows; the unfiltered listing keeps using the primary index above.
+// Calendar windows filter by the frozen day; a day-filtered page pays an in-memory sort by `date`.
 TransactionSchema.index({ userId: 1, deletedAt: 1, dayKey: 1 });
 
-// Offline change feed: keyset pagination over (updatedAt, _id), archived and
-// deleted rows included — the client learns of a disappearance no other way.
+// Change feed: keyset over (updatedAt, _id), archived and deleted rows included.
 TransactionSchema.index({ userId: 1, updatedAt: 1, _id: 1 });
 
 export const TransactionModel = mongoose.model<ITransactionDocument>(

@@ -34,9 +34,7 @@ export class SyncOpRepository implements ISyncOpRepository {
         ...record,
       });
     } catch (err) {
-      // Two requests landed the same opId at once (two tabs, a retried
-      // request): both applied the same desired state, so the first record
-      // is as true as this one and nothing is lost by keeping it.
+      // Both applied the same desired state, so the first record is as true as this one.
       if (!isDuplicateIdError(err)) throw err;
     }
   }

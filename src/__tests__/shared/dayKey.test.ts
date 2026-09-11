@@ -21,8 +21,7 @@ describe("dayKeyOf", () => {
   });
 
   it("follows the offset in force that day, not today's", () => {
-    // Madrid is UTC+1 in winter and UTC+2 in summer: the same clock time in UTC
-    // falls on a different local day depending on the season.
+    // Madrid is UTC+1 in winter and UTC+2 in summer: one UTC instant, two different local days.
     expect(
       dayKeyOf(new Date("2026-01-31T23:30:00.000Z"), "Europe/Madrid"),
     ).toBe("2026-02-01");

@@ -19,9 +19,7 @@ export const dbType = DB_TYPES.MONGO;
 export function registerRepositories(factory: RegistryTarget): void {
   connectMongo().catch((err) => {
     logger.error({ err }, "Failed to connect to MongoDB");
-    // Fail fast in a long-lived server so the orchestrator restarts it.
-    // In Lambda, exiting poisons the runtime (later invocations get an
-    // opaque 502); requests retry the connection instead.
+    // In Lambda, exiting poisons the runtime, so only a long-lived server exits.
     if (!IS_LAMBDA) {
       process.exit(1);
     }

@@ -35,8 +35,7 @@ describe("ifMatch", () => {
     );
   });
 
-  // A date without a time parses to midnight and would never match a stored
-  // updatedAt: better a 400 than a permanent, silent 409.
+  // A date without a time is midnight and never matches a stored updatedAt: 400, not a silent 409.
   it.each(["", "not a date", "2026-09-03", "*", '"2026-09-03T18:00:00.000Z"'])(
     "rejects %p with 400 VALIDATION",
     (raw) => {

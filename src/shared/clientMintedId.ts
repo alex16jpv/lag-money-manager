@@ -57,8 +57,7 @@ export async function createOrReplay<TStored, TResult>(
     return op.replay(stored);
   };
 
-  // Checked before creating: a replay must not trip the name or period
-  // uniqueness rules the original create already satisfied.
+  // Checked before creating: a replay must not trip a rule the original create satisfied.
   const existing = await op.findOwn(clientId);
   if (existing) return replayOf(existing);
 

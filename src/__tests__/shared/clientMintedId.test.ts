@@ -76,8 +76,7 @@ describe("createOrReplay", () => {
     expect(o.create).toHaveBeenCalled();
   });
 
-  // Checked before creating: the second attempt would trip the name or period
-  // uniqueness rule the first one already satisfied.
+  // Checked before creating: the second attempt would trip a rule the first one already satisfied.
   it("replays without creating when the id is already the user's", async () => {
     const outcome = { replayed: false };
     const o = op({ findOwn: jest.fn().mockResolvedValue(stored), outcome });
@@ -86,8 +85,7 @@ describe("createOrReplay", () => {
     expect(outcome.replayed).toBe(true);
   });
 
-  // The row may have been edited elsewhere between the lost response and the
-  // retry; a 409 here would make the client mint another id and duplicate it.
+  // The row may have been edited between the lost response and the retry; a 409 would duplicate it.
   it("replays the user's own id whatever the payload says now", async () => {
     const outcome = { replayed: false };
     const edited: Stored = { id: "a", name: "Renamed elsewhere" };

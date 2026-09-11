@@ -17,8 +17,7 @@ export const validate =
         params: req.params,
       }) as ParsedRequest;
 
-      // Use the parsed (whitelisted) values so undeclared fields can't reach
-      // services/ORM (mass-assignment guard). req.query is read-only in Express 5.
+      // Parsed values only, so undeclared fields cannot reach the ORM. req.query is read-only in Express 5.
       if (parsed.body !== undefined) {
         req.body = parsed.body;
       }
@@ -30,9 +29,7 @@ export const validate =
     } catch (error) {
       if (error instanceof z.ZodError) {
         const details = error.issues.map((issue) => ({
-          // Drop the schema section ("body", "query", "params"): the client
-          // knows where it sent the field, and needs the name to map the error
-          // onto its form. `items.0.id` keeps its path within the body.
+          // The section is dropped so the client can map the error onto its own field name.
           field: issue.path.slice(1).join("."),
           message: issue.message,
         }));

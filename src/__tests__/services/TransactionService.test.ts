@@ -29,8 +29,7 @@ jest.mock("../../shared/constants", () => ({
   },
 }));
 
-// Run the transactional callback inline with a dummy session so the service can
-// be unit-tested against mocked repositories (no real MongoDB session).
+// The transactional callback runs inline with a dummy session: no real MongoDB session here.
 jest.mock("../../shared/unitOfWork", () => ({
   withTransaction: jest.fn((fn: (session: unknown) => unknown) =>
     fn("test-session"),
@@ -524,8 +523,7 @@ describe("TransactionService", () => {
       expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
       expect(txRepo.update).toHaveBeenCalledWith(
         TX_ID,
-        // The day is re-stamped because the date moved: midnight UTC on Apr 2
-        // is still Apr 1 in Bogota (T-14).
+        // T-14: the day is re-stamped because midnight UTC on Apr 2 is still Apr 1 in Bogota.
         { date: new Date("2026-04-02"), dayKey: "2026-04-01" },
         "test-session",
         expect.objectContaining({ date: new Date("2026-03-28") }),
@@ -546,8 +544,7 @@ describe("TransactionService", () => {
       txRepo.getById.mockResolvedValue(existing);
       txRepo.update.mockResolvedValue(existing);
 
-      // The account moved to a zone where that instant is another day: an
-      // unrelated edit must not re-book a past expense.
+      // The account moved zones: an unrelated edit must not re-book a past expense.
       await service.updateTransaction(
         TX_ID,
         { description: "renamed" },

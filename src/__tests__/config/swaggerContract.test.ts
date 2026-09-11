@@ -1,5 +1,4 @@
-// The real module is loaded, not a mock: the point is to assert the document
-// the app actually serves. It only needs the environment to parse.
+// The real module, not a mock: this asserts the document the app actually serves.
 process.env.JWT_SECRET ??= "swagger-contract-test";
 process.env.CORS_ORIGIN ??= "http://localhost";
 process.env.MONGO_URI ??= "mongodb://localhost:27017/unused";
@@ -20,10 +19,7 @@ const spec = swaggerSpec as {
 };
 const view = (name: string): View => spec.components.schemas[name];
 
-// The frontend generates its types from this document. A view without
-// `required` makes every field optional downstream, and an enum left as a free
-// string makes the frontend transcribe a list by hand — both were reported as
-// friction from the redesign (BACKEND-DESDE-FRONT.md, W-06).
+// W-06: a view without `required` makes every field optional downstream, and a free string hides enums.
 describe("OpenAPI response views", () => {
   it.each([
     "Message",
@@ -66,8 +62,7 @@ describe("OpenAPI response views", () => {
     expect(account.required).toEqual(Object.keys(account.properties));
   });
 
-  // W-30: an optional `current` would make the front null-check a flag the
-  // API always sends.
+  // W-30: an optional `current` would make the front null-check a flag the API always sends.
   it("Session always says whether it is the caller's own", () => {
     expect(view("Session").required).toContain("current");
     expect(view("Session").properties.current).toMatchObject({
@@ -75,8 +70,7 @@ describe("OpenAPI response views", () => {
     });
   });
 
-  // The envelopes were the other half of W-06: a `data` typed as optional makes
-  // every list consumer null-check an array the API always sends.
+  // W-06: an optional `data` makes every list consumer null-check an array that always arrives.
   it.each([
     ["AccountList", ["data", "pagination"]],
     ["CategoryList", ["data", "pagination"]],
@@ -94,8 +88,7 @@ describe("OpenAPI response views", () => {
     expect(inline).toBeNull();
   });
 
-  // The change feed is the only place a client is told something disappeared,
-  // so the two tombstone fields cannot be optional downstream.
+  // The feed is the only place a client hears a row vanished, so the tombstones cannot be optional.
   it("keeps the sync feed's tombstones mandatory", () => {
     expect(view("SyncTransaction").required).toContain("deletedAt");
     expect(view("SyncBudget").required).toContain("archivedAt");
@@ -109,8 +102,7 @@ describe("OpenAPI response views", () => {
     ]);
   });
 
-  // The batch answer is what O-F5b branches on: the status list and the code
-  // list must be the server's, not a transcription.
+  // O-F5b branches on this answer, so its status and code lists must be the server's, not a copy.
   it("publishes the batch statuses and codes as enums", () => {
     const result = view("SyncOpResult");
     expect((result.properties.status as { enum: string[] }).enum).toEqual([

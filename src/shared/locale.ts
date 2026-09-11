@@ -1,5 +1,4 @@
-// UI languages the product ships. English is the default; the front reads
-// user.locale to render, format money/dates and pick copy.
+// English is the default; the front reads user.locale to render and pick copy.
 export const LOCALES = {
   en: "en",
   es: "es",

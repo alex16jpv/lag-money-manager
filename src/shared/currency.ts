@@ -1,6 +1,4 @@
-// Paired with DEFAULT_TIMEZONE (America/Bogota): our defaults describe the
-// same persona. The frontend suggests a currency from the browser locale;
-// this only applies when a client omits the field entirely.
+// Only applied when a client omits the field; the front suggests one from the browser locale.
 export const DEFAULT_CURRENCY = "COP";
 
 // ISO 4217 alpha code.

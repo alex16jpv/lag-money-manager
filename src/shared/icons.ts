@@ -1,5 +1,4 @@
-// Curated Lucide icon keys a category may use. The set is fixed by the product's design system.
-// The front renders them with lucide-react; unknown keys are rejected at validation time.
+// Fixed by the design system; unknown keys are rejected at validation time.
 export const CATEGORY_ICONS = [
   "apple",
   "arrow-left-right",

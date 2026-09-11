@@ -27,8 +27,7 @@ const timezoneField = z
   .refine(isValidTimeZone, "Invalid IANA timezone")
   .optional();
 
-// Money is decimal in the API but stored as integer cents, so amounts must
-// have at most 2 decimals and stay within a sane bound (rejects 10.555 and 1e300).
+// Stored as integer cents, so at most 2 decimals and within a sane bound (rejects 10.555 and 1e300).
 const moneyAmount = z
   .number()
   .positive("Amount must be greater than 0")
@@ -73,8 +72,7 @@ export const ifMatchHeader = z.string().datetime({
   message: "If-Match must be the resource's updatedAt, in ISO 8601",
 });
 
-// Trim + casefold + dedupe: "Café", "café" and "café " must be ONE tag,
-// or the per-tag spending stats fragment into ghost buckets.
+// Trim + casefold + dedupe, or the per-tag stats fragment into ghost buckets.
 const normalizedTags = z
   .array(z.string().min(1).max(50))
   .max(30)
@@ -105,9 +103,7 @@ const emailField = z
   .email("Invalid email format")
   .max(255);
 
-// Trimmed before the uniqueness check: the index collation folds case and
-// accents, but "Efectivo " and "Efectivo" would still be two accounts, which
-// is exactly the accidental duplicate the unique index exists to prevent.
+// The index collation folds case and accents but not whitespace, so trimming happens here.
 const accountName = z.string().trim().min(1, "Name is required").max(255);
 
 export const paginationQuerySchema = z.object({
@@ -246,8 +242,7 @@ export const updateUserSchema = z.object({
         .min(8, "Password must be at least 8 characters")
         .max(128)
         .optional(),
-      // Re-authentication: a hijacked access token (15 min) must not be able
-      // to take over the account by swapping the credentials.
+      // A hijacked 15-minute access token must not be able to swap the credentials.
       currentPassword: z.string().min(1).max(128).optional(),
       timezone: timezoneField,
       currency: currencyField,
@@ -470,9 +465,7 @@ export const budgetAmountOverrideSchema = z.object({
  * the same request is the only way out that does not force the user to go and
  * edit the *other* resource first.
  */
-// The offline change feed. `since` and `cursor` are two ways of naming the same
-// position: `cursor` wins when both arrive, because it is the more precise one
-// (it can point inside an instant, `since` cannot).
+// `cursor` wins over `since`: it can point inside an instant and `since` cannot.
 export const syncChangesSchema = z.object({
   query: z.object({
     since: z
@@ -514,8 +507,7 @@ const syncOperationSchema = z.object({
     .min(1)
     .max(40)
     .meta({ description: `Per entity — ${describeSyncActions()}` }),
-  // The entity the operation is about: the client-minted id of a create,
-  // the row's id otherwise.
+  // The client-minted id of a create, the row's id otherwise.
   id: z.string().uuid("id must be a valid UUID"),
   payload: z
     .object({
@@ -544,8 +536,7 @@ const syncOperationSchema = z.object({
       message: "baseUpdatedAt must be the resource's updatedAt, in ISO 8601",
     })
     .optional(),
-  // Ids of rows created offline that this operation names. If their
-  // creating operation fails in this batch, this one comes back `blocked`.
+  // Rows created offline that this names: if their create fails here, this comes back `blocked`.
   dependsOn: z
     .array(z.string().uuid("Each dependsOn entry must be a valid UUID"))
     .max(SYNC_MAX_OPERATIONS)
@@ -749,8 +740,7 @@ export const updateTransactionSchema = z.object({
     }),
 });
 
-// Quick capture is for real cash flows; ADJUSTMENT would create an
-// un-detailable pendingDetails entry (it can't take a category).
+// ADJUSTMENT would create an un-detailable pendingDetails entry: it cannot take a category.
 const quickAddTypeValues = Object.keys(TRANSACTION_TYPES).filter(
   (t) => t !== "ADJUSTMENT",
 ) as [string, ...string[]];

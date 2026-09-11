@@ -20,10 +20,7 @@ import {
   SYNC_WARNINGS,
 } from "../shared/syncBatch";
 
-// ---------------------------------------------------------------------------
-// Request bodies: GENERATED from the Zod validation schemas (single source of
-// truth). Never hand-write a request schema here — edit schemas.ts instead.
-// ---------------------------------------------------------------------------
+// GENERATED from the Zod schemas: never hand-write a request schema here, edit schemas.ts.
 
 const toJson = (schema: z.ZodType): Record<string, unknown> =>
   z.toJSONSchema(schema, {
@@ -59,10 +56,7 @@ const requestBodies = {
   SyncBatchInput: bodyOf(v.syncBatchSchema),
 };
 
-// ---------------------------------------------------------------------------
-// Response views: hand-maintained mirrors of the entities/DTOs the API
-// serializes. Enums come from constants.ts so they can never drift.
-// ---------------------------------------------------------------------------
+// Hand-maintained mirrors of what the API serializes; enums come from constants.ts so they cannot drift.
 
 const uuid = { type: "string", format: "uuid" };
 const dateTime = { type: "string", format: "date-time" };
@@ -354,9 +348,7 @@ const responseViews = {
   }),
 };
 
-// Sync-only views. Separate from responseViews because SyncTransaction is
-// derived from the Transaction view and cannot read it while it is still
-// being built.
+// Separate because SyncTransaction derives from the Transaction view and cannot read it yet.
 const syncViews = {
   SyncTransaction: withRequired({
     type: "object",

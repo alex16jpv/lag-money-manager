@@ -9,7 +9,6 @@ export interface SyncOpRecord {
 
 export interface ISyncOpRepository {
   find(userId: string, opId: string): Promise<SyncOpRecord | null>;
-  // Idempotent: a record already there (a concurrent resend of the same
-  // batch) is left as it is.
+  // Idempotent: a record already there, from a concurrent resend, is left as it is.
   record(userId: string, opId: string, record: SyncOpRecord): Promise<void>;
 }

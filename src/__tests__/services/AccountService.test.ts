@@ -252,8 +252,7 @@ describe("AccountService", () => {
       expect(result.isDefault).toBe(true);
     });
 
-    // O-B1: `balance` moves with every transaction, so a replay days later
-    // must be judged against the balance the account was opened with.
+    // O-B1: `balance` moves with every transaction, so a replay is judged against the opening one.
     it("replays a client-minted id against openingBalance, not the live balance [O-B1]", async () => {
       const outcome = { replayed: false };
       repo.getOwnById.mockResolvedValue(
@@ -487,8 +486,7 @@ describe("AccountService", () => {
   });
 
   describe("restoreAccount", () => {
-    // Without this the user is stuck: restore answers 409 because another
-    // account took the name, and renaming the archived one is refused.
+    // Otherwise the user is stuck: restore 409s on the name and renaming the archived one is refused.
     it("renames as part of the same write when a new name is given", async () => {
       repo.restore.mockResolvedValue(
         new Account({ ...validAccountProps, name: "Nequi antiguo" }),
