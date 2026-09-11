@@ -10,9 +10,7 @@ export interface TransactionProps {
   type: TransactionType;
   amount: number;
   date: Date | string;
-  // Local accounting day of `date` ("YYYY-MM-DD"), stamped by the service from
-  // the account's timezone. Carried as data here: only a change of `date` may
-  // move it, and the entity cannot tell a merge from a fresh write.
+  // Stamped by the service from the account's timezone; only a change of `date` may move it.
   dayKey?: string | null;
   categoryId?: string | null;
   description?: string | null;
@@ -88,8 +86,7 @@ export class Transaction {
     }
   }
 
-  // Called on create and on the update merge so a partial update can't leave an
-  // inconsistent shape.
+  // Called on create and on the update merge so a partial update cannot leave an inconsistent shape.
   assertValid(): void {
     if (!(this.amount > 0)) {
       throw new DomainValidationError(
@@ -97,8 +94,7 @@ export class Transaction {
         "amount",
       );
     }
-    // Future-dated money would hit today's balance and future budget windows;
-    // scheduled transactions will be their own feature, not raw future dates.
+    // Future-dated money would hit today's balance; scheduling will be its own feature.
     if (this.date.getTime() > Date.now() + 24 * 60 * 60 * 1000) {
       throw new DomainValidationError(
         "date cannot be more than 24 hours in the future",

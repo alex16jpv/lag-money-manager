@@ -10,8 +10,7 @@ export interface AccountFilters {
 }
 
 export interface IAccountRepository extends IRepository<Account> {
-  // `expectedUpdatedAt` goes into the write's own filter: an optimistic guard
-  // checked before the write would let two racing callers through.
+  // `expectedUpdatedAt` goes in the write's own filter: a guard checked before would race.
   update(
     id: string,
     entity: Partial<Account>,
@@ -28,9 +27,7 @@ export interface IAccountRepository extends IRepository<Account> {
   // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
   getOwnById(id: string, userId: string): Promise<Account | null>;
 
-  // Offline change feed: everything the user touched after `cursor`, in
-  // `(updatedAt, _id)` order, ARCHIVED AND DELETED ROWS INCLUDED — a client
-  // that only sees live rows never learns that something disappeared.
+  // Change feed after `cursor` in (updatedAt, _id) order, archived and deleted rows included.
   changesSince(
     userId: string,
     cursor: ChangeCursor | undefined,
@@ -39,29 +36,24 @@ export interface IAccountRepository extends IRepository<Account> {
   // Unlike getById, also resolves archived accounts (read paths only).
   getByIdIncludingArchived(id: string): Promise<Account | null>;
 
-  // The user's ACTIVE account with this name, matched the way the unique
-  // index refuses it (case-insensitive); null when the name is free.
+  // The ACTIVE row holding this name, matched as the unique index does; null when it is free.
   findActiveByName(userId: string, name: string): Promise<Account | null>;
 
-  // Atomic balance change (decimal delta) via $inc; false when no account
-  // matched — callers must treat that as corruption, never ignore it.
+  // Atomic $inc; false when nothing matched, which callers must treat as corruption.
   incrementBalance(
     id: string,
     delta: number,
     session?: TxSession,
   ): Promise<boolean>;
 
-  // Atomic archive that refuses the default account even under races;
-  // the archived row, or null when nothing matched (default, archived or missing).
+  // Atomic archive that refuses the default account even under races.
   archiveNonDefault(
     id: string,
     userId: string,
     expectedUpdatedAt?: Date,
   ): Promise<Account | null>;
 
-  // Un-archives the user's own archived account; null if none to restore.
-  // `name` renames as part of the same write, so the unique index sees the
-  // final state and no one can take the name in between.
+  // `name` renames in the same write, so nobody can take the name in between.
   restore(
     id: string,
     userId: string,

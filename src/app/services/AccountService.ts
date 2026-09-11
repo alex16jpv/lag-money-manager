@@ -29,8 +29,7 @@ export class AccountService {
     return this.repo.getAllByUserId(userId, pagination, filters);
   }
 
-  // Reads resolve archived accounts too (archivedAt tells them apart);
-  // only the listing hides them by default.
+  // Reads resolve archived accounts too; only the listing hides them by default.
   async getAccountById(id: string, userId: string): Promise<Account> {
     const account = await this.repo.getByIdIncludingArchived(id);
     if (!account || account.userId !== userId) {
@@ -39,9 +38,7 @@ export class AccountService {
     return new Account(account);
   }
 
-  // The active account holding a name, and the user's own row archived
-  // included: the two lookups a caller needs to tell a taken name and an
-  // archived reference from a row that is simply not there (POST /sync, §5).
+  // The two lookups that tell a taken name and an archived reference from a missing row (/sync §5).
   async findActiveByName(
     userId: string,
     name: string,
@@ -77,8 +74,7 @@ export class AccountService {
         "ACCOUNT_LIMIT_REACHED",
       );
     }
-    // Mono-currency mode: stamped from the owner (fresh read — the currency
-    // is only editable while the user has no accounts, so this is exact).
+    // Mono-currency: the currency is only editable with no accounts, so this read is exact.
     const owner = await this.userRepo.getById(dto.userId);
     const currency = owner?.currency ?? DEFAULT_CURRENCY;
     assertAmountPrecision(dto.balance, currency, "balance");
@@ -121,8 +117,7 @@ export class AccountService {
     if (!existing || existing.userId !== userId) {
       throw new ApiError("NotFound", "Account not found");
     }
-    // Before the archived check: a caller writing against an old version needs
-    // to re-read whatever happened, not a reason it cannot know about yet.
+    // Before the archived check: an old-version caller needs to re-read, not a reason it cannot know.
     assertFresh(existing, expectedUpdatedAt, (a) => new Account(a));
     if (existing.archivedAt) {
       throw new ApiError(
@@ -143,10 +138,7 @@ export class AccountService {
     );
   }
 
-  // Archive (soft delete); allowed even with linked transactions.
-  // Idempotent: archiving an already-archived account is a no-op success.
-  // Answers the archived row: an offline client needs its new `updatedAt` to
-  // guard the restore it may have queued right behind (F-22).
+  // F-22: idempotent, and it answers the archived row so a queued restore can guard on its updatedAt.
   async deleteAccount(
     id: string,
     userId: string,

@@ -21,12 +21,10 @@ import { CategoryService } from "./CategoryService";
 
 const REFRESH_TOKEN_TYPE = "refresh";
 
-// How long after a rotation the presented token may still be the client's, when
-// the answer that carried its replacement never arrived.
+// How long after a rotation the presented token may still be the client's, if the answer was lost.
 const REFRESH_REPLAY_GRACE_MS = 60_000;
 
-// Real cost-12 hash of a throwaway string: login pays the same bcrypt time
-// whether the email exists or not (no user enumeration by timing).
+// A real cost-12 hash: login pays the same bcrypt time whether the email exists or not.
 const TIMING_EQUALIZATION_HASH =
   "$2b$12$Iwrm4m9Z9FVuf94Eb.bBj.ONOMDcldf0LrANU7WTaaM8xNB4k95W.";
 
@@ -48,8 +46,7 @@ export class AuthService {
     private sessions: IRefreshSessionRepository,
   ) {}
 
-  // `sid` is the refresh family the token was issued for, so the sessions
-  // list can point at the caller's own device without a DB lookup.
+  // `sid` is the refresh family, so the sessions list marks the caller's device with no DB lookup.
   private signAccessToken(user: User, familyId: string): string {
     return jwt.sign(
       {
@@ -106,8 +103,7 @@ export class AuthService {
     return { accessToken: this.signAccessToken(user, jti), refreshToken };
   }
 
-  // Registers and opens a session in one step: the request just proved
-  // possession of the brand-new password, a follow-up login adds nothing.
+  // The request just proved possession of the new password, so a follow-up login adds nothing.
   async register(
     dto: CreateUserDTO,
     userAgent?: string,
@@ -117,8 +113,7 @@ export class AuthService {
       ENVIRONMENT.BCRYPT_SALT_ROUNDS,
     );
 
-    // Owner decision (R2-09): registering with a soft-deleted email reactivates
-    // that account, keeping its financial history (categories included).
+    // Owner decision (R2-09): registering with a soft-deleted email reactivates that account.
     const deleted = await this.repo.getDeletedByEmail(dto.email);
     if (deleted) {
       try {
@@ -218,8 +213,7 @@ export class AuthService {
     return payload as unknown as RefreshPayload;
   }
 
-  // Nobody can have used the successor of an answer that never arrived: an
-  // untouched one is what tells a lost rotation apart from a replay.
+  // Nobody can use the successor of an answer that never arrived: untouched means lost, not replay.
   private async tokensOfLostAnswer(
     user: User,
     stale: RefreshSession,
@@ -270,8 +264,7 @@ export class AuthService {
       if (stale) {
         const replayed = await this.tokensOfLostAnswer(user, stale);
         if (replayed) return replayed;
-        // Reuse of a rotated/revoked token: someone replayed an old refresh
-        // (theft or a duplicated client). Kill the whole chain.
+        // Reuse of a rotated token is a replay (theft or a duplicated client): kill the whole chain.
         await this.sessions.revokeFamily(stale.familyId);
         logger.warn(
           { userId, familyId: stale.familyId },
@@ -324,15 +317,13 @@ export class AuthService {
     }
   }
 
-  // Global logout: kills every refresh token (version mismatch) and marks
-  // the session records revoked for bookkeeping.
+  // Global logout: version mismatch kills every refresh, and the records are marked for bookkeeping.
   async logoutAll(userId: string): Promise<void> {
     await this.repo.bumpTokenVersion(userId);
     await this.sessions.revokeAllForUser(userId);
   }
 
-  // `currentFamilyId` comes from the caller's access token (`sid`); tokens
-  // issued before it existed mark nothing as current until they are renewed.
+  // From the caller's `sid`; tokens minted before it existed mark nothing current until renewed.
   async listSessions(
     userId: string,
     currentFamilyId?: string,

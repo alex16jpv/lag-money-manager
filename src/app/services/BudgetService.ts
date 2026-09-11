@@ -42,8 +42,7 @@ export class BudgetService {
   ): Promise<PaginatedResult<BudgetView>> {
     const result = await this.repo.getAllByUserId(userId, pagination, filters);
     const views = await this.toViews(userId, result.data, ctx);
-    // A budget doesn't exist before its lifetime floor, and an expired CUSTOM
-    // one-shot leaves the default listing (recurring types roll forward).
+    // A budget does not exist before its floor, and an expired CUSTOM one-shot leaves the listing.
     const data = views.filter((view, i) => {
       if (view.periodTo.getTime() <= result.data[i].lifetimeFloor().getTime()) {
         return false;
@@ -102,8 +101,7 @@ export class BudgetService {
     expectedUpdatedAt?: Date,
   ): Promise<BudgetView> {
     const existing = await this.getOwned(id, userId);
-    // Before assertWritable: a caller writing against an old version needs to
-    // re-read whatever happened, not a reason it cannot know about yet.
+    // Before assertWritable: an old-version caller needs to re-read, not a reason it cannot know.
     await this.assertFreshBudget(existing, expectedUpdatedAt, userId, ctx);
     this.assertWritable(existing);
     const patch: Partial<Budget> = { ...dto };
@@ -122,8 +120,7 @@ export class BudgetService {
         (dto.periodEndDate !== undefined &&
           dto.periodEndDate?.getTime() !== existing.periodEndDate?.getTime()))
     ) {
-      // CUSTOM override keys encode the window dates: moving the window
-      // orphans them.
+      // CUSTOM override keys encode the window dates, so moving the window orphans them.
       patch.amountOverrides = {};
     }
     const merged = new Budget({ ...existing, ...patch });
@@ -147,9 +144,7 @@ export class BudgetService {
     return view;
   }
 
-  // Idempotent: archiving an already-archived budget is a no-op success.
-  // Answers the archived view: an offline client needs its new `updatedAt` to
-  // guard the restore it may have queued right behind (F-22).
+  // F-22: idempotent, and it answers the archived view so a queued restore can guard on its updatedAt.
   async deleteBudget(
     id: string,
     userId: string,
@@ -195,8 +190,7 @@ export class BudgetService {
   ): Promise<BudgetView> {
     const existing = await this.getOwned(id, userId);
     await this.assertFreshBudget(existing, expectedUpdatedAt, userId, ctx);
-    // Idempotent, like accounts and categories: an active budget comes back
-    // unchanged rather than erroring.
+    // Idempotent like accounts and categories: an active budget comes back unchanged, not as an error.
     if (existing.archivedAt) {
       await this.assertNoOverlap(userId, existing, existing.id);
       const restored = await this.repo.restore(id, userId, expectedUpdatedAt);
@@ -204,8 +198,7 @@ export class BudgetService {
         const [view] = await this.toViews(userId, [restored], ctx);
         return view;
       }
-      // Lost the race to a concurrent restore: whatever is stored now is the
-      // answer, and it is no longer archived.
+      // Lost the race to a concurrent restore: what is stored now is the answer, and it is active.
       const current = await this.getOwned(id, userId);
       await this.assertFreshBudget(current, expectedUpdatedAt, userId, ctx);
       const [view] = await this.toViews(userId, [current], ctx);
@@ -292,8 +285,7 @@ export class BudgetService {
     ctx: ViewContext,
   ): Promise<void> {
     if (!expectedUpdatedAt) return;
-    // The view costs an aggregation, so it is only built once the guard has
-    // already failed.
+    // The view costs an aggregation, so it is only built once the guard has already failed.
     if (budget.updatedAt?.getTime() !== expectedUpdatedAt.getTime()) {
       const current = await this.view(budget, userId, ctx);
       assertFresh(budget, expectedUpdatedAt, () => current);
@@ -314,8 +306,7 @@ export class BudgetService {
     throw new ApiError("NotFound", "Budget not found");
   }
 
-  // Uniform semantics: archived budgets stay readable; callers that write
-  // must go through assertWritable.
+  // Archived budgets stay readable; callers that write go through assertWritable.
   private async getOwned(id: string, userId: string): Promise<Budget> {
     const budget = await this.repo.getByIdIncludingArchived(id);
     if (!budget || budget.userId !== userId) {
@@ -365,8 +356,7 @@ export class BudgetService {
     }
   }
 
-  // Same policy as transactions (R2-05): 404 for missing/foreign, archived
-  // rejected unless the budget already carried it.
+  // Same policy as transactions (R2-05): 404 for missing, archived refused unless already carried.
   private async assertCategoriesUsable(
     userId: string,
     categoryIds: string[],
@@ -418,8 +408,7 @@ export class BudgetService {
     }
   }
 
-  // Resolves each budget's current-period window and spend. Budgets sharing a
-  // window are summed with a single aggregation.
+  // Budgets sharing a window are summed with a single aggregation.
   private async toViews(
     userId: string,
     budgets: Budget[],
@@ -450,8 +439,7 @@ export class BudgetService {
         hasGlobal: false,
       };
       if (budget.categoryIds.length === 0) {
-        // Global budget: spend is the window's TOTAL expense (uncategorized
-        // and quick-adds included), not a per-category sum.
+        // Global budget: spend is the window's TOTAL expense, not a per-category sum.
         w.hasGlobal = true;
       } else {
         budget.categoryIds.forEach((c) => w.categoryIds.add(c));

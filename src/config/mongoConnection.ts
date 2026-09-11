@@ -3,15 +3,12 @@ import mongoose from "mongoose";
 import { ENVIRONMENT } from "../shared/constants";
 import logger from "../shared/logger";
 
-// Without this, queries issued while disconnected are buffered for 10s and
-// fail with an opaque "Operation `users.findOne()` buffering timed out"
-// instead of a real connection error.
+// Without this, queries while disconnected buffer for 10 s and fail with an opaque timeout.
 mongoose.set("bufferCommands", false);
 
 const SERVER_SELECTION_TIMEOUT_MS = 5000;
 
-// Atlas M0 caps ~500 connections cluster-wide; the driver default of 100 per
-// process can exhaust it with a handful of warm Lambda instances.
+// Atlas M0 caps ~500 connections, and the driver's 100 per process exhausts it with a few Lambdas.
 const MAX_POOL_SIZE = process.env.AWS_LAMBDA_FUNCTION_NAME ? 5 : 10;
 
 let connecting: Promise<void> | null = null;
@@ -43,10 +40,7 @@ async function buildIndexes(): Promise<void> {
   const all = Object.values(mongoose.models) as mongoose.Model<unknown>[];
   let failures = await attempt(all);
 
-  // One retry for transient failures. A flaky resolver (WSL and VPNs drop the
-  // odd lookup) would otherwise report a phantom problem on a cluster whose
-  // indexes are perfectly fine. Data conflicts are not retried — they cannot
-  // resolve themselves.
+  // One retry for a flaky resolver (WSL, VPNs); data conflicts are not retried, they cannot resolve.
   const transient = failures.filter(
     (f) => (f.err as { code?: number })?.code !== 11000,
   );
@@ -62,10 +56,7 @@ async function buildIndexes(): Promise<void> {
     err: f.err,
   }));
   for (const { model, err } of failed) {
-    // Data that violates the index is a real problem: the constraint is not
-    // enforced and will not be until the offending rows are fixed. A network
-    // blip is not — it leaves the index in an unknown, probably fine state,
-    // and saying "NOT enforced" there sends people hunting a phantom.
+    // A network blip leaves the index in an unknown state, so saying "NOT enforced" sends people hunting.
     if ((err as { code?: number })?.code === 11000) {
       logger.error(
         { err, model },
@@ -83,9 +74,7 @@ async function buildIndexes(): Promise<void> {
   }
 }
 
-// Host only — the URI carries credentials and must never reach a log.
-// Pointing at a remote cluster is a legitimate choice (testing against real
-// data), so this states where you are connected rather than second-guessing it.
+// Host only: the URI carries credentials and must never reach a log.
 function hostOf(uri: string): string {
   return uri.replace(/^mongodb(\+srv)?:\/\/([^@]*@)?/, "").split(/[/,?]/)[0];
 }

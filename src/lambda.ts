@@ -17,12 +17,10 @@ export const handler = async (
 ) => {
   context.callbackWaitsForEmptyEventLoop = false;
 
-  // Scheduled EventBridge keepalive: open a real database connection so the
-  // Atlas free cluster registers activity and is not auto-paused.
+  // Opens a real connection so the Atlas free cluster registers activity and is not auto-paused.
   if ((event as KeepaliveEvent).source === KEEPALIVE_EVENT_SOURCE) {
     await pingDatabase();
-    // lambdaDetected doubles as a canary for the runtime detection that
-    // gates process.exit on connection failures.
+    // Doubles as a canary for the runtime detection that gates process.exit on failures.
     return { ok: true, lambdaDetected: IS_LAMBDA };
   }
 

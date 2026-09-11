@@ -5,8 +5,7 @@
  */
 export const SYNC_MAX_OPERATIONS = 200;
 
-// 200 operations of a few hundred bytes each: the global 10 kB body cap would
-// refuse every real batch.
+// 200 operations of a few hundred bytes: the global 10 kB body cap would refuse every real batch.
 export const SYNC_BODY_LIMIT = "1mb";
 
 // D-2: the record per opId lives 30 days, not the snapshot of the result.
@@ -25,22 +24,18 @@ export const SYNC_OP_STATUSES = [
 ] as const;
 export type SyncOpStatus = (typeof SYNC_OP_STATUSES)[number];
 
-// The outcomes that put the operation's desired state on the server. Only
-// these are recorded: a conflict or a rejection leaves the operation pending
-// on the device, which may legitimately resend the same opId once fixed.
+// Only these are recorded: a conflict leaves the operation pending and its opId may return.
 export const SYNC_LANDED_STATUSES: readonly SyncOpStatus[] = [
   "applied",
   "merged",
   "duplicate",
 ];
 
-// Non-fatal notices a landed operation can carry: the write went in, but not
-// exactly as it was sent. Not error codes — nothing failed.
+// The write went in, but not exactly as sent. Not error codes: nothing failed.
 export const SYNC_WARNINGS = ["CATEGORY_ARCHIVED_DROPPED"] as const;
 export type SyncWarning = (typeof SYNC_WARNINGS)[number];
 
-// The API's own verbs, one per write route the offline outbox covers. Same
-// names the front's queue uses (`OUTBOX_ACTIONS` in ledger-flow).
+// Same names the front's queue uses (`OUTBOX_ACTIONS` in ledger-flow).
 export const SYNC_ACTIONS = {
   account: ["create", "update", "archive", "restore", "setDefault"],
   category: ["create", "update", "archive", "restore"],

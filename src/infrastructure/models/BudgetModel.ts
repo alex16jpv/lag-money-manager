@@ -67,10 +67,7 @@ const BudgetSchema = new Schema<IBudgetDocument>(
 );
 
 BudgetSchema.index({ userId: 1, archivedAt: 1 });
-// Backs the no-overlap rule against concurrent creates; multikey over
-// categoryIds, archived budgets free the slot. Recurring budgets carry null
-// dates, so their key is the period type alone; a CUSTOM budget only collides
-// with an identical window — intersecting windows are the service's check.
+// Backs the no-overlap rule against concurrent creates; intersecting windows are the service's check.
 BudgetSchema.index(
   {
     userId: 1,
@@ -83,8 +80,7 @@ BudgetSchema.index(
   { unique: true, partialFilterExpression: { archivedAt: null } },
 );
 
-// Offline change feed: keyset pagination over (updatedAt, _id), archived and
-// deleted rows included — the client learns of a disappearance no other way.
+// Change feed: keyset over (updatedAt, _id), archived and deleted rows included.
 BudgetSchema.index({ userId: 1, updatedAt: 1, _id: 1 });
 
 export const BudgetModel = mongoose.model<IBudgetDocument>(

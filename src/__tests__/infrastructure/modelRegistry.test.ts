@@ -34,9 +34,7 @@ import * as registry from "../../infrastructure/models";
 
 const MODELS_DIR = join(__dirname, "../../infrastructure/models");
 
-// The deploy step syncs whatever is registered here. A model missing from the
-// barrel gets no indexes in production — that is how RefreshSession lost its
-// TTL and familyId indexes.
+// A model missing from the barrel gets no indexes in production: that is how RefreshSession lost its.
 describe("model registry", () => {
   const modelFiles = readdirSync(MODELS_DIR)
     .filter((f) => f.endsWith("Model.ts"))

@@ -38,9 +38,7 @@ const CategorySchema = new Schema<ICategoryDocument>(
 );
 
 CategorySchema.index({ userId: 1, _id: 1 });
-// One active category name per user (partial: excludes archived rows).
-// Collation strength 2: case-insensitive ("Comida" = "comida"), accents
-// still distinct. Display casing is preserved in the stored name.
+// One active name per user; collation strength 2 folds case, accents stay distinct.
 CategorySchema.index(
   { userId: 1, name: 1 },
   {
@@ -50,8 +48,7 @@ CategorySchema.index(
   },
 );
 
-// Offline change feed: keyset pagination over (updatedAt, _id), archived and
-// deleted rows included — the client learns of a disappearance no other way.
+// Change feed: keyset over (updatedAt, _id), archived and deleted rows included.
 CategorySchema.index({ userId: 1, updatedAt: 1, _id: 1 });
 
 export const CategoryModel = mongoose.model<ICategoryDocument>(

@@ -189,8 +189,7 @@ export class BudgetRepository implements IBudgetRepository {
       type,
       archivedAt: null,
       periodType,
-      // A global budget ([]) only conflicts with another global one; it
-      // coexists with per-category budgets by design.
+      // A global budget only conflicts with another global one, by design.
       categoryIds: categoryIds.length ? { $in: categoryIds } : { $size: 0 },
     };
     // Half-open windows [start, end): two CUSTOM budgets coexist unless they intersect.

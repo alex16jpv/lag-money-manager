@@ -16,8 +16,7 @@ import { BudgetModel } from "../../infrastructure/models/BudgetModel";
 
 type IndexSpec = [Record<string, number>, Record<string, unknown>?];
 
-// The overlap rule's race protection lives in this index; the suite mocks the
-// repositories, so nothing else would notice it losing a key or its filter.
+// The overlap rule's race protection lives in this index, and the suite mocks the repositories.
 describe("BudgetModel indexes", () => {
   const declared = BudgetModel.schema.indexes() as IndexSpec[];
   const unique = declared.filter(([, opts]) => opts?.unique === true);
@@ -27,9 +26,7 @@ describe("BudgetModel indexes", () => {
     expect(unique[0][1]?.partialFilterExpression).toEqual({ archivedAt: null });
   });
 
-  // Recurring budgets store null dates, so their key collapses to the period
-  // type as before; a CUSTOM budget collides only with an identical window,
-  // leaving intersecting windows to findOverlapping.
+  // Recurring budgets store null dates, so a CUSTOM budget collides only with an identical window.
   it("keys the no-overlap guarantee by category and CUSTOM window", () => {
     expect(unique[0][0]).toEqual({
       userId: 1,

@@ -51,9 +51,7 @@ const AccountSchema = new Schema<IAccountDocument>(
 );
 
 AccountSchema.index({ userId: 1, _id: 1 });
-// One active account name per user (partial: archiving frees the name, same
-// as categories). Collation strength 2: case-insensitive ("Efectivo" =
-// "efectivo"), accents still distinct; the stored name keeps the user's casing.
+// One active name per user; collation strength 2 folds case, accents stay distinct.
 AccountSchema.index(
   { userId: 1, name: 1 },
   {
@@ -71,8 +69,7 @@ AccountSchema.index(
   },
 );
 
-// Offline change feed: keyset pagination over (updatedAt, _id), archived and
-// deleted rows included — the client learns of a disappearance no other way.
+// Change feed: keyset over (updatedAt, _id), archived and deleted rows included.
 AccountSchema.index({ userId: 1, updatedAt: 1, _id: 1 });
 
 export const AccountModel = mongoose.model<IAccountDocument>(

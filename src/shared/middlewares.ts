@@ -18,9 +18,7 @@ function isDatabaseUnavailableError(error: Error): boolean {
   );
 }
 
-// body-parser rejects a malformed or oversized body before any route runs.
-// Its errors carry their own 4xx status, which must not be reported as a 500:
-// the client sent something wrong, the server did not break.
+// body-parser errors carry their own 4xx: reporting them as 500 would blame the server.
 interface BodyParserError extends Error {
   type: string;
   statusCode: number;

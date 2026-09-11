@@ -558,9 +558,7 @@ describe("BudgetService", () => {
     });
   });
 
-  // W-28: two CUSTOM budgets over one category coexist unless their windows
-  // intersect. The intersection itself is the repository's query; the service
-  // must hand it the candidate window and word the refusal accordingly.
+  // W-28: two CUSTOM budgets over one category coexist unless their windows intersect.
   describe("CUSTOM overlap by dates [W-28]", () => {
     const window = {
       periodStartDate: new Date("2026-12-01T00:00:00Z"),
@@ -796,9 +794,7 @@ describe("BudgetService", () => {
     });
   });
 
-  // Archiving used to be final. It is not any more, but coming back has to obey
-  // the same overlap rule creating one does, or two active budgets would cover
-  // the same categories for the same period.
+  // Coming back from archived obeys the same overlap rule as creating one.
   describe("restoreBudget", () => {
     const archived = () => makeBudget({ archivedAt: new Date() });
     it("un-archives and returns the view", async () => {

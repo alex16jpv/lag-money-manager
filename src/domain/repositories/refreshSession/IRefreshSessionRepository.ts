@@ -29,8 +29,7 @@ export interface IRefreshSessionRepository {
 
   findById(jti: string): Promise<RefreshSession | null>;
 
-  // Atomically marks an ACTIVE session as rotated; null when the session was
-  // already rotated/revoked or does not exist (callers treat that as reuse).
+  // Null when already rotated, revoked or missing, which callers treat as reuse.
   rotate(jti: string, newJti: string): Promise<RefreshSession | null>;
 
   revokeFamily(familyId: string): Promise<void>;
@@ -40,7 +39,6 @@ export interface IRefreshSessionRepository {
   // Active (non-revoked, non-expired) session families of the user.
   listActiveByUser(userId: string): Promise<SessionSummary[]>;
 
-  // Revokes one family, scoped to its owner; false when the family is not
-  // the user's (idempotent: an already-revoked own family returns true).
+  // False when the family is not the user's; an already-revoked own family returns true.
   revokeFamilyForUser(userId: string, familyId: string): Promise<boolean>;
 }

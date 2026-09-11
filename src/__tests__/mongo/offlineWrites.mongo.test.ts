@@ -152,8 +152,7 @@ describe("offline write paths", () => {
     await createAccount(alice, accountId, "Alice's account", 500).expect(201);
 
     const foreign = await createAccount(bob, accountId, "Bob's account", 999);
-    // Alice's own retry with a changed payload is a replay, never a conflict:
-    // the row wins, and nothing tells the client to mint a second id.
+    // Alice's own retry with a changed payload is a replay, never a conflict: the row wins.
     const ownRetry = await createAccount(
       alice,
       accountId,
@@ -239,8 +238,7 @@ describe("offline write paths", () => {
 
     expect(statuses.filter((s) => s === 200)).toHaveLength(9);
     expect(statuses[conflicted]).toBe(409);
-    // The nine that did not conflict are through: one conflict blocks its own
-    // row, never the queue.
+    // One conflict blocks its own row, never the queue.
     for (const [i, id] of ids.entries()) {
       const stored = await AccountModel.findById(id).lean();
       expect(stored?.name).toBe(
@@ -270,8 +268,7 @@ describe("offline write paths", () => {
         }),
     );
 
-    // 404, the same answer as a deleted account: for the outbox both mean
-    // "that account is gone here", and the row needs a new destination.
+    // 404, like a deleted account: for the outbox both mean it is gone and the row needs another.
     expect(queued.status).toBe(404);
     expect(await balanceOf(archivedId)).toBe(30_000);
     expect(await balanceOf(liveId)).toBe(30_000);
@@ -341,8 +338,7 @@ describe("offline write paths", () => {
         alice,
         request(app).get(`/sync/changes?since=${encodeURIComponent(ahead)}`),
       );
-      // Everything this user owns is older than the device's idea of "now",
-      // so a `since` taken from the device clock hides all of it.
+      // Everything this user owns predates the device's now, so a `since` from its clock hides it.
       expect(withDeviceClock.status).toBe(200);
       expect(withDeviceClock.body.pagination.count).toBe(0);
 
@@ -353,8 +349,7 @@ describe("offline write paths", () => {
       expect(drain.body.pagination.hasMore).toBe(false);
       expect(drain.body.pagination.count).toBeGreaterThan(0);
 
-      // The cursor of a finished run sits 60 s behind the server's clock, so
-      // the same rows arrive again: the client upserts by id and pays nothing.
+      // A finished run's cursor sits 60 s behind the server, so rows arrive again and upsert by id.
       const again = await as(
         alice,
         request(app).get(
@@ -397,8 +392,7 @@ describe("offline write paths", () => {
           }),
       );
 
-      // A queue minted on a fast clock can carry dates the server rejects:
-      // the outbox has to surface these, not retry them forever.
+      // A queue on a fast clock carries dates the server rejects: surface them, never retry forever.
       expect([tomorrow.status, tomorrow.body.code]).toEqual([
         400,
         "FUTURE_DATE",
@@ -407,9 +401,7 @@ describe("offline write paths", () => {
     });
   });
 
-  // F-22: the client never writes updatedAt, so after an optimistic archive
-  // it only has the pre-archive version. If DELETE answered `{ message }`,
-  // the restore queued right behind would carry that stale guard and 409.
+  // F-22: the client never writes updatedAt, so a DELETE with `{ message }` stales the next restore.
   describe("archive followed by restore, no pull in between", () => {
     const flows = [
       {

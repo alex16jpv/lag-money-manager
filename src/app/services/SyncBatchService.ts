@@ -29,8 +29,7 @@ export interface SyncOpResult {
   code?: ErrorCode;
   message?: string;
   details?: unknown;
-  // STALE_UPDATE, and the conflicts a row explains: the row as the server
-  // has it, same as the HTTP 409.
+  // STALE_UPDATE and the conflicts a row explains: the row as the server has it, like the HTTP 409.
   current?: unknown;
   // applied/merged/duplicate: what the matching route would have answered.
   result?: unknown;
@@ -62,8 +61,7 @@ const bodyOf = (schema: z.ZodObject): z.ZodType =>
 
 interface RunArgs {
   op: SyncOperationInput;
-  // The row the operation writes: `op.id`, or the server row a merge earlier
-  // in this batch redirected it to.
+  // `op.id`, or the server row a merge earlier in this batch redirected it to.
   id: string;
   body: Body;
   ctx: Context;
@@ -76,25 +74,17 @@ interface Handler {
   body?: z.ZodType;
   // Creates set the body's id from the envelope and read the replay flag.
   create?: boolean;
-  // Whose active name a DUPLICATE is about (§5.1). The row that holds the
-  // name rides back as `current` on every write that names one; only a
-  // category's CREATE merges into it (same type). An account's never merges —
-  // that would rewrite balances — and no update or restore does either.
+  // §5.1: only a category CREATE merges into the row holding the name; an account's never would.
   nameOwner?: "category" | "account";
   // Body fields naming a category, redirected when the batch merged it.
   categoryFields?: readonly string[];
-  // A category archived online is dropped instead of refusing the write
-  // (§5.3). Transactions only: a budget without categories is a GLOBAL
-  // budget, so dropping one would silently change what it counts.
+  // §5.3, transactions only: a budget with no categories is GLOBAL, so dropping one changes it.
   dropsCategory?: boolean;
   // Body fields naming an account: one archived online explains a bare 404.
   accountFields?: readonly string[];
-  // The route removes the row: a 404 may mean the row is already gone, which
-  // is the state the operation wanted (§5.4).
+  // The route removes the row, and a 404 may mean it is already gone, which is what was wanted (§5.4).
   removesRow?: boolean;
-  // Whether the row the server has already carries what the operation asked
-  // for, read from the `current` of its refused guard. Conservative: what it
-  // cannot compare answers false and the conflict stands.
+  // Conservative: what it cannot compare answers false and the conflict stands.
   holds?: (current: unknown, body: Body) => boolean;
   run: (args: RunArgs) => Promise<unknown>;
 }
@@ -143,8 +133,7 @@ const isArchived = (current: unknown): boolean =>
 const isActive = (current: unknown): boolean =>
   (current as { archivedAt?: Date | null }).archivedAt == null;
 
-// A restore's body may carry a new name; without one, being active is the
-// whole of what it asked for.
+// A restore's body may carry a new name; without one, being active is all it asked for.
 const isRestored = (current: unknown, body: Body): boolean =>
   isActive(current) &&
   (body.name === undefined ||
@@ -339,8 +328,7 @@ export class SyncBatchService {
       "budget:update": {
         body: bodyOf(v.updateBudgetSchema),
         categoryFields: ["categoryIds"],
-        // `current` is the period view: the body's `amount` is its
-        // `baseAmount`, and the fixed window is not on the view at all.
+        // `current` is the period view: the body's `amount` is its `baseAmount`, and the window is not on it.
         holds: fieldsHold({ amount: "baseAmount" }, [
           "periodStartDate",
           "periodEndDate",
@@ -419,8 +407,7 @@ export class SyncBatchService {
         opId: op.opId,
         seq: op.seq,
         entity: op.entity,
-        // What the device sent, always: it matches results by it. Where the
-        // write actually landed, when it differs, is `mergedInto`.
+        // What the device sent, always: it matches by it. Where the write landed is `mergedInto`.
         id: op.id,
         ...outcome,
       });
@@ -436,8 +423,7 @@ export class SyncBatchService {
     failed: Map<string, string>,
     merged: Map<string, string>,
   ): Promise<Outcome> {
-    // The row itself counts as a dependency: a second write on a row whose
-    // first write did not land would only repeat the same failure.
+    // The row is its own dependency: a second write on a failed row repeats the same failure.
     const rows = [id, ...op.dependsOn.map((dep) => merged.get(dep) ?? dep)];
     const blockedBy = rows
       .map((row) => failed.get(row))
@@ -451,8 +437,7 @@ export class SyncBatchService {
       return {
         status: "duplicate",
         ...(seen.code && { code: seen.code as ErrorCode }),
-        // A merge the device may not know about yet (its response was lost);
-        // the rest of this batch still names the id it minted.
+        // A merge the device may not know yet; the rest of the batch still names the id it minted.
         ...(seen.entityId !== op.id && { mergedInto: seen.entityId }),
       };
     }
@@ -539,16 +524,12 @@ export class SyncBatchService {
       };
     } catch (err) {
       const failure = describeFailure(err as Error);
-      // Not the client's fault (database down, a bug): the whole request
-      // fails, loudly. What already landed is on record and replays as
-      // `duplicate` when the batch is sent again.
+      // Not the client's fault: the whole request fails, and what landed replays as `duplicate`.
       if (!failure) throw err;
       const { body } = failure;
       return {
         status: failure.status === 409 ? "conflict" : "rejected",
-        // Same default as PATCH /transactions/batch: without an HTTP status
-        // per operation, a code-less 404 would leave the client nothing to
-        // branch on.
+        // Without an HTTP status per operation, a code-less 404 leaves the client nothing to branch on.
         code:
           body.code ?? (failure.status === 404 ? "NOT_FOUND" : "BAD_REQUEST"),
         message: body.message,
@@ -574,12 +555,7 @@ export class SyncBatchService {
       outcome.current !== undefined &&
       handler.holds?.(outcome.current, args.body)
     ) {
-      // The guard failed, but the row already carries what the operation
-      // asked for: its own write landed and the registry row did not (a crash
-      // between the two), or another device made the same change. Either way
-      // the state the operation wanted holds, so it lands (§5.4) instead of
-      // sending the user to the conflict sheet for an edit already on the
-      // server.
+      // §5.4: the row already carries what was asked (its write landed, the registry did not, or another).
       return { status: "duplicate" };
     }
     if (outcome.code === "DUPLICATE" && handler.nameOwner) {
@@ -596,8 +572,7 @@ export class SyncBatchService {
       handler.removesRow &&
       (await this.transactions.isDeleted(args.id, args.ctx.userId))
     ) {
-      // Another device deleted it first: the state the operation wanted
-      // already holds, so it lands instead of failing (§5.4).
+      // Another device deleted it first, so the state wanted already holds and it lands (§5.4).
       return { status: "duplicate" };
     }
     return outcome;
@@ -618,22 +593,18 @@ export class SyncBatchService {
     // Another unique index (the single default account) refused this write.
     if (!taken) return outcome;
 
-    // Same name and same type: the two rows ARE the same category, so the
-    // create lands on the server's and the batch redirects to it (§5.1). Only
-    // a create: renaming an existing row onto another is not a merge.
+    // §5.1: same name and type ARE the same category, so only a create merges, never a rename.
     if (handler.create && handler.nameOwner === "category") {
       const category = taken as Category;
       if ((category.type ?? null) === ((type as string | undefined) ?? null)) {
         return { status: "merged", result: category, mergedInto: category.id };
       }
     }
-    // Everything else stays a conflict, the row travelling back so the
-    // device can offer the server's version without another round trip.
+    // The row travels back so the device can offer the server's version without another round trip.
     return { ...outcome, current: taken };
   }
 
-  // The name the refused write carried — or, for a restore that sent none, the
-  // archived row's own name, which is what the index refused.
+  // The refused write's name, or for a restore that sent none, the archived row's own.
   private async nameWritten(
     handler: Handler,
     args: RunArgs,
@@ -661,10 +632,7 @@ export class SyncBatchService {
     handler: Handler,
     args: RunArgs,
   ): Promise<Outcome> {
-    // The movement is never lost (§5.3): it lands without the category and
-    // flagged for review, so the user can re-file it. Nothing was written on
-    // the refused attempt — the check runs before the write, and inside the
-    // transaction for an update.
+    // §5.3: the movement lands without the category, flagged for review; nothing was written before.
     const retried = await this.attempt(handler, {
       ...args,
       body: { ...args.body, categoryId: null, pendingDetails: true },
@@ -682,8 +650,7 @@ export class SyncBatchService {
     args: RunArgs,
     outcome: Outcome,
   ): Promise<Outcome> {
-    // A bare 404 cannot tell "archived while I was offline" from "never
-    // existed", and only the first one is the user's to resolve (§5.3).
+    // A bare 404 cannot tell archived-while-offline from never-existed, and only the first is theirs.
     for (const field of handler.accountFields ?? []) {
       const id = args.body[field];
       if (typeof id !== "string") continue;

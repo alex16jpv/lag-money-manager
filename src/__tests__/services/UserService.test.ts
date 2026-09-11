@@ -156,8 +156,7 @@ describe("UserService", () => {
         testUserId,
       );
 
-      // Credential changes go through the atomic $set + $inc(tokenVersion)
-      // write so outstanding refresh tokens are revoked without races [M3].
+      // [M3] credential changes use the atomic $set + $inc(tokenVersion), so no refresh survives.
       expect(repo.update).not.toHaveBeenCalled();
       const updateArg = repo.updateWithTokenBump.mock.calls[0][1];
       expect(updateArg.password).not.toBe("newpassword");

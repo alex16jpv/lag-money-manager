@@ -7,8 +7,7 @@ import { ApiError } from "../../shared/errors";
 export interface AuthPayload {
   userId: string;
   email: string;
-  // Carried in the token (~15 min staleness max) so per-request handlers
-  // don't hit the DB just to read the timezone.
+  // Carried in the token (~15 min stale at most) so handlers do not hit the DB to read the timezone.
   timezone?: string;
   // Refresh family the token belongs to; absent in tokens issued before W-30.
   sid?: string;

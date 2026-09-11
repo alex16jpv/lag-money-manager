@@ -156,8 +156,7 @@ describe("the accounting day survives a change of timezone", () => {
   });
 
   it("keeps counting a row written before the field existed, by its instant", async () => {
-    // The shape of a legacy row: written by the API, then stripped of the field the way every row
-    // in the database looked before it existed. `npm run db:backfill-day-key` is what fills them.
+    // A legacy row: written by the API, then stripped of the field. `db:backfill-day-key` fills it.
     const created = await as(
       session,
       request(app).post("/transactions").send({

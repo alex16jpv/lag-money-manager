@@ -23,8 +23,7 @@ export const BUDGET_PERIOD_TYPES = {
 
 export type BudgetPeriodType = keyof typeof BUDGET_PERIOD_TYPES;
 
-// Backend-ready (R2-16c): INCOME budgets are goals ("earn at least X").
-// The MVP frontend only exposes EXPENSE.
+// R2-16c: INCOME budgets are goals; the MVP frontend only exposes EXPENSE.
 export const BUDGET_TYPES = {
   EXPENSE: "EXPENSE",
   INCOME: "INCOME",
@@ -56,8 +55,7 @@ export const TRANSACTION_TYPES = {
 
 export type TransactionType = keyof typeof TRANSACTION_TYPES;
 
-// Where a transaction was born; server-derived (never client-settable).
-// IMPORT is reserved for the future bank/CSV import feature.
+// Server-derived, never client-settable. IMPORT is reserved for the bank/CSV import.
 export const TRANSACTION_SOURCES = {
   MANUAL: "MANUAL",
   QUICK: "QUICK",

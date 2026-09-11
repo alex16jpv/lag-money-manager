@@ -139,8 +139,7 @@ function planTransactions(
     toAccount: NON_EXPENSE.adjustment.account,
   });
 
-  // Quick-adds stay uncategorised and pending review; the service routes them
-  // to the default account on its own.
+  // Quick-adds stay uncategorised and pending; the service routes them to the default account.
   QUICK_ADDS.forEach((amount, n) => {
     add({
       type: "EXPENSE",
@@ -150,8 +149,7 @@ function planTransactions(
     });
   });
 
-  // Deleted afterwards. They belong to no design figure: every total the seed
-  // asserts is computed over live rows, so these can carry any amount.
+  // Deleted afterwards: every total the seed asserts is over live rows, so these carry any amount.
   for (const item of DELETED_EXPENSES) {
     add({
       type: "EXPENSE",
@@ -202,10 +200,7 @@ function planTransactions(
 }
 
 async function purge(userId: string, email: string): Promise<void> {
-  // The only sanctioned hard delete in this codebase. This is a disposable
-  // fixture user in a non-production database, and re-seeding on top of
-  // soft-deleted rows would leave the unique indexes (email, account name,
-  // budget period) held by documents nobody can see. Scoped to this id/email.
+  // The only sanctioned hard delete: soft-deleted rows would hold the unique indexes invisibly.
   await Promise.all([
     TransactionModel.deleteMany({ userId }),
     AccountModel.deleteMany({ userId }),
@@ -218,8 +213,7 @@ async function purge(userId: string, email: string): Promise<void> {
   await UserModel.deleteMany({ $or: [{ _id: userId }, { email }] });
 }
 
-// The front's browser suite registers a throwaway user per test and nothing else ever removes them
-// (R-5): same disposable fixtures, same non-production database, same sanctioned hard delete.
+// R-5: the front's browser suite registers a throwaway user per test and nothing else removes them.
 const E2E_USER_EMAIL = /^e2e-.+@ledgerflow\.test$/;
 
 async function sweepBrowserSuiteUsers(): Promise<number> {
@@ -272,9 +266,7 @@ export async function seed(): Promise<Record<string, unknown>> {
   if (sweptUsers > 0)
     console.log(`Swept ${sweptUsers} users the browser suite left behind`);
 
-  // The entities accept an explicit id and the services spread the DTO into
-  // them, which is how the fixed ids survive; the DTO types do not declare
-  // `id` because no API client may set one.
+  // The DTO types do not declare `id` because no API client may set one; the entities accept it.
   await authService.register({
     id: SEED_USER.id,
     name: SEED_USER.name,
@@ -285,9 +277,7 @@ export async function seed(): Promise<Record<string, unknown>> {
     locale: SEED_USER.locale,
   } as never);
 
-  // Registration seeds the ten defaults with generated ids. They are dropped
-  // and rebuilt with fixed ones — an id that changes on every run cannot anchor
-  // a fixture — keeping each seedKey so restore-defaults still recognises them.
+  // Rebuilt with fixed ids — a changing id cannot anchor a fixture — keeping each seedKey.
   await CategoryModel.deleteMany({ userId: SEED_USER.id });
   const idByKey = new Map<string, string>();
   for (const preset of DEFAULT_CATEGORIES) {
@@ -326,15 +316,13 @@ export async function seed(): Promise<Record<string, unknown>> {
 
   const planned = planTransactions(month, lastDay);
 
-  // Opening balances are derived, never stated: whatever the transactions move,
-  // the opening balance is the remainder that lands on the designed final one.
+  // Opening balances are derived: the remainder that lands on the designed final balance.
   const movement = new Map<string, number>();
   const shift = (key: string | undefined, delta: number): void => {
     if (key) movement.set(key, (movement.get(key) ?? 0) + delta);
   };
   for (const t of planned) {
-    // Deleting reverses the effect, so a row that ends up deleted moves
-    // nothing and must not shift the opening balance either.
+    // Deleting reverses the effect, so a deleted row must not shift the opening balance.
     if (t.deleted) continue;
     // Quick-adds have no explicit account: the service charges the default one.
     shift(t.quick ? "bancolombia" : t.fromAccount, -t.amount);
@@ -388,8 +376,7 @@ export async function seed(): Promise<Record<string, unknown>> {
     );
   }
 
-  // Deleted through the service, so the balances it moved are reversed and
-  // the row keeps a real `deletedAt` — the only tombstone a transaction has.
+  // Deleted through the service so balances are reversed and the row keeps a real `deletedAt`.
   for (const t of planned) {
     if (t.deleted) {
       await transactionService.deleteTransaction(t.id, SEED_USER.id);
@@ -403,10 +390,7 @@ export async function seed(): Promise<Record<string, unknown>> {
     reference: month.set({ day: lastDay }).toJSDate(),
     timezone: SEED_USER.timezone,
   };
-  // Budgets default their lifetime floor to createdAt — today — which hides
-  // them when the client browses the month the seeded transactions live in.
-  // Anchoring the floor before the oldest seeded month makes every
-  // `?reference=` inside the dataset show real spend.
+  // The floor defaults to createdAt, which would hide the budget in the seeded months.
   const effectiveFrom = month
     .minus({ months: PRIOR_MONTHS.length })
     .startOf("month")
@@ -545,17 +529,13 @@ export async function seed(): Promise<Record<string, unknown>> {
     }
   }
 
-  // Archived only now: a budget may not be given an already-archived category,
-  // so the seed reaches the designed state the way a user would — the budget
-  // exists first, and archiving the category later is what fills its
-  // `archivedCategoryIds`.
+  // Archived last: a budget may not be given an already-archived category.
   await categoryService.deleteCategory(
     categoryId(ARCHIVED_CATEGORY_KEY),
     SEED_USER.id,
   );
 
-  // register opens a session of its own (register is a login). Dropping it
-  // leaves exactly the two devices the sessions screen is designed around.
+  // register opens a session of its own, so dropping it leaves the two devices the screen expects.
   await RefreshSessionModel.deleteMany({ userId: SEED_USER.id });
   const sessions = repositoryFactory.getRefreshSessionRepository();
   for (const device of SEED_USER.devices) {
@@ -648,8 +628,7 @@ async function spreadSyncTimestamps(
     };
   });
 
-  // The shared instant is taken from untouched rows: an archived or deleted
-  // one is stamped later than it was created, which would split the group.
+  // Taken from untouched rows: an archived one is stamped later and would split the group.
   const group = stamped
     .filter((row) => !row.touched)
     .slice(-SYNC_SPREAD.sharedInstantRows);
@@ -820,8 +799,7 @@ async function syncFailures(sync: SyncSpread): Promise<string[]> {
     );
   }
   if (inTheFuture > 0) {
-    // The feed's cursor lands 60 s behind the server clock, so a row stamped
-    // ahead of now would never come back through it.
+    // The feed's cursor lands 60 s behind the clock, so a row stamped ahead never comes back.
     failures.push(`${inTheFuture} rows are stamped in the future`);
   }
 

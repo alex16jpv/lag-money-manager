@@ -66,8 +66,7 @@ export class RefreshSessionRepository implements IRefreshSessionRepository {
   }
 
   async listActiveByUser(userId: string): Promise<SessionSummary[]> {
-    // Group the rotation chain per family: root brings login time and
-    // userAgent; the chain tip (replacedBy: null) proves the family is live.
+    // Root brings login time and userAgent; the tip (replacedBy: null) proves the family is live.
     const rows = await RefreshSessionModel.aggregate<{
       _id: string;
       createdAt: Date;

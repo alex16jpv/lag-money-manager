@@ -2,8 +2,7 @@ import { NextFunction, Request, Response } from "express";
 
 import logger from "../../shared/logger";
 
-// Probe endpoints (keepalive/monitoring) log at debug when healthy so they
-// don't drown real traffic; their failures still log at full level.
+// Probes log at debug when healthy so they do not drown real traffic; failures still log in full.
 const QUIET_PATHS = new Set(["/", "/health/db"]);
 
 /**

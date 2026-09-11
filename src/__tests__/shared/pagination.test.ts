@@ -33,14 +33,12 @@ describe("buildPaginatedResult", () => {
       offset: 0,
       total: 9,
       hasMore: true,
-      // The last row OF THE PAGE, never the probe row: a cursor pointing at a
-      // row the caller never saw would skip it.
+      // The last row OF THE PAGE, never the probe: a cursor on a row the caller never saw skips it.
       nextCursor: "row-2",
     });
   });
 
-  // The defect this replaced: `data.length === limit` on a cursor page called
-  // an exactly-full last page "there is more" and minted a cursor for nothing.
+  // `data.length === limit` called an exactly-full last page "there is more".
   it("does not promise more when the last page is exactly full", () => {
     const page = buildPaginatedResult(rows(2), 2, params({ cursor: "row-0" }));
 

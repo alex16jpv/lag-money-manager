@@ -58,14 +58,10 @@ export class SyncService {
     cursor: ChangeCursor | undefined,
     limit: number,
   ): Promise<SyncChangesResult> {
-    // Read the clock BEFORE the queries. The watermark handed back must never
-    // claim to cover a write that landed while this page was being read.
+    // Read the clock BEFORE the queries: the watermark must not cover a write that landed meanwhile.
     const serverTime = new Date();
 
-    // One row past the page is what separates "there is more" from "that was
-    // the end" without a second round trip. Taking limit+1 from every source
-    // is also what makes the merge exact: the global first `limit` rows cannot
-    // need more than limit+1 from any one of them.
+    // limit+1 from every source separates "there is more" from the end, and makes the merge exact.
     const fetch = limit + 1;
     const [user, accounts, categories, transactions, budgets] =
       await Promise.all([
@@ -76,9 +72,7 @@ export class SyncService {
         this.budgets.changesSince(userId, cursor, fetch),
       ]);
 
-    // The user is a single document: filtering it here costs one comparison
-    // and keeps it inside the same ordering as everything else, so a page
-    // boundary can never drop it.
+    // Filtering the user here costs one comparison and keeps it inside the same ordering.
     const users =
       user && isAfterCursor(user, cursor) ? [toUserResponse(user)] : [];
 
@@ -112,9 +106,7 @@ export class SyncService {
         limit,
         count: Math.min(ordered.length, limit),
         hasMore,
-        // Mid-run the cursor is the exact row we stopped at; only a finished
-        // run may advance the watermark, and it stops a minute short of now
-        // (see SYNC_OVERLAP_MS).
+        // Only a finished run advances the watermark, and it stops a minute short (SYNC_OVERLAP_MS).
         nextCursor: encodeCursor(
           hasMore && last
             ? { updatedAt: last.updatedAt, id: last.id }

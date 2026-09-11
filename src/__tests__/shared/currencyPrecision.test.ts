@@ -15,8 +15,7 @@ describe("currencyDecimals", () => {
     expect(currencyDecimals(c)).toBe(2);
   });
 
-  // Storage is integer cents, so a third decimal could only be kept by
-  // rounding it away. Capped at two until the storage exponent exists.
+  // Storage is integer cents, so a third decimal could only be kept by rounding it away.
   it.each(["KWD", "BHD", "JOD"])("%s is capped at two, not three", (c) => {
     expect(currencyDecimals(c)).toBe(2);
   });
@@ -39,8 +38,7 @@ describe("hasValidPrecision", () => {
     expect(hasValidPrecision(10.555, 2)).toBe(false);
   });
 
-  // 0.07 * 100 is 7.000000000000001 in binary floating point; an exact
-  // comparison would reject a perfectly valid amount.
+  // 0.07 * 100 is 7.000000000000001 in binary, so an exact comparison rejects a valid amount.
   it("is not fooled by float representation", () => {
     expect(hasValidPrecision(0.07, 2)).toBe(true);
     expect(hasValidPrecision(1.005, 2)).toBe(false);
@@ -79,8 +77,7 @@ describe("assertAmountPrecision", () => {
 });
 
 describe("MAX_AMOUNT", () => {
-  // The ceiling exists because cents must stay exactly representable; a value
-  // above this silently loses precision instead of erroring.
+  // Above this ceiling cents stop being exactly representable and precision is lost silently.
   it("keeps its cents inside the safe integer range", () => {
     expect(MAX_AMOUNT * 100).toBeLessThan(Number.MAX_SAFE_INTEGER);
     expect(Number.isSafeInteger(MAX_AMOUNT * 100)).toBe(true);

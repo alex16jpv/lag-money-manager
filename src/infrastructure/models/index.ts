@@ -1,6 +1,4 @@
-// Importing this module registers every Mongoose model, so callers that need
-// the whole set (the index-sync deploy step) can iterate `mongoose.models`
-// instead of keeping their own list that silently drifts out of date.
+// Importing this registers every model, so the index-sync step iterates `mongoose.models`.
 export { AccountModel } from "./AccountModel";
 export { BudgetModel } from "./BudgetModel";
 export { CategoryModel } from "./CategoryModel";

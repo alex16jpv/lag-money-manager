@@ -116,8 +116,7 @@ describe("offline parity fixtures", () => {
         ctx,
       );
 
-      // Archived budgets produce no view: the fixture lists exactly the ones
-      // the client should be able to show.
+      // Archived budgets produce no view: the fixture lists exactly what the client should show.
       expect(page.data.map((v) => v.id).sort()).toEqual(
         fixture.expected.budgets.views.map((v) => v.id).sort(),
       );

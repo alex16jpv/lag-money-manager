@@ -130,8 +130,7 @@ export class CategoryRepository implements ICategoryRepository {
         this.toEntity(doc as unknown as ICategoryDocument),
       );
     } catch (err) {
-      // Duplicates (unique userId+name) are skipped and the rest inserted:
-      // this makes the register seed and restore-defaults retry-safe.
+      // Duplicates are skipped and the rest inserted, so seeding and restore-defaults are retry-safe.
       const bulk = err as {
         insertedDocs?: unknown[];
         writeErrors?: { code?: number; err?: { code?: number } }[];
@@ -175,8 +174,7 @@ export class CategoryRepository implements ICategoryRepository {
   }
 
   async listSeedKeys(userId: string): Promise<string[]> {
-    // Includes archived: an archived seed category counts as existing
-    // (the user chose to remove it; restore-defaults must not resurrect it).
+    // An archived seed counts as existing: the user removed it and restore must not resurrect it.
     const keys = await CategoryModel.distinct("seedKey", {
       userId,
       seedKey: { $ne: null },

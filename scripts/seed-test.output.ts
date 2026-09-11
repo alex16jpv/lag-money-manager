@@ -66,8 +66,7 @@ export async function writeSeedOutput(args: {
     },
     referenceDay: args.referenceDay.toISODate(),
     referenceMonth: args.month.toFormat("yyyy-MM"),
-    // True when the reference day was too early in its month to hold the
-    // dataset, so the seed used the previous, complete month instead.
+    // True when the reference day was too early in its month, so the previous one was used.
     referenceMonthShifted: args.shifted,
     daysWithData: args.lastDay,
     accounts: Object.fromEntries(
@@ -94,8 +93,7 @@ export async function writeSeedOutput(args: {
       familyId: d.familyId,
       userAgent: d.userAgent,
     })),
-    // What makes the dataset usable by `GET /sync/changes`: when the rows were
-    // last touched, and which of them are tombstones.
+    // What makes the dataset usable by `GET /sync/changes`: last touched, and which are tombstones.
     sync: args.sync,
     totals: {
       transactions: args.transactionCount,

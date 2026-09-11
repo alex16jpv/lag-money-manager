@@ -5,8 +5,7 @@ jest.mock("../../shared/constants", () => ({
   DB_TYPES: { MONGO: "MONGO" },
 }));
 
-// Stable instance: jest.resetModules() re-runs the factory, so a fresh object
-// here would leave the assertions watching a logger nobody calls.
+// jest.resetModules() re-runs the factory, so a fresh object would leave the assertions unwatched.
 const mockLogger = {
   info: jest.fn(),
   warn: jest.fn(),
@@ -31,8 +30,7 @@ jest.mock("mongoose", () => ({
   },
 }));
 
-// connectMongo memoises its in-flight promise, so each case needs a fresh copy
-// of the module or only the first one would run.
+// connectMongo memoises its in-flight promise, so each case needs a fresh copy of the module.
 const connectFresh = async (): Promise<void> => {
   jest.resetModules();
   const { connectMongo } = await import("../../config/mongoConnection");

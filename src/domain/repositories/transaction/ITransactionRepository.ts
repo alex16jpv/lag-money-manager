@@ -29,8 +29,7 @@ export interface TransactionFilters {
   type?: TransactionType;
   pendingDetails?: boolean;
   source?: TransactionSource;
-  // Half-open date range [from, to), matched as the run of local days it covers
-  // in `timezone`, which is required with either bound.
+  // Half-open [from, to), matched as the run of local days it covers in `timezone`.
   from?: Date;
   to?: Date;
   timezone?: string;
@@ -57,8 +56,7 @@ export interface SpendingBucket {
   avg: number;
 }
 
-// Pre-update snapshot of the monetary fields, kept inside the document
-// (capped) so 'why doesn't it balance' is answerable. Not exposed via API.
+// Capped, inside the document, so "why doesn't it balance" is answerable. Not exposed via API.
 export interface TransactionRevision {
   at: Date;
   amount: number;
@@ -70,30 +68,24 @@ export interface TransactionRevision {
 
 export interface SpendingResult {
   buckets: SpendingBucket[];
-  // Grand total in integer cents, computed WITHOUT the tag unwind: for
-  // groupBy=tag the per-bucket totals overlap (multi-tag transactions), so
-  // summing buckets would double-count.
+  // Computed WITHOUT the tag unwind: multi-tag buckets overlap and summing them double-counts.
   totalCents: number;
 }
 
 export interface ITransactionRepository extends IRepository<Transaction> {
   // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
   getOwnById(id: string, userId: string): Promise<Transaction | null>;
-  // Whether the id is the user's own tombstone: what tells a movement another
-  // device already deleted from one that never existed (POST /sync, §5.4).
+  // §5.4: what tells a movement another device deleted from one that never existed.
   isDeleted(id: string, userId: string): Promise<boolean>;
 
-  // Offline change feed: everything the user touched after `cursor`, in
-  // `(updatedAt, _id)` order, ARCHIVED AND DELETED ROWS INCLUDED — a client
-  // that only sees live rows never learns that something disappeared.
+  // Change feed after `cursor` in (updatedAt, _id) order, archived and deleted rows included.
   changesSince(
     userId: string,
     cursor: ChangeCursor | undefined,
     limit: number,
   ): Promise<ChangedTransaction[]>;
 
-  // `expectedUpdatedAt` goes into the write's own filter: an optimistic guard
-  // checked before the write would let two racing callers through.
+  // `expectedUpdatedAt` goes in the write's own filter: a guard checked before would race.
   update(
     id: string,
     entity: Partial<Transaction>,
@@ -124,9 +116,7 @@ export interface ITransactionRepository extends IRepository<Transaction> {
 
   countByCategory(userId: string, categoryId: string): Promise<number>;
 
-  // Sum of amounts (integer cents) of the given flow type per category over the
-  // local days [from, to) covers in `timezone`, restricted to the given
-  // categories. Budget spend/earned.
+  // Integer cents per category over the local days [from, to) in `timezone`. Budget spend/earned.
   sumAmountsByCategory(
     userId: string,
     from: Date,
@@ -136,9 +126,7 @@ export interface ITransactionRepository extends IRepository<Transaction> {
     timezone: string,
   ): Promise<Record<string, number>>;
 
-  // Total cents of the given flow type over the same days regardless of
-  // category (uncategorized included) — a global budget sees quick-adds
-  // immediately.
+  // Total cents over the same days regardless of category, so a global budget sees quick-adds.
   sumAmounts(
     userId: string,
     from: Date,

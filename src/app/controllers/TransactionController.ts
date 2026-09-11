@@ -92,10 +92,7 @@ export class TransactionController {
   };
 
   static batchUpdate = async (req: Request, res: Response) => {
-    // The header is accepted because the client sends it on every mutation,
-    // and validated so a malformed one is not silently ignored. Nothing is
-    // stored against it: this sets fields to given values, so a retry lands on
-    // the same state — it is idempotent by construction, not by bookkeeping.
+    // Validated but not stored: this sets fields to given values, so a retry is idempotent by design.
     idempotencyMeta(req);
     const { items } = req.body as { items: BatchDetailUpdate[] };
     const result = await transactionService.batchUpdateDetails(

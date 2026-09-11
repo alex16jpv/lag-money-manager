@@ -96,8 +96,7 @@ interface Harness {
   budgets: Feed;
 }
 
-// The profile is absent by default: it shares the page with everything else,
-// and a row that is always there would hide the boundary the merge is about.
+// The profile is absent by default: always sending it would hide the boundary the merge is about.
 const build = (): Harness => {
   const users = { getById: jest.fn().mockResolvedValue(null) };
   const feed = (): Feed => ({ changesSince: jest.fn().mockResolvedValue([]) });
@@ -135,8 +134,7 @@ describe("SyncService.getChanges", () => {
     expect(accounts.changesSince).toHaveBeenCalledWith(USER_ID, cursor, 11);
   });
 
-  // The merge is what makes the page a global window over the four
-  // collections; per-entity limits would let one busy entity starve the rest.
+  // The merge makes the page a global window; per-entity limits let one entity starve the rest.
   it("cuts the page at the global (updatedAt, _id) boundary, not per entity", async () => {
     const { service, accounts, transactions } = build();
     accounts.changesSince.mockResolvedValue([
@@ -171,8 +169,7 @@ describe("SyncService.getChanges", () => {
     });
   });
 
-  // A row updated between two pages moves forward in the ordering, never back,
-  // so the tie-break has to be the id or the second page skips a row.
+  // A row updated between pages moves forward, so the tie-break must be the id or a row is skipped.
   it("splits an instant shared by several rows without losing any", async () => {
     const { service, accounts } = build();
     const same = "2026-01-01T00:00:00.000Z";
@@ -222,8 +219,7 @@ describe("SyncService.getChanges", () => {
     expect(decodeCursor(page.pagination.nextCursor).id).toBeNull();
   });
 
-  // Invariant 4 of the offline contract: without these the client would keep
-  // showing rows the server no longer has.
+  // Invariant 4: without these the client keeps showing rows the server no longer has.
   it("reports archived and deleted rows, not just live ones", async () => {
     const { service, accounts, transactions } = build();
     accounts.changesSince.mockResolvedValue([

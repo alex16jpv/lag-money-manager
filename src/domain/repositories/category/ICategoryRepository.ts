@@ -10,8 +10,7 @@ export interface CategoryFilters {
 }
 
 export interface ICategoryRepository extends IRepository<Category> {
-  // `expectedUpdatedAt` goes into the write's own filter: an optimistic guard
-  // checked before the write would let two racing callers through.
+  // `expectedUpdatedAt` goes in the write's own filter: a guard checked before would race.
   update(
     id: string,
     entity: Partial<Category>,
@@ -33,9 +32,7 @@ export interface ICategoryRepository extends IRepository<Category> {
   // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
   getOwnById(id: string, userId: string): Promise<Category | null>;
 
-  // Offline change feed: everything the user touched after `cursor`, in
-  // `(updatedAt, _id)` order, ARCHIVED AND DELETED ROWS INCLUDED — a client
-  // that only sees live rows never learns that something disappeared.
+  // Change feed after `cursor` in (updatedAt, _id) order, archived and deleted rows included.
   changesSince(
     userId: string,
     cursor: ChangeCursor | undefined,
@@ -47,14 +44,12 @@ export interface ICategoryRepository extends IRepository<Category> {
   createMany(entities: Partial<Category>[]): Promise<Category[]>;
   // Seed keys present for the user, archived included.
   listSeedKeys(userId: string): Promise<string[]>;
-  // The user's ACTIVE category with this name, matched the way the unique
-  // index refuses it (case-insensitive); null when the name is free.
+  // The ACTIVE row holding this name, matched as the unique index does; null when it is free.
   findActiveByName(userId: string, name: string): Promise<Category | null>;
   // Which of the given ids are the user's ARCHIVED categories (one query).
   listArchivedIds(userId: string, ids: string[]): Promise<string[]>;
   countByUserId(userId: string): Promise<number>;
-  // `name` renames as part of the same write, so the unique index sees the
-  // final state and no one can take the name in between.
+  // `name` renames in the same write, so nobody can take the name in between.
   restore(
     id: string,
     userId: string,

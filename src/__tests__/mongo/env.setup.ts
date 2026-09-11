@@ -22,8 +22,7 @@ process.env.MONGO_URI = uri;
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET ??= "ob6-mongo-suite";
 process.env.CORS_ORIGIN ??= "http://localhost:3000";
-// The suite fires bursts on purpose (ten concurrent writes, replayed batches);
-// the limiter is not what is under test here.
+// The suite fires bursts on purpose; the limiter is not what is under test.
 process.env.RATE_LIMIT_MAX ??= "100000";
 process.env.AUTH_RATE_LIMIT_MAX ??= "10000";
 process.env.BCRYPT_SALT_ROUNDS ??= "4";

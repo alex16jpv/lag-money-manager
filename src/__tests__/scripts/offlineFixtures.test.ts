@@ -27,8 +27,7 @@ describe("offline parity fixtures", () => {
     ]);
   });
 
-  // The one figure of the four scenarios a running float sum gets wrong, so
-  // the rule the README states is anchored to something that fails.
+  // The one figure of the four scenarios a running float sum gets wrong.
   it("pins a balance that floats cannot add", () => {
     const madrid = fixtures.find((f) => f.id === "eur-madrid");
     const current = madrid?.expected.balances.find((b) => b.key === "current");

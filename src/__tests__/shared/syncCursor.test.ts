@@ -28,8 +28,7 @@ describe("sync cursor", () => {
     expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/);
   });
 
-  // Serving page one for an unreadable cursor is what made infinite scroll
-  // duplicate items in the listings; the feed must not repeat that.
+  // Serving page one for an unreadable cursor is what made infinite scroll duplicate rows.
   it.each([
     ["not base64 at all", "!!!!"],
     ["a plain id", "019576a0-d7b6-7d6d-af6a-2b7545f5ac71"],
@@ -96,8 +95,7 @@ describe("sync cursor", () => {
       ).toBe(false);
     });
 
-    // A bare instant means "strictly after it", so a row stamped exactly then
-    // is excluded whatever its id.
+    // A bare instant means strictly after it, so a row stamped exactly then is excluded.
     it("excludes the whole instant when the cursor has no id", () => {
       const bare = { updatedAt: at("2026-01-01T00:00:00.000Z"), id: null };
       expect(isAfterCursor({ id: "z", updatedAt: bare.updatedAt }, bare)).toBe(

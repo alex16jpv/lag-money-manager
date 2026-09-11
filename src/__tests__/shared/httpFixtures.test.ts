@@ -3,11 +3,7 @@ import { join } from "path";
 
 const REQUESTS_DIR = join(__dirname, "../../../requests");
 
-// A REST Client file variable must not share its name with the request it
-// captures from: `@accA = {{accA.response.body.id}}` is self-referential, so
-// {{accA}} resolves to the variable instead of the captured id and the value
-// silently arrives empty. That cost an afternoon of chasing a phantom
-// "fromAccountId must be a valid UUID".
+// A capture variable may not share its request's name: `@accA = {{accA...}}` resolves empty (§5).
 const CAPTURE = /^@([A-Za-z_]\w*)\s*=\s*\{\{([A-Za-z_]\w*)\.response\./gm;
 
 describe("requests/*.http fixtures", () => {

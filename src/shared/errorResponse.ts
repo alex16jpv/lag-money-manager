@@ -37,8 +37,7 @@ export function describeFailure(error: Error): DescribedFailure | null {
         message: error.message,
         ...(error.code && { code: error.code }),
         ...(error.details !== undefined && { details: error.details }),
-        // The server's version of the resource, so a stale write can be
-        // resolved without a second round trip.
+        // The server's version, so a stale write is resolved without a second round trip.
         ...(error instanceof StaleUpdateError && { current: error.current }),
       },
     };

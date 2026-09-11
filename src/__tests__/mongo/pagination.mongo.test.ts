@@ -10,8 +10,7 @@ import { connect, disconnect, dropDatabase } from "./support";
 
 const LISTS = ["/accounts", "/categories", "/budgets", "/transactions"];
 
-// A valid uuid v7 minted before any row here, so `_id > it` used to match
-// every one of them.
+// A valid uuid v7 minted before any row here, so `_id > it` used to match every one of them.
 const BEFORE_EVERY_ID = "01950000-0000-7000-8000-a00000000099";
 
 interface Session {
@@ -70,8 +69,7 @@ describe("pagination edges against mongod", () => {
       );
       expect(res.status).toBe(201);
     }
-    // Categories are not created here: registering already seeds a set of
-    // them, and a second "Food" is the 409 the unique name index owes.
+    // Registering already seeds categories, so a second Food is the 409 the unique name index owes.
     const wallet = (await page(alice, "/accounts?limit=100")).data[0].id;
     for (const amount of [10, 20, 30, 40]) {
       const res = await as(
@@ -85,8 +83,7 @@ describe("pagination edges against mongod", () => {
       );
       expect(res.status).toBe(201);
     }
-    // One category each: two global budgets of the same period overlap, which
-    // is a 400 the budget rules owe.
+    // One category each: two global budgets of the same period overlap, which is a 400.
     const expenseCategories = (
       await page(alice, "/categories?limit=100&type=EXPENSE")
     ).data.slice(0, 2);
@@ -124,8 +121,7 @@ describe("pagination edges against mongod", () => {
   });
 
   describe("a cursor the server cannot place", () => {
-    // A shape the query schema already refuses, so no list ever reaches the
-    // `_id` filter with it. Here as the floor the next block builds on.
+    // A shape the query schema already refuses; here as the floor the next block builds on.
     const malformed: [string, string][] = [
       ["one that is not an id at all", "not-a-cursor"],
       ["one that sorts before every id", "0"],
@@ -144,10 +140,7 @@ describe("pagination edges against mongod", () => {
       }
     });
 
-    // Serving page one for a cursor the server cannot place is how a client
-    // loops over the same rows forever. A well-formed id passes the schema, so
-    // only the list itself can tell that it names no row of the user's — and
-    // `_id > <that id>` matched the whole list whenever it sorted first.
+    // Only the list can tell a well-formed id names no row, and `_id > it` matched all that follow.
     it("refuses a well-formed id no row of the user's has", async () => {
       for (const list of LISTS) {
         const res = await get(alice, `${list}?cursor=${BEFORE_EVERY_ID}`);
@@ -171,8 +164,7 @@ describe("pagination edges against mongod", () => {
   });
 
   describe("the last page", () => {
-    // `hasMore` was `data.length === limit`, so a last page that happens to be
-    // exactly full promised another one and minted a cursor for it.
+    // `hasMore` was `data.length === limit`, so an exactly full last page promised another one.
     it.each(LISTS)(
       "walks %s once per row and stops on the last one",
       async (list) => {

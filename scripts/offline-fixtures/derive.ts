@@ -110,9 +110,7 @@ export function deriveSpending(
   transactions: FixtureTransaction[],
   window: SpendingWindow,
 ): { total: number; buckets: ExpectedBucket[] } {
-  // The window is the run of calendar days it covers, matched against the day
-  // the API froze on each row: a change of the account's zone must not move a
-  // past transaction into another window.
+  // Matched against the frozen day: a change of zone must not move a past row into another window.
   const bounds = dayBounds(window.from, window.to, window.timezone);
   const matched = transactions.filter((t) => {
     if (!live(t)) return false;
@@ -139,8 +137,7 @@ export function deriveSpending(
     } else if (t.tags.length === 0) {
       add("untagged", cents);
     } else {
-      // One row per tag: a two-tag transaction is counted twice across the
-      // buckets and once in the total. The API unwinds the same way.
+      // One row per tag: a two-tag transaction counts twice across buckets and once in the total.
       for (const tag of t.tags) add(tag, cents);
     }
   }
@@ -192,8 +189,7 @@ export function resolvePeriod(
   const ref = DateTime.fromJSDate(reference, { zone: timezone });
 
   if (budget.periodType === "BIWEEKLY") {
-    // Anchored on a global grid, not on the budget: the same fortnight for
-    // every budget of every user.
+    // Anchored on a global grid: the same fortnight for every budget of every user.
     const anchor = DateTime.fromISO("2024-01-01T00:00:00", {
       zone: timezone,
     }).startOf("week");
@@ -274,8 +270,7 @@ export function deriveBudgetViews(
       const inWindow = transactions.filter(
         (t) => live(t) && t.type === b.type && withinDays(t, bounds),
       );
-      // A budget with no categories is global: the window's whole spend,
-      // uncategorized rows included. A per-category one sums only its own.
+      // A budget with no categories is global: the window's whole spend, uncategorized included.
       const spentCents = inWindow
         .filter(
           (t) =>

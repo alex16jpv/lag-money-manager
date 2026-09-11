@@ -9,14 +9,11 @@ interface AuthRateLimitOptions {
   windowMs: number;
   // Defaults to the client IP; return null to skip limiting this request.
   keyFrom?: (req: Request) => string | null;
-  // Refund the increment when the request succeeds (<400): the budget then
-  // only burns on failures — a per-account login counter must not let a
-  // third party lock the real owner out, nor punish legitimate logins.
+  // Refund on success so a per-account counter cannot lock the real owner out, nor punish real logins.
   refundOnSuccess?: boolean;
 }
 
-// Per-key auth limiter backed by MongoDB so the limit holds across Lambda
-// instances (the in-memory limiter counts per instance). Fails open on store errors.
+// Backed by MongoDB so the limit holds across Lambda instances. Fails open on store errors.
 export function authRateLimit(options: AuthRateLimitOptions) {
   const { keyPrefix, max, windowMs, keyFrom, refundOnSuccess } = options;
 
@@ -33,9 +30,7 @@ export function authRateLimit(options: AuthRateLimitOptions) {
     const key = `${keyPrefix}:${subject}`;
 
     try {
-      // One atomic op (no read-then-write race): resets the window when it
-      // expired, increments otherwise. On upsert $expiresAt is missing, which
-      // compares lower than $$NOW, so a fresh doc starts at count 1.
+      // One atomic op: on upsert $expiresAt is missing, sorts below $$NOW, so a fresh doc starts at 1.
       const doc = await RateLimitModel.findOneAndUpdate(
         { _id: key },
         [
@@ -58,15 +53,12 @@ export function authRateLimit(options: AuthRateLimitOptions) {
             },
           },
         ],
-        // Mongoose 9 refuses an aggregation pipeline unless this says so, and
-        // the limiter fails open on a store error — so without it there was no
-        // auth rate limit at all.
+        // Mongoose 9 refuses a pipeline without this, and the limiter fails open: no auth limit at all.
         { upsert: true, new: true, updatePipeline: true },
       ).lean();
 
       if (refundOnSuccess) {
-        // Refund BEFORE the response goes out: on Lambda the container can
-        // freeze right after replying, losing any post-response write.
+        // Refund BEFORE replying: on Lambda the container can freeze right after, losing later writes.
         const originalJson = res.json.bind(res);
         res.json = ((body?: unknown) => {
           if (res.statusCode >= 400) {

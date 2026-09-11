@@ -254,8 +254,7 @@ export class AccountRepository implements IAccountRepository {
         ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
       }).session(session);
       if (!exists) return null;
-      // Unset BEFORE set: the partial unique default index rejects a second
-      // isDefault:true per write, even inside the transaction.
+      // Unset BEFORE set: the partial unique index refuses a second isDefault per write.
       await AccountModel.updateMany(
         { userId, _id: { $ne: id }, isDefault: true },
         { isDefault: false },

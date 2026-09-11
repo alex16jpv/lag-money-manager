@@ -13,8 +13,7 @@ export interface UserProps {
   tokenVersion?: number;
   // IANA timezone; drives day/period boundaries for stats and budgets.
   timezone?: string;
-  // ISO 4217; the user's (single, for now) money currency. Locked once the
-  // user has accounts — changing it with history arrives with multi-currency.
+  // ISO 4217, locked once the user has accounts: changing it with history needs multi-currency.
   currency?: string;
   // UI language (en | es). Follows the user across devices.
   locale?: Locale;

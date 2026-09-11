@@ -1,5 +1,4 @@
-// The real models are loaded, not mocks: the point is the index list Mongoose
-// would actually sync. They only need the environment to parse.
+// Real models, not mocks: the point is the index list Mongoose would actually sync.
 process.env.JWT_SECRET ??= "sync-indexes-test";
 process.env.CORS_ORIGIN ??= "http://localhost";
 process.env.MONGO_URI ??= "mongodb://localhost:27017/unused";
@@ -13,9 +12,7 @@ import { TransactionModel } from "../../infrastructure/models/TransactionModel";
 
 type IndexSpec = [Record<string, number>, Record<string, unknown>?];
 
-// Without this index the change feed sorts every one of the user's documents
-// in memory on every pull, and the suite mocks the repositories — nothing else
-// here would notice it disappearing.
+// Without it the feed sorts every one of the user's documents in memory on every pull.
 describe("change feed indexes", () => {
   it.each([
     ["account", AccountModel.schema],

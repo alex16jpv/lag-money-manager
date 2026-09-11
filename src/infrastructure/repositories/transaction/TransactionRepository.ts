@@ -94,9 +94,7 @@ export class TransactionRepository implements ITransactionRepository {
     const { limit, offset, cursor } = pagination;
     let filter: Record<string, unknown> = baseFilter;
     if (cursor) {
-      // Keyset over (date DESC, _id DESC): the id alone is not enough because
-      // transactions can be backdated, so fetch the cursor doc's date.
-      // Scoped to the owner so foreign ids can't act as pivots (id oracle).
+      // Backdating means the id alone cannot order, and the pivot is scoped to the owner (id oracle).
       const cursorDoc = await TransactionModel.findOne({
         _id: cursor,
         ...(baseFilter.userId ? { userId: baseFilter.userId } : {}),
@@ -124,8 +122,7 @@ export class TransactionRepository implements ITransactionRepository {
         .limit(pageQueryLimit(limit))
         .lean(),
       TransactionModel.countDocuments(baseFilter),
-      // Same filter as the count, deliberately without the cursor: the sum
-      // describes the filtered set, not the page the caller happens to be on.
+      // Deliberately without the cursor: the sum describes the filtered set, not the current page.
       withSummary
         ? TransactionModel.aggregate<{ totalAmount: number }>([
             { $match: baseFilter },

@@ -29,8 +29,7 @@ const service = new TransactionService(
 const TZ = "America/Bogota";
 const item = (id: string) => ({ id, description: "detail" });
 
-// Each item stands alone (the owner's decision): one failure must not cost the
-// others their save, and the response has to say which is which.
+// Owner decision: one failure must not cost the others their save, and the answer says which.
 describe("batchUpdateDetails", () => {
   it("saves the items that work and reports the ones that do not", async () => {
     jest
@@ -79,8 +78,7 @@ describe("batchUpdateDetails", () => {
     expect(failed[0].code).toBe("RESOURCE_ARCHIVED");
   });
 
-  // A database outage is not "this item failed": swallowing it would report a
-  // partial success that never happened.
+  // A database outage is not one item failing: that would report a success that never happened.
   it("lets a real fault surface instead of reporting it as one bad item", async () => {
     jest
       .spyOn(service, "updateTransaction")

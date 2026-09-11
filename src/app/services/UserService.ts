@@ -39,8 +39,7 @@ export class UserService {
       throw new ApiError("BadRequest", "User id does not match");
     }
 
-    // Mono-currency mode: the currency is a pre-data choice. No accounts
-    // implies no transactions (every type requires one), so one count decides.
+    // No accounts implies no transactions (every type needs one), so one count decides.
     if (dto.currency !== undefined) {
       const existing = await this.repo.getById(id);
       if (!existing) {
@@ -58,8 +57,7 @@ export class UserService {
       }
     }
 
-    // Credential changes (password OR email) require re-authentication and
-    // revoke live refresh tokens: the email is an identity claim.
+    // The email is an identity claim, so changing it re-authenticates and revokes live refreshes.
     if (dto.password || dto.email) {
       const existing = await this.repo.getByIdWithPassword(id);
       if (!existing) {

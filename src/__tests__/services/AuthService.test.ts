@@ -290,8 +290,7 @@ describe("AuthService", () => {
       lastUsedAt: null,
     });
 
-    // The state a rotation leaves behind: the presented row points at its
-    // successor, and the successor is the live tip of the same family.
+    // What a rotation leaves: the presented row points at its successor, the family's live tip.
     const rotatedSession = (
       overrides: Partial<RefreshSession> = {},
     ): RefreshSession => ({
