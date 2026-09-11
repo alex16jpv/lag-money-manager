@@ -205,14 +205,18 @@ La regla: **si algo falla, tiene que verse, y el mensaje tiene que ser cierto.**
   que dijo (§9)?
 - ¿Todo hallazgo que NO arreglas quedó **registrado** como entrada, no solo mencionado?
 
-**Si lo rompes, lo arreglas — ya.** Un defecto que causes tú por el camino, y
-algo roto que te encuentres y que se interponga entre tú y lo que tienes que
-hacer, se arreglan en la misma rama y el commit lo dice. Un hallazgo **no es un
-sitio donde aparcar lo que te bloquea**. Lo de abajo es para lo que queda fuera
-de tu trabajo y no te afecta.
+**Lo que encuentres resolviendo una ficha, lo arreglas — ya.** Un defecto que
+causes tú por el camino, y **cualquier hallazgo con el que te tropieces
+resolviendo una ficha**, se arreglan en la misma rama y el commit lo dice; eso
+incluye todo lo que te bloquee o interfiera con lo que estás haciendo, y es lo
+normal, no la excepción. **Un hallazgo no es un sitio donde aparcar trabajo que
+podías haber hecho.** Solo se reporta lo que de verdad no puedes cerrar en esa
+sesión: pide una decisión del dueño, es del otro repositorio, o es un trabajo en
+sí mismo.
 
-Si encuentras un problema fuera del alcance de lo que te pidieron: no lo
-arregles por tu cuenta, pero tampoco te baste con mencionarlo. **Repórtaselo al
+Para lo que quede —un problema fuera del alcance de lo que te pidieron y que
+no vas a arreglar—: no lo arregles por tu cuenta, pero tampoco te baste con
+mencionarlo. **Repórtaselo al
 dueño como hallazgo**, para que entre en la lista de tareas del proyecto: qué
 es, dónde está y qué costaría. Vale para fallos, código muerto, guardas que
 faltan, asperezas e ideas, lo haya pedido el dueño o no, y vale igual si lo que
