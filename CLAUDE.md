@@ -123,7 +123,8 @@ Según lo que toques:
 | Variables de entorno | `docs/guides/environment-vars.md` y `.env.example` |
 | El flujo de despliegue | `docs/guides/deployment.md` |
 | Arranque o setup local | `docs/guides/getting-started.md` |
-| Algo que encontraste y NO vas a arreglar | Repórtaselo al dueño como hallazgo (§7): qué es, dónde, y qué habría que decidir |
+| Algo roto que te estorba, o que rompiste tú | Se arregla **ya**, en la misma rama, y el commit lo dice (§8) |
+| Algo que encontraste, NO vas a arreglar y no te afecta | Repórtaselo al dueño como hallazgo (§8): qué es, dónde, y qué habría que decidir |
 
 Los request bodies del OpenAPI se generan desde los schemas Zod
 (`src/config/swagger.ts`); las vistas de respuesta se mantienen a mano pero sus
@@ -207,10 +208,7 @@ La regla: **si algo falla, tiene que verse, y el mensaje tiene que ser cierto.**
 **Si lo rompes, lo arreglas — ya.** Un defecto que causes tú por el camino, y
 algo roto que te encuentres y que se interponga entre tú y lo que tienes que
 hacer, se arreglan en la misma rama y el commit lo dice. Un hallazgo **no es un
-sitio donde aparcar lo que te bloquea**. Y cuando lo que encuentras pertenece a
-un trabajo que ya tiene su propia entrada en la lista del dueño, va **en esa
-entrada**, no en una fila de hallazgos aparte: así lo lee quien abra esa tarea
-al empezar, que es quien lo va a cerrar. Lo de abajo es para lo que queda fuera
+sitio donde aparcar lo que te bloquea**. Lo de abajo es para lo que queda fuera
 de tu trabajo y no te afecta.
 
 Si encuentras un problema fuera del alcance de lo que te pidieron: no lo
@@ -366,7 +364,8 @@ hoy, y «manual» significa que nada lo hace todavía.
 - Un cambio no está terminado hasta que se cumple §1: gate verde y leído,
   verificado contra lo real, un commit por ítem, sin defectos conocidos
   callados. Lo que se encuentra y no se arregla se reporta al dueño como
-  hallazgo (§8) si no estorbaba a lo que había que hacer —si estorbaba, se arregla—, y él le pone número en su lista. *Vigila: el gate,
+  hallazgo (§8) si no estorbaba a lo que había que hacer —si
+  estorbaba, se arregla—, y él le pone número en su lista. *Vigila: el gate,
   `commitlint`, `lefthook`.*
 - Cada cambio terminado lo revisa un revisor independiente antes de cerrarlo:
   un subagente nuevo cuando el trabajo lo hizo un agente, otra persona cuando
