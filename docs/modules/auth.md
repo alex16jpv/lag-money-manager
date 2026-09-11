@@ -22,6 +22,7 @@ Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the
 | `src/app/validation/schemas.ts`                                       | `registerSchema`, `loginSchema`, `refreshSchema`                          |
 | `src/app/middlewares/authMiddleware.ts`                               | Access-token verification; populates `req.user` (`AuthPayload`)           |
 | `src/app/middlewares/authRateLimitMiddleware.ts`                      | Per-IP and per-email rate limiting for the auth endpoints                 |
+| `src/app/middlewares/clientIp.ts`                                     | The client address the limiters count against                             |
 | `src/domain/repositories/refreshSession/IRefreshSessionRepository.ts`  | Session store contract (`RefreshSession`, `SessionSummary`)               |
 | `src/infrastructure/repositories/refreshSession/RefreshSessionRepository.ts` | Mongoose implementation (atomic `rotate`, family revocation)        |
 | `src/infrastructure/models/RefreshSessionModel.ts`                    | Mongoose model for refresh sessions                                       |
@@ -257,7 +258,8 @@ sequenceDiagram
 | `JWT_EXPIRATION`            | Access-token lifetime (default: `15m`)                                |
 | `REFRESH_TOKEN_EXPIRATION`  | Refresh-token / session-family lifetime (default: `30d`)              |
 | `BCRYPT_SALT_ROUNDS`        | Password hashing complexity (default: `12`)                           |
-| `AUTH_RATE_LIMIT_MAX`       | Login and register attempts per 15-minute window (default: `10`)      |
+| `AUTH_RATE_LIMIT_MAX`       | Failed login attempts per email per 15-minute window (default: `10`)  |
+| `AUTH_IP_RATE_LIMIT_MAX`    | Login and register attempts per client IP per 15-minute window (default: `60`) |
 | `REFRESH_RATE_LIMIT_MAX`    | Refresh and logout attempts per 15-minute window (default: `60`)      |
 
 ## Rate Limiting
@@ -266,11 +268,15 @@ sequenceDiagram
 
 | Endpoint                       | Key                | Cap                        |
 | ------------------------------ | ------------------ | -------------------------- |
-| `POST /auth/register`          | IP                 | `AUTH_RATE_LIMIT_MAX`      |
-| `POST /auth/login`             | IP **and** email   | `AUTH_RATE_LIMIT_MAX` each |
-| `POST /auth/refresh`, `/logout` | IP                | `REFRESH_RATE_LIMIT_MAX`   |
+| `POST /auth/register`          | Client IP          | `AUTH_IP_RATE_LIMIT_MAX`   |
+| `POST /auth/login`             | Client IP **and** email | `AUTH_IP_RATE_LIMIT_MAX` / `AUTH_RATE_LIMIT_MAX` |
+| `POST /auth/refresh`, `/logout` | Client IP         | `REFRESH_RATE_LIMIT_MAX`   |
 
 Login is limited on two dimensions because a distributed attack on one account rotates IPs. Only **failed** logins burn the per-email budget (`refundOnSuccess`), so a third party cannot lock a victim out by spamming their address.
+
+The two caps are deliberately different. The per-email one is the budget of an attack aimed at a single account, so `10` is right. The per-IP one is shared by everyone behind that address — a carrier NAT holds thousands of unrelated users — so it is a volume brake, not a per-person allowance, and it defaults to `60`.
+
+"Client IP" is `clientIp` (`src/app/middlewares/clientIp.ts`), not `req.ip`. Behind the Lambda Function URL `req.ip` is the caller of the API, which for the web client is the frontend's server, one address for every user of the app: keying on it gave all logins a single shared budget. The frontend states the real address in `x-client-ip`, believed only on a request that carried a valid `x-api-secret` (the mark `gatewaySecretMiddleware` leaves), validated with `net.isIP` and normalized with `ipKeyGenerator`. A caller that sends no such header, a direct client among them, is still limited by `req.ip`. See `docs/guides/deployment.md` for the whole chain.
 
 ## Error States
 

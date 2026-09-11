@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 
 import { authRateLimit } from "../../app/middlewares/authRateLimitMiddleware";
+import { CLIENT_IP_HEADER } from "../../app/middlewares/clientIp";
 import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
 
 jest.mock("../../shared/logger", () => ({
@@ -51,12 +52,13 @@ const createRes = (): MockRes => {
   return res;
 };
 
-const req = { ip: "1.2.3.4" } as Request;
+const req = { ip: "1.2.3.4", headers: {} } as unknown as Request;
 const futureWindow = (): Date => new Date(Date.now() + 60_000);
 
 const run = async (
   res: MockRes,
   refundOnSuccess = true,
+  request: Request = req,
 ): Promise<NextFunction> => {
   const next: NextFunction = jest.fn();
   const middleware = authRateLimit({
@@ -65,7 +67,7 @@ const run = async (
     windowMs: 900_000,
     refundOnSuccess,
   });
-  await middleware(req, res as unknown as Response, next);
+  await middleware(request, res as unknown as Response, next);
   return next;
 };
 
@@ -145,5 +147,23 @@ describe("authRateLimit refund on success", () => {
     expect(res.sentBody).toMatchObject({ code: "RATE_LIMITED" });
     expect(res.headers["Retry-After"]).toBeDefined();
     expect(model.updateOne).not.toHaveBeenCalled();
+  });
+
+  it("counts against the client the gateway states, not the frontend server it arrived from", async () => {
+    model.findOneAndUpdate.mockReturnValue({
+      lean: () => Promise.resolve({ count: 1, expiresAt: futureWindow() }),
+    });
+    const behindTheFrontend = {
+      ip: "76.76.21.21",
+      gatewayTrusted: true,
+      headers: { [CLIENT_IP_HEADER]: "203.0.113.7" },
+    } as unknown as Request;
+    await run(createRes(), false, behindTheFrontend);
+
+    expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: "login:203.0.113.7" },
+      expect.anything(),
+      expect.anything(),
+    );
   });
 });

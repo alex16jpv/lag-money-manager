@@ -1,8 +1,17 @@
 import { Request } from "express";
 
+import { CLIENT_IP_HEADER } from "../../app/middlewares/clientIp";
 import { rateLimitKey } from "../../app/middlewares/rateLimitKey";
 
-const req = (over: Partial<Request>): Request => over as Request;
+const req = (over: Partial<Request>): Request =>
+  ({ headers: {}, ...over }) as Request;
+
+const throughGateway = (ip: string, clientIp: string): Request =>
+  req({
+    ip,
+    gatewayTrusted: true,
+    headers: { [CLIENT_IP_HEADER]: clientIp },
+  } as Partial<Request>);
 
 describe("rateLimitKey", () => {
   it("counts an authenticated request against its user", () => {
@@ -29,5 +38,15 @@ describe("rateLimitKey", () => {
 
   it("does not throw when the address is unknown", () => {
     expect(() => rateLimitKey(req({}))).not.toThrow();
+  });
+
+  it("separates two sessionless clients that reach the API from the same frontend server", () => {
+    const frontend = "76.76.21.21";
+    expect(rateLimitKey(throughGateway(frontend, "203.0.113.7"))).toBe(
+      "203.0.113.7",
+    );
+    expect(rateLimitKey(throughGateway(frontend, "203.0.113.7"))).not.toBe(
+      rateLimitKey(throughGateway(frontend, "198.51.100.4")),
+    );
   });
 });

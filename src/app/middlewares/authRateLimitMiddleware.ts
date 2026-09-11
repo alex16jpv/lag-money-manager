@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from "express";
 
 import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
 import logger from "../../shared/logger";
+import { clientIp } from "./clientIp";
 
 interface AuthRateLimitOptions {
   keyPrefix: string;
@@ -22,7 +23,7 @@ export function authRateLimit(options: AuthRateLimitOptions) {
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
-    const subject = keyFrom ? keyFrom(req) : (req.ip ?? "unknown");
+    const subject = keyFrom ? keyFrom(req) : clientIp(req) || "unknown";
     if (!subject) {
       next();
       return;
