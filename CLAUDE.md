@@ -204,6 +204,15 @@ La regla: **si algo falla, tiene que verse, y el mensaje tiene que ser cierto.**
   que dijo (§9)?
 - ¿Todo hallazgo que NO arreglas quedó **registrado** como entrada, no solo mencionado?
 
+**Si lo rompes, lo arreglas — ya.** Un defecto que causes tú por el camino, y
+algo roto que te encuentres y que se interponga entre tú y lo que tienes que
+hacer, se arreglan en la misma rama y el commit lo dice. Un hallazgo **no es un
+sitio donde aparcar lo que te bloquea**. Y cuando lo que encuentras pertenece a
+un trabajo que ya tiene su propia entrada en la lista del dueño, va **en esa
+entrada**, no en una fila de hallazgos aparte: así lo lee quien abra esa tarea
+al empezar, que es quien lo va a cerrar. Lo de abajo es para lo que queda fuera
+de tu trabajo y no te afecta.
+
 Si encuentras un problema fuera del alcance de lo que te pidieron: no lo
 arregles por tu cuenta, pero tampoco te baste con mencionarlo. **Repórtaselo al
 dueño como hallazgo**, para que entre en la lista de tareas del proyecto: qué
@@ -357,7 +366,7 @@ hoy, y «manual» significa que nada lo hace todavía.
 - Un cambio no está terminado hasta que se cumple §1: gate verde y leído,
   verificado contra lo real, un commit por ítem, sin defectos conocidos
   callados. Lo que se encuentra y no se arregla se reporta al dueño como
-  hallazgo (§8), y él le pone número en su lista. *Vigila: el gate,
+  hallazgo (§8) si no estorbaba a lo que había que hacer —si estorbaba, se arregla—, y él le pone número en su lista. *Vigila: el gate,
   `commitlint`, `lefthook`.*
 - Cada cambio terminado lo revisa un revisor independiente antes de cerrarlo:
   un subagente nuevo cuando el trabajo lo hizo un agente, otra persona cuando
