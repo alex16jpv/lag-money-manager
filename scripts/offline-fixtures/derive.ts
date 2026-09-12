@@ -24,6 +24,8 @@ import {
   FixtureTransaction,
   GroupBy,
   PeriodType,
+  SortField,
+  SortOrder,
   SplitBy,
   TransactionType,
 } from "./types";
@@ -230,6 +232,52 @@ export function deriveSpending(
     total: fromCents(matched.reduce((acc, t) => acc + toCents(t.amount), 0)),
     buckets,
   };
+}
+
+interface ListWindow {
+  sort: SortField;
+  order: SortOrder;
+  categoryIds: string[] | null;
+  /** null means every type, ADJUSTMENT included: a listing is not a spending query. */
+  type: TransactionType | null;
+  from: string;
+  to: string;
+  timezone: string;
+  limit: number;
+}
+
+/**
+ * The first page of `GET /transactions`, in order. Two rows with the same
+ * amount are separated by their id, in the direction the page runs: without
+ * that the order would depend on which one the index happened to reach first.
+ */
+export function deriveList(
+  transactions: FixtureTransaction[],
+  window: ListWindow,
+): string[] {
+  const bounds = dayBounds(window.from, window.to, window.timezone);
+  const direction = window.order === "asc" ? 1 : -1;
+  return transactions
+    .filter((t) => {
+      if (!live(t)) return false;
+      if (window.type && t.type !== window.type) return false;
+      if (
+        window.categoryIds?.length &&
+        !window.categoryIds.includes(t.categoryId ?? "")
+      ) {
+        return false;
+      }
+      return withinDays(t, bounds);
+    })
+    .sort((a, b) => {
+      const rank =
+        window.sort === "amount"
+          ? toCents(a.amount) - toCents(b.amount)
+          : instant(a.date) - instant(b.date);
+      return direction * (rank || byKey(a.id, b.id));
+    })
+    .slice(0, window.limit)
+    .map((t) => t.id);
 }
 
 export interface ResolvedPeriod {

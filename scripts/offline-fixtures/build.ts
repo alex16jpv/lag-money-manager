@@ -18,12 +18,14 @@ import { join } from "path";
 import {
   deriveBalances,
   deriveBudgetViews,
+  deriveList,
   derivePending,
   deriveSpending,
   resolvePeriod,
 } from "./derive";
 import { fixtureId, SCENARIOS } from "./scenarios";
 import {
+  ExpectedList,
   ExpectedSpending,
   Fixture,
   FixtureAccount,
@@ -184,6 +186,25 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
     return { name: q.name, query, ...derived, note: q.note };
   });
 
+  const lists: ExpectedList[] = scenario.lists.map((q) => {
+    const query = {
+      sort: q.sort,
+      order: q.order,
+      categoryIds: categoryIdsOf(q.categories),
+      type: q.type ?? null,
+      from: q.from,
+      to: q.to,
+      timezone: user.timezone,
+      limit: q.limit,
+    };
+    return {
+      name: q.name,
+      query,
+      transactionIds: deriveList(transactions, query),
+      note: q.note,
+    };
+  });
+
   return {
     id: scenario.id,
     title: scenario.title,
@@ -198,6 +219,7 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
       balances: deriveBalances(accounts, transactions),
       pending: derivePending(transactions),
       spending,
+      lists,
       budgets: {
         reference: scenario.reference,
         views: deriveBudgetViews(
@@ -232,7 +254,9 @@ function assertPrecision(
  * worth more than one that exercises the rule, so a scenario with two equal
  * BUCKET totals is refused — the ranked groupings only, since day and month
  * come back by key. Splits are not checked: they are ranked by the same rule,
- * and `offlineFixtures.test.ts` pins both orders directly.
+ * and `offlineFixtures.test.ts` pins both orders directly. Ordered LISTS are
+ * the opposite: one carries a deliberate tie, because there the tiebreak is
+ * the contract.
  */
 function assertNoTies(
   scenario: Scenario,
@@ -315,6 +339,11 @@ function readme(fixtures: Fixture[]): string {
     "  the server's `balance` from the mirror plus the effect of the unsent outbox,",
     "  and the two agree whenever the outbox is empty.",
     "- **`pending.transactionIds` is a set.** No order is part of the contract.",
+    "- **`lists` are the opposite: there the order IS the contract.** Each one is the",
+    "  first page of `GET /transactions` under its `sort` and `order`, and two rows with",
+    "  the same amount are separated by their id, in the direction the page runs. A",
+    "  listing also has no opinion about spending: with no `type` it shows TRANSFER and",
+    "  ADJUSTMENT too, unlike a spending query.",
     "",
     "## Shape of a file",
     "",
@@ -323,8 +352,8 @@ function readme(fixtures: Fixture[]): string {
     "budgets are **as stored** (`amount`, `amountOverrides`, `periodType`, dates), with",
     "no `periodKey`, `spent` or `expired`. Every row also carries a `key`, which is a",
     "human handle, never an id. `expected` holds `balances`, `pending`, `spending`",
-    "(one entry per query, with the query spelled out) and `budgets` (the views as of",
-    "`expected.budgets.reference`).",
+    "(one entry per query, with the query spelled out), `lists` (one ordered page per",
+    "query) and `budgets` (the views as of `expected.budgets.reference`).",
     "",
     "## The fixtures",
     "",
@@ -338,6 +367,7 @@ function readme(fixtures: Fixture[]): string {
       `${f.transactions.length} transactions · ${f.accounts.length} accounts · ` +
         `${f.categories.length} categories · ${f.budgets.length} budgets · ` +
         `${f.expected.spending.length} spending queries · ` +
+        `${f.expected.lists.length} ordered list${f.expected.lists.length === 1 ? "" : "s"} · ` +
         `reference \`${f.expected.budgets.reference}\``,
       "",
     );

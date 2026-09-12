@@ -427,6 +427,26 @@
         "note": "The quick-add has no category, so naming categories leaves it out."
       }
     ],
+    "lists": [
+      {
+        "name": "q2-biggest",
+        "query": {
+          "sort": "amount",
+          "order": "desc",
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2026-04-01T00:00:00+09:00",
+          "to": "2026-07-01T00:00:00+09:00",
+          "timezone": "Asia/Tokyo",
+          "limit": 3
+        },
+        "transactionIds": [
+          "01930003-0000-7000-8000-0000000t0003",
+          "01930003-0000-7000-8000-0000000t0002",
+          "01930003-0000-7000-8000-0000000t0004"
+        ]
+      }
+    ],
     "budgets": {
       "reference": "2026-05-15T12:00:00+09:00",
       "views": [

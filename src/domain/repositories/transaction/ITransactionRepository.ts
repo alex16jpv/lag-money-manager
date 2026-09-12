@@ -4,7 +4,11 @@ import {
   TransactionSource,
   TransactionType,
 } from "../../../shared/constants";
-import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
+import {
+  PaginatedResult,
+  PaginationParams,
+  TransactionPagination,
+} from "../../../shared/pagination";
 import { ChangeCursor } from "../../../shared/syncCursor";
 import { Transaction } from "../../entities/Transaction";
 import { IRepository } from "../IRepository";
@@ -31,6 +35,7 @@ export interface TransactionFilters {
   ids?: string[];
   accountId?: string;
   categoryId?: string;
+  categoryIds?: string[];
   type?: TransactionType;
   pendingDetails?: boolean;
   source?: TransactionSource;
@@ -113,7 +118,7 @@ export interface ITransactionRepository extends IRepository<Transaction> {
 
   getAllByUserId(
     userId: string,
-    pagination: PaginationParams,
+    pagination: PaginationParams | TransactionPagination,
     filters?: TransactionFilters,
   ): Promise<TransactionPage>;
 

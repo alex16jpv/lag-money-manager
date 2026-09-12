@@ -3,7 +3,7 @@ import { Request, Response } from "express";
 import { TransactionFilters } from "../../domain/repositories/transaction/ITransactionRepository";
 import { TransactionSource, TransactionType } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
-import { extractPagination } from "../../shared/pagination";
+import { extractTransactionPagination } from "../../shared/pagination";
 import { hashPayload } from "../../shared/requestHash";
 import repositoryFactory from "../factories/RepositoryFactory";
 import {
@@ -11,6 +11,7 @@ import {
   IdempotencyMeta,
   TransactionService,
 } from "../services/TransactionService";
+import { splitIdList } from "../validation/schemas";
 import { ifMatch } from "./ifMatch";
 import { resolveTimezone } from "./timezone";
 
@@ -42,7 +43,7 @@ export class TransactionController {
     const userId = req.user!.userId;
     const filters: TransactionFilters = {};
     if (req.query.ids) {
-      filters.ids = (req.query.ids as string).split(",").map((s) => s.trim());
+      filters.ids = splitIdList(req.query.ids as string);
     }
     if (req.query.accountId) {
       filters.accountId = req.query.accountId as string;
@@ -58,6 +59,9 @@ export class TransactionController {
     }
     if (req.query.categoryId) {
       filters.categoryId = req.query.categoryId as string;
+    }
+    if (req.query.categoryIds) {
+      filters.categoryIds = splitIdList(req.query.categoryIds as string);
     }
     if (req.query.includeSummary === "true") {
       filters.includeSummary = true;
@@ -80,7 +84,7 @@ export class TransactionController {
     }
     const result = await transactionService.getAllTransactions(
       userId,
-      extractPagination(req),
+      extractTransactionPagination(req),
       filters,
     );
     res.status(200).json(result);

@@ -21,6 +21,9 @@ import {
   pageQueryLimit,
   PaginatedResult,
   PaginationParams,
+  SORT_FIELDS,
+  SortField,
+  TransactionPagination,
 } from "../../../shared/pagination";
 import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
@@ -30,6 +33,27 @@ import {
 } from "../../models/TransactionModel";
 import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
 import { invalidCursor } from "../keysetCursor";
+
+/**
+ * Where the keyset reads its pivot. Exhaustive on purpose: a field added to
+ * `SORT_FIELDS` and not here does not compile, instead of silently comparing
+ * every row against a date.
+ */
+const pivotOf = (
+  field: SortField,
+  doc: Pick<ITransactionDocument, "date" | "amount">,
+): Date | number => {
+  switch (field) {
+    case "date":
+      return doc.date;
+    case "amount":
+      return doc.amount;
+    default: {
+      const unreached: never = field;
+      throw new Error(`No keyset pivot for sort field ${String(unreached)}`);
+    }
+  }
+};
 
 export class TransactionRepository implements ITransactionRepository {
   private toEntity(doc: ITransactionDocument): Transaction {
@@ -90,27 +114,32 @@ export class TransactionRepository implements ITransactionRepository {
 
   private async paginatedFind(
     baseFilter: Record<string, unknown>,
-    pagination: PaginationParams,
+    pagination: PaginationParams | TransactionPagination,
     withSummary = false,
   ): Promise<TransactionPage> {
     const { limit, offset, cursor } = pagination;
+    const sortField = "sort" in pagination ? pagination.sort : "date";
+    const direction =
+      "order" in pagination && pagination.order === "asc" ? 1 : -1;
+    const beyond = direction === 1 ? "$gt" : "$lt";
     let filter: Record<string, unknown> = baseFilter;
     if (cursor) {
-      // Backdating means the id alone cannot order, and the pivot is scoped to the owner (id oracle).
+      // Backdating means the id alone cannot order; in getAllByUserId the pivot is the owner's (id oracle).
       const cursorDoc = await TransactionModel.findOne({
         _id: cursor,
         ...(baseFilter.userId ? { userId: baseFilter.userId } : {}),
       })
-        .select("date")
+        .select(Object.keys(SORT_FIELDS).join(" "))
         .lean();
       if (!cursorDoc) throw invalidCursor();
+      const pivot = pivotOf(sortField, cursorDoc);
       filter = {
         $and: [
           baseFilter,
           {
             $or: [
-              { date: { $lt: cursorDoc.date } },
-              { date: cursorDoc.date, _id: { $lt: cursor } },
+              { [sortField]: { [beyond]: pivot } },
+              { [sortField]: pivot, _id: { [beyond]: cursor } },
             ],
           },
         ],
@@ -119,7 +148,7 @@ export class TransactionRepository implements ITransactionRepository {
 
     const [docs, total, summary] = await Promise.all([
       TransactionModel.find(filter)
-        .sort({ date: -1, _id: -1 })
+        .sort({ [sortField]: direction, _id: direction })
         .skip(cursor ? 0 : offset)
         .limit(pageQueryLimit(limit))
         .lean(),
@@ -209,6 +238,10 @@ export class TransactionRepository implements ITransactionRepository {
     }
     if (filters?.categoryId) {
       filter.categoryId = filters.categoryId;
+    }
+    // Three filters over one field, and the route refuses every pair: last wins, on purpose.
+    if (filters?.categoryIds?.length) {
+      filter.categoryId = { $in: filters.categoryIds };
     }
     if (filters?.uncategorized) {
       filter.categoryId = null;

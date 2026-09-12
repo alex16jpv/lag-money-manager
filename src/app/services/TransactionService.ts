@@ -12,7 +12,11 @@ import { assertFresh } from "../../shared/concurrency";
 import { dayKeyOf } from "../../shared/dayKey";
 import { ErrorCode } from "../../shared/errorCodes";
 import { ApiError } from "../../shared/errors";
-import { PaginatedResult, PaginationParams } from "../../shared/pagination";
+import {
+  PaginatedResult,
+  PaginationParams,
+  TransactionPagination,
+} from "../../shared/pagination";
 import { TxSession, withTransaction } from "../../shared/unitOfWork";
 import {
   CreateTransactionDTO,
@@ -80,7 +84,7 @@ export class TransactionService {
 
   async getAllTransactions(
     userId: string,
-    pagination: PaginationParams,
+    pagination: PaginationParams | TransactionPagination,
     filters?: TransactionFilters,
   ): Promise<PaginatedResult<Transaction>> {
     return await this.transactionRepo.getAllByUserId(

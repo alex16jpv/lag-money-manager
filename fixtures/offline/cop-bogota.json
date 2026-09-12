@@ -13,7 +13,10 @@
     "With no `type`, the server means EXPENSE + INCOME + TRANSFER, everything but ADJUSTMENT.",
     "An account bucket is the account the money left; a quick-add leaves the default one.",
     "A month bucket is the first seven characters of the frozen day, so months and days agree.",
-    "A category filter drops the quick-adds with it: they have no category to match."
+    "A category filter drops the quick-adds with it: they have no category to match.",
+    "A LISTING has no opinion about spending: with no `type` it shows the transfer and the adjustment too.",
+    "Two rows with the same amount are ordered by id, in the direction the page runs.",
+    "A backdated row lands by its own date, not by when it was written: id order is not date order."
   ],
   "generatedBy": "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline",
   "user": {
@@ -380,8 +383,48 @@
       "note": "Deleted: absent from every figure, and its balance effect is reversed."
     },
     {
-      "key": "last-minute-coffee",
+      "key": "second-bus",
       "id": "01930001-0000-7000-8000-0000000t0015",
+      "type": "EXPENSE",
+      "amount": 12000,
+      "date": "2026-08-28T07:40:00-05:00",
+      "dayKey": "2026-08-28",
+      "description": "TransMilenio",
+      "categoryId": "01930001-0000-7000-8000-0000000c0002",
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0002",
+      "toAccountId": null,
+      "tags": [
+        "work"
+      ],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "The same amount as `bus`: a list ordered by amount has to break the tie by id, not by luck."
+    },
+    {
+      "key": "backdated-market",
+      "id": "01930001-0000-7000-8000-0000000t0016",
+      "type": "EXPENSE",
+      "amount": 63000,
+      "date": "2026-08-02T10:00:00-05:00",
+      "dayKey": "2026-08-02",
+      "description": "Plaza de mercado",
+      "categoryId": "01930001-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [
+        "groceries"
+      ],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "Written last, dated the 2nd: after this row, ordering by id is not ordering by date."
+    },
+    {
+      "key": "last-minute-coffee",
+      "id": "01930001-0000-7000-8000-0000000t0017",
       "type": "EXPENSE",
       "amount": 4700,
       "date": "2026-08-31T23:30:00-05:00",
@@ -533,12 +576,12 @@
       {
         "key": "bank",
         "accountId": "01930001-0000-7000-8000-0000000a0001",
-        "balance": 4334100
+        "balance": 4271100
       },
       {
         "key": "cash",
         "accountId": "01930001-0000-7000-8000-0000000a0002",
-        "balance": 181000
+        "balance": 169000
       },
       {
         "key": "card",
@@ -576,7 +619,7 @@
           "to": "2026-09-01T00:00:00-05:00",
           "timezone": "America/Bogota"
         },
-        "total": 466200,
+        "total": 541200,
         "buckets": [
           {
             "key": "01930001-0000-7000-8000-0000000c0004",
@@ -586,21 +629,21 @@
           },
           {
             "key": "01930001-0000-7000-8000-0000000c0001",
-            "total": 127500,
-            "count": 2,
-            "avg": 63750
+            "total": 190500,
+            "count": 3,
+            "avg": 63500
+          },
+          {
+            "key": "01930001-0000-7000-8000-0000000c0002",
+            "total": 42400,
+            "count": 3,
+            "avg": 14133.33
           },
           {
             "key": "uncategorized",
             "total": 32500,
             "count": 2,
             "avg": 16250
-          },
-          {
-            "key": "01930001-0000-7000-8000-0000000c0002",
-            "total": 30400,
-            "count": 2,
-            "avg": 15200
           },
           {
             "key": "01930001-0000-7000-8000-0000000c0003",
@@ -621,7 +664,7 @@
           "to": "2026-09-01T00:00:00-05:00",
           "timezone": "America/Bogota"
         },
-        "total": 466200,
+        "total": 541200,
         "buckets": [
           {
             "key": "travel",
@@ -631,9 +674,9 @@
           },
           {
             "key": "groceries",
-            "total": 85000,
-            "count": 1,
-            "avg": 85000
+            "total": 148000,
+            "count": 2,
+            "avg": 74000
           },
           {
             "key": "untagged",
@@ -643,9 +686,9 @@
           },
           {
             "key": "work",
-            "total": 30400,
-            "count": 2,
-            "avg": 15200
+            "total": 42400,
+            "count": 3,
+            "avg": 14133.33
           },
           {
             "key": "coffee",
@@ -673,13 +716,19 @@
           "to": "2026-09-01T00:00:00-05:00",
           "timezone": "America/Bogota"
         },
-        "total": 496200,
+        "total": 571200,
         "buckets": [
           {
             "key": "2026-07-31",
             "total": 30000,
             "count": 1,
             "avg": 30000
+          },
+          {
+            "key": "2026-08-02",
+            "total": 63000,
+            "count": 1,
+            "avg": 63000
           },
           {
             "key": "2026-08-03",
@@ -730,6 +779,12 @@
             "avg": 20000
           },
           {
+            "key": "2026-08-28",
+            "total": 12000,
+            "count": 1,
+            "avg": 12000
+          },
+          {
             "key": "2026-08-31",
             "total": 4700,
             "count": 1,
@@ -749,7 +804,7 @@
           "to": "2026-09-01T00:00:00-05:00",
           "timezone": "America/Bogota"
         },
-        "total": 4966200,
+        "total": 5041200,
         "buckets": [
           {
             "key": "01930001-0000-7000-8000-0000000c0005",
@@ -771,15 +826,15 @@
           },
           {
             "key": "01930001-0000-7000-8000-0000000c0001",
-            "total": 127500,
-            "count": 2,
-            "avg": 63750
+            "total": 190500,
+            "count": 3,
+            "avg": 63500
           },
           {
             "key": "01930001-0000-7000-8000-0000000c0002",
-            "total": 30400,
-            "count": 2,
-            "avg": 15200
+            "total": 42400,
+            "count": 3,
+            "avg": 14133.33
           },
           {
             "key": "01930001-0000-7000-8000-0000000c0003",
@@ -801,7 +856,7 @@
           "to": "2026-09-01T00:00:00-05:00",
           "timezone": "America/Bogota"
         },
-        "total": 466200,
+        "total": 541200,
         "buckets": [
           {
             "key": "01930001-0000-7000-8000-0000000a0003",
@@ -811,15 +866,15 @@
           },
           {
             "key": "01930001-0000-7000-8000-0000000a0001",
-            "total": 135900,
-            "count": 4,
-            "avg": 33975
+            "total": 198900,
+            "count": 5,
+            "avg": 39780
           },
           {
             "key": "01930001-0000-7000-8000-0000000a0002",
-            "total": 26500,
-            "count": 3,
-            "avg": 8833.33
+            "total": 38500,
+            "count": 4,
+            "avg": 9625
           }
         ],
         "note": "The two quick-adds land on the default account, which is where the server charged them."
@@ -835,7 +890,7 @@
           "to": "2026-09-01T00:00:00-05:00",
           "timezone": "America/Bogota"
         },
-        "total": 496200,
+        "total": 571200,
         "buckets": [
           {
             "key": "2026-07",
@@ -845,9 +900,9 @@
           },
           {
             "key": "2026-08",
-            "total": 466200,
-            "count": 10,
-            "avg": 46620
+            "total": 541200,
+            "count": 12,
+            "avg": 45100
           }
         ],
         "note": "Two months in one request. The 31 July row is July here and in the day buckets."
@@ -866,8 +921,14 @@
           "to": "2026-09-01T00:00:00-05:00",
           "timezone": "America/Bogota"
         },
-        "total": 153300,
+        "total": 216300,
         "buckets": [
+          {
+            "key": "2026-08-02",
+            "total": 63000,
+            "count": 1,
+            "avg": 63000
+          },
           {
             "key": "2026-08-03",
             "total": 94800,
@@ -906,7 +967,7 @@
           "to": "2026-09-01T00:00:00-05:00",
           "timezone": "America/Bogota"
         },
-        "total": 496200,
+        "total": 571200,
         "buckets": [
           {
             "key": "2026-07",
@@ -924,9 +985,9 @@
           },
           {
             "key": "2026-08",
-            "total": 466200,
-            "count": 10,
-            "avg": 46620,
+            "total": 541200,
+            "count": 12,
+            "avg": 45100,
             "splits": [
               {
                 "key": "01930001-0000-7000-8000-0000000c0004",
@@ -936,21 +997,21 @@
               },
               {
                 "key": "01930001-0000-7000-8000-0000000c0001",
-                "total": 127500,
-                "count": 2,
-                "avg": 63750
+                "total": 190500,
+                "count": 3,
+                "avg": 63500
+              },
+              {
+                "key": "01930001-0000-7000-8000-0000000c0002",
+                "total": 42400,
+                "count": 3,
+                "avg": 14133.33
               },
               {
                 "key": "uncategorized",
                 "total": 32500,
                 "count": 2,
                 "avg": 16250
-              },
-              {
-                "key": "01930001-0000-7000-8000-0000000c0002",
-                "total": 30400,
-                "count": 2,
-                "avg": 15200
               },
               {
                 "key": "01930001-0000-7000-8000-0000000c0003",
@@ -962,6 +1023,168 @@
           }
         ],
         "note": "One request instead of one per month: each month's splits add up to its own total."
+      }
+    ],
+    "lists": [
+      {
+        "name": "august-biggest",
+        "query": {
+          "sort": "amount",
+          "order": "desc",
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota",
+          "limit": 5
+        },
+        "transactionIds": [
+          "01930001-0000-7000-8000-0000000t0007",
+          "01930001-0000-7000-8000-0000000t0003",
+          "01930001-0000-7000-8000-0000000t0016",
+          "01930001-0000-7000-8000-0000000t0009",
+          "01930001-0000-7000-8000-0000000t0013"
+        ],
+        "note": "The five biggest of the period, asked for instead of read page by page."
+      },
+      {
+        "name": "august-by-amount-ascending",
+        "query": {
+          "sort": "amount",
+          "order": "asc",
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota",
+          "limit": 100
+        },
+        "transactionIds": [
+          "01930001-0000-7000-8000-0000000t0017",
+          "01930001-0000-7000-8000-0000000t0004",
+          "01930001-0000-7000-8000-0000000t0010",
+          "01930001-0000-7000-8000-0000000t0005",
+          "01930001-0000-7000-8000-0000000t0015",
+          "01930001-0000-7000-8000-0000000t0012",
+          "01930001-0000-7000-8000-0000000t0011",
+          "01930001-0000-7000-8000-0000000t0013",
+          "01930001-0000-7000-8000-0000000t0009",
+          "01930001-0000-7000-8000-0000000t0016",
+          "01930001-0000-7000-8000-0000000t0003",
+          "01930001-0000-7000-8000-0000000t0007"
+        ],
+        "note": "`bus` and `second-bus` both cost 12 000: ascending, the smaller id comes first."
+      },
+      {
+        "name": "august-by-amount-descending",
+        "query": {
+          "sort": "amount",
+          "order": "desc",
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota",
+          "limit": 100
+        },
+        "transactionIds": [
+          "01930001-0000-7000-8000-0000000t0007",
+          "01930001-0000-7000-8000-0000000t0003",
+          "01930001-0000-7000-8000-0000000t0016",
+          "01930001-0000-7000-8000-0000000t0009",
+          "01930001-0000-7000-8000-0000000t0013",
+          "01930001-0000-7000-8000-0000000t0011",
+          "01930001-0000-7000-8000-0000000t0012",
+          "01930001-0000-7000-8000-0000000t0015",
+          "01930001-0000-7000-8000-0000000t0005",
+          "01930001-0000-7000-8000-0000000t0010",
+          "01930001-0000-7000-8000-0000000t0004",
+          "01930001-0000-7000-8000-0000000t0017"
+        ],
+        "note": "The same tie in the default direction: descending, the larger id comes first."
+      },
+      {
+        "name": "august-newest-every-type",
+        "query": {
+          "sort": "date",
+          "order": "desc",
+          "categoryIds": null,
+          "type": null,
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota",
+          "limit": 100
+        },
+        "transactionIds": [
+          "01930001-0000-7000-8000-0000000t0017",
+          "01930001-0000-7000-8000-0000000t0015",
+          "01930001-0000-7000-8000-0000000t0013",
+          "01930001-0000-7000-8000-0000000t0012",
+          "01930001-0000-7000-8000-0000000t0011",
+          "01930001-0000-7000-8000-0000000t0010",
+          "01930001-0000-7000-8000-0000000t0009",
+          "01930001-0000-7000-8000-0000000t0008",
+          "01930001-0000-7000-8000-0000000t0007",
+          "01930001-0000-7000-8000-0000000t0006",
+          "01930001-0000-7000-8000-0000000t0005",
+          "01930001-0000-7000-8000-0000000t0004",
+          "01930001-0000-7000-8000-0000000t0003",
+          "01930001-0000-7000-8000-0000000t0016",
+          "01930001-0000-7000-8000-0000000t0002"
+        ],
+        "note": "The default order, and with no `type` the transfer and the adjustment are listed."
+      },
+      {
+        "name": "august-oldest-first",
+        "query": {
+          "sort": "date",
+          "order": "asc",
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota",
+          "limit": 100
+        },
+        "transactionIds": [
+          "01930001-0000-7000-8000-0000000t0016",
+          "01930001-0000-7000-8000-0000000t0003",
+          "01930001-0000-7000-8000-0000000t0004",
+          "01930001-0000-7000-8000-0000000t0005",
+          "01930001-0000-7000-8000-0000000t0007",
+          "01930001-0000-7000-8000-0000000t0009",
+          "01930001-0000-7000-8000-0000000t0010",
+          "01930001-0000-7000-8000-0000000t0011",
+          "01930001-0000-7000-8000-0000000t0012",
+          "01930001-0000-7000-8000-0000000t0013",
+          "01930001-0000-7000-8000-0000000t0015",
+          "01930001-0000-7000-8000-0000000t0017"
+        ],
+        "note": "`backdated-market` opens this list and is one of the last by id: the two orders differ."
+      },
+      {
+        "name": "august-biggest-in-two-categories",
+        "query": {
+          "sort": "amount",
+          "order": "desc",
+          "categoryIds": [
+            "01930001-0000-7000-8000-0000000c0001",
+            "01930001-0000-7000-8000-0000000c0003"
+          ],
+          "type": "EXPENSE",
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota",
+          "limit": 5
+        },
+        "transactionIds": [
+          "01930001-0000-7000-8000-0000000t0003",
+          "01930001-0000-7000-8000-0000000t0016",
+          "01930001-0000-7000-8000-0000000t0009",
+          "01930001-0000-7000-8000-0000000t0010",
+          "01930001-0000-7000-8000-0000000t0004"
+        ],
+        "note": "What a budget of two categories asks for; the quick-adds have no category and stay out."
       }
     ],
     "budgets": {
@@ -976,7 +1199,7 @@
           "baseAmount": 2000000,
           "amount": 2000000,
           "hasOverride": false,
-          "spent": 466200,
+          "spent": 541200,
           "expired": false,
           "archivedCategoryIds": []
         },
@@ -989,7 +1212,7 @@
           "baseAmount": 150000,
           "amount": 180000,
           "hasOverride": true,
-          "spent": 127500,
+          "spent": 190500,
           "expired": false,
           "archivedCategoryIds": []
         },

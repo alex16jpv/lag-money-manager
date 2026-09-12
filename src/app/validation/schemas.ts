@@ -18,7 +18,13 @@ import {
 import { CATEGORY_ICONS } from "../../shared/icons";
 import { Locale, LOCALES } from "../../shared/locale";
 import { MAX_AMOUNT } from "../../shared/money";
-import { MAX_LIMIT } from "../../shared/pagination";
+import {
+  MAX_LIMIT,
+  SORT_FIELDS,
+  SORT_ORDERS,
+  SortField,
+  SortOrder,
+} from "../../shared/pagination";
 import {
   describeSyncActions,
   SYNC_ENTITIES,
@@ -73,6 +79,8 @@ const spendingSplitByValues = Object.keys(SPENDING_SPLIT_BY) as [
 ];
 // Bounded groupings only: a month window has months in it, and a user has a handful of accounts.
 const SPLITTABLE_GROUPINGS: SpendingGroupBy[] = ["month", "account"];
+const sortFieldValues = Object.keys(SORT_FIELDS) as [SortField, ...SortField[]];
+const sortOrderValues = Object.keys(SORT_ORDERS) as [SortOrder, ...SortOrder[]];
 
 // One place splits a comma-separated id list, so no controller can disagree with what was validated.
 export const splitIdList = (value: string): string[] =>
@@ -155,7 +163,7 @@ export const paginationQuerySchema = z.object({
     cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
     ids: z
       .string()
-      .transform((val) => val.split(",").map((s) => s.trim()))
+      .transform(splitIdList)
       .pipe(
         z
           .array(z.string().uuid("Each ID must be a valid UUID"))
@@ -184,7 +192,7 @@ export const getTransactionsSchema = z.object({
       cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
       ids: z
         .string()
-        .transform((val) => val.split(",").map((s) => s.trim()))
+        .transform(splitIdList)
         .pipe(
           z
             .array(z.string().uuid("Each ID must be a valid UUID"))
@@ -194,6 +202,9 @@ export const getTransactionsSchema = z.object({
         .optional(),
       accountId: z.string().uuid("accountId must be a valid UUID").optional(),
       categoryId: z.string().uuid("categoryId must be a valid UUID").optional(),
+      categoryIds: categoryIdList,
+      sort: z.enum(sortFieldValues).optional(),
+      order: z.enum(sortOrderValues).optional(),
       type: z
         .enum(transactionTypeValues, {
           error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
@@ -226,6 +237,21 @@ export const getTransactionsSchema = z.object({
         message: "uncategorized=true cannot be combined with categoryId",
         path: ["uncategorized"],
       },
+    )
+    .refine(
+      (q) => !(q.uncategorized === "true" && q.categoryIds !== undefined),
+      {
+        message: "uncategorized=true cannot be combined with categoryIds",
+        path: ["uncategorized"],
+      },
+    )
+    .refine(
+      (q) => !(q.categoryId !== undefined && q.categoryIds !== undefined),
+      {
+        message:
+          "categoryId and categoryIds cannot be combined; use one of them",
+        path: ["categoryIds"],
+      },
     ),
 });
 
@@ -245,7 +271,7 @@ export const getCategoriesSchema = z.object({
     cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
     ids: z
       .string()
-      .transform((val) => val.split(",").map((s) => s.trim()))
+      .transform(splitIdList)
       .pipe(
         z
           .array(z.string().uuid("Each ID must be a valid UUID"))

@@ -22,6 +22,8 @@ export type TransactionType = "EXPENSE" | "INCOME" | "TRANSFER" | "ADJUSTMENT";
 export type MoneyType = "EXPENSE" | "INCOME";
 export type GroupBy = "day" | "month" | "category" | "account" | "tag";
 export type SplitBy = "category";
+export type SortField = "date" | "amount";
+export type SortOrder = "asc" | "desc";
 export type PeriodType =
   "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "CUSTOM";
 
@@ -93,6 +95,23 @@ export interface ScenarioSpendingQuery {
   note?: string;
 }
 
+/**
+ * An ordered page of `GET /transactions`. Unlike a spending query, an omitted
+ * `type` here means every type, ADJUSTMENT included: the listing has no
+ * opinion about what counts as spending.
+ */
+export interface ScenarioListQuery {
+  name: string;
+  sort: SortField;
+  order: SortOrder;
+  type?: TransactionType;
+  categories?: string[];
+  from: string;
+  to: string;
+  limit: number;
+  note?: string;
+}
+
 export interface Scenario {
   id: string;
   title: string;
@@ -106,6 +125,7 @@ export interface Scenario {
   transactions: ScenarioTransaction[];
   budgets: ScenarioBudget[];
   spending: ScenarioSpendingQuery[];
+  lists: ScenarioListQuery[];
 }
 
 /* ---------- written form ---------- */
@@ -196,6 +216,23 @@ export interface ExpectedSpending {
   note?: string;
 }
 
+export interface ExpectedList {
+  name: string;
+  query: {
+    sort: SortField;
+    order: SortOrder;
+    categoryIds: string[] | null;
+    type: TransactionType | null;
+    from: string;
+    to: string;
+    timezone: string;
+    limit: number;
+  };
+  /** The first page, IN ORDER. Ties are broken by id, in the direction of `order`. */
+  transactionIds: string[];
+  note?: string;
+}
+
 export interface ExpectedBudgetView {
   key: string;
   id: string;
@@ -224,6 +261,7 @@ export interface Fixture {
     balances: { key: string; accountId: string; balance: number }[];
     pending: { count: number; total: number; transactionIds: string[] };
     spending: ExpectedSpending[];
+    lists: ExpectedList[];
     budgets: { reference: string; views: ExpectedBudgetView[] };
   };
 }

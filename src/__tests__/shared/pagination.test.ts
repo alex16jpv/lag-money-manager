@@ -4,9 +4,11 @@ import {
   buildPaginatedResult,
   DEFAULT_LIMIT,
   extractPagination,
+  extractTransactionPagination,
   MAX_LIMIT,
   pageQueryLimit,
   PaginationParams,
+  TransactionPagination,
 } from "../../shared/pagination";
 
 const rows = (n: number): { id: string }[] =>
@@ -93,6 +95,11 @@ describe("extractPagination", () => {
     });
   });
 
+  // Only transactions order by anything: the generic paginator must not grow a field they ignore.
+  it("says nothing about an order the other listings do not have", () => {
+    expect(from({ sort: "amount", order: "asc" })).not.toHaveProperty("sort");
+  });
+
   it("clamps the limit to the ceiling and to one", () => {
     expect(from({ limit: "5000" }).limit).toBe(MAX_LIMIT);
     expect(from({ limit: "0" }).limit).toBe(DEFAULT_LIMIT);
@@ -105,5 +112,33 @@ describe("extractPagination", () => {
 
   it("carries the cursor through", () => {
     expect(from({ cursor: "row-7" }).cursor).toBe("row-7");
+  });
+});
+
+describe("extractTransactionPagination", () => {
+  const from = (query: Record<string, unknown>): TransactionPagination =>
+    extractTransactionPagination({ query } as unknown as Request);
+
+  it("reads the order the page runs in, beside its cursor", () => {
+    expect(from({ sort: "amount", order: "asc", cursor: "row-7" })).toEqual({
+      limit: DEFAULT_LIMIT,
+      offset: 0,
+      cursor: "row-7",
+      sort: "amount",
+      order: "asc",
+    });
+  });
+
+  // The route's schema refuses anything else, so a value that got this far falls back.
+  it.each([
+    ["a field it does not order by", { sort: "description" }],
+    ["nothing at all", {}],
+    ["the right word in the wrong case", { sort: "AMOUNT" }],
+    ["the parameter twice, which arrives as an array", { sort: ["amount"] }],
+    ["a key every object inherits", { sort: "constructor" }],
+    ["the prototype itself", { sort: "__proto__" }],
+    ["an inherited method on the direction", { order: "hasOwnProperty" }],
+  ])("falls back to newest first given %s", (_label, query) => {
+    expect(from(query)).toMatchObject({ sort: "date", order: "desc" });
   });
 });

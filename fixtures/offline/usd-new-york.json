@@ -493,6 +493,25 @@
         "note": "One month, split: the two 01:30s are both dining and land in the same split."
       }
     ],
+    "lists": [
+      {
+        "name": "november-income-biggest",
+        "query": {
+          "sort": "amount",
+          "order": "desc",
+          "categoryIds": null,
+          "type": "INCOME",
+          "from": "2025-11-01T00:00:00-04:00",
+          "to": "2025-12-01T00:00:00-05:00",
+          "timezone": "America/New_York",
+          "limit": 5
+        },
+        "transactionIds": [
+          "01930004-0000-7000-8000-0000000t0005",
+          "01930004-0000-7000-8000-0000000t0006"
+        ]
+      }
+    ],
     "budgets": {
       "reference": "2025-11-15T12:00:00-05:00",
       "views": [

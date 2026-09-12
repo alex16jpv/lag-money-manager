@@ -1104,6 +1104,58 @@ describe("Validation Schemas", () => {
       });
       expect(result.success).toBe(false);
     });
+
+    // "The five biggest of the period" cannot be asked for without an order.
+    describe("order and several categories", () => {
+      it.each([
+        ["the default, which is newest first", {}],
+        ["biggest first", { sort: "amount", order: "desc" }],
+        ["smallest first", { sort: "amount", order: "asc" }],
+        ["oldest first", { sort: "date", order: "asc" }],
+      ])("accepts %s", (_label, query) => {
+        expect(getTransactionsSchema.safeParse({ query }).success).toBe(true);
+      });
+
+      it.each([
+        ["a field it does not order by", { sort: "description" }],
+        ["a direction that is not one", { order: "descending" }],
+      ])("rejects %s", (_label, query) => {
+        expect(getTransactionsSchema.safeParse({ query }).success).toBe(false);
+      });
+
+      it("takes the categories of a budget as one list", () => {
+        const result = getTransactionsSchema.safeParse({
+          query: { categoryIds: `${validUUID},${validUUID2}` },
+        });
+
+        expect(result.success).toBe(true);
+        expect(
+          (result.data as { query: { categoryIds: string[] } }).query
+            .categoryIds,
+        ).toEqual([validUUID, validUUID2]);
+      });
+
+      it.each([
+        ["an id that is not one", { categoryIds: "food,drink" }],
+        ["an empty list", { categoryIds: "" }],
+        [
+          "more than a budget can hold",
+          {
+            categoryIds: Array.from({ length: 21 }, () => validUUID).join(","),
+          },
+        ],
+        [
+          "one category and a list at the same time",
+          { categoryId: validUUID, categoryIds: `${validUUID},${validUUID2}` },
+        ],
+        [
+          "a list together with uncategorized",
+          { uncategorized: "true", categoryIds: validUUID },
+        ],
+      ])("rejects %s", (_label, query) => {
+        expect(getTransactionsSchema.safeParse({ query }).success).toBe(false);
+      });
+    });
   });
 
   // Four views of Stats need a dimension or a filter this endpoint did not have.

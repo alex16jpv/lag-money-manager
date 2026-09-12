@@ -95,6 +95,20 @@ export interface Fixture {
         splits?: { key: string; total: number; count: number; avg: number }[];
       }[];
     }[];
+    lists: {
+      name: string;
+      query: {
+        sort: "date" | "amount";
+        order: "asc" | "desc";
+        categoryIds: string[] | null;
+        type: string | null;
+        from: string;
+        to: string;
+        timezone: string;
+        limit: number;
+      };
+      transactionIds: string[];
+    }[];
     budgets: {
       reference: string;
       views: {

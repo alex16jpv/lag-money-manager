@@ -10,7 +10,10 @@ import {
   driftAgainst,
   OUT_DIR,
 } from "../../../scripts/offline-fixtures/build";
-import { deriveSpending } from "../../../scripts/offline-fixtures/derive";
+import {
+  deriveList,
+  deriveSpending,
+} from "../../../scripts/offline-fixtures/derive";
 import { FixtureTransaction } from "../../../scripts/offline-fixtures/types";
 
 describe("offline parity fixtures", () => {
@@ -89,6 +92,21 @@ describe("offline parity fixtures", () => {
       );
 
       expect(buckets[0].splits?.map((s) => s.key)).toEqual(["cat-a", "cat-b"]);
+    });
+
+    it("separates two rows of the same amount by id, in the page's direction", () => {
+      const rows = [row(1, { amount: 50 }), row(2, { amount: 50 })];
+      const list = (order: "asc" | "desc"): string[] =>
+        deriveList(rows, {
+          ...window,
+          sort: "amount",
+          order,
+          categoryIds: null,
+          limit: 10,
+        });
+
+      expect(list("asc")).toEqual([rows[0].id, rows[1].id]);
+      expect(list("desc")).toEqual([rows[1].id, rows[0].id]);
     });
   });
 });

@@ -43,6 +43,11 @@ describe("TransactionModel indexes", () => {
     expect(has({ userId: 1, deletedAt: 1, type: 1, dayKey: 1 })).toBeDefined();
   });
 
+  // Measured the same way: a whole history by amount, 73 ms without it, 0.7 ms with it.
+  it("backs the keyset that orders a page by amount", () => {
+    expect(has({ userId: 1, deletedAt: 1, amount: -1, _id: -1 })).toBeDefined();
+  });
+
   it("backs the review inbox with a partial index over pending rows only", () => {
     const found = has({ userId: 1, date: -1 });
     expect(found).toBeDefined();
