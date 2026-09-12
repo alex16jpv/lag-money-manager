@@ -110,6 +110,9 @@ TransactionSchema.index(
 // Calendar windows filter by the frozen day; a day-filtered page pays an in-memory sort by `date`.
 TransactionSchema.index({ userId: 1, deletedAt: 1, dayKey: 1 });
 
+// Measured over 60k rows of one user: a year by month goes from 49 ms to 13 ms with the type in the key.
+TransactionSchema.index({ userId: 1, deletedAt: 1, type: 1, dayKey: 1 });
+
 // Change feed: keyset over (updatedAt, _id), archived and deleted rows included.
 TransactionSchema.index({ userId: 1, updatedAt: 1, _id: 1 });
 

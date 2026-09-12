@@ -329,6 +329,8 @@
         "name": "march-by-category",
         "query": {
           "groupBy": "category",
+          "splitBy": null,
+          "categoryIds": null,
           "type": "EXPENSE",
           "from": "2026-03-01T00:00:00+01:00",
           "to": "2026-04-01T00:00:00+02:00",
@@ -367,6 +369,8 @@
         "name": "march-by-day",
         "query": {
           "groupBy": "day",
+          "splitBy": null,
+          "categoryIds": null,
           "type": "EXPENSE",
           "from": "2026-03-01T00:00:00+01:00",
           "to": "2026-04-01T00:00:00+02:00",
@@ -405,6 +409,95 @@
             "avg": 7.77
           }
         ]
+      },
+      {
+        "name": "march-by-account",
+        "query": {
+          "groupBy": "account",
+          "splitBy": null,
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2026-03-01T00:00:00+01:00",
+          "to": "2026-04-01T00:00:00+02:00",
+          "timezone": "Europe/Madrid"
+        },
+        "total": 43.91,
+        "buckets": [
+          {
+            "key": "01930002-0000-7000-8000-0000000a0002",
+            "total": 22.59,
+            "count": 4,
+            "avg": 5.65
+          },
+          {
+            "key": "01930002-0000-7000-8000-0000000a0001",
+            "total": 21.32,
+            "count": 3,
+            "avg": 7.11
+          }
+        ]
+      },
+      {
+        "name": "march-and-april-by-month-and-category",
+        "query": {
+          "groupBy": "month",
+          "splitBy": "category",
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2026-03-01T00:00:00+01:00",
+          "to": "2026-05-01T00:00:00+02:00",
+          "timezone": "Europe/Madrid"
+        },
+        "total": 143.91,
+        "buckets": [
+          {
+            "key": "2026-03",
+            "total": 43.91,
+            "count": 7,
+            "avg": 6.27,
+            "splits": [
+              {
+                "key": "01930002-0000-7000-8000-0000000c0002",
+                "total": 22.59,
+                "count": 4,
+                "avg": 5.65
+              },
+              {
+                "key": "01930002-0000-7000-8000-0000000c0001",
+                "total": 10.1,
+                "count": 1,
+                "avg": 10.1
+              },
+              {
+                "key": "01930002-0000-7000-8000-0000000c0003",
+                "total": 7.77,
+                "count": 1,
+                "avg": 7.77
+              },
+              {
+                "key": "uncategorized",
+                "total": 3.45,
+                "count": 1,
+                "avg": 3.45
+              }
+            ]
+          },
+          {
+            "key": "2026-04",
+            "total": 100,
+            "count": 1,
+            "avg": 100,
+            "splits": [
+              {
+                "key": "01930002-0000-7000-8000-0000000c0001",
+                "total": 100,
+                "count": 1,
+                "avg": 100
+              }
+            ]
+          }
+        ],
+        "note": "The row 5 minutes into April is April's, in the month buckets as in the day ones."
       }
     ],
     "budgets": {

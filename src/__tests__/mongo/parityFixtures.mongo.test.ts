@@ -90,6 +90,12 @@ describe("offline parity fixtures", () => {
           timezone: expected.query.timezone,
           from: new Date(expected.query.from),
           to: new Date(expected.query.to),
+          ...(expected.query.splitBy
+            ? { splitBy: expected.query.splitBy }
+            : {}),
+          ...(expected.query.categoryIds
+            ? { categoryIds: expected.query.categoryIds }
+            : {}),
           ...(expected.query.type
             ? { type: expected.query.type as SpendingQuery["type"] }
             : {}),
@@ -98,6 +104,7 @@ describe("offline parity fixtures", () => {
         const result = await stats.getSpending(userId, query);
 
         expect(result.total).toBe(expected.total);
+        expect(result.splitBy).toBe(expected.query.splitBy);
         expect(result.buckets).toEqual(expected.buckets);
       },
     );

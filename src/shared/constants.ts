@@ -64,6 +64,25 @@ export const TRANSACTION_SOURCES = {
 
 export type TransactionSource = keyof typeof TRANSACTION_SOURCES;
 
+export const SPENDING_GROUP_BY = {
+  category: "category",
+  day: "day",
+  month: "month",
+  account: "account",
+  tag: "tag",
+} as const;
+
+export type SpendingGroupBy = keyof typeof SPENDING_GROUP_BY;
+
+export const SPENDING_SPLIT_BY = {
+  category: "category",
+} as const;
+
+export type SpendingSplitBy = keyof typeof SPENDING_SPLIT_BY;
+
+// A budget's own ceiling, and so the ceiling of every filter that exists to serve one.
+export const MAX_BUDGET_CATEGORIES = 20;
+
 export const CATEGORY_TYPES = {
   INCOME: "INCOME",
   EXPENSE: "EXPENSE",

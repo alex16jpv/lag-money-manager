@@ -150,16 +150,35 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
     return stored;
   });
 
+  const categoryIdsOf = (keys: string[] | undefined): string[] | null => {
+    if (keys === undefined) return null;
+    return keys.map((key) => {
+      const id = categoryId(key);
+      if (id === null) throw new Error(`${scenario.id}: unknown ${key}`);
+      return id;
+    });
+  };
+
   const spending: ExpectedSpending[] = scenario.spending.map((q) => {
+    if (q.splitBy && !["month", "account"].includes(q.groupBy)) {
+      throw new Error(
+        `${scenario.id}/${q.name}: the API refuses splitBy with groupBy=${q.groupBy}`,
+      );
+    }
+    if (q.splitBy && !(q.from && q.to)) {
+      throw new Error(`${scenario.id}/${q.name}: a split needs a window`);
+    }
     const query = {
       groupBy: q.groupBy,
+      splitBy: q.splitBy ?? null,
+      categoryIds: categoryIdsOf(q.categories),
       type: q.type ?? null,
       from: q.from,
       to: q.to,
       timezone: user.timezone,
     };
     const derived = deriveSpending(transactions, query);
-    if (q.groupBy !== "day") {
+    if (q.groupBy !== "day" && q.groupBy !== "month") {
       assertNoTies(scenario, q.name, derived.buckets);
     }
     return { name: q.name, query, ...derived, note: q.note };
@@ -208,9 +227,12 @@ function assertPrecision(
 }
 
 /**
- * Two buckets with the same total would make the fixture depend on how Mongo
- * breaks a tie, which is unspecified. Better to refuse the scenario than to
- * ship a figure that changes between runs.
+ * A ranked grouping breaks a tie by key, on both sides of the contract, so a
+ * tie is no longer ambiguous — but a fixture nobody has to reason about is
+ * worth more than one that exercises the rule, so a scenario with two equal
+ * BUCKET totals is refused — the ranked groupings only, since day and month
+ * come back by key. Splits are not checked: they are ranked by the same rule,
+ * and `offlineFixtures.test.ts` pins both orders directly.
  */
 function assertNoTies(
   scenario: Scenario,
@@ -257,7 +279,19 @@ function readme(fixtures: Fixture[]): string {
     "- **Windows are half-open `[from, to)`** and built in the **user's timezone**. A",
     "  month is `[1st 00:00 local, next 1st 00:00 local)`; the two ends can carry",
     "  different UTC offsets across a DST change.",
-    "- **A day bucket is the local calendar day** of the instant, `yyyy-MM-dd`.",
+    "- **A day bucket is the local calendar day** of the instant, `yyyy-MM-dd`, and a",
+    "  **month bucket is its first seven characters**, `yyyy-MM`. Months and days can",
+    "  never disagree about which window a row belongs to: they read the same frozen day.",
+    "- **An account bucket is the account the money left** (`fromAccountId`), except",
+    "  for INCOME and for an increase-only ADJUSTMENT, which have no `fromAccountId`",
+    "  and are keyed by the one they reached. A quick-add left the default account.",
+    "- **`categoryIds` filters before anything else.** It is what a budget of several",
+    "  categories sends, and it drops every row with no category — the quick-adds included.",
+    "- **`splitBy` adds a second dimension inside each bucket** (`splits`), so per",
+    "  category AND month is one request. Unlike tags, splits never overlap: every row is",
+    "  in exactly one of them, so they add up to the bucket's own total. Only month and",
+    "  account buckets can be split, and only inside a `[from, to)` window: both are",
+    "  bounded, a day grouping is not.",
     "- **Deleted rows (`deletedAt`) are invisible** to every figure, balances included.",
     "  Archived rows (`archivedAt`) still count: archiving is not deleting.",
     "- **`ADJUSTMENT` never counts as spending** unless the query names that type; it",
@@ -268,8 +302,10 @@ function readme(fixtures: Fixture[]): string {
     "  can add up to more than `total`. `total` is over the rows, never over the buckets.",
     "  A row with no tags lands in `untagged`, one with no category in `uncategorized`.",
     "- **`avg` is rounded in minor units**: `round(totalCents / count)`.",
-    "- **Ordering**: day buckets by key ascending, everything else by total descending.",
-    "  No two buckets in a fixture share a total, so the order is never ambiguous.",
+    "- **Ordering**: day and month buckets by key ascending, everything else by total",
+    "  descending with the key breaking a tie (binary, the way Mongo compares strings —",
+    "  not `localeCompare`). Splits are ranked the same way. No two buckets in a fixture",
+    "  share a total anyway, so nobody reading one has to think about it.",
     "- **Budget `spent`**: a budget with no categories is global and takes the whole",
     "  window's spend of its type, quick-adds included; one with categories sums only",
     "  those. Archived budgets produce no view at all.",
@@ -301,6 +337,7 @@ function readme(fixtures: Fixture[]): string {
       "",
       `${f.transactions.length} transactions · ${f.accounts.length} accounts · ` +
         `${f.categories.length} categories · ${f.budgets.length} budgets · ` +
+        `${f.expected.spending.length} spending queries · ` +
         `reference \`${f.expected.budgets.reference}\``,
       "",
     );

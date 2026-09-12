@@ -10,6 +10,8 @@ import {
   driftAgainst,
   OUT_DIR,
 } from "../../../scripts/offline-fixtures/build";
+import { deriveSpending } from "../../../scripts/offline-fixtures/derive";
+import { FixtureTransaction } from "../../../scripts/offline-fixtures/types";
 
 describe("offline parity fixtures", () => {
   const { fixtures, files } = buildFixtureFiles();
@@ -33,5 +35,60 @@ describe("offline parity fixtures", () => {
     const current = madrid?.expected.balances.find((b) => b.key === "current");
     expect(current?.balance).toBe(2378.68);
     expect(1000 - 10.1 + 1500 - 7.77 - 100 - 3.45).not.toBe(2378.68);
+  });
+
+  // No scenario may hold a tie, so the rule both sides agreed on has nowhere else to show.
+  describe("the tiebreaks, which no scenario is allowed to carry", () => {
+    const row = (
+      n: number,
+      over: Partial<FixtureTransaction> = {},
+    ): FixtureTransaction => ({
+      key: `row-${n}`,
+      id: `0199${String(n).padStart(4, "0")}`,
+      type: "EXPENSE",
+      amount: 10,
+      date: "2026-08-10T12:00:00-05:00",
+      dayKey: "2026-08-10",
+      description: null,
+      categoryId: null,
+      fromAccountId: "acc-1",
+      toAccountId: null,
+      tags: [],
+      currency: "COP",
+      source: "MANUAL",
+      pendingDetails: false,
+      deletedAt: null,
+      ...over,
+    });
+
+    const window = {
+      from: "2026-08-01T00:00:00-05:00",
+      to: "2026-09-01T00:00:00-05:00",
+      timezone: "America/Bogota",
+      type: "EXPENSE" as const,
+    };
+
+    it("ranks two buckets of the same total by key, ascending", () => {
+      const { buckets } = deriveSpending(
+        [row(1, { categoryId: "cat-b" }), row(2, { categoryId: "cat-a" })],
+        { ...window, groupBy: "category", splitBy: null, categoryIds: null },
+      );
+
+      expect(buckets.map((b) => b.key)).toEqual(["cat-a", "cat-b"]);
+    });
+
+    it("ranks two splits of the same total the same way", () => {
+      const { buckets } = deriveSpending(
+        [row(1, { categoryId: "cat-b" }), row(2, { categoryId: "cat-a" })],
+        {
+          ...window,
+          groupBy: "month",
+          splitBy: "category",
+          categoryIds: null,
+        },
+      );
+
+      expect(buckets[0].splits?.map((s) => s.key)).toEqual(["cat-a", "cat-b"]);
+    });
   });
 });

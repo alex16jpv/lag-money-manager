@@ -8,6 +8,8 @@ import {
   BUDGET_TYPES,
   CATEGORY_TYPES,
   COLORS,
+  SPENDING_GROUP_BY,
+  SPENDING_SPLIT_BY,
   TRANSACTION_SOURCES,
   TRANSACTION_TYPES,
 } from "../shared/constants";
@@ -318,23 +320,53 @@ const responseViews = {
       },
     },
   }),
-  StatsBucket: withRequired({
+  StatsSplit: withRequired({
     type: "object",
+    description: "One category inside a bucket, when splitBy asked for them.",
     properties: {
       key: {
         type: "string",
-        description:
-          "Category id, day (YYYY-MM-DD) or tag; 'uncategorized'/'untagged' for the catch-all buckets.",
+        description: "Category id, or 'uncategorized'.",
       },
       total: money,
       count: { type: "integer" },
       avg: money,
     },
   }),
+  StatsBucket: withRequired(
+    {
+      type: "object",
+      properties: {
+        key: {
+          type: "string",
+          description:
+            "Category id, day (YYYY-MM-DD), month (YYYY-MM), account id or tag; " +
+            "'uncategorized' and 'untagged' for the catch-all buckets, and " +
+            "'unassigned' for a row with no account at all, which validation no longer allows.",
+        },
+        total: money,
+        count: { type: "integer" },
+        avg: money,
+        splits: {
+          type: "array",
+          items: { $ref: "#/components/schemas/StatsSplit" },
+          description:
+            "Present only when splitBy was given. The splits of a bucket add " +
+            "up to its own total: no row lands in two of them.",
+        },
+      },
+    },
+    ["splits"],
+  ),
   StatsResponse: withRequired({
     type: "object",
     properties: {
-      groupBy: { type: "string", enum: ["category", "day", "tag"] },
+      groupBy: enumOf(SPENDING_GROUP_BY),
+      splitBy: {
+        ...enumOf(SPENDING_SPLIT_BY),
+        nullable: true,
+        description: "The second dimension asked for, or null.",
+      },
       buckets: {
         type: "array",
         items: { $ref: "#/components/schemas/StatsBucket" },

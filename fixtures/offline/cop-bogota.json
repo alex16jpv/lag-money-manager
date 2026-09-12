@@ -10,7 +10,10 @@
     "An archived category keeps its totals; archiving is not deleting.",
     "Quick-adds count as spending under `uncategorized`, and are the pending summary.",
     "Tag buckets double-count a transaction with two tags: their sum exceeds the total.",
-    "With no `type`, the server means EXPENSE + INCOME + TRANSFER, everything but ADJUSTMENT."
+    "With no `type`, the server means EXPENSE + INCOME + TRANSFER, everything but ADJUSTMENT.",
+    "An account bucket is the account the money left; a quick-add leaves the default one.",
+    "A month bucket is the first seven characters of the frozen day, so months and days agree.",
+    "A category filter drops the quick-adds with it: they have no category to match."
   ],
   "generatedBy": "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline",
   "user": {
@@ -566,6 +569,8 @@
         "name": "august-by-category",
         "query": {
           "groupBy": "category",
+          "splitBy": null,
+          "categoryIds": null,
           "type": "EXPENSE",
           "from": "2026-08-01T00:00:00-05:00",
           "to": "2026-09-01T00:00:00-05:00",
@@ -609,6 +614,8 @@
         "name": "august-by-tag",
         "query": {
           "groupBy": "tag",
+          "splitBy": null,
+          "categoryIds": null,
           "type": "EXPENSE",
           "from": "2026-08-01T00:00:00-05:00",
           "to": "2026-09-01T00:00:00-05:00",
@@ -659,6 +666,8 @@
         "name": "july-31-to-august-by-day",
         "query": {
           "groupBy": "day",
+          "splitBy": null,
+          "categoryIds": null,
           "type": "EXPENSE",
           "from": "2026-07-31T00:00:00-05:00",
           "to": "2026-09-01T00:00:00-05:00",
@@ -733,6 +742,8 @@
         "name": "august-by-category-untyped",
         "query": {
           "groupBy": "category",
+          "splitBy": null,
+          "categoryIds": null,
           "type": null,
           "from": "2026-08-01T00:00:00-05:00",
           "to": "2026-09-01T00:00:00-05:00",
@@ -778,6 +789,179 @@
           }
         ],
         "note": "No `type`: income and the transfer are in, only ADJUSTMENT is out."
+      },
+      {
+        "name": "august-by-account",
+        "query": {
+          "groupBy": "account",
+          "splitBy": null,
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota"
+        },
+        "total": 466200,
+        "buckets": [
+          {
+            "key": "01930001-0000-7000-8000-0000000a0003",
+            "total": 303800,
+            "count": 3,
+            "avg": 101266.67
+          },
+          {
+            "key": "01930001-0000-7000-8000-0000000a0001",
+            "total": 135900,
+            "count": 4,
+            "avg": 33975
+          },
+          {
+            "key": "01930001-0000-7000-8000-0000000a0002",
+            "total": 26500,
+            "count": 3,
+            "avg": 8833.33
+          }
+        ],
+        "note": "The two quick-adds land on the default account, which is where the server charged them."
+      },
+      {
+        "name": "july-and-august-by-month",
+        "query": {
+          "groupBy": "month",
+          "splitBy": null,
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2026-07-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota"
+        },
+        "total": 496200,
+        "buckets": [
+          {
+            "key": "2026-07",
+            "total": 30000,
+            "count": 1,
+            "avg": 30000
+          },
+          {
+            "key": "2026-08",
+            "total": 466200,
+            "count": 10,
+            "avg": 46620
+          }
+        ],
+        "note": "Two months in one request. The 31 July row is July here and in the day buckets."
+      },
+      {
+        "name": "august-by-day-in-two-categories",
+        "query": {
+          "groupBy": "day",
+          "splitBy": null,
+          "categoryIds": [
+            "01930001-0000-7000-8000-0000000c0001",
+            "01930001-0000-7000-8000-0000000c0003"
+          ],
+          "type": "EXPENSE",
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota"
+        },
+        "total": 153300,
+        "buckets": [
+          {
+            "key": "2026-08-03",
+            "total": 94800,
+            "count": 2,
+            "avg": 47400
+          },
+          {
+            "key": "2026-08-18",
+            "total": 42500,
+            "count": 1,
+            "avg": 42500
+          },
+          {
+            "key": "2026-08-20",
+            "total": 11300,
+            "count": 1,
+            "avg": 11300
+          },
+          {
+            "key": "2026-08-31",
+            "total": 4700,
+            "count": 1,
+            "avg": 4700
+          }
+        ],
+        "note": "What a budget of two categories asks for: its own per-day chart. No quick-add matches."
+      },
+      {
+        "name": "july-and-august-by-month-and-category",
+        "query": {
+          "groupBy": "month",
+          "splitBy": "category",
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2026-07-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota"
+        },
+        "total": 496200,
+        "buckets": [
+          {
+            "key": "2026-07",
+            "total": 30000,
+            "count": 1,
+            "avg": 30000,
+            "splits": [
+              {
+                "key": "01930001-0000-7000-8000-0000000c0001",
+                "total": 30000,
+                "count": 1,
+                "avg": 30000
+              }
+            ]
+          },
+          {
+            "key": "2026-08",
+            "total": 466200,
+            "count": 10,
+            "avg": 46620,
+            "splits": [
+              {
+                "key": "01930001-0000-7000-8000-0000000c0004",
+                "total": 250000,
+                "count": 1,
+                "avg": 250000
+              },
+              {
+                "key": "01930001-0000-7000-8000-0000000c0001",
+                "total": 127500,
+                "count": 2,
+                "avg": 63750
+              },
+              {
+                "key": "uncategorized",
+                "total": 32500,
+                "count": 2,
+                "avg": 16250
+              },
+              {
+                "key": "01930001-0000-7000-8000-0000000c0002",
+                "total": 30400,
+                "count": 2,
+                "avg": 15200
+              },
+              {
+                "key": "01930001-0000-7000-8000-0000000c0003",
+                "total": 25800,
+                "count": 3,
+                "avg": 8600
+              }
+            ]
+          }
+        ],
+        "note": "One request instead of one per month: each month's splits add up to its own total."
       }
     ],
     "budgets": {

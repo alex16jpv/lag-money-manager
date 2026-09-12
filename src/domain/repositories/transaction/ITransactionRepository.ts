@@ -1,4 +1,9 @@
-import { TransactionSource, TransactionType } from "../../../shared/constants";
+import {
+  SpendingGroupBy,
+  SpendingSplitBy,
+  TransactionSource,
+  TransactionType,
+} from "../../../shared/constants";
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
 import { ChangeCursor } from "../../../shared/syncCursor";
 import { Transaction } from "../../entities/Transaction";
@@ -39,21 +44,27 @@ export interface TransactionFilters {
   includeSummary?: boolean;
 }
 
-export type SpendingGroupBy = "category" | "day" | "tag";
+export type { SpendingGroupBy, SpendingSplitBy };
 
 export interface SpendingQuery {
   from?: Date;
   to?: Date;
   type?: TransactionType;
   groupBy: SpendingGroupBy;
+  splitBy?: SpendingSplitBy;
+  categoryIds?: string[];
   timezone: string;
 }
 
-export interface SpendingBucket {
+export interface SpendingSplit {
   key: string;
   total: number;
   count: number;
   avg: number;
+}
+
+export interface SpendingBucket extends SpendingSplit {
+  splits?: SpendingSplit[];
 }
 
 // Capped, inside the document, so "why doesn't it balance" is answerable. Not exposed via API.

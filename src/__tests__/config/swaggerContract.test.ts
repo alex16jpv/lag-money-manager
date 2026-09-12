@@ -4,6 +4,7 @@ process.env.CORS_ORIGIN ??= "http://localhost";
 process.env.MONGO_URI ??= "mongodb://localhost:27017/unused";
 
 import { swaggerSpec } from "../../config/swagger";
+import { SPENDING_GROUP_BY, SPENDING_SPLIT_BY } from "../../shared/constants";
 import { ERROR_CODES } from "../../shared/errorCodes";
 import { CATEGORY_ICONS } from "../../shared/icons";
 import { SYNC_MAX_OPERATIONS, SYNC_OP_STATUSES } from "../../shared/syncBatch";
@@ -32,6 +33,7 @@ describe("OpenAPI response views", () => {
     "Transaction",
     "Budget",
     "StatsBucket",
+    "StatsSplit",
     "StatsResponse",
     "ErrorResponse",
     "SyncTransaction",
@@ -100,6 +102,30 @@ describe("OpenAPI response views", () => {
       ...tx,
       "deletedAt",
     ]);
+  });
+
+  // The charts branch on these, and the four views of Stats are exactly this enum.
+  it("publishes the spending dimensions as the server's own enums", () => {
+    const stats = view("StatsResponse");
+    expect((stats.properties.groupBy as { enum: string[] }).enum).toEqual(
+      Object.keys(SPENDING_GROUP_BY),
+    );
+    expect((stats.properties.splitBy as { enum: string[] }).enum).toEqual(
+      Object.keys(SPENDING_SPLIT_BY),
+    );
+  });
+
+  // The query parameters are hand-written YAML inside a comment; only this holds them to the enum.
+  it.each([
+    ["groupBy", SPENDING_GROUP_BY],
+    ["splitBy", SPENDING_SPLIT_BY],
+  ])("offers %s as a query parameter with the same values", (name, values) => {
+    const spending = spec.paths["/stats/spending"] as {
+      get: { parameters: { name: string; schema: { enum?: string[] } }[] };
+    };
+    const parameter = spending.get.parameters.find((p) => p.name === name);
+
+    expect(parameter?.schema.enum).toEqual(Object.keys(values));
   });
 
   // O-F5b branches on this answer, so its status and code lists must be the server's, not a copy.

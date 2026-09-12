@@ -78,14 +78,22 @@ export interface Fixture {
     spending: {
       name: string;
       query: {
-        groupBy: "day" | "category" | "tag";
+        groupBy: "day" | "month" | "category" | "account" | "tag";
+        splitBy: "category" | null;
+        categoryIds: string[] | null;
         type: string | null;
         from: string;
         to: string;
         timezone: string;
       };
       total: number;
-      buckets: { key: string; total: number; count: number; avg: number }[];
+      buckets: {
+        key: string;
+        total: number;
+        count: number;
+        avg: number;
+        splits?: { key: string; total: number; count: number; avg: number }[];
+      }[];
     }[];
     budgets: {
       reference: string;

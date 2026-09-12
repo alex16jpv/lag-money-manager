@@ -46,6 +46,15 @@ jest.mock("../../shared/constants", () => ({
     ADJUSTMENT: "ADJUSTMENT",
   },
   BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
+  SPENDING_GROUP_BY: {
+    category: "category",
+    day: "day",
+    month: "month",
+    account: "account",
+    tag: "tag",
+  },
+  SPENDING_SPLIT_BY: { category: "category" },
+  MAX_BUDGET_CATEGORIES: 20,
   BUDGET_PERIOD_TYPES: {
     WEEKLY: "WEEKLY",
     BIWEEKLY: "BIWEEKLY",
@@ -79,6 +88,7 @@ import {
   paginationQuerySchema,
   quickAddTransactionSchema,
   registerSchema,
+  spendingStatsSchema,
   syncBatchSchema,
   updateAccountSchema,
   updateCategorySchema,
@@ -1093,6 +1103,90 @@ describe("Validation Schemas", () => {
         query: { limit: "101" },
       });
       expect(result.success).toBe(false);
+    });
+  });
+
+  // Four views of Stats need a dimension or a filter this endpoint did not have.
+  describe("spendingStatsSchema", () => {
+    it.each(["category", "day", "month", "account", "tag"])(
+      "groups by %s",
+      (groupBy) => {
+        expect(
+          spendingStatsSchema.safeParse({ query: { groupBy } }).success,
+        ).toBe(true);
+      },
+    );
+
+    it("rejects a dimension it cannot group by", () => {
+      expect(
+        spendingStatsSchema.safeParse({ query: { groupBy: "description" } })
+          .success,
+      ).toBe(false);
+    });
+
+    const WINDOW = { from: "2026-08-01T00:00:00Z", to: "2026-09-01T00:00:00Z" };
+
+    it.each(["month", "account"])(
+      "splits %s buckets by category",
+      (groupBy) => {
+        expect(
+          spendingStatsSchema.safeParse({
+            query: { ...WINDOW, groupBy, splitBy: "category" },
+          }).success,
+        ).toBe(true);
+      },
+    );
+
+    // Buckets times categories over a whole history is not a response this endpoint builds.
+    it.each([
+      ["no window at all", {}],
+      ["only a start", { from: WINDOW.from }],
+      ["only an end", { to: WINDOW.to }],
+    ])("refuses a split with %s", (_label, window) => {
+      expect(
+        spendingStatsSchema.safeParse({
+          query: { ...window, groupBy: "month", splitBy: "category" },
+        }).success,
+      ).toBe(false);
+    });
+
+    it.each([
+      ["it would repeat the grouping", { groupBy: "category" }],
+      ["the grouping defaults to category", {}],
+      ["the tag unwind would multiply it", { groupBy: "tag" }],
+      ["a day grouping grows with the window", { groupBy: "day" }],
+    ])("refuses a split when %s", (_label, query) => {
+      expect(
+        spendingStatsSchema.safeParse({
+          query: { ...WINDOW, ...query, splitBy: "category" },
+        }).success,
+      ).toBe(false);
+    });
+
+    it("takes the categories of a budget as one list", () => {
+      const result = spendingStatsSchema.safeParse({
+        query: { groupBy: "day", categoryIds: `${validUUID},${validUUID2}` },
+      });
+
+      expect(result.success).toBe(true);
+      expect(
+        (result.data as { query: { categoryIds: string[] } }).query.categoryIds,
+      ).toEqual([validUUID, validUUID2]);
+    });
+
+    it.each([
+      ["an id that is not one", { categoryIds: "food" }],
+      ["an empty list", { categoryIds: "" }],
+      [
+        "more than a budget can hold",
+        { categoryIds: Array.from({ length: 21 }, () => validUUID).join(",") },
+      ],
+      [
+        "a range that runs backwards",
+        { from: "2026-09-01T00:00:00Z", to: "2026-08-01T00:00:00Z" },
+      ],
+    ])("rejects %s", (_label, query) => {
+      expect(spendingStatsSchema.safeParse({ query }).success).toBe(false);
     });
   });
 

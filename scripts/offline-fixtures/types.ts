@@ -2,6 +2,16 @@
  * Shapes of `fixtures/offline/*.json` — the parity contract between
  * the backend's aggregations and the frontend's local derivations (O-B6/O-F3).
  *
+ * The enums below repeat the API's on purpose. This whole directory is a second
+ * reading of the rules and imports nothing from `src/`: a fixture that shared
+ * the app's constants would agree with it by construction, which is the one
+ * thing it must not do.
+ *
+ * The enums below repeat the API's on purpose. This whole directory is a second
+ * reading of the rules and imports nothing from `src/`: a fixture that shared
+ * the app's constants would agree with it by construction, which is the one
+ * thing it must not do.
+ *
  * Two layers live here. The `Scenario*` types are how a scenario is authored
  * (by key, so a human can read it); the `Fixture*` types are what is written
  * out (by id, in the shape the mirror holds, so the frontend can feed the file
@@ -10,7 +20,8 @@
 
 export type TransactionType = "EXPENSE" | "INCOME" | "TRANSFER" | "ADJUSTMENT";
 export type MoneyType = "EXPENSE" | "INCOME";
-export type GroupBy = "day" | "category" | "tag";
+export type GroupBy = "day" | "month" | "category" | "account" | "tag";
+export type SplitBy = "category";
 export type PeriodType =
   "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "CUSTOM";
 
@@ -71,6 +82,10 @@ export interface ScenarioBudget {
 export interface ScenarioSpendingQuery {
   name: string;
   groupBy: GroupBy;
+  /** A second dimension inside each bucket. Only with day, month or account. */
+  splitBy?: SplitBy;
+  /** Category keys; written out as ids. What a budget of several categories sends. */
+  categories?: string[];
   /** Omitted on purpose in some queries: the server then means "all but ADJUSTMENT". */
   type?: TransactionType;
   from: string;
@@ -153,17 +168,24 @@ export interface FixtureBudget {
   note?: string;
 }
 
-export interface ExpectedBucket {
+export interface ExpectedSplit {
   key: string;
   total: number;
   count: number;
   avg: number;
 }
 
+export interface ExpectedBucket extends ExpectedSplit {
+  /** Only when the query asked for a split. The splits add up to the bucket. */
+  splits?: ExpectedSplit[];
+}
+
 export interface ExpectedSpending {
   name: string;
   query: {
     groupBy: GroupBy;
+    splitBy: SplitBy | null;
+    categoryIds: string[] | null;
     type: TransactionType | null;
     from: string;
     to: string;

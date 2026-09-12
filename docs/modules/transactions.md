@@ -451,9 +451,16 @@ count visit every live transaction of the user. Measured over 50k transactions:
 
 Hence `{userId, deletedAt, source, date}` and a **partial** index over the pending
 rows only (about 2 % of the primary index's size, since the inbox is a handful of
-documents). `type` deliberately has none: an index cannot spare a visit to rows it
-does not exclude. Apply the same test before indexing a new filter — how much does
-it exclude, and does anything count on it?
+documents). ~~`type` deliberately has none: an index cannot spare a visit to rows
+it does not exclude.~~ **Reversed by T-24**, and for a reason the sentence above
+does not cover: `{userId, deletedAt, type, dayKey}` is not there to make `type`
+exclude rows, it is there so that the **day window behind it** can be walked in
+the index instead of after a fetch. The stats aggregation always matches
+`userId + deletedAt + type` and then a range on `dayKey`; measured over 60 000
+rows of one user, half of them expenses, a year grouped by month goes from 49 ms
+to 13 ms. The rule for a *filter* stands; an index whose last key is the range a
+grouping walks is a different question. Apply the same test before indexing a new
+filter — how much does it exclude, and does anything count on it?
 
 #### The day window costs the month, not the history
 
