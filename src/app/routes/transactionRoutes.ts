@@ -20,9 +20,16 @@ const router = Router();
  *     tags: [Transactions]
  *     summary: Get all transactions
  *     description: |
- *       Paginated listing sorted by date descending. For infinite scroll use
- *       cursor pagination (`cursor` = `pagination.nextCursor` of the previous
- *       page); it stays consistent when transactions are backdated.
+ *       Paginated listing, newest first unless `sort` says otherwise. For
+ *       infinite scroll use cursor pagination (`cursor` =
+ *       `pagination.nextCursor` of the previous page); it stays consistent
+ *       when transactions are backdated.
+ *
+ *       The cursor is a keyset over `(sort, _id)`, so it belongs to the order
+ *       it was minted under: keep `sort` and `order` on every page of the
+ *       same scroll. "The five biggest of the period" is
+ *       `?sort=amount&from=&to=&limit=5`, never every page read and sorted in
+ *       the client.
  *     parameters:
  *       - in: query
  *         name: limit
@@ -63,9 +70,25 @@ const router = Router();
  *           format: uuid
  *         description: Filter transactions by category ID
  *       - in: query
+ *         name: categoryIds
+ *         schema:
+ *           type: string
+ *         description: >
+ *           Comma-separated category ids (at most 20), for a budget that
+ *           covers several. Cannot be combined with categoryId or with
+ *           uncategorized=true.
+ *       - in: query
+ *         name: sort
+ *         schema: { type: string, enum: [date, amount], default: date }
+ *         description: Field the page is ordered by.
+ *       - in: query
+ *         name: order
+ *         schema: { type: string, enum: [asc, desc], default: desc }
+ *         description: Direction of `sort`. Ties are broken by id, in the same direction.
+ *       - in: query
  *         name: uncategorized
  *         schema: { type: string, enum: ["true", "false"] }
- *         description: Only transactions without a category. Cannot be combined with categoryId.
+ *         description: Only transactions without a category. Cannot be combined with categoryId or categoryIds.
  *       - in: query
  *         name: pendingDetails
  *         schema: { type: string, enum: ["true", "false"] }
@@ -108,7 +131,7 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/TransactionList'
  *       400:
- *         description: Invalid query. Codes include INVALID_CURSOR (unknown or foreign cursor id); combining uncategorized=true with categoryId is rejected.
+ *         description: Invalid query. Codes include INVALID_CURSOR (unknown or foreign cursor id); combining uncategorized=true with categoryId or categoryIds, or categoryId with categoryIds, is rejected.
  *         content:
  *           application/json:
  *             schema:

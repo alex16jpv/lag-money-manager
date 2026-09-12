@@ -1,5 +1,14 @@
-import { TransactionSource, TransactionType } from "../../../shared/constants";
-import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
+import {
+  SpendingGroupBy,
+  SpendingSplitBy,
+  TransactionSource,
+  TransactionType,
+} from "../../../shared/constants";
+import {
+  PaginatedResult,
+  PaginationParams,
+  TransactionPagination,
+} from "../../../shared/pagination";
 import { ChangeCursor } from "../../../shared/syncCursor";
 import { Transaction } from "../../entities/Transaction";
 import { IRepository } from "../IRepository";
@@ -26,6 +35,7 @@ export interface TransactionFilters {
   ids?: string[];
   accountId?: string;
   categoryId?: string;
+  categoryIds?: string[];
   type?: TransactionType;
   pendingDetails?: boolean;
   source?: TransactionSource;
@@ -39,21 +49,27 @@ export interface TransactionFilters {
   includeSummary?: boolean;
 }
 
-export type SpendingGroupBy = "category" | "day" | "tag";
+export type { SpendingGroupBy, SpendingSplitBy };
 
 export interface SpendingQuery {
   from?: Date;
   to?: Date;
   type?: TransactionType;
   groupBy: SpendingGroupBy;
+  splitBy?: SpendingSplitBy;
+  categoryIds?: string[];
   timezone: string;
 }
 
-export interface SpendingBucket {
+export interface SpendingSplit {
   key: string;
   total: number;
   count: number;
   avg: number;
+}
+
+export interface SpendingBucket extends SpendingSplit {
+  splits?: SpendingSplit[];
 }
 
 // Capped, inside the document, so "why doesn't it balance" is answerable. Not exposed via API.
@@ -102,7 +118,7 @@ export interface ITransactionRepository extends IRepository<Transaction> {
 
   getAllByUserId(
     userId: string,
-    pagination: PaginationParams,
+    pagination: PaginationParams | TransactionPagination,
     filters?: TransactionFilters,
   ): Promise<TransactionPage>;
 

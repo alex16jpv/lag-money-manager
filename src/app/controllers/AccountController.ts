@@ -4,6 +4,7 @@ import { AccountFilters } from "../../domain/repositories/account/IAccountReposi
 import { extractPagination } from "../../shared/pagination";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { AccountService } from "../services/AccountService";
+import { splitIdList } from "../validation/schemas";
 import { ifMatch } from "./ifMatch";
 
 const accountService = new AccountService(
@@ -16,7 +17,7 @@ export class AccountController {
     const userId = req.user!.userId;
     const filters: AccountFilters = {};
     if (req.query.ids) {
-      filters.ids = (req.query.ids as string).split(",").map((s) => s.trim());
+      filters.ids = splitIdList(req.query.ids as string);
     }
     if (req.query.includeArchived === "true") {
       filters.includeArchived = true;

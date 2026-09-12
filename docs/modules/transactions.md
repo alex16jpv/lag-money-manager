@@ -68,7 +68,11 @@ and out of the budget period that already counted it.
 
 Get all transactions for the authenticated user (paginated, offset + cursor support).
 
-Results are sorted by `date` descending. For infinite scroll use cursor pagination (`cursor` = the previous page's `pagination.nextCursor`); it stays consistent when transactions are backdated, because the cursor is a keyset over `(date, _id)` rather than an offset.
+Results are sorted by `date` descending unless `sort` says otherwise. For infinite scroll use cursor pagination (`cursor` = the previous page's `pagination.nextCursor`); it stays consistent when transactions are backdated, because the cursor is a keyset over `(sort, _id)` rather than an offset.
+
+Because the cursor is a keyset over the order in force, it belongs to that order: **keep `sort` and `order` on every page of the same scroll**. Changing them mid-scroll is not rejected and cannot be — `nextCursor` is the last row's id and carries no order with it — so the page then continues the new order from that row, which is rarely what the caller meant. The two travel together in the type the listing takes, which is why they are one parameter set and not two. No other list endpoint orders by anything, so none of them reads `sort` — they ignore it the way every endpoint ignores a query parameter it does not declare.
+
+One more thing the cursor cannot see: it names a row and reads that row's field again on the next page. Under `sort=date` that field never moves; under `sort=amount` it is one the user edits. If the cursor row's amount changes between two pages, the page after it starts from the new amount, so a row can be skipped or repeated. It is the same shape of problem as changing `sort` mid-scroll, and it has the same answer: a cursor that carries what it was minted under.
 
 ### Completing the review inbox in one request
 
@@ -119,13 +123,18 @@ fetching the rows: `GET /transactions?<filters>&limit=1` and read `pagination.to
 | `ids`            | string | No       | Comma-separated list of UUIDs (1–100)                                         |
 | `accountId`      | string | No       | Filter by account ID (matches `fromAccountId` or `toAccountId`)               |
 | `categoryId`     | string | No       | Filter by category ID                                                          |
-| `uncategorized`  | enum   | No       | `"true"` returns only transactions without a category. Rejected with `categoryId`. |
+| `categoryIds`    | string | No       | Comma-separated category ids (at most 20), for a budget covering several. Rejected with `categoryId`, or with `uncategorized=true`. |
+| `uncategorized`  | enum   | No       | `"true"` returns only transactions without a category. Rejected with `categoryId` or `categoryIds`. |
+| `sort`           | enum   | No       | `date` (default) or `amount`                                                   |
+| `order`          | enum   | No       | `desc` (default) or `asc`. Ties are broken by id, in the same direction         |
 | `pendingDetails` | enum   | No       | Filter by the `pendingDetails` flag (`"true"` = quick-adds awaiting detailing) |
 | `source`         | enum   | No       | `MANUAL`, `QUICK` or `IMPORT` — only transactions created through that channel |
 | `from`           | string | No       | Start of the date range, inclusive (half-open `[from, to)`)                   |
 | `to`             | string | No       | End of the date range, exclusive                                              |
 | `tag`            | string | No       | Only transactions carrying this tag (tags are stored trimmed and lowercased)  |
 | `type`           | string | No       | `INCOME`, `EXPENSE`, `TRANSFER`, or `ADJUSTMENT`                              |
+
+"The five biggest movements of the period" is `?sort=amount&from=&to=&limit=5`: one request. Reading every page of a period and sorting them in the client is what house rule 24 forbids, and what this parameter exists to avoid.
 
 Filters can be combined. An unknown or foreign `cursor` is rejected with `400 INVALID_CURSOR` rather than silently serving page 1 — that silent fallback used to make infinite scroll duplicate items; every list endpoint answers the same way. `hasMore` is read from one row past the page, so a last page that is exactly `limit` long says `hasMore: false`.
 
@@ -305,6 +314,7 @@ None specific to this module.
 | `CATEGORY_TYPE_MISMATCH`           | 400    | Category type differs from the transaction type                     |
 | `NO_DEFAULT_ACCOUNT`               | 400    | Quick-add with no account id and no default account set             |
 | `INVALID_CURSOR`                   | 400    | Unknown or foreign pagination cursor                                |
+| `VALIDATION`                       | 400    | `sort` or `order` outside its enum, or `categoryIds` combined with `categoryId`/`uncategorized` |
 | `IDEMPOTENCY_KEY_INVALID`          | 400    | Malformed `Idempotency-Key` header                                  |
 | `BadRequest`                       | 400    | Transaction ID mismatch (body vs URL param)                         |
 | `Unauthorized`                     | 401    | Missing, invalid or expired access token                            |
@@ -451,9 +461,36 @@ count visit every live transaction of the user. Measured over 50k transactions:
 
 Hence `{userId, deletedAt, source, date}` and a **partial** index over the pending
 rows only (about 2 % of the primary index's size, since the inbox is a handful of
-documents). `type` deliberately has none: an index cannot spare a visit to rows it
-does not exclude. Apply the same test before indexing a new filter — how much does
-it exclude, and does anything count on it?
+documents). ~~`type` deliberately has none: an index cannot spare a visit to rows
+it does not exclude.~~ **Reversed by T-24**, and for a reason the sentence above
+does not cover: `{userId, deletedAt, type, dayKey}` is not there to make `type`
+exclude rows, it is there so that the **day window behind it** can be walked in
+the index instead of after a fetch. The stats aggregation always matches
+`userId + deletedAt + type` and then a range on `dayKey`; measured over 60 000
+rows of one user, a year grouped by month goes from 49 ms to 13 ms. The rule for a
+*filter* stands; an index whose last key is the range a grouping walks is a
+different question. Apply the same test before indexing a new filter — how much
+does it exclude, and does anything count on it?
+
+#### Ordering by amount has its own keyset
+
+Every index above ends in `date: -1`, so until T-25 there was none that could both
+bound and order a page by `amount`: the whole matching set was read and sorted in
+memory. `{userId, deletedAt, amount, _id}` is that keyset. Measured over 60 000
+rows of one user:
+
+| Query | Without it | With it |
+| --- | --- | --- |
+| Whole history, five biggest | 73 ms, SORT over every live row | 0.7 ms, 6 keys, no SORT stage |
+| One month + `type`, five biggest | 3.3 ms | 1.1 ms, **and not from this index** |
+
+The second row is the honest one: with a narrow window the planner prefers the
+`dayKey` union above and a bounded in-memory SORT, and never touches the amount
+index — the improvement there came from `{userId, deletedAt, type, dayKey}`, not
+from this one. Forcing the amount index on that shape is worse (4 720 keys against
+672). So it earns its place for the unbounded order and not for the windowed one,
+and a windowed page ordered by amount pays the same in-memory SORT a windowed page
+ordered by date already pays.
 
 #### The day window costs the month, not the history
 

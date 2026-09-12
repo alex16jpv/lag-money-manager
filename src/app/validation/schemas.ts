@@ -6,6 +6,11 @@ import {
   BUDGET_TYPES,
   CATEGORY_TYPES,
   COLORS,
+  MAX_BUDGET_CATEGORIES,
+  SPENDING_GROUP_BY,
+  SPENDING_SPLIT_BY,
+  SpendingGroupBy,
+  SpendingSplitBy,
   TRANSACTION_SOURCES,
   TRANSACTION_TYPES,
   TransactionSource,
@@ -13,7 +18,13 @@ import {
 import { CATEGORY_ICONS } from "../../shared/icons";
 import { Locale, LOCALES } from "../../shared/locale";
 import { MAX_AMOUNT } from "../../shared/money";
-import { MAX_LIMIT } from "../../shared/pagination";
+import {
+  MAX_LIMIT,
+  SORT_FIELDS,
+  SORT_ORDERS,
+  SortField,
+  SortOrder,
+} from "../../shared/pagination";
 import {
   describeSyncActions,
   SYNC_ENTITIES,
@@ -58,6 +69,36 @@ const budgetPeriodValues = Object.keys(BUDGET_PERIOD_TYPES) as [
   ...string[],
 ];
 const budgetTypeValues = Object.keys(BUDGET_TYPES) as [string, ...string[]];
+const spendingGroupByValues = Object.keys(SPENDING_GROUP_BY) as [
+  SpendingGroupBy,
+  ...SpendingGroupBy[],
+];
+const spendingSplitByValues = Object.keys(SPENDING_SPLIT_BY) as [
+  SpendingSplitBy,
+  ...SpendingSplitBy[],
+];
+// Bounded groupings only: a month window has months in it, and a user has a handful of accounts.
+const SPLITTABLE_GROUPINGS: SpendingGroupBy[] = ["month", "account"];
+const sortFieldValues = Object.keys(SORT_FIELDS) as [SortField, ...SortField[]];
+const sortOrderValues = Object.keys(SORT_ORDERS) as [SortOrder, ...SortOrder[]];
+
+// One place splits a comma-separated id list, so no controller can disagree with what was validated.
+export const splitIdList = (value: string): string[] =>
+  value.split(",").map((id) => id.trim());
+
+const categoryIdList = z
+  .string()
+  .min(1, "categoryIds cannot be empty")
+  .transform(splitIdList)
+  .pipe(
+    z
+      .array(z.string().uuid("Each categoryId must be a valid UUID"))
+      .max(
+        MAX_BUDGET_CATEGORIES,
+        `categoryIds must name at most ${MAX_BUDGET_CATEGORIES} categories`,
+      ),
+  )
+  .optional();
 const isoDate = z
   .string()
   .datetime({ offset: true, message: "Must be a valid ISO 8601 date" })
@@ -122,7 +163,7 @@ export const paginationQuerySchema = z.object({
     cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
     ids: z
       .string()
-      .transform((val) => val.split(",").map((s) => s.trim()))
+      .transform(splitIdList)
       .pipe(
         z
           .array(z.string().uuid("Each ID must be a valid UUID"))
@@ -151,7 +192,7 @@ export const getTransactionsSchema = z.object({
       cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
       ids: z
         .string()
-        .transform((val) => val.split(",").map((s) => s.trim()))
+        .transform(splitIdList)
         .pipe(
           z
             .array(z.string().uuid("Each ID must be a valid UUID"))
@@ -161,6 +202,9 @@ export const getTransactionsSchema = z.object({
         .optional(),
       accountId: z.string().uuid("accountId must be a valid UUID").optional(),
       categoryId: z.string().uuid("categoryId must be a valid UUID").optional(),
+      categoryIds: categoryIdList,
+      sort: z.enum(sortFieldValues).optional(),
+      order: z.enum(sortOrderValues).optional(),
       type: z
         .enum(transactionTypeValues, {
           error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
@@ -193,6 +237,21 @@ export const getTransactionsSchema = z.object({
         message: "uncategorized=true cannot be combined with categoryId",
         path: ["uncategorized"],
       },
+    )
+    .refine(
+      (q) => !(q.uncategorized === "true" && q.categoryIds !== undefined),
+      {
+        message: "uncategorized=true cannot be combined with categoryIds",
+        path: ["uncategorized"],
+      },
+    )
+    .refine(
+      (q) => !(q.categoryId !== undefined && q.categoryIds !== undefined),
+      {
+        message:
+          "categoryId and categoryIds cannot be combined; use one of them",
+        path: ["categoryIds"],
+      },
     ),
 });
 
@@ -212,7 +271,7 @@ export const getCategoriesSchema = z.object({
     cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
     ids: z
       .string()
-      .transform((val) => val.split(",").map((s) => s.trim()))
+      .transform(splitIdList)
       .pipe(
         z
           .array(z.string().uuid("Each ID must be a valid UUID"))
@@ -353,7 +412,9 @@ export const updateCategorySchema = z.object({
 export const spendingStatsSchema = z.object({
   query: z
     .object({
-      groupBy: z.enum(["category", "day", "tag"]).optional(),
+      groupBy: z.enum(spendingGroupByValues).optional(),
+      splitBy: z.enum(spendingSplitByValues).optional(),
+      categoryIds: categoryIdList,
       type: z.enum(transactionTypeValues).optional(),
       from: z
         .string()
@@ -370,6 +431,20 @@ export const spendingStatsSchema = z.object({
     .refine((q) => !q.from || !q.to || new Date(q.from) <= new Date(q.to), {
       message: "from must be before or equal to to",
       path: ["from"],
+    })
+    .refine(
+      (q) =>
+        q.splitBy === undefined ||
+        SPLITTABLE_GROUPINGS.includes(q.groupBy as SpendingGroupBy),
+      {
+        message: `splitBy=category needs groupBy=${SPLITTABLE_GROUPINGS.join(" or ")}: every other grouping either is that dimension already, unwinds each row, or grows a split per row with the window`,
+        path: ["splitBy"],
+      },
+    )
+    .refine((q) => q.splitBy === undefined || (q.from && q.to), {
+      message:
+        "splitBy=category needs from and to: without a window it is every bucket of the history times every category",
+      path: ["splitBy"],
     }),
 });
 
@@ -410,7 +485,7 @@ export const createBudgetSchema = z.object({
     // Empty array = global budget: counts ALL expenses of the user.
     categoryIds: z
       .array(z.string().uuid("Each categoryId must be a valid UUID"))
-      .max(20),
+      .max(MAX_BUDGET_CATEGORIES),
     type: z.enum(budgetTypeValues).optional(),
     amount: moneyAmount,
     periodType: z.enum(budgetPeriodValues, {
@@ -432,7 +507,7 @@ export const updateBudgetSchema = z.object({
       color: z.enum(colorValues).optional(),
       categoryIds: z
         .array(z.string().uuid("Each categoryId must be a valid UUID"))
-        .max(20)
+        .max(MAX_BUDGET_CATEGORIES)
         .optional(),
       type: z.enum(budgetTypeValues).optional(),
       amount: moneyAmount.optional(),

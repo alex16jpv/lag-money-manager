@@ -5,8 +5,10 @@ import { Transaction } from "../../../domain/entities/Transaction";
 import {
   ChangedTransaction,
   ITransactionRepository,
+  SpendingGroupBy,
   SpendingQuery,
   SpendingResult,
+  SpendingSplit,
   TransactionFilters,
   TransactionPage,
   TransactionRevision,
@@ -19,6 +21,9 @@ import {
   pageQueryLimit,
   PaginatedResult,
   PaginationParams,
+  SORT_FIELDS,
+  SortField,
+  TransactionPagination,
 } from "../../../shared/pagination";
 import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
@@ -28,6 +33,27 @@ import {
 } from "../../models/TransactionModel";
 import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
 import { invalidCursor } from "../keysetCursor";
+
+/**
+ * Where the keyset reads its pivot. Exhaustive on purpose: a field added to
+ * `SORT_FIELDS` and not here does not compile, instead of silently comparing
+ * every row against a date.
+ */
+const pivotOf = (
+  field: SortField,
+  doc: Pick<ITransactionDocument, "date" | "amount">,
+): Date | number => {
+  switch (field) {
+    case "date":
+      return doc.date;
+    case "amount":
+      return doc.amount;
+    default: {
+      const unreached: never = field;
+      throw new Error(`No keyset pivot for sort field ${String(unreached)}`);
+    }
+  }
+};
 
 export class TransactionRepository implements ITransactionRepository {
   private toEntity(doc: ITransactionDocument): Transaction {
@@ -88,27 +114,32 @@ export class TransactionRepository implements ITransactionRepository {
 
   private async paginatedFind(
     baseFilter: Record<string, unknown>,
-    pagination: PaginationParams,
+    pagination: PaginationParams | TransactionPagination,
     withSummary = false,
   ): Promise<TransactionPage> {
     const { limit, offset, cursor } = pagination;
+    const sortField = "sort" in pagination ? pagination.sort : "date";
+    const direction =
+      "order" in pagination && pagination.order === "asc" ? 1 : -1;
+    const beyond = direction === 1 ? "$gt" : "$lt";
     let filter: Record<string, unknown> = baseFilter;
     if (cursor) {
-      // Backdating means the id alone cannot order, and the pivot is scoped to the owner (id oracle).
+      // Backdating means the id alone cannot order; in getAllByUserId the pivot is the owner's (id oracle).
       const cursorDoc = await TransactionModel.findOne({
         _id: cursor,
         ...(baseFilter.userId ? { userId: baseFilter.userId } : {}),
       })
-        .select("date")
+        .select(Object.keys(SORT_FIELDS).join(" "))
         .lean();
       if (!cursorDoc) throw invalidCursor();
+      const pivot = pivotOf(sortField, cursorDoc);
       filter = {
         $and: [
           baseFilter,
           {
             $or: [
-              { date: { $lt: cursorDoc.date } },
-              { date: cursorDoc.date, _id: { $lt: cursor } },
+              { [sortField]: { [beyond]: pivot } },
+              { [sortField]: pivot, _id: { [beyond]: cursor } },
             ],
           },
         ],
@@ -117,7 +148,7 @@ export class TransactionRepository implements ITransactionRepository {
 
     const [docs, total, summary] = await Promise.all([
       TransactionModel.find(filter)
-        .sort({ date: -1, _id: -1 })
+        .sort({ [sortField]: direction, _id: direction })
         .skip(cursor ? 0 : offset)
         .limit(pageQueryLimit(limit))
         .lean(),
@@ -207,6 +238,10 @@ export class TransactionRepository implements ITransactionRepository {
     }
     if (filters?.categoryId) {
       filter.categoryId = filters.categoryId;
+    }
+    // Three filters over one field, and the route refuses every pair: last wins, on purpose.
+    if (filters?.categoryIds?.length) {
+      filter.categoryId = { $in: filters.categoryIds };
     }
     if (filters?.uncategorized) {
       filter.categoryId = null;
@@ -318,6 +353,46 @@ export class TransactionRepository implements ITransactionRepository {
     return (tags as string[]).sort();
   }
 
+  private spendingKey(
+    groupBy: SpendingGroupBy,
+    timezone: string,
+  ): Record<string, unknown> {
+    const day = {
+      $ifNull: [
+        "$dayKey",
+        { $dateToString: { format: "%Y-%m-%d", date: "$date", timezone } },
+      ],
+    };
+    switch (groupBy) {
+      case "day":
+        return day;
+      case "month":
+        return { $substrBytes: [day, 0, 7] };
+      case "account":
+        // An increase-only ADJUSTMENT has no `fromAccountId`, so the other side is the account.
+        return {
+          $ifNull: [
+            {
+              $cond: [
+                { $eq: ["$type", "INCOME"] },
+                "$toAccountId",
+                "$fromAccountId",
+              ],
+            },
+            { $ifNull: ["$toAccountId", "unassigned"] },
+          ],
+        };
+      case "tag":
+        return { $ifNull: ["$tags", "untagged"] };
+      case "category":
+        return { $ifNull: ["$categoryId", "uncategorized"] };
+      default: {
+        const unreached: never = groupBy;
+        throw new Error(`No spending key for ${String(unreached)}`);
+      }
+    }
+  }
+
   async aggregateSpending(
     userId: string,
     query: SpendingQuery,
@@ -325,27 +400,19 @@ export class TransactionRepository implements ITransactionRepository {
     const match: Record<string, unknown> = { userId, deletedAt: null };
     // ADJUSTMENT is reconciliation, not real cash flow: hidden unless asked for.
     match.type = query.type ?? { $ne: "ADJUSTMENT" };
+    if (query.categoryIds?.length) {
+      match.categoryId = { $in: query.categoryIds };
+    }
     if (query.from || query.to) {
       match.$or = this.dayWindow(query.from, query.to, query.timezone);
     }
 
-    const groupId =
-      query.groupBy === "day"
-        ? {
-            $ifNull: [
-              "$dayKey",
-              {
-                $dateToString: {
-                  format: "%Y-%m-%d",
-                  date: "$date",
-                  timezone: query.timezone,
-                },
-              },
-            ],
-          }
-        : query.groupBy === "tag"
-          ? { $ifNull: ["$tags", "untagged"] }
-          : { $ifNull: ["$categoryId", "uncategorized"] };
+    const groupId = this.spendingKey(query.groupBy, query.timezone);
+    // Day and month buckets are a time series; the rest rank by spend, and the key breaks a tie.
+    const order: PipelineStage.FacetPipelineStage =
+      query.groupBy === "day" || query.groupBy === "month"
+        ? { $sort: { _id: 1 } }
+        : { $sort: { total: -1, _id: 1 } };
 
     const bucketStages: PipelineStage.FacetPipelineStage[] = [];
     if (query.groupBy === "tag") {
@@ -353,43 +420,101 @@ export class TransactionRepository implements ITransactionRepository {
         $unwind: { path: "$tags", preserveNullAndEmptyArrays: true },
       });
     }
-    bucketStages.push(
-      {
-        $group: {
-          _id: groupId,
-          total: { $sum: "$amount" },
-          count: { $sum: 1 },
+    if (query.splitBy) {
+      bucketStages.push(
+        {
+          $group: {
+            _id: {
+              key: groupId,
+              split: { $ifNull: ["$categoryId", "uncategorized"] },
+            },
+            total: { $sum: "$amount" },
+            count: { $sum: 1 },
+          },
         },
-      },
-      // Day buckets are a time series; the rest rank by spend.
-      query.groupBy === "day"
-        ? { $sort: { _id: 1 } }
-        : { $sort: { total: -1 } },
-    );
+        {
+          $group: {
+            _id: "$_id.key",
+            total: { $sum: "$total" },
+            count: { $sum: "$count" },
+            splits: {
+              $push: { key: "$_id.split", total: "$total", count: "$count" },
+            },
+          },
+        },
+        {
+          $set: {
+            splits: {
+              $sortArray: {
+                input: "$splits",
+                sortBy: { total: -1, key: 1 },
+              },
+            },
+          },
+        },
+        order,
+      );
+    } else {
+      bucketStages.push(
+        {
+          $group: {
+            _id: groupId,
+            total: { $sum: "$amount" },
+            count: { $sum: 1 },
+          },
+        },
+        order,
+      );
+    }
 
-    const pipeline: PipelineStage[] = [
-      { $match: match },
-      {
+    const pipeline: PipelineStage[] = [{ $match: match }];
+    if (query.groupBy === "tag") {
+      // Only the tag unwind can put one row in two buckets, so only it needs a second pass.
+      pipeline.push({
         $facet: {
           buckets: bucketStages,
           totals: [{ $group: { _id: null, total: { $sum: "$amount" } } }],
         },
-      },
-    ];
+      });
+    } else {
+      pipeline.push(...(bucketStages as PipelineStage[]));
+    }
 
-    const [result] = await TransactionModel.aggregate<{
-      buckets: { _id: string; total: number; count: number }[];
-      totals: { total: number }[];
-    }>(pipeline);
+    type Row = {
+      _id: string;
+      total: number;
+      count: number;
+      splits?: { key: string; total: number; count: number }[];
+    };
+    const result = await TransactionModel.aggregate<
+      Row | { buckets: Row[]; totals: { total: number }[] }
+    >(pipeline);
+
+    const faceted = query.groupBy === "tag";
+    const rows = faceted
+      ? ((result[0] as { buckets: Row[] } | undefined)?.buckets ?? [])
+      : (result as Row[]);
+
+    const asBucket = (r: {
+      key: string;
+      total: number;
+      count: number;
+    }): SpendingSplit => ({
+      key: r.key,
+      total: fromCents(r.total),
+      count: r.count,
+      avg: fromCents(Math.round(r.total / r.count)),
+    });
 
     return {
-      buckets: (result?.buckets ?? []).map((r) => ({
-        key: String(r._id),
-        total: fromCents(r.total),
-        count: r.count,
-        avg: fromCents(Math.round(r.total / r.count)),
+      buckets: rows.map((r) => ({
+        ...asBucket({ key: String(r._id), total: r.total, count: r.count }),
+        ...(r.splits ? { splits: r.splits.map(asBucket) } : {}),
       })),
-      totalCents: result?.totals[0]?.total ?? 0,
+      totalCents: faceted
+        ? ((result[0] as { totals: { total: number }[] } | undefined)?.totals[0]
+            ?.total ?? 0)
+        : rows.reduce((acc, r) => acc + r.total, 0),
     };
   }
 

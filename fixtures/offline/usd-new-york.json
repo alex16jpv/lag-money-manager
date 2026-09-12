@@ -6,7 +6,8 @@
     "November opens at −04:00 and closes at −05:00: the month is 721 hours long, not 720.",
     "`avg` rounds half up in minor units: 10.01 over 2 rows is 5.01, not 5.00.",
     "A budget's `type` filters the rows: an INCOME budget ignores every expense in its own window.",
-    "A query for `type: INCOME` groups income by category the same way expenses are grouped."
+    "A query for `type: INCOME` groups income by category the same way expenses are grouped.",
+    "An INCOME bucket is keyed by the account the money reached, not the one it left."
   ],
   "generatedBy": "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline",
   "user": {
@@ -324,6 +325,8 @@
         "name": "november-by-category",
         "query": {
           "groupBy": "category",
+          "splitBy": null,
+          "categoryIds": null,
           "type": "EXPENSE",
           "from": "2025-11-01T00:00:00-04:00",
           "to": "2025-12-01T00:00:00-05:00",
@@ -356,6 +359,8 @@
         "name": "november-by-day",
         "query": {
           "groupBy": "day",
+          "splitBy": null,
+          "categoryIds": null,
           "type": "EXPENSE",
           "from": "2025-11-01T00:00:00-04:00",
           "to": "2025-12-01T00:00:00-05:00",
@@ -400,6 +405,8 @@
         "name": "november-income-by-category",
         "query": {
           "groupBy": "category",
+          "splitBy": null,
+          "categoryIds": null,
           "type": "INCOME",
           "from": "2025-11-01T00:00:00-04:00",
           "to": "2025-12-01T00:00:00-05:00",
@@ -419,6 +426,89 @@
             "count": 1,
             "avg": 450.5
           }
+        ]
+      },
+      {
+        "name": "november-income-by-account",
+        "query": {
+          "groupBy": "account",
+          "splitBy": null,
+          "categoryIds": null,
+          "type": "INCOME",
+          "from": "2025-11-01T00:00:00-04:00",
+          "to": "2025-12-01T00:00:00-05:00",
+          "timezone": "America/New_York"
+        },
+        "total": 3650.5,
+        "buckets": [
+          {
+            "key": "01930004-0000-7000-8000-0000000a0001",
+            "total": 3650.5,
+            "count": 2,
+            "avg": 1825.25
+          }
+        ],
+        "note": "Income buckets by the account it arrived in: by `fromAccountId` both rows would be unassigned."
+      },
+      {
+        "name": "november-by-month-and-category",
+        "query": {
+          "groupBy": "month",
+          "splitBy": "category",
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2025-11-01T00:00:00-04:00",
+          "to": "2025-12-01T00:00:00-05:00",
+          "timezone": "America/New_York"
+        },
+        "total": 1908.35,
+        "buckets": [
+          {
+            "key": "2025-11",
+            "total": 1908.35,
+            "count": 6,
+            "avg": 318.06,
+            "splits": [
+              {
+                "key": "01930004-0000-7000-8000-0000000c0001",
+                "total": 1850,
+                "count": 1,
+                "avg": 1850
+              },
+              {
+                "key": "01930004-0000-7000-8000-0000000c0002",
+                "total": 50.1,
+                "count": 4,
+                "avg": 12.53
+              },
+              {
+                "key": "uncategorized",
+                "total": 8.25,
+                "count": 1,
+                "avg": 8.25
+              }
+            ]
+          }
+        ],
+        "note": "One month, split: the two 01:30s are both dining and land in the same split."
+      }
+    ],
+    "lists": [
+      {
+        "name": "november-income-biggest",
+        "query": {
+          "sort": "amount",
+          "order": "desc",
+          "categoryIds": null,
+          "type": "INCOME",
+          "from": "2025-11-01T00:00:00-04:00",
+          "to": "2025-12-01T00:00:00-05:00",
+          "timezone": "America/New_York",
+          "limit": 5
+        },
+        "transactionIds": [
+          "01930004-0000-7000-8000-0000000t0005",
+          "01930004-0000-7000-8000-0000000t0006"
         ]
       }
     ],

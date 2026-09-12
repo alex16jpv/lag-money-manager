@@ -170,6 +170,15 @@ jest.mock("../../shared/constants", () => ({
     ADJUSTMENT: "ADJUSTMENT",
   },
   BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
+  SPENDING_GROUP_BY: {
+    category: "category",
+    day: "day",
+    month: "month",
+    account: "account",
+    tag: "tag",
+  },
+  SPENDING_SPLIT_BY: { category: "category" },
+  MAX_BUDGET_CATEGORIES: 20,
   BUDGET_PERIOD_TYPES: {
     WEEKLY: "WEEKLY",
     BIWEEKLY: "BIWEEKLY",

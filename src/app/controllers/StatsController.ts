@@ -3,10 +3,12 @@ import { Request, Response } from "express";
 import {
   SpendingGroupBy,
   SpendingQuery,
+  SpendingSplitBy,
 } from "../../domain/repositories/transaction/ITransactionRepository";
 import { TransactionType } from "../../shared/constants";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { StatsService } from "../services/StatsService";
+import { splitIdList } from "../validation/schemas";
 import { resolveTimezone } from "./timezone";
 
 const statsService = new StatsService(
@@ -22,6 +24,12 @@ export class StatsController {
       type: (req.query.type as TransactionType) ?? "EXPENSE",
       timezone,
     };
+    if (req.query.splitBy) {
+      query.splitBy = req.query.splitBy as SpendingSplitBy;
+    }
+    if (req.query.categoryIds) {
+      query.categoryIds = splitIdList(req.query.categoryIds as string);
+    }
     if (req.query.from) query.from = new Date(req.query.from as string);
     if (req.query.to) query.to = new Date(req.query.to as string);
 

@@ -17,12 +17,16 @@ import { DateTime } from "luxon";
 
 import {
   ExpectedBucket,
+  ExpectedSplit,
   FixtureAccount,
   FixtureBudget,
   FixtureCategory,
   FixtureTransaction,
   GroupBy,
   PeriodType,
+  SortField,
+  SortOrder,
+  SplitBy,
   TransactionType,
 } from "./types";
 
@@ -99,11 +103,53 @@ export function derivePending(transactions: FixtureTransaction[]): {
 
 interface SpendingWindow {
   groupBy: GroupBy;
+  splitBy: SplitBy | null;
+  /** null means "every category", which is what the API does without the filter. */
+  categoryIds: string[] | null;
   /** null means "everything but ADJUSTMENT", which is what the API defaults to. */
   type: TransactionType | null;
   from: string;
   to: string;
   timezone: string;
+}
+
+/** Binary, like Mongo's default collation. `localeCompare` disagrees with it outside ASCII. */
+const byKey = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+const categoryKey = (t: FixtureTransaction): string =>
+  t.categoryId ?? "uncategorized";
+
+/** The account the money left, except for income; an increase-only ADJUSTMENT only has the other side. */
+const accountKey = (t: FixtureTransaction): string =>
+  (t.type === "INCOME" ? t.toAccountId : t.fromAccountId) ??
+  t.toAccountId ??
+  "unassigned";
+
+/** Every key one row lands in. Only tags produce more than one. */
+function bucketKeys(t: FixtureTransaction, groupBy: GroupBy): string[] {
+  switch (groupBy) {
+    case "day":
+      return [t.dayKey];
+    case "month":
+      return [t.dayKey.slice(0, 7)];
+    case "category":
+      return [categoryKey(t)];
+    case "account":
+      return [accountKey(t)];
+    case "tag":
+      // One row per tag: a two-tag transaction counts twice across buckets and once in the total.
+      return t.tags.length === 0 ? ["untagged"] : t.tags;
+    default: {
+      const unreached: never = groupBy;
+      throw new Error(`No bucket key for ${String(unreached)}`);
+    }
+  }
+}
+
+interface Tally {
+  cents: number;
+  count: number;
+  splits: Map<string, { cents: number; count: number }>;
 }
 
 export function deriveSpending(
@@ -117,42 +163,68 @@ export function deriveSpending(
     if (window.type ? t.type !== window.type : t.type === "ADJUSTMENT") {
       return false;
     }
+    if (
+      window.categoryIds?.length &&
+      !window.categoryIds.includes(t.categoryId ?? "")
+    ) {
+      return false;
+    }
     return withinDays(t, bounds);
   });
 
-  const totals = new Map<string, { cents: number; count: number }>();
-  const add = (key: string, cents: number): void => {
-    const bucket = totals.get(key) ?? { cents: 0, count: 0 };
-    bucket.cents += cents;
-    bucket.count += 1;
-    totals.set(key, bucket);
-  };
-
+  const totals = new Map<string, Tally>();
   for (const t of matched) {
     const cents = toCents(t.amount);
-    if (window.groupBy === "day") {
-      add(t.dayKey, cents);
-    } else if (window.groupBy === "category") {
-      add(t.categoryId ?? "uncategorized", cents);
-    } else if (t.tags.length === 0) {
-      add("untagged", cents);
-    } else {
-      // One row per tag: a two-tag transaction counts twice across buckets and once in the total.
-      for (const tag of t.tags) add(tag, cents);
+    for (const key of bucketKeys(t, window.groupBy)) {
+      const bucket = totals.get(key) ?? {
+        cents: 0,
+        count: 0,
+        splits: new Map(),
+      };
+      bucket.cents += cents;
+      bucket.count += 1;
+      if (window.splitBy) {
+        const split = bucket.splits.get(categoryKey(t)) ?? {
+          cents: 0,
+          count: 0,
+        };
+        split.cents += cents;
+        split.count += 1;
+        bucket.splits.set(categoryKey(t), split);
+      }
+      totals.set(key, bucket);
     }
   }
 
-  const buckets = Array.from(totals.entries()).map(([key, b]) => ({
+  // Rounded in minor units, exactly where the API rounds it.
+  const asBucket = (
+    key: string,
+    b: { cents: number; count: number },
+  ): ExpectedSplit => ({
     key,
     total: fromCents(b.cents),
     count: b.count,
-    // Rounded in minor units, exactly where the API rounds it.
     avg: fromCents(Math.round(b.cents / b.count)),
-  }));
+  });
+  const byTotalThenKey = (a: ExpectedSplit, b: ExpectedSplit): number =>
+    b.total - a.total || byKey(a.key, b.key);
+
+  const buckets: ExpectedBucket[] = Array.from(totals.entries()).map(
+    ([key, b]) => ({
+      ...asBucket(key, b),
+      ...(window.splitBy
+        ? {
+            splits: Array.from(b.splits.entries())
+              .map(([splitKey, s]) => asBucket(splitKey, s))
+              .sort(byTotalThenKey),
+          }
+        : {}),
+    }),
+  );
   buckets.sort((a, b) =>
-    window.groupBy === "day"
-      ? a.key.localeCompare(b.key)
-      : b.total - a.total || a.key.localeCompare(b.key),
+    window.groupBy === "day" || window.groupBy === "month"
+      ? byKey(a.key, b.key)
+      : byTotalThenKey(a, b),
   );
 
   return {
@@ -160,6 +232,52 @@ export function deriveSpending(
     total: fromCents(matched.reduce((acc, t) => acc + toCents(t.amount), 0)),
     buckets,
   };
+}
+
+interface ListWindow {
+  sort: SortField;
+  order: SortOrder;
+  categoryIds: string[] | null;
+  /** null means every type, ADJUSTMENT included: a listing is not a spending query. */
+  type: TransactionType | null;
+  from: string;
+  to: string;
+  timezone: string;
+  limit: number;
+}
+
+/**
+ * The first page of `GET /transactions`, in order. Two rows with the same
+ * amount are separated by their id, in the direction the page runs: without
+ * that the order would depend on which one the index happened to reach first.
+ */
+export function deriveList(
+  transactions: FixtureTransaction[],
+  window: ListWindow,
+): string[] {
+  const bounds = dayBounds(window.from, window.to, window.timezone);
+  const direction = window.order === "asc" ? 1 : -1;
+  return transactions
+    .filter((t) => {
+      if (!live(t)) return false;
+      if (window.type && t.type !== window.type) return false;
+      if (
+        window.categoryIds?.length &&
+        !window.categoryIds.includes(t.categoryId ?? "")
+      ) {
+        return false;
+      }
+      return withinDays(t, bounds);
+    })
+    .sort((a, b) => {
+      const rank =
+        window.sort === "amount"
+          ? toCents(a.amount) - toCents(b.amount)
+          : instant(a.date) - instant(b.date);
+      return direction * (rank || byKey(a.id, b.id));
+    })
+    .slice(0, window.limit)
+    .map((t) => t.id);
 }
 
 export interface ResolvedPeriod {

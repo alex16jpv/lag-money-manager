@@ -71,7 +71,8 @@ describe("pagination edges against mongod", () => {
     }
     // Registering already seeds categories, so a second Food is the 409 the unique name index owes.
     const wallet = (await page(alice, "/accounts?limit=100")).data[0].id;
-    for (const amount of [10, 20, 30, 40]) {
+    // Written in this order on purpose: uuidv7 grows with it, so id order is not amount order.
+    for (const amount of [30, 10, 40, 20]) {
       const res = await as(
         alice,
         request(app).post("/transactions").send({
@@ -235,6 +236,132 @@ describe("pagination edges against mongod", () => {
         nextCursor: null,
         total: 4,
       });
+    });
+  });
+
+  // The four share one instant, so ordering by date is ordering by id: 30, 10, 40, 20.
+  describe("ordering by amount", () => {
+    const amountsOf = async (query: string): Promise<number[]> => {
+      const res = await get(alice, `/transactions?${query}`);
+      expect(res.status).toBe(200);
+      return (res.body as { data: { amount: number }[] }).data.map(
+        (t) => t.amount,
+      );
+    };
+
+    it("ranks the biggest first and the smallest first on demand", async () => {
+      expect(await amountsOf("sort=amount&order=desc")).toEqual([
+        40, 30, 20, 10,
+      ]);
+      expect(await amountsOf("sort=amount&order=asc")).toEqual([
+        10, 20, 30, 40,
+      ]);
+    });
+
+    // The sequence a page that never looked at `sort` would answer, spelled out.
+    it("is not the order they were written in", async () => {
+      expect(await amountsOf("")).toEqual([20, 40, 10, 30]);
+      expect(await amountsOf("order=asc")).toEqual([30, 10, 40, 20]);
+    });
+
+    it("asks for the two biggest without reading the rest", async () => {
+      const res = await get(alice, "/transactions?sort=amount&limit=2");
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.map((t: { amount: number }) => t.amount)).toEqual([
+        40, 30,
+      ]);
+      // The count is of the filtered set, so the client knows it asked for a slice.
+      expect(res.body.pagination.total).toBe(4);
+      expect(res.body.pagination.hasMore).toBe(true);
+    });
+
+    // The cursor is a keyset over (amount, _id): a page that forgot the sort would restart.
+    it("continues the same order through the cursor", async () => {
+      const seen: number[] = [];
+      let cursor: string | null = null;
+      for (;;) {
+        const current: Page = await page(
+          alice,
+          `/transactions?sort=amount&order=asc&limit=1${cursor ? `&cursor=${cursor}` : ""}`,
+        );
+        seen.push(
+          ...(current.data as unknown as { amount: number }[]).map(
+            (t) => t.amount,
+          ),
+        );
+        if (!current.pagination.hasMore) break;
+        cursor = current.pagination.nextCursor;
+      }
+
+      expect(seen).toEqual([10, 20, 30, 40]);
+    });
+
+    it("refuses a field it does not order by", async () => {
+      const res = await get(alice, "/transactions?sort=description");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+    });
+  });
+
+  // One request for a budget of several categories, instead of narrowing in the client.
+  describe("filtering by several categories", () => {
+    it("refuses categoryId and categoryIds together", async () => {
+      const two = (await page(alice, "/categories?limit=100&type=EXPENSE"))
+        .data;
+      const res = await get(
+        alice,
+        `/transactions?categoryId=${two[0].id}&categoryIds=${two[0].id},${two[1].id}`,
+      );
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+    });
+
+    it("refuses a categoryIds that is not a list of ids", async () => {
+      const res = await get(alice, "/transactions?categoryIds=food,drink");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+    });
+
+    it("returns the union of the categories named, and nothing else", async () => {
+      const categories = (
+        await page(alice, "/categories?limit=100&type=EXPENSE")
+      ).data;
+      expect(categories.length).toBeGreaterThanOrEqual(3);
+      const [first, second, third] = categories;
+      const wallet = (await page(alice, "/accounts?limit=100")).data[0].id;
+      for (const [categoryId, amount] of [
+        [first.id, 7],
+        [second.id, 8],
+        [third.id, 9],
+      ] as const) {
+        const res = await as(
+          alice,
+          request(app).post("/transactions").send({
+            type: "EXPENSE",
+            amount,
+            date: "2026-08-10T12:00:00.000Z",
+            categoryId,
+            fromAccountId: wallet,
+          }),
+        );
+        expect(res.status).toBe(201);
+      }
+
+      const window =
+        "from=2026-08-01T00:00:00.000Z&to=2026-09-01T00:00:00.000Z";
+      const both = await page(
+        alice,
+        `/transactions?categoryIds=${first.id},${second.id}&${window}&sort=amount&order=asc`,
+      );
+
+      expect(
+        (both.data as unknown as { amount: number }[]).map((t) => t.amount),
+      ).toEqual([7, 8]);
+      expect(both.pagination.total).toBe(2);
     });
   });
 });

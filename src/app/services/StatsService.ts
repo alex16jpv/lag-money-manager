@@ -1,9 +1,18 @@
 import {
   ITransactionRepository,
   SpendingBucket,
+  SpendingGroupBy,
   SpendingQuery,
+  SpendingSplitBy,
 } from "../../domain/repositories/transaction/ITransactionRepository";
 import { fromCents } from "../../shared/money";
+
+export interface SpendingReport {
+  groupBy: SpendingGroupBy;
+  splitBy: SpendingSplitBy | null;
+  buckets: SpendingBucket[];
+  total: number;
+}
 
 export class StatsService {
   constructor(private transactionRepo: ITransactionRepository) {}
@@ -11,9 +20,14 @@ export class StatsService {
   async getSpending(
     userId: string,
     query: SpendingQuery,
-  ): Promise<{ groupBy: string; buckets: SpendingBucket[]; total: number }> {
+  ): Promise<SpendingReport> {
     const { buckets, totalCents } =
       await this.transactionRepo.aggregateSpending(userId, query);
-    return { groupBy: query.groupBy, buckets, total: fromCents(totalCents) };
+    return {
+      groupBy: query.groupBy,
+      splitBy: query.splitBy ?? null,
+      buckets,
+      total: fromCents(totalCents),
+    };
   }
 }

@@ -90,6 +90,12 @@ describe("offline parity fixtures", () => {
           timezone: expected.query.timezone,
           from: new Date(expected.query.from),
           to: new Date(expected.query.to),
+          ...(expected.query.splitBy
+            ? { splitBy: expected.query.splitBy }
+            : {}),
+          ...(expected.query.categoryIds
+            ? { categoryIds: expected.query.categoryIds }
+            : {}),
           ...(expected.query.type
             ? { type: expected.query.type as SpendingQuery["type"] }
             : {}),
@@ -98,7 +104,83 @@ describe("offline parity fixtures", () => {
         const result = await stats.getSpending(userId, query);
 
         expect(result.total).toBe(expected.total);
+        expect(result.splitBy).toBe(expected.query.splitBy);
         expect(result.buckets).toEqual(expected.buckets);
+      },
+    );
+
+    it.each(fixture.expected.lists.map((l) => [l.name, l] as const))(
+      "orders %s exactly as the fixture says",
+      async (_name, expected) => {
+        const { transactions } = services();
+
+        const page = await transactions.getAllTransactions(
+          userId,
+          {
+            limit: expected.query.limit,
+            offset: 0,
+            sort: expected.query.sort,
+            order: expected.query.order,
+          },
+          {
+            timezone: expected.query.timezone,
+            from: new Date(expected.query.from),
+            to: new Date(expected.query.to),
+            ...(expected.query.categoryIds
+              ? { categoryIds: expected.query.categoryIds }
+              : {}),
+            ...(expected.query.type
+              ? { type: expected.query.type as "EXPENSE" }
+              : {}),
+          },
+        );
+
+        expect(page.data.map((t) => t.id)).toEqual(expected.transactionIds);
+      },
+    );
+
+    // A cursor is only worth something if the page after it continues the same order.
+    it.each(fixture.expected.lists.map((l) => [l.name, l] as const))(
+      "walks %s page by page without repeating or losing a row",
+      async (_name, expected) => {
+        const { transactions } = services();
+        const filters = {
+          timezone: expected.query.timezone,
+          from: new Date(expected.query.from),
+          to: new Date(expected.query.to),
+          ...(expected.query.categoryIds
+            ? { categoryIds: expected.query.categoryIds }
+            : {}),
+          ...(expected.query.type
+            ? { type: expected.query.type as "EXPENSE" }
+            : {}),
+        };
+
+        const walked: string[] = [];
+        let cursor: string | undefined;
+        let pages = 0;
+        do {
+          // One row a page, so every row after the first arrives through a cursor.
+          const page = await transactions.getAllTransactions(
+            userId,
+            {
+              limit: 1,
+              offset: 0,
+              sort: expected.query.sort,
+              order: expected.query.order,
+              ...(cursor ? { cursor } : {}),
+            },
+            filters,
+          );
+          walked.push(...page.data.map((t) => t.id));
+          cursor = page.pagination.nextCursor ?? undefined;
+          pages += 1;
+        } while (cursor && walked.length <= expected.query.limit);
+
+        expect(pages).toBeGreaterThan(1);
+        expect(walked.slice(0, expected.transactionIds.length)).toEqual(
+          expected.transactionIds,
+        );
       },
     );
 

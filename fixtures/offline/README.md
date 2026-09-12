@@ -24,7 +24,19 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
 - **Windows are half-open `[from, to)`** and built in the **user's timezone**. A
   month is `[1st 00:00 local, next 1st 00:00 local)`; the two ends can carry
   different UTC offsets across a DST change.
-- **A day bucket is the local calendar day** of the instant, `yyyy-MM-dd`.
+- **A day bucket is the local calendar day** of the instant, `yyyy-MM-dd`, and a
+  **month bucket is its first seven characters**, `yyyy-MM`. Months and days can
+  never disagree about which window a row belongs to: they read the same frozen day.
+- **An account bucket is the account the money left** (`fromAccountId`), except
+  for INCOME and for an increase-only ADJUSTMENT, which have no `fromAccountId`
+  and are keyed by the one they reached. A quick-add left the default account.
+- **`categoryIds` filters before anything else.** It is what a budget of several
+  categories sends, and it drops every row with no category — the quick-adds included.
+- **`splitBy` adds a second dimension inside each bucket** (`splits`), so per
+  category AND month is one request. Unlike tags, splits never overlap: every row is
+  in exactly one of them, so they add up to the bucket's own total. Only month and
+  account buckets can be split, and only inside a `[from, to)` window: both are
+  bounded, a day grouping is not.
 - **Deleted rows (`deletedAt`) are invisible** to every figure, balances included.
   Archived rows (`archivedAt`) still count: archiving is not deleting.
 - **`ADJUSTMENT` never counts as spending** unless the query names that type; it
@@ -35,8 +47,10 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
   can add up to more than `total`. `total` is over the rows, never over the buckets.
   A row with no tags lands in `untagged`, one with no category in `uncategorized`.
 - **`avg` is rounded in minor units**: `round(totalCents / count)`.
-- **Ordering**: day buckets by key ascending, everything else by total descending.
-  No two buckets in a fixture share a total, so the order is never ambiguous.
+- **Ordering**: day and month buckets by key ascending, everything else by total
+  descending with the key breaking a tie (binary, the way Mongo compares strings —
+  not `localeCompare`). Splits are ranked the same way. No two buckets in a fixture
+  share a total anyway, so nobody reading one has to think about it.
 - **Budget `spent`**: a budget with no categories is global and takes the whole
   window's spend of its type, quick-adds included; one with categories sums only
   those. Archived budgets produce no view at all.
@@ -46,6 +60,11 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
   the server's `balance` from the mirror plus the effect of the unsent outbox,
   and the two agree whenever the outbox is empty.
 - **`pending.transactionIds` is a set.** No order is part of the contract.
+- **`lists` are the opposite: there the order IS the contract.** Each one is the
+  first page of `GET /transactions` under its `sort` and `order`, and two rows with
+  the same amount are separated by their id, in the direction the page runs. A
+  listing also has no opinion about spending: with no `type` it shows TRANSFER and
+  ADJUSTMENT too, unlike a spending query.
 
 ## Shape of a file
 
@@ -54,8 +73,8 @@ the shape the mirror holds them — the same shape `GET /sync/changes` sends, so
 budgets are **as stored** (`amount`, `amountOverrides`, `periodType`, dates), with
 no `periodKey`, `spent` or `expired`. Every row also carries a `key`, which is a
 human handle, never an id. `expected` holds `balances`, `pending`, `spending`
-(one entry per query, with the query spelled out) and `budgets` (the views as of
-`expected.budgets.reference`).
+(one entry per query, with the query spelled out), `lists` (one ordered page per
+query) and `budgets` (the views as of `expected.budgets.reference`).
 
 ## The fixtures
 
@@ -70,8 +89,14 @@ human handle, never an id. `expected` holds `balances`, `pending`, `spending`
 - Quick-adds count as spending under `uncategorized`, and are the pending summary.
 - Tag buckets double-count a transaction with two tags: their sum exceeds the total.
 - With no `type`, the server means EXPENSE + INCOME + TRANSFER, everything but ADJUSTMENT.
+- An account bucket is the account the money left; a quick-add leaves the default one.
+- A month bucket is the first seven characters of the frozen day, so months and days agree.
+- A category filter drops the quick-adds with it: they have no category to match.
+- A LISTING has no opinion about spending: with no `type` it shows the transfer and the adjustment too.
+- Two rows with the same amount are ordered by id, in the direction the page runs.
+- A backdated row lands by its own date, not by when it was written: id order is not date order.
 
-15 transactions · 5 accounts · 5 categories · 7 budgets · reference `2026-08-20T12:00:00-05:00`
+17 transactions · 5 accounts · 5 categories · 7 budgets · 8 spending queries · 6 ordered lists · reference `2026-08-20T12:00:00-05:00`
 
 ### `eur-madrid.json` — EUR · Europe/Madrid · two decimals and the spring DST jump
 
@@ -81,7 +106,7 @@ human handle, never an id. `expected` holds `balances`, `pending`, `spending`
 - A transaction 5 minutes into April is UTC-March: a UTC window would take it and drop the one on 1 March.
 - An average is rounded in minor units: 20.29 over 3 rows is 6.76.
 
-10 transactions · 2 accounts · 4 categories · 3 budgets · reference `2026-03-25T12:00:00+01:00`
+10 transactions · 2 accounts · 4 categories · 3 budgets · 4 spending queries · 1 ordered list · reference `2026-03-25T12:00:00+01:00`
 
 ### `jpy-tokyo.json` — JPY · Asia/Tokyo · zero decimals, +09:00, quarter and year windows
 
@@ -90,7 +115,7 @@ human handle, never an id. `expected` holds `balances`, `pending`, `spending`
 - A budget with no spend reports 0, not a missing figure.
 - JPY has no minor unit: the amounts are the integers as typed.
 
-8 transactions · 2 accounts · 4 categories · 3 budgets · reference `2026-05-15T12:00:00+09:00`
+8 transactions · 2 accounts · 4 categories · 3 budgets · 4 spending queries · 1 ordered list · reference `2026-05-15T12:00:00+09:00`
 
 ### `usd-new-york.json` — USD · America/New_York · the repeated hour and an INCOME budget
 
@@ -99,5 +124,6 @@ human handle, never an id. `expected` holds `balances`, `pending`, `spending`
 - `avg` rounds half up in minor units: 10.01 over 2 rows is 5.01, not 5.00.
 - A budget's `type` filters the rows: an INCOME budget ignores every expense in its own window.
 - A query for `type: INCOME` groups income by category the same way expenses are grouped.
+- An INCOME bucket is keyed by the account the money reached, not the one it left.
 
-10 transactions · 2 accounts · 4 categories · 3 budgets · reference `2025-11-15T12:00:00-05:00`
+10 transactions · 2 accounts · 4 categories · 3 budgets · 5 spending queries · 1 ordered list · reference `2025-11-15T12:00:00-05:00`

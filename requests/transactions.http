@@ -55,6 +55,18 @@ Content-Type: application/json
 
 @catId = {{cat.response.body.id}}
 
+### Segunda categoría — para el filtro de varias (un budget que cubre más de una)
+# @name cat2
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "TxCat2 {{$randomInt 100 999}}", "type": "EXPENSE" }
+
+###
+
+@cat2Id = {{cat2.response.body.id}}
+
 ### ---------- Éxito ----------
 
 ### Crear EXPENSE (resta de A) — tags se normalizan (trim+minúsculas+dedupe)
@@ -175,6 +187,27 @@ Authorization: Bearer {{token}}
 
 ### Filtrar por categoría (drill-down desde stats/budgets)
 GET {{baseUrl}}/transactions?categoryId={{catId}}
+Authorization: Bearer {{token}}
+
+### Los cinco movimientos más grandes del periodo, pedidos, no leídos
+### página a página y ordenados en el cliente (regla 24).
+GET {{baseUrl}}/transactions?sort=amount&order=desc&limit=5&from=2026-08-01T00:00:00.000Z&to=2026-09-01T00:00:00.000Z
+Authorization: Bearer {{token}}
+
+### El mismo orden, del más pequeño al más grande; el empate lo rompe el id
+GET {{baseUrl}}/transactions?sort=amount&order=asc&limit=5
+Authorization: Bearer {{token}}
+
+### Varias categorías en una petición (un budget que cubre más de una)
+GET {{baseUrl}}/transactions?categoryIds={{catId}},{{cat2Id}}&sort=amount&limit=5
+Authorization: Bearer {{token}}
+
+### sort que no existe (400)
+GET {{baseUrl}}/transactions?sort=description
+Authorization: Bearer {{token}}
+
+### categoryId y categoryIds a la vez (400)
+GET {{baseUrl}}/transactions?categoryId={{catId}}&categoryIds={{catId}}
 Authorization: Bearer {{token}}
 
 ### Filtrar por rango de fechas [from, to) — límites en la zona del usuario

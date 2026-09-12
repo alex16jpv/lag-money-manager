@@ -4,6 +4,7 @@ import { CategoryFilters } from "../../domain/repositories/category/ICategoryRep
 import { extractPagination } from "../../shared/pagination";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { CategoryService } from "../services/CategoryService";
+import { splitIdList } from "../validation/schemas";
 import { ifMatch } from "./ifMatch";
 
 const categoryService = new CategoryService(
@@ -16,7 +17,7 @@ export class CategoryController {
     const userId = req.user!.userId;
     const filters: CategoryFilters = {};
     if (req.query.ids) {
-      filters.ids = (req.query.ids as string).split(",").map((s) => s.trim());
+      filters.ids = splitIdList(req.query.ids as string);
     }
     if (req.query.type) {
       filters.type = req.query.type as string;
