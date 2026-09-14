@@ -397,13 +397,20 @@ describe("Integration Tests", () => {
   describe("POST /auth/refresh [M3]", () => {
     it("issues a new token pair for a valid refresh token", async () => {
       mockUserRepo.getById.mockResolvedValue(testUser);
-      mockRefreshSessionRepo.rotate.mockResolvedValue({
+      const rotated = {
         jti: "jti-1",
         userId: testUser.id,
         familyId: "fam-1",
         expiresAt: new Date(Date.now() + 86_400_000),
         replacedBy: null,
         revokedAt: null,
+      };
+      mockRefreshSessionRepo.rotate.mockResolvedValue(rotated);
+      // The refresh re-reads the row it rotated to see a logout that landed mid-rotation (H-62).
+      mockRefreshSessionRepo.findById.mockResolvedValue({
+        ...rotated,
+        replacedBy: "jti-2",
+        lastUsedAt: new Date(),
       });
       const refreshToken = jwt.sign(
         {

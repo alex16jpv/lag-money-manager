@@ -331,6 +331,8 @@ export class AuthService {
       (session.expiresAt.getTime() - Date.now()) / 1000,
     );
     if (remainingSeconds <= 0) {
+      // The rotation already spent the row, and a family nobody can renew is over, not stolen.
+      await this.sessions.revokeFamily(session.familyId);
       throw new ApiError(
         "Unauthorized",
         "Invalid or expired refresh token",
@@ -344,6 +346,21 @@ export class AuthService {
       familyId: session.familyId,
       expiresAt: session.expiresAt,
     });
+
+    // Every revocation marks the parent row too, so re-reading it is enough to see a logout land here.
+    const rotated = await this.sessions.findById(jti);
+    if (!rotated || rotated.revokedAt) {
+      await this.sessions.revokeFamily(session.familyId);
+      logger.warn(
+        { userId, familyId: session.familyId },
+        "Logout landed mid-rotation; family closed again",
+      );
+      throw new ApiError(
+        "Unauthorized",
+        "Refresh token has been revoked",
+        "REFRESH_REVOKED",
+      );
+    }
 
     return {
       accessToken: this.signAccessToken(user, session.familyId),

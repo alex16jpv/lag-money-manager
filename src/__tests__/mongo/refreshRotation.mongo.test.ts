@@ -4,6 +4,7 @@ import request from "supertest";
 
 import app from "../../app";
 import { RefreshSessionModel } from "../../infrastructure/models/RefreshSessionModel";
+import { RefreshSessionRepository } from "../../infrastructure/repositories/refreshSession/RefreshSessionRepository";
 import { connect, disconnect, dropDatabase } from "./support";
 
 const jtiOf = (token: string): string =>
@@ -110,6 +111,46 @@ describe("refresh rotation [H-37]", () => {
 
     // And the family was never the thief's: the successor still rotates.
     expect((await refresh(successor)).status).toBe(200);
+  });
+
+  it("does not leave a device in when a logout lands mid-rotation [H-62]", async () => {
+    const first = await register("logout-mid-rotation@example.com");
+    const parent = jtiOf(first);
+    const family = (await RefreshSessionModel.findById(parent).lean())
+      ?.familyId;
+
+    // The interleaving itself: the logout sweeps the family between the rotation and the new row.
+    const write = RefreshSessionRepository.prototype.create;
+    const interleaved = jest
+      .spyOn(RefreshSessionRepository.prototype, "create")
+      .mockImplementation(async function (
+        this: RefreshSessionRepository,
+        session,
+      ) {
+        await RefreshSessionModel.updateMany(
+          { familyId: family, revokedAt: null },
+          { revokedAt: new Date() },
+        );
+        return write.call(this, session);
+      });
+
+    let born: string | undefined;
+    try {
+      const after = await refresh(first);
+      expect(after.status).toBe(401);
+      expect(after.body.code).toBe("REFRESH_REVOKED");
+      born = interleaved.mock.calls[0]?.[0]?.jti;
+    } finally {
+      interleaved.mockRestore();
+    }
+
+    // The row the logout could not see, because it did not exist yet, is closed by the re-read.
+    expect(born).toBeDefined();
+    const row = await RefreshSessionModel.findById(born).lean();
+    expect(row?.revokedAt).toBeInstanceOf(Date);
+
+    // And the device is out for good: what it holds no longer renews.
+    expect((await refresh(first)).status).toBe(401);
   });
 
   it("answers a revoked family without calling it theft [T-33]", async () => {
