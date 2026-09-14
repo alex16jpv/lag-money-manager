@@ -4,7 +4,7 @@ The production target is **AWS Lambda + a Function URL**, backed by **MongoDB At
 
 ## Prerequisites
 
-- Node.js 22 (the version CI builds and tests against)
+- Node.js 22 (the version this repository builds and tests against)
 - A MongoDB **replica set** — Atlas is one out of the box. Multi-document transactions (used for balance adjustments) are rejected by a standalone `mongod`, so `MONGO_URI` must point at a replica set
 - Environment variables configured (see `docs/guides/environment-vars.md`)
 - TLS termination: the Lambda Function URL provides it; a self-hosted `dist/server.js` needs a reverse proxy (nginx, Caddy, AWS ALB, ...)

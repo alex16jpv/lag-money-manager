@@ -6,7 +6,7 @@
  * at production — and checks that the second run lands exactly where the first
  * one did.
  *
- * CI has no Mongo. When the replica set is unreachable the checks report that
+ * A machine without Mongo is normal. When the replica set is unreachable the checks report that
  * they were skipped instead of silently passing.
  */
 import { execFileSync } from "child_process";

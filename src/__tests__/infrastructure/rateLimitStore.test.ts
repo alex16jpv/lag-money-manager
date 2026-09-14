@@ -4,7 +4,7 @@
  * `updatePipeline`, the limit silently stopped applying. The unit tests mock
  * the model, so only a real database can catch this class of bug.
  *
- * Skips when there is no local replica set, which is what CI has.
+ * Skips when there is no local replica set on the machine.
  */
 import mongoose from "mongoose";
 

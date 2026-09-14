@@ -251,7 +251,7 @@ hoy, y «manual» significa que nada lo hace todavía.
 4. La misma cifra sale igual en el servidor y sin conexión, y el cliente nunca
    calcula dinero salvo la proyección offline, marcada como tal; los fixtures
    de paridad son el contrato entre los dos. *Vigila: `fixtures:check` en el
-   gate y en CI; `parityFixtures.mongo.test.ts`.*
+   gate; `parityFixtures.mongo.test.ts`.*
 5. Las fechas se juzgan en la zona horaria del usuario y cada movimiento
    congela su día contable (`dayKey`). *Vigila: `dayKey.test.ts`,
    `accountingDay.mongo.test.ts`.*
@@ -318,8 +318,9 @@ hoy, y «manual» significa que nada lo hace todavía.
 20. Todo cambio trae pruebas del camino feliz y de los bordes, y un arreglo
     empieza por la prueba que falla (§1). *Vigila: manual.*
 21. Lo que los mocks no ven se prueba de verdad: índices, transacciones y
-    colación contra Mongo real (§1.4, `npm run test:mongo`). *Vigila: el job
-    `mongo` del CI; en local solo si se corre.*
+    colación contra Mongo real (§1.4, `npm run test:mongo`). *Vigila: manual:
+    `npm run check:all` lo corre detrás del gate, pero nadie lo ejecuta por ti
+    —desde T-34 no hay CI— y necesita el mongod de `docker compose up -d mongo`.*
 22. Las pruebas son deterministas, no dependen del orden, y la cobertura tiene
     un umbral que alguien ejecuta. *Vigila: manual: Jest no baraja y no hay
     `coverageThreshold`.*
@@ -384,10 +385,14 @@ hoy, y «manual» significa que nada lo hace todavía.
 
 ## Comandos
 
+**Desde el 2026-09-13 no corre nada en GitHub** (T-34, decisión del dueño): el gate es local y
+`npm run check:all` es lo que tiene que estar verde antes de entregar una rama.
+
 ```bash
 npm run start:dev        # servidor con recarga (necesita Mongo arriba)
 docker compose up -d mongo   # replica set de un nodo
-npm run ci               # gate completo: typecheck x2, lint, formato, tests
+npm run ci               # gate completo: typecheck x2, lint, formato, fixtures, tests
+npm run check:all        # el gate y detrás la suite contra Mongo real
 npm test                 # solo la suite
 npm run format           # aplica Prettier
 npm run db:sync-indexes  # crea/borra índices según los esquemas

@@ -4,7 +4,7 @@
 
 1. Create a branch from `main` for your feature or fix
 2. Make changes following the conventions in `docs/agent-context.md`
-3. Run `npm run ci` before committing — it is the same gate CI enforces
+3. Run `npm run ci` before committing, and `npm run check:all` before handing the branch over — nothing runs on GitHub (T-34)
 4. Commit **one item per commit** (one fix, one feature, one audit finding), with the scope in the subject
 5. Submit a pull request with a clear description
 
@@ -51,7 +51,7 @@ All tests must pass before merging.
 npm run ci    # typecheck + typecheck:tests + lint + test
 ```
 
-`.github/workflows/ci.yml` runs exactly these four steps on every push and pull request. Note that `typecheck:tests` is separate: Jest runs with `diagnostics: false`, so a type error inside a test file passes `npm test` and only fails that step.
+Nothing runs these for you: the GitHub workflow was deleted on 2026-09-13 (T-34) and the local gate is the only one. `npm run check:all` adds `npm run test:mongo` behind it. Note that `typecheck:tests` is separate: Jest runs with `diagnostics: false`, so a type error inside a test file passes `npm test` and only fails that step.
 
 ## Commit Conventions
 
