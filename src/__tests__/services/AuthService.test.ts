@@ -60,6 +60,7 @@ const createMockSessionRepo = (): jest.Mocked<IRefreshSessionRepository> => ({
   create: jest.fn().mockResolvedValue(undefined),
   findById: jest.fn().mockResolvedValue(null),
   rotate: jest.fn().mockResolvedValue(null),
+  countReissue: jest.fn().mockResolvedValue(null),
   revokeFamily: jest.fn().mockResolvedValue(undefined),
   revokeAllForUser: jest.fn().mockResolvedValue(undefined),
   listActiveByUser: jest.fn().mockResolvedValue([]),
@@ -280,6 +281,9 @@ describe("AuthService", () => {
         { algorithm: "HS256", expiresIn: "30d" },
       );
 
+    // The gap measured in production on 2026-09-11 between a lost rotation and the client's return.
+    const PRODUCTION_GAP_MS = 13_284_000;
+
     const activeSession = () => ({
       jti: "jti-1",
       userId: user.id,
@@ -288,6 +292,8 @@ describe("AuthService", () => {
       replacedBy: null,
       revokedAt: null,
       lastUsedAt: null,
+      reissueCount: 0,
+      reissuedAt: null,
     });
 
     // What a rotation leaves: the presented row points at its successor, the family's live tip.
@@ -312,6 +318,12 @@ describe("AuthService", () => {
       sessions.findById.mockImplementation(
         async (id: string) => rows.find((row) => row.jti === id) ?? null,
       );
+      sessions.countReissue.mockImplementation(async (id: string) => {
+        const row = rows.find((candidate) => candidate.jti === id);
+        if (!row?.replacedBy || row.revokedAt) return null;
+        row.reissueCount += 1;
+        return { ...row, reissuedAt: new Date() };
+      });
     };
 
     it("issues a new token pair and rotates the session [R2-08]", async () => {
@@ -390,16 +402,77 @@ describe("AuthService", () => {
       expect(sessions.revokeFamily).toHaveBeenCalledWith("fam-1");
     });
 
-    it("revokes the family when the rotation is older than the grace window [H-37]", async () => {
+    it("re-issues however old the rotation is, while the successor is untouched [T-33]", async () => {
       repo.getById.mockResolvedValue(user);
       sessions.rotate.mockResolvedValue(null);
       chainIs([
-        rotatedSession({ lastUsedAt: new Date(Date.now() - 61_000) }),
+        rotatedSession({
+          lastUsedAt: new Date(Date.now() - PRODUCTION_GAP_MS),
+        }),
         successorSession(),
       ]);
 
+      const result = await service.refresh(signRefresh(2));
+
+      const reissued = jwt.verify(result.refreshToken, "test-secret-key") as {
+        jti: string;
+      };
+      expect(reissued.jti).toBe("jti-2");
+      expect(sessions.revokeFamily).not.toHaveBeenCalled();
+    });
+
+    it("answers the same successor as many times as the answer is lost [T-33]", async () => {
+      repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue(null);
+      chainIs([rotatedSession(), successorSession()]);
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const result = await service.refresh(signRefresh(2));
+        const reissued = jwt.verify(result.refreshToken, "test-secret-key") as {
+          jti: string;
+        };
+        expect(reissued.jti).toBe("jti-2");
+      }
+      expect(sessions.create).not.toHaveBeenCalled();
+      expect(sessions.revokeFamily).not.toHaveBeenCalled();
+    });
+
+    it("still re-issues on the last one of the budget [T-33]", async () => {
+      repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue(null);
+      chainIs([rotatedSession({ reissueCount: 9 }), successorSession()]);
+
+      const result = await service.refresh(signRefresh(2));
+
+      const reissued = jwt.verify(result.refreshToken, "test-secret-key") as {
+        jti: string;
+      };
+      expect(reissued.jti).toBe("jti-2");
+      expect(sessions.revokeFamily).not.toHaveBeenCalled();
+    });
+
+    it("retires the row, not the family, once the budget is spent [T-33]", async () => {
+      repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue(null);
+      chainIs([rotatedSession({ reissueCount: 10 }), successorSession()]);
+
       await expect(service.refresh(signRefresh(2))).rejects.toThrow("revoked");
-      expect(sessions.revokeFamily).toHaveBeenCalledWith("fam-1");
+      // The successor is still untouched, so the live client keeps its family.
+      expect(sessions.revokeFamily).not.toHaveBeenCalled();
+    });
+
+    it("does not cry theft when the family was revoked on purpose [T-33]", async () => {
+      repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue(null);
+      chainIs([
+        rotatedSession({ revokedAt: new Date() }),
+        successorSession({ revokedAt: new Date() }),
+      ]);
+
+      await expect(service.refresh(signRefresh(2))).rejects.toThrow("revoked");
+      // A logout already ended it: revoking again would be a second write and a false alarm.
+      expect(sessions.revokeFamily).not.toHaveBeenCalled();
+      expect(sessions.countReissue).not.toHaveBeenCalled();
     });
 
     it("revokes the family when the successor is gone [H-37]", async () => {
@@ -472,6 +545,8 @@ describe("AuthService", () => {
         replacedBy: null,
         revokedAt: null,
         lastUsedAt: null,
+        reissueCount: 0,
+        reissuedAt: null,
       });
 
       await service.logout(token);

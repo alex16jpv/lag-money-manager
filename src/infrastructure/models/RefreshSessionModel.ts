@@ -10,6 +10,8 @@ export interface IRefreshSessionDocument {
   replacedBy: string | null;
   revokedAt: Date | null;
   lastUsedAt: Date | null;
+  reissueCount: number;
+  reissuedAt: Date | null;
   userAgent?: string;
   createdAt: Date;
 }
@@ -23,6 +25,8 @@ const RefreshSessionSchema = new Schema<IRefreshSessionDocument>(
     replacedBy: { type: String, default: null },
     revokedAt: { type: Date, default: null },
     lastUsedAt: { type: Date, default: null },
+    reissueCount: { type: Number, default: 0 },
+    reissuedAt: { type: Date, default: null },
     userAgent: { type: String, required: false },
     createdAt: { type: Date, required: true, default: () => new Date() },
   },

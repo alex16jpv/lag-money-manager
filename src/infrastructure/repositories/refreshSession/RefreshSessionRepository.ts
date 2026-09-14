@@ -18,6 +18,8 @@ export class RefreshSessionRepository implements IRefreshSessionRepository {
       replacedBy: doc.replacedBy,
       revokedAt: doc.revokedAt,
       lastUsedAt: doc.lastUsedAt,
+      reissueCount: doc.reissueCount ?? 0,
+      reissuedAt: doc.reissuedAt ?? null,
     };
   }
 
@@ -46,6 +48,15 @@ export class RefreshSessionRepository implements IRefreshSessionRepository {
     const doc = await RefreshSessionModel.findOneAndUpdate(
       { _id: jti, replacedBy: null, revokedAt: null },
       { $set: { replacedBy: newJti, lastUsedAt: new Date() } },
+      { new: true },
+    ).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async countReissue(jti: string): Promise<RefreshSession | null> {
+    const doc = await RefreshSessionModel.findOneAndUpdate(
+      { _id: jti, replacedBy: { $ne: null }, revokedAt: null },
+      { $inc: { reissueCount: 1 }, $set: { reissuedAt: new Date() } },
       { new: true },
     ).lean();
     return doc ? this.toEntity(doc) : null;
@@ -82,7 +93,14 @@ export class RefreshSessionRepository implements IRefreshSessionRepository {
           _id: "$familyId",
           createdAt: { $first: "$createdAt" },
           userAgent: { $first: "$userAgent" },
-          lastUsedAt: { $max: { $ifNull: ["$lastUsedAt", "$createdAt"] } },
+          lastUsedAt: {
+            $max: {
+              $ifNull: [
+                "$reissuedAt",
+                { $ifNull: ["$lastUsedAt", "$createdAt"] },
+              ],
+            },
+          },
           expiresAt: { $max: "$expiresAt" },
           live: {
             $max: { $cond: [{ $eq: ["$replacedBy", null] }, 1, 0] },
