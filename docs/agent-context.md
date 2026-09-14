@@ -32,7 +32,7 @@ lag-money-manager is a REST API for personal money management. It allows users t
 | Technology    | Version    | Purpose                                     |
 | ------------- | ---------- | ------------------------------------------- |
 | TypeScript    | 6.x        | Language                                    |
-| Node.js       | 20+ (CI 22)| Runtime                                     |
+| Node.js       | 22+        | Runtime (`.nvmrc`, `engines`)               |
 | Express       | 5.x        | HTTP framework                              |
 | Zod           | 4.x        | Request validation                          |
 | Mongoose      | 9.x        | MongoDB ODM                                 |
@@ -432,14 +432,16 @@ export interface Update[Entity]DTO {
 | `npm run lint`            | ESLint over `src/` (`lint:fix` to autofix, incl. import sorting)  |
 | `npm run format`          | Prettier write (`format:check` to verify)                         |
 | `npm test`                | Jest (`test:watch`, `test:coverage`)                              |
-| **`npm run ci`**          | **The gate:** `typecheck && typecheck:tests && lint && test`      |
+| **`npm run ci`**          | **The gate:** typecheck (src and tests), lint, format, `fixtures:check`, Jest |
 | `npm run db:sync-indexes` | Builds Mongo indexes from the schemas (production deploy step)    |
 | `npm run docs`            | VitePress dev server for `docs/`                                  |
 | `npm run build:lambda` / `deploy:lambda` / `deploy:keepalive` | Lambda packaging and deploy scripts |
 
-**Before you hand work back, `npm run ci` must pass.** It mirrors `.github/workflows/ci.yml`
-exactly (Node 22). The suite is currently **374 tests across 20 suites** and runs in a few
-seconds — it uses mocked repositories, so no database is needed.
+**Before you hand work back, `npm run ci` must pass** — and `npm run check:all`, which adds
+`npm run test:mongo` behind it, when you touched indexes, transactions or pagination. Nothing runs
+them for you: the GitHub workflow was deleted on 2026-09-13 (T-34). `npm run ci` uses mocked
+repositories and needs no database; `test:mongo` needs the local replica set of
+`docker compose up -d mongo`.
 
 ### Database
 
@@ -558,7 +560,7 @@ route is also behind `gatewaySecretMiddleware`, `dbReadinessMiddleware` and the 
 4. Update `docs/reference/glossary.md` if new domain terms were introduced
 5. Update `docs/_index.json` if new doc files were created
 6. Update `docs/architecture/design-patterns.md` if a new pattern was introduced
-7. Run **`npm run ci`** (typecheck + typecheck:tests + lint + test) — this is the same gate CI runs
+7. Run **`npm run ci`**, and **`npm run check:all`** before handing the branch over — nobody else runs them
 
 ---
 

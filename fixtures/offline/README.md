@@ -5,7 +5,7 @@
 The contract between the figures the backend computes and the ones the app
 derives on the device with no network (`lib/local/derive`, O-F3). Each file
 holds a set of rows and the figures they must produce. The canonical copy is
-`fixtures/offline/` in lag-money-manager: `npm run fixtures:check` fails its CI
+`fixtures/offline/` in lag-money-manager: `npm run fixtures:check` fails the gate
 when the generator and these files disagree, and
 `src/__tests__/mongo/parityFixtures.mongo.test.ts` checks the real services
 against them on a real mongod. The frontend vendors the folder verbatim in

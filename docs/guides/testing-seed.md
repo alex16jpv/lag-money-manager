@@ -130,8 +130,8 @@ and the designed final balances still land exactly.
 nothing duplicates, that every id and total is identical, and that the result is
 sync-ready: `updatedAt` spread over more than one instant, one group sharing an
 instant, a tombstone per entity and nothing stamped in the future. It needs a
-local replica set; without one it reports the checks as skipped, which is what
-happens in CI.
+local replica set; without one it reports the checks as skipped — which is what
+happens on a machine that has no Mongo up.
 
 ## The one hard delete
 

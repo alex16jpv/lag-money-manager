@@ -1,7 +1,7 @@
 /**
  * The suite that needs a real mongod: parity fixtures and the offline write
  * paths (O-B6). Kept out of `npm test` — and so out of `npm run ci` — because
- * CI has no database; `npm run test:mongo` runs it against a local one.
+ * `npm test` has no database; `npm run test:mongo` runs it against a local replica set.
  *
  * @type {import('ts-jest').JestConfigWithTsJest}
  */

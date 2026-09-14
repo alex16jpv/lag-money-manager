@@ -169,7 +169,7 @@ Client extension — usually faster than curl.
 
 ```bash
 npm test        # the full suite
-npm run ci      # what CI runs: typecheck + typecheck:tests + lint + test
+npm run ci      # the gate: typecheck + typecheck:tests + lint + format + fixtures + test
 ```
 
 ## 8. Common Startup Errors

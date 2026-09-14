@@ -20,23 +20,24 @@ All test commands include `--forceExit --detectOpenHandles` flags to ensure clea
 
 The default suite runs in a few seconds with no database and no network: the repositories are mocked. The exceptions are `scripts/seedTest.test.ts`, which drives the real seed and reports its checks as skipped when no local MongoDB answers, and the `mongo/` suite below, which is excluded from `npm test` altogether.
 
-## The CI Gate
+## The Gate
 
 ```bash
 npm run ci
 ```
 
-That is exactly what `.github/workflows/ci.yml` runs, in order:
+Six steps, in order — and since 2026-09-13 (T-34) nobody but you runs them, because the GitHub workflow is gone:
 
 ```
 npm run typecheck        # tsc --noEmit over src/
 npm run typecheck:tests  # tsc -p tsconfig.test.json (tests are type-checked separately)
-npm run lint             # eslint src/
-npm run format:check     # prettier --check "src/**/*.ts"
+npm run lint             # eslint src/ scripts/
+npm run format:check     # prettier --check "src/**/*.ts" "scripts/**/*.ts"
+npm run fixtures:check   # the parity fixtures still match their generator
 npm test                 # jest
 ```
 
-Tests are type-checked by a separate pass because Jest runs with `diagnostics: false` — a type error inside a test file will **not** fail `npm test`, only `npm run typecheck:tests`. Run `npm run ci` before pushing.
+Tests are type-checked by a separate pass because Jest runs with `diagnostics: false` — a type error inside a test file will **not** fail `npm test`, only `npm run typecheck:tests`. Run `npm run check:all` before handing the branch over.
 
 ## Test Structure
 
@@ -84,12 +85,16 @@ docker compose up -d mongo
 npm run test:mongo          # jest -c jest.mongo.config.js
 ```
 
-`src/__tests__/mongo/*.mongo.test.ts` runs against a **real** local MongoDB and is kept out of `npm test`, and so out of `npm run ci`, because CI has no database. Two files:
+`src/__tests__/mongo/*.mongo.test.ts` runs against a **real** local MongoDB and is kept out of `npm test`, and so out of `npm run ci`, because it needs a replica set on the machine. Bring one up first with `docker compose up -d mongo` — without it the suite dies on a connection timeout, not on a skip. `npm run check:all` is the gate plus this suite. Seven files; these two carry most of it:
 
-| File | What it holds |
-| --- | --- |
+| File                           | What it holds                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `parityFixtures.mongo.test.ts` | Checks the API's figures against the committed `fixtures/offline/*.json` (built by `npm run fixtures:offline`; `npm run fixtures:check` in `npm run ci` fails when generator and files disagree) — balances, per-category and per-day buckets, tag buckets, budget windows and `spent`, and the pending summary, across four timezones and currencies. |
-| `offlineWrites.mongo.test.ts` | The write paths an offline client walks: an exact replay, a batch that half landed, an id colliding with another user's, a stale `If-Match`, ten guarded writes with one conflict, a movement against an account archived elsewhere, one filed under a category archived online, and a device whose clock runs ahead. |
+| `offlineWrites.mongo.test.ts`  | The write paths an offline client walks: an exact replay, a batch that half landed, an id colliding with another user's, a stale `If-Match`, ten guarded writes with one conflict, a movement against an account archived elsewhere, one filed under a category archived online, and a device whose clock runs ahead.                                  |
+
+The other five are `accountingDay`, `pagination`, `refreshRotation` (the rotation of a refresh token as
+the driver writes and reads it: a lost answer re-issued, the re-issue budget, a revoked family, and a
+logout landing mid-rotation), `statsAggregations` and `syncBatch`.
 
 Mocks cannot cover any of it. `$dateToString` with a timezone, `$facet`, the tag `$unwind`, the partial unique indexes behind the replay rules and the rollback of a Mongo transaction are the behaviour under test.
 
@@ -97,14 +102,14 @@ The suite **drops its database** on the way in and on the way out, so it refuses
 
 ## What Is Tested
 
-| Type                  | What is tested                                                                                                     | Files                             |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------- |
-| **Entity tests**      | Constructor, property assignment, default values, null coalescing                                                  | `entities/*.test.ts`              |
-| **Service tests**     | Business logic, ownership checks, error codes, CRUD, balance adjustments — against **mocked repositories**         | `services/*.test.ts`              |
-| **Validation tests**  | Every Zod schema (the largest single file, ~105 cases) and the `validate()` middleware's whitelisting + error shape | `validation/*.test.ts`            |
-| **Middleware tests**  | JWT auth, the Mongo-backed auth rate limiter, error classification and status mapping, request id, request logging  | `middleware/*.test.ts`            |
-| **Factory tests**     | Provider registration, typed getters, instance caching                                                             | `factories/RepositoryFactory.test.ts` |
-| **Integration tests** | Full HTTP request/response cycle through the real Express app                                                      | `integration/api.test.ts`         |
+| Type                  | What is tested                                                                                                      | Files                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| **Entity tests**      | Constructor, property assignment, default values, null coalescing                                                   | `entities/*.test.ts`                  |
+| **Service tests**     | Business logic, ownership checks, error codes, CRUD, balance adjustments — against **mocked repositories**          | `services/*.test.ts`                  |
+| **Validation tests**  | Every Zod schema (the largest single file, ~105 cases) and the `validate()` middleware's whitelisting + error shape | `validation/*.test.ts`                |
+| **Middleware tests**  | JWT auth, the Mongo-backed auth rate limiter, error classification and status mapping, request id, request logging  | `middleware/*.test.ts`                |
+| **Factory tests**     | Provider registration, typed getters, instance caching                                                              | `factories/RepositoryFactory.test.ts` |
+| **Integration tests** | Full HTTP request/response cycle through the real Express app                                                       | `integration/api.test.ts`             |
 
 ## What Is NOT Tested (and Why)
 

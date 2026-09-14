@@ -329,6 +329,7 @@ describe("AuthService", () => {
     it("issues a new token pair and rotates the session [R2-08]", async () => {
       repo.getById.mockResolvedValue(user);
       sessions.rotate.mockResolvedValue(activeSession());
+      sessions.findById.mockResolvedValue(rotatedSession());
 
       const result = await service.refresh(signRefresh(2));
 
@@ -347,6 +348,43 @@ describe("AuthService", () => {
         sid: string;
       };
       expect(access.sid).toBe("fam-1");
+    });
+
+    it("closes the session when a logout lands mid-rotation [H-62]", async () => {
+      repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue(activeSession());
+      let logoutLanded = false;
+      sessions.create.mockImplementation(async () => {
+        logoutLanded = true;
+      });
+      sessions.findById.mockImplementation(async () =>
+        logoutLanded ? { ...activeSession(), revokedAt: new Date() } : null,
+      );
+
+      await expect(service.refresh(signRefresh(2))).rejects.toThrow("revoked");
+      expect(sessions.revokeFamily).toHaveBeenCalledWith("fam-1");
+    });
+
+    it("closes a family whose absolute expiry has passed [H-62]", async () => {
+      repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue({
+        ...activeSession(),
+        expiresAt: new Date(Date.now() - 1000),
+      });
+
+      await expect(service.refresh(signRefresh(2))).rejects.toThrow("expired");
+      // Left alive, the rotated row would read as theft the next time it was presented.
+      expect(sessions.revokeFamily).toHaveBeenCalledWith("fam-1");
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it("closes the session when the rotated row is gone [H-62]", async () => {
+      repo.getById.mockResolvedValue(user);
+      sessions.rotate.mockResolvedValue(activeSession());
+      sessions.findById.mockResolvedValue(null);
+
+      await expect(service.refresh(signRefresh(2))).rejects.toThrow("revoked");
+      expect(sessions.revokeFamily).toHaveBeenCalledWith("fam-1");
     });
 
     it("revokes the whole family when a rotated token is reused [R2-08]", async () => {

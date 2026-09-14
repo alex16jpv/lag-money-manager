@@ -13,20 +13,20 @@ Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the
 
 ## Files and Responsibilities
 
-| File                                                                  | Role                                                                     |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `src/app/routes/authRoutes.ts`                                        | Route definitions with OpenAPI docs and the per-route rate limiters       |
-| `src/app/controllers/AuthController.ts`                               | Thin HTTP handler, delegates to AuthService                               |
-| `src/app/services/AuthService.ts`                                     | Hashing, credential verification, token signing, rotation, session revocation |
-| `src/app/dtos/UserDTO.ts`                                             | `CreateUserDTO`, `UserResponseDTO` (shared with Users module)             |
-| `src/app/validation/schemas.ts`                                       | `registerSchema`, `loginSchema`, `refreshSchema`                          |
-| `src/app/middlewares/authMiddleware.ts`                               | Access-token verification; populates `req.user` (`AuthPayload`)           |
-| `src/app/middlewares/authRateLimitMiddleware.ts`                      | Per-IP and per-email rate limiting for the auth endpoints                 |
-| `src/app/middlewares/clientIp.ts`                                     | The client address the limiters count against                             |
-| `src/domain/repositories/refreshSession/IRefreshSessionRepository.ts`  | Session store contract (`RefreshSession`, `SessionSummary`)               |
-| `src/infrastructure/repositories/refreshSession/RefreshSessionRepository.ts` | Mongoose implementation (atomic `rotate`, family revocation)        |
-| `src/infrastructure/models/RefreshSessionModel.ts`                    | Mongoose model for refresh sessions                                       |
-| `src/infrastructure/models/RateLimitModel.ts`                         | Persisted rate-limit counters                                             |
+| File                                                                         | Role                                                                          |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `src/app/routes/authRoutes.ts`                                               | Route definitions with OpenAPI docs and the per-route rate limiters           |
+| `src/app/controllers/AuthController.ts`                                      | Thin HTTP handler, delegates to AuthService                                   |
+| `src/app/services/AuthService.ts`                                            | Hashing, credential verification, token signing, rotation, session revocation |
+| `src/app/dtos/UserDTO.ts`                                                    | `CreateUserDTO`, `UserResponseDTO` (shared with Users module)                 |
+| `src/app/validation/schemas.ts`                                              | `registerSchema`, `loginSchema`, `refreshSchema`                              |
+| `src/app/middlewares/authMiddleware.ts`                                      | Access-token verification; populates `req.user` (`AuthPayload`)               |
+| `src/app/middlewares/authRateLimitMiddleware.ts`                             | Per-IP and per-email rate limiting for the auth endpoints                     |
+| `src/app/middlewares/clientIp.ts`                                            | The client address the limiters count against                                 |
+| `src/domain/repositories/refreshSession/IRefreshSessionRepository.ts`        | Session store contract (`RefreshSession`, `SessionSummary`)                   |
+| `src/infrastructure/repositories/refreshSession/RefreshSessionRepository.ts` | Mongoose implementation (atomic `rotate`, family revocation)                  |
+| `src/infrastructure/models/RefreshSessionModel.ts`                           | Mongoose model for refresh sessions                                           |
+| `src/infrastructure/models/RateLimitModel.ts`                                | Persisted rate-limit counters                                                 |
 
 ## Public API
 
@@ -161,6 +161,12 @@ whose successor is spent, missing or revoked writes `Refresh token reuse detecte
 
 Per-device logout. Authenticated by the refresh token in the body (no access token needed); revokes that token's whole rotation family. Idempotent for an already-revoked session of an otherwise valid token.
 
+A family whose absolute expiry has passed is closed by the rotation that finds it: the row is already
+spent by then, and leaving it alive would make the next presentation read as theft instead of as the
+`REFRESH_INVALID` it is.
+
+A rotation in flight does not survive it (H-62). `rotate` and the `create` of the new row are two operations, so a logout that lands between them revokes a family whose newest row does not exist yet and would leave that device signed in. The refresh re-reads the row it rotated after writing the new one: if the logout got there first, it revokes the family again — this time with the new row in it — and answers `401 REFRESH_REVOKED`.
+
 ### `POST /auth/logout-all`
 
 Global logout for the authenticated user. Bumps the user's `tokenVersion`, so every outstanding refresh token stops working, and marks the session rows revoked. Requires an access token.
@@ -169,13 +175,13 @@ Global logout for the authenticated user. Bumps the user's `tokenVersion`, so ev
 
 List the user's active device sessions — one entry per rotation family. Responds `{ "data": [...] }` where each `SessionSummary` is:
 
-| Field        | Meaning                                                 |
-| ------------ | ------------------------------------------------------- |
-| `id`         | The family id (use it to revoke the session)            |
-| `createdAt`  | When that device logged in (the family root)            |
-| `lastUsedAt` | Last refresh, re-issue or attempt, or the login when it never refreshed |
-| `expiresAt`  | Absolute expiry of the family                           |
-| `userAgent`  | User-Agent captured at login, when sent                 |
+| Field        | Meaning                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| `id`         | The family id (use it to revoke the session)                                             |
+| `createdAt`  | When that device logged in (the family root)                                             |
+| `lastUsedAt` | Last refresh, re-issue or attempt, or the login when it never refreshed                  |
+| `expiresAt`  | Absolute expiry of the family                                                            |
+| `userAgent`  | User-Agent captured at login, when sent                                                  |
 | `current`    | `true` for the family the requesting access token belongs to (its `sid`); always present |
 
 Access tokens issued before `sid` existed mark no row as current until they are renewed (at most one `JWT_EXPIRATION`). Revoking the current session through `DELETE /auth/sessions/:id` is allowed: it is the same as `POST /auth/logout` for that device.
@@ -252,7 +258,14 @@ sequenceDiagram
     alt rotate returned a session
         SVC->>SESS: create({ jti: newJti, familyId, expiresAt })
         Note over SVC: New refresh token expires with the family,<br/>never later — no sliding sessions
-        SVC->>C: 200 { accessToken, refreshToken }
+        SVC->>SESS: findById(jti) — the row just rotated, read again
+        alt It is revoked now, or gone
+            Note over SVC: A logout landed between the rotation and the new row,<br/>which it could not revoke because it did not exist
+            SVC->>SESS: revokeFamily(familyId)
+            SVC->>C: 401 REFRESH_REVOKED (re-login required)
+        else Still the live row
+            SVC->>C: 200 { accessToken, refreshToken }
+        end
     else rotate returned null, but the jti exists
         alt The family is already revoked
             Note over SVC: A logout ended it: over, but nobody replayed anything
@@ -299,26 +312,26 @@ sequenceDiagram
 
 ## Environment Variables
 
-| Variable                    | Used for                                                              |
-| --------------------------- | --------------------------------------------------------------------- |
-| `JWT_SECRET`                | Signing and verifying access tokens                                   |
-| `REFRESH_SECRET`            | Signing refresh tokens; falls back to `JWT_SECRET` when unset         |
-| `JWT_EXPIRATION`            | Access-token lifetime (default: `15m`)                                |
-| `REFRESH_TOKEN_EXPIRATION`  | Refresh-token / session-family lifetime (default: `30d`)              |
-| `BCRYPT_SALT_ROUNDS`        | Password hashing complexity (default: `12`)                           |
-| `AUTH_RATE_LIMIT_MAX`       | Failed login attempts per email per 15-minute window (default: `10`)  |
-| `AUTH_IP_RATE_LIMIT_MAX`    | Login and register attempts per client IP per 15-minute window (default: `60`) |
-| `REFRESH_RATE_LIMIT_MAX`    | Refresh and logout attempts per 15-minute window (default: `60`)      |
+| Variable                   | Used for                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------ |
+| `JWT_SECRET`               | Signing and verifying access tokens                                            |
+| `REFRESH_SECRET`           | Signing refresh tokens; falls back to `JWT_SECRET` when unset                  |
+| `JWT_EXPIRATION`           | Access-token lifetime (default: `15m`)                                         |
+| `REFRESH_TOKEN_EXPIRATION` | Refresh-token / session-family lifetime (default: `30d`)                       |
+| `BCRYPT_SALT_ROUNDS`       | Password hashing complexity (default: `12`)                                    |
+| `AUTH_RATE_LIMIT_MAX`      | Failed login attempts per email per 15-minute window (default: `10`)           |
+| `AUTH_IP_RATE_LIMIT_MAX`   | Login and register attempts per client IP per 15-minute window (default: `60`) |
+| `REFRESH_RATE_LIMIT_MAX`   | Refresh and logout attempts per 15-minute window (default: `60`)               |
 
 ## Rate Limiting
 
 `authRateLimit` applies a 15-minute window per endpoint:
 
-| Endpoint                       | Key                | Cap                        |
-| ------------------------------ | ------------------ | -------------------------- |
-| `POST /auth/register`          | Client IP          | `AUTH_IP_RATE_LIMIT_MAX`   |
-| `POST /auth/login`             | Client IP **and** email | `AUTH_IP_RATE_LIMIT_MAX` / `AUTH_RATE_LIMIT_MAX` |
-| `POST /auth/refresh`, `/logout` | Client IP         | `REFRESH_RATE_LIMIT_MAX`   |
+| Endpoint                        | Key                     | Cap                                              |
+| ------------------------------- | ----------------------- | ------------------------------------------------ |
+| `POST /auth/register`           | Client IP               | `AUTH_IP_RATE_LIMIT_MAX`                         |
+| `POST /auth/login`              | Client IP **and** email | `AUTH_IP_RATE_LIMIT_MAX` / `AUTH_RATE_LIMIT_MAX` |
+| `POST /auth/refresh`, `/logout` | Client IP               | `REFRESH_RATE_LIMIT_MAX`                         |
 
 Login is limited on two dimensions because a distributed attack on one account rotates IPs. Only **failed** logins burn the per-email budget (`refundOnSuccess`), so a third party cannot lock a victim out by spamming their address.
 
@@ -328,17 +341,17 @@ The two caps are deliberately different. The per-email one is the budget of an a
 
 ## Error States
 
-| Error / code                 | Status | Condition                                                                       |
-| ---------------------------- | ------ | ------------------------------------------------------------------------------- |
-| `VALIDATION`                 | 400    | Invalid email format, password shorter than 8 chars, invalid timezone/currency/locale   |
-| `Unauthorized`               | 401    | Invalid email or password on login (uniform for unknown email and wrong password) |
-| `REFRESH_INVALID`            | 401    | Refresh token malformed, expired, or its `jti` is unknown                        |
-| `REFRESH_REVOKED`            | 401    | Reuse of a rotated token whose successor is already spent; a rotated token presented past its re-issue limit; a family already ended by a logout or `DELETE /auth/sessions/:id`; or a token that predates a logout-all / credential change |
-| `Unauthorized`               | 401    | Missing or malformed `Authorization` header, or an invalid/expired access token   |
-| `NotFound`                   | 404    | `DELETE /auth/sessions/:id` for a family that is not the user's                   |
-| `EMAIL_TAKEN`                | 409    | A concurrent register reactivated the same soft-deleted account                   |
-| `DUPLICATE`                  | 409    | Email already registered (unique index on `email`)                               |
-| `RATE_LIMITED`               | 429    | Too many attempts in the window                                                  |
+| Error / code      | Status | Condition                                                                                                                                                                                                                                  |
+| ----------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `VALIDATION`      | 400    | Invalid email format, password shorter than 8 chars, invalid timezone/currency/locale                                                                                                                                                      |
+| `Unauthorized`    | 401    | Invalid email or password on login (uniform for unknown email and wrong password)                                                                                                                                                          |
+| `REFRESH_INVALID` | 401    | Refresh token malformed, expired, or its `jti` is unknown                                                                                                                                                                                  |
+| `REFRESH_REVOKED` | 401    | Reuse of a rotated token whose successor is already spent; a rotated token presented past its re-issue limit; a family already ended by a logout or `DELETE /auth/sessions/:id`; or a token that predates a logout-all / credential change |
+| `Unauthorized`    | 401    | Missing or malformed `Authorization` header, or an invalid/expired access token                                                                                                                                                            |
+| `NotFound`        | 404    | `DELETE /auth/sessions/:id` for a family that is not the user's                                                                                                                                                                            |
+| `EMAIL_TAKEN`     | 409    | A concurrent register reactivated the same soft-deleted account                                                                                                                                                                            |
+| `DUPLICATE`       | 409    | Email already registered (unique index on `email`)                                                                                                                                                                                         |
+| `RATE_LIMITED`    | 429    | Too many attempts in the window                                                                                                                                                                                                            |
 
 > On a `500` during register the user may still have been created — clients should try login before retrying register.
 
