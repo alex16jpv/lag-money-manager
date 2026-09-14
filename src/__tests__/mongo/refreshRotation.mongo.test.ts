@@ -1,12 +1,9 @@
-/**
- * Refresh rotation against a real mongod (H-37): what the mocked suite cannot
- * see, because the grace window depends on `lastUsedAt` and `replacedBy` as the
- * driver actually writes and reads them back.
- */
+// Rotation against a real mongod: the mocks never see `replacedBy` as the driver writes and reads it.
 import jwt from "jsonwebtoken";
 import request from "supertest";
 
 import app from "../../app";
+import { RefreshSessionModel } from "../../infrastructure/models/RefreshSessionModel";
 import { connect, disconnect, dropDatabase } from "./support";
 
 const jtiOf = (token: string): string =>
@@ -14,6 +11,12 @@ const jtiOf = (token: string): string =>
 
 const refresh = async (refreshToken: string): Promise<request.Response> =>
   request(app).post("/auth/refresh").send({ refreshToken });
+
+const logout = async (refreshToken: string): Promise<request.Response> =>
+  request(app).post("/auth/logout").send({ refreshToken });
+
+// The gap measured in production on 2026-09-11 between a lost rotation and the client's return.
+const PRODUCTION_GAP_MS = 13_284_000;
 
 async function register(email: string): Promise<string> {
   const res = await request(app)
@@ -68,19 +71,56 @@ describe("refresh rotation [H-37]", () => {
     expect(afterRevocation.body.code).toBe("REFRESH_REVOKED");
   });
 
-  it("revokes the family when the rotation is older than the grace window", async () => {
+  it("re-issues hours later, ten times, and then retires only that row [T-33]", async () => {
     const first = await register("stale-rotation@example.com");
-    await refresh(first);
+    const successor = (await refresh(first)).body.refreshToken as string;
 
-    // Sixty-one seconds on, that token is no longer the answer that was lost; only the clock moved.
     const realNow = Date.now;
-    Date.now = () => realNow() + 61_000;
+    Date.now = () => realNow() + PRODUCTION_GAP_MS;
+    let access = "";
     try {
-      const late = await refresh(first);
-      expect(late.status).toBe(401);
-      expect(late.body.code).toBe("REFRESH_REVOKED");
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const late = await refresh(first);
+        expect(late.status).toBe(200);
+        expect(jtiOf(late.body.refreshToken)).toBe(jtiOf(successor));
+        access = late.body.accessToken as string;
+      }
+      const spent = await refresh(first);
+      expect(spent.status).toBe(401);
+      expect(spent.body.code).toBe("REFRESH_REVOKED");
     } finally {
       Date.now = realNow;
     }
+
+    // The counter is the driver's, not the mock's: eleven presentations, eleven increments.
+    const row = await RefreshSessionModel.findById(jtiOf(first)).lean();
+    expect(row?.reissueCount).toBe(11);
+    expect(row?.reissuedAt).toBeInstanceOf(Date);
+
+    // What the owner sees is the re-issue, not the rotation it repeats.
+    const listed = await request(app)
+      .get("/auth/sessions")
+      .set("Authorization", `Bearer ${access}`);
+    expect(listed.status).toBe(200);
+    expect(listed.body.data).toHaveLength(1);
+    expect(listed.body.data[0].current).toBe(true);
+    expect(new Date(listed.body.data[0].lastUsedAt).getTime()).toBe(
+      row?.reissuedAt?.getTime(),
+    );
+
+    // And the family was never the thief's: the successor still rotates.
+    expect((await refresh(successor)).status).toBe(200);
+  });
+
+  it("answers a revoked family without calling it theft [T-33]", async () => {
+    const first = await register("after-logout@example.com");
+    const successor = (await refresh(first)).body.refreshToken as string;
+
+    expect((await logout(successor)).status).toBe(200);
+
+    // The client that lost the answer comes back after the logout: over, but nobody replayed anything.
+    const after = await refresh(first);
+    expect(after.status).toBe(401);
+    expect(after.body.code).toBe("REFRESH_REVOKED");
   });
 });

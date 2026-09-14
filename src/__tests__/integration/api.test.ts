@@ -111,6 +111,7 @@ const mockRefreshSessionRepo = {
   create: jest.fn().mockResolvedValue(undefined),
   findById: jest.fn().mockResolvedValue(null),
   rotate: jest.fn().mockResolvedValue(null),
+  countReissue: jest.fn().mockResolvedValue(null),
   revokeFamily: jest.fn().mockResolvedValue(undefined),
   revokeAllForUser: jest.fn().mockResolvedValue(undefined),
   listActiveByUser: jest.fn().mockResolvedValue([]),

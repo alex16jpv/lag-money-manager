@@ -7,6 +7,9 @@ export interface RefreshSession {
   revokedAt: Date | null;
   // When this row was rotated away; null while it is the live tip of its chain.
   lastUsedAt: Date | null;
+  // How many times this rotated row answered again for an answer that never arrived, and when last.
+  reissueCount: number;
+  reissuedAt: Date | null;
 }
 
 // One row per live device session (rotation family), for the sessions UI.
@@ -31,6 +34,9 @@ export interface IRefreshSessionRepository {
 
   // Null when already rotated, revoked or missing, which callers treat as reuse.
   rotate(jti: string, newJti: string): Promise<RefreshSession | null>;
+
+  // Counts one re-issue on a rotated, live row and returns it; null when it is neither.
+  countReissue(jti: string): Promise<RefreshSession | null>;
 
   revokeFamily(familyId: string): Promise<void>;
 

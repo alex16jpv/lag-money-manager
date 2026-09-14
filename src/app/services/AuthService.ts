@@ -19,10 +19,15 @@ import {
 } from "../dtos/UserDTO";
 import { CategoryService } from "./CategoryService";
 
+type LostAnswer =
+  | { kind: "reissued"; tokens: AuthTokens; count: number }
+  | { kind: "spent" }
+  | { kind: "replay" };
+
 const REFRESH_TOKEN_TYPE = "refresh";
 
-// How long after a rotation the presented token may still be the client's, if the answer was lost.
-const REFRESH_REPLAY_GRACE_MS = 60_000;
+// The rotated row is an alias of its successor until someone uses it: ten pairs is alias enough.
+const REFRESH_REISSUE_LIMIT = 10;
 
 // A real cost-12 hash: login pays the same bcrypt time whether the email exists or not.
 const TIMING_EQUALIZATION_HASH =
@@ -217,24 +222,32 @@ export class AuthService {
   private async tokensOfLostAnswer(
     user: User,
     stale: RefreshSession,
-  ): Promise<AuthTokens | null> {
-    if (!stale.replacedBy || stale.revokedAt || !stale.lastUsedAt) return null;
-    if (Date.now() - stale.lastUsedAt.getTime() > REFRESH_REPLAY_GRACE_MS) {
-      return null;
-    }
+  ): Promise<LostAnswer> {
+    if (!stale.replacedBy) return { kind: "replay" };
+    const counted = await this.sessions.countReissue(stale.jti);
+    if (!counted) return { kind: "replay" };
     const successor = await this.sessions.findById(stale.replacedBy);
-    if (!successor || successor.revokedAt || successor.replacedBy) return null;
+    if (!successor || successor.revokedAt || successor.replacedBy) {
+      return { kind: "replay" };
+    }
+    // An untouched successor is proof of a lost answer, so running out is not evidence of theft.
+    if (counted.reissueCount > REFRESH_REISSUE_LIMIT) return { kind: "spent" };
     const remainingSeconds = Math.floor(
       (successor.expiresAt.getTime() - Date.now()) / 1000,
     );
-    if (remainingSeconds <= 0) return null;
+    // A presented token never outlives its family: only its last second reaches this.
+    if (remainingSeconds <= 0) return { kind: "replay" };
     return {
-      accessToken: this.signAccessToken(user, successor.familyId),
-      refreshToken: this.signRefreshToken(
-        user,
-        successor.jti,
-        remainingSeconds,
-      ),
+      kind: "reissued",
+      tokens: {
+        accessToken: this.signAccessToken(user, successor.familyId),
+        refreshToken: this.signRefreshToken(
+          user,
+          successor.jti,
+          remainingSeconds,
+        ),
+      },
+      count: counted.reissueCount,
     };
   }
 
@@ -262,8 +275,38 @@ export class AuthService {
     if (!session) {
       const stale = await this.sessions.findById(jti);
       if (stale) {
-        const replayed = await this.tokensOfLostAnswer(user, stale);
-        if (replayed) return replayed;
+        if (stale.revokedAt) {
+          // The family was already ended on purpose: the token is over, but nobody replayed anything.
+          throw new ApiError(
+            "Unauthorized",
+            "Refresh token has been revoked",
+            "REFRESH_REVOKED",
+          );
+        }
+        const answer = await this.tokensOfLostAnswer(user, stale);
+        if (answer.kind === "reissued") {
+          logger.warn(
+            {
+              userId,
+              familyId: stale.familyId,
+              reissueCount: answer.count,
+            },
+            "Refresh answer was lost; successor re-issued",
+          );
+          return answer.tokens;
+        }
+        if (answer.kind === "spent") {
+          // The successor is still untouched, so the family is the client's: only this row is over.
+          logger.warn(
+            { userId, familyId: stale.familyId },
+            "Refresh re-issue limit reached; rotated token retired",
+          );
+          throw new ApiError(
+            "Unauthorized",
+            "Refresh token has been revoked",
+            "REFRESH_REVOKED",
+          );
+        }
         // Reuse of a rotated token is a replay (theft or a duplicated client): kill the whole chain.
         await this.sessions.revokeFamily(stale.familyId);
         logger.warn(

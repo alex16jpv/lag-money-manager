@@ -9,7 +9,7 @@ Every successful register or login issues a **token pair**:
 - **Access token** — short-lived (`JWT_EXPIRATION`, default 15m), carries `{ userId, email, timezone, sid }`, sent as `Authorization: Bearer <token>`. `sid` is the refresh family the token was issued for; refreshing keeps it, so it identifies the device across rotations.
 - **Refresh token** — long-lived (`REFRESH_TOKEN_EXPIRATION`, default 30d), signed with `REFRESH_SECRET` (falling back to `JWT_SECRET`), carries a `jti` that identifies one row in the sessions collection.
 
-Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the presented token and issues a new pair. Replaying an already-rotated token is treated as theft and revokes the entire device session family — with one exception, the **grace window** below, which is what tells a replay apart from an answer that never arrived.
+Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the presented token and issues a new pair. Replaying an already-rotated token is treated as theft and revokes the entire device session family — with one exception, the **untouched successor** below, which is what tells a replay apart from an answer that never arrived.
 
 ## Files and Responsibilities
 
@@ -98,9 +98,9 @@ Failed logins pay the same bcrypt cost whether the email exists or not, so timin
 
 Exchange a refresh token for a **new** access + refresh pair. Public (no access token needed); the body is `{ "refreshToken": "..." }`. The response carries no `user`.
 
-Always store the new refresh token — the old one is dead the moment it is used. Rotation never extends the family past its original absolute expiry.
+Always store the new refresh token: the old one stops rotating the moment it is used, and all it can still do is repeat the answer that never arrived (below). Rotation never extends the family past its original absolute expiry.
 
-#### The grace window for a lost answer
+#### A lost answer is not a replay
 
 Rotation is written before the answer is sent, so a client that never receives it keeps a token the server has already
 rotated, and its next attempt looks exactly like a replay: same `jti`, already spent. It happens for real — the tab
@@ -111,12 +111,51 @@ What tells the two apart is the **successor**: nobody can have used the token th
 row is already rotated, the request is answered with the successor's own pair — no new row, no new rotation — as long as
 all of this holds:
 
-- the rotation happened less than **60 seconds** ago (`lastUsedAt`),
+- the presented row is rotated and its family is alive (a revoked family is answered below, and is not a replay),
 - the successor still exists, is not revoked, and has not itself been rotated,
-- neither row is revoked and the family has not expired.
+- the family has not expired, and this row has been presented at most **10** times since it was rotated.
 
-Anything else is still a replay and still revokes the family. A stolen token therefore buys nothing once the legitimate
-client has rotated again, which is the case replay detection exists for.
+**There is no time limit, and that is deliberate.** Until 2026-09-13 the re-issue also required the rotation to be less
+than 60 seconds old. That clock added nothing the untouched successor did not already prove, and it killed real
+sessions: the client that loses the answer is usually the client that has just died, and it comes back when its user
+does, not within the minute. The two families killed on 2026-09-11 and 2026-09-12 presented their token **3 h 41 min**
+and **2 h 52 min** after the rotation, and in both the successor had never been touched.
+
+**What replaces the clock is a counter, because without one the rotated row becomes a permanent alias.** While the
+successor stays untouched, the old token answers again as often as it is presented — which is what the legitimate
+client needs, since the deploy that loses one answer loses the next one too, and a browser with six tabs asks six
+times at once. `countReissue` stamps `reissuedAt` and increments `reissueCount` on the rotated row in **one atomic
+update**, which is also how the row is read: counting afterwards would let two simultaneous requests see the same
+number and the budget would mean nothing. It counts **presentations, not successes** — an attempt that turns out to be
+a replay is counted too, and then revokes the family anyway.
+
+Past the tenth, the row is **retired, not treated as theft**: `401 REFRESH_REVOKED`, its own warning
+(`Refresh re-issue limit reached; rotated token retired`), and **the family is left alone**. The successor being
+untouched is still proof that nobody replayed anything; all the counter knows is that this client is not keeping the
+answer. Revoking there would kill the live device for the same blind reason the clock did. The stamp is also what
+`GET /auth/sessions` reports as `lastUsedAt`, so a family that lives on re-issues is not shown to its owner as idle.
+
+Anything else is still a replay and still revokes the family. A stolen token buys nothing once the legitimate client
+rotates again, which is the case replay detection exists for: while the successor is untouched the thief gets exactly
+the pair that client already holds, so any use by either of them brings the collision closer. The case that has no
+collision is a client that never comes back — it died, or its user logged in again and opened another family — and there
+the counter, not the clock, is what bounds a leaked token.
+
+Each re-issue logs `Refresh answer was lost; successor re-issued` at **warn** with the user, the family and the count:
+`warn` because `LOG_LEVEL` may be `warn` in production and this path no longer has a clock around it, and the count
+because one lost answer and forty are not the same event.
+
+The three reads — `rotate`, then the presented row, then its successor — are not one transaction. Two requests carrying
+the same rotated token are harmless: both are answered with the same pair and neither writes a row. What the gap allows
+is a successor rotated by the live client in between, which re-issues a pair whose `jti` is already spent; the theft
+detection then fires one attempt later instead of at once.
+
+#### A revoked family is over, not stolen
+
+A logout, a `DELETE /auth/sessions/:id` or an earlier replay leaves every row of the family with `revokedAt`. A client
+that presents one of those rows is answered `401 REFRESH_REVOKED` without revoking anything again and **without the
+theft warning**: it is a client that had not noticed, not a token being replayed. Only a rotated row in a live family
+whose successor is spent, missing or revoked writes `Refresh token reuse detected; family revoked`.
 
 ### `POST /auth/logout`
 
@@ -134,7 +173,7 @@ List the user's active device sessions — one entry per rotation family. Respon
 | ------------ | ------------------------------------------------------- |
 | `id`         | The family id (use it to revoke the session)            |
 | `createdAt`  | When that device logged in (the family root)            |
-| `lastUsedAt` | Last refresh, or the login when it never refreshed      |
+| `lastUsedAt` | Last refresh, re-issue or attempt, or the login when it never refreshed |
 | `expiresAt`  | Absolute expiry of the family                           |
 | `userAgent`  | User-Agent captured at login, when sent                 |
 | `current`    | `true` for the family the requesting access token belongs to (its `sid`); always present |
@@ -215,14 +254,23 @@ sequenceDiagram
         Note over SVC: New refresh token expires with the family,<br/>never later — no sliding sessions
         SVC->>C: 200 { accessToken, refreshToken }
     else rotate returned null, but the jti exists
-        SVC->>SESS: findById(replacedBy) — the successor of the presented row
-        alt Rotated < 60s ago and the successor is untouched
-            Note over SVC: The answer that carried it never arrived:<br/>same client asking again, not a replay
-            SVC->>C: 200 { accessToken, refreshToken } — the successor's own pair
-        else Anything else
-            Note over SVC: Reuse of a rotated/revoked token — theft or a duplicated client
-            SVC->>SESS: revokeFamily(familyId)
+        alt The family is already revoked
+            Note over SVC: A logout ended it: over, but nobody replayed anything
             SVC->>C: 401 REFRESH_REVOKED (re-login required)
+        else
+            SVC->>SESS: countReissue(jti) — stamps the row and counts this re-issue
+            SVC->>SESS: findById(replacedBy) — the successor of the presented row
+            alt The successor is untouched and the count is within the limit
+                Note over SVC: The answer that carried it never arrived:<br/>same client asking again, not a replay
+                SVC->>C: 200 { accessToken, refreshToken } — the successor's own pair
+            else The successor is untouched but the count is spent
+                Note over SVC: This row is over, the family is not:<br/>no proof of theft, so nothing is revoked
+                SVC->>C: 401 REFRESH_REVOKED (re-login required)
+            else Anything else
+                Note over SVC: Reuse of a rotated token — theft or a duplicated client
+                SVC->>SESS: revokeFamily(familyId)
+                SVC->>C: 401 REFRESH_REVOKED (re-login required)
+            end
         end
     else jti unknown
         SVC->>C: 401 REFRESH_INVALID
@@ -285,7 +333,7 @@ The two caps are deliberately different. The per-email one is the budget of an a
 | `VALIDATION`                 | 400    | Invalid email format, password shorter than 8 chars, invalid timezone/currency/locale   |
 | `Unauthorized`               | 401    | Invalid email or password on login (uniform for unknown email and wrong password) |
 | `REFRESH_INVALID`            | 401    | Refresh token malformed, expired, or its `jti` is unknown                        |
-| `REFRESH_REVOKED`            | 401    | Reuse of a rotated token outside the grace window, or the token predates a logout-all / credential change |
+| `REFRESH_REVOKED`            | 401    | Reuse of a rotated token whose successor is already spent; a rotated token presented past its re-issue limit; a family already ended by a logout or `DELETE /auth/sessions/:id`; or a token that predates a logout-all / credential change |
 | `Unauthorized`               | 401    | Missing or malformed `Authorization` header, or an invalid/expired access token   |
 | `NotFound`                   | 404    | `DELETE /auth/sessions/:id` for a family that is not the user's                   |
 | `EMAIL_TAKEN`                | 409    | A concurrent register reactivated the same soft-deleted account                   |

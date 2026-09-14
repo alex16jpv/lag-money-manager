@@ -167,8 +167,14 @@ router.post(
  *       pair is issued (the response carries no `user`). Always store the new
  *       token — replaying an already-rotated one is treated as theft and
  *       revokes the whole device session family (401 REFRESH_REVOKED, re-login
- *       required). Rotation never extends the session past its original
- *       absolute expiry.
+ *       required). One exception, for the answer that never arrives: while the
+ *       successor of the presented token has not been used itself, the same
+ *       pair is answered again — at any age, up to ten times — so a client that
+ *       lost the response may simply ask again with the token it still has, and
+ *       should not end its session on its own. The eleventh is refused with 401
+ *       REFRESH_REVOKED and the session family survives, so that answer means
+ *       "this token is over", not "this device was logged out". Rotation never
+ *       extends the session past its original absolute expiry.
  *     security: []
  *     requestBody:
  *       required: true
@@ -192,8 +198,9 @@ router.post(
  *       401:
  *         description: >
  *           Invalid or expired refresh token (code REFRESH_INVALID), or token
- *           revoked — reuse of a rotated token, password/email change, or
- *           logout-all (code REFRESH_REVOKED)
+ *           revoked — reuse of a rotated token whose successor is already
+ *           spent, logout, password/email change, or logout-all (code
+ *           REFRESH_REVOKED)
  *         content:
  *           application/json:
  *             schema:

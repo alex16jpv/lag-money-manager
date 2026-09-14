@@ -55,9 +55,10 @@ Content-Type: application/json
 
 @rotatedRefresh = {{refresh.response.body.refreshToken}}
 
-### Reuso de un refresh ya rotado DENTRO DE LA VENTANA (200) — la respuesta que
+### Reuso de un refresh ya rotado CON EL SUCESOR INTACTO (200) — la respuesta que
 ### llevaba el token nuevo se perdió, así que contesta el MISMO par del sucesor.
-### Corre antes de un minuto desde el refresh de arriba.
+### No hay prisa: vale horas después, mientras nadie use el sucesor. Repetible
+### hasta diez veces; en la undécima ese token se jubila (401) y la familia sigue viva.
 POST {{baseUrl}}/auth/refresh
 Content-Type: application/json
 
@@ -107,6 +108,15 @@ Authorization: Bearer {{accessToken}}
 ### Logout del dispositivo actual — revoca la familia del refresh presentado.
 ### Con la familia ya revocada por el reuso de arriba, vuelve a hacer login antes.
 POST {{baseUrl}}/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "{{twiceRotatedRefresh}}"
+}
+
+### Refresh después del logout (401 REFRESH_REVOKED) — el cliente que no se enteró:
+### la familia se cerró a propósito, así que NO cuenta como robo ni se revoca nada.
+POST {{baseUrl}}/auth/refresh
 Content-Type: application/json
 
 {
