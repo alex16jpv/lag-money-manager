@@ -59,6 +59,33 @@ describe("db-backup.sh", () => {
     expect(output).toContain("names no database");
   });
 
+  it("refuses a path that is not a plain database name", () => {
+    const { status, output } = run(BACKUP, [], {
+      BACKUP_DIR: dir,
+      MONGO_URI: "mongodb://localhost:27017/lag_money/?replicaSet=rs0",
+    });
+    expect(status).not.toBe(0);
+    expect(output).toContain("is not a usable database name");
+  });
+
+  it("refuses a database name that would escape the backup directory", () => {
+    const { status, output } = run(BACKUP, [], {
+      BACKUP_DIR: dir,
+      MONGO_URI: "mongodb://localhost:27017/../escape",
+    });
+    expect(status).not.toBe(0);
+    expect(output).toContain("is not a usable database name");
+  });
+
+  it("refuses stray arguments instead of ignoring them", () => {
+    const { status, output } = run(BACKUP, ["/somewhere/else"], {
+      BACKUP_DIR: dir,
+      MONGO_URI: "mongodb://localhost:27017/lag_money",
+    });
+    expect(status).not.toBe(0);
+    expect(output).toContain("takes no arguments");
+  });
+
   it("refuses a backup directory inside a git repository", () => {
     const { status, output } = run(BACKUP, [], {
       BACKUP_DIR: path.resolve(__dirname, "../../../.t84-guard"),
@@ -124,6 +151,24 @@ describe("db-restore.sh", () => {
     });
     expect(status).not.toBe(0);
     expect(output).toContain("run it from a terminal");
+  });
+
+  it("refuses a URI that names a database, which would filter the archive", () => {
+    const archive = path.join(dir, "ok.archive.gz");
+    writeFileSync(archive, gzipSync(Buffer.from("payload")));
+    const { status, output } = run(RESTORE, [archive], {
+      MONGO_URI: "mongodb://localhost:27017/lag_money",
+    });
+    expect(status).not.toBe(0);
+    expect(output).toContain("names a database");
+  });
+
+  it("refuses more than one argument", () => {
+    const { status, output } = run(RESTORE, ["one", "two"], {
+      MONGO_URI: "mongodb://localhost:27017",
+    });
+    expect(status).not.toBe(0);
+    expect(output).toContain("exactly one argument");
   });
 
   it("prints usage on --help without touching anything", () => {

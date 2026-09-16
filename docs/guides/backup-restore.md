@@ -4,19 +4,24 @@ Two commands take a copy of a live database and put one back:
 
 ```bash
 MONGO_URI='mongodb+srv://user:pass@cluster.mongodb.net/lag_money' npm run db:backup
-MONGO_URI='mongodb://cluster.mongodb.net' npm run db:restore -- ~/ledger-flow-backups/lag_money-2026-09-16T23-09-10Z.archive.gz
+MONGO_URI='mongodb+srv://user:pass@cluster.mongodb.net/' npm run db:restore -- ~/ledger-flow-backups/lag_money-2026-09-16T23-09-10Z.archive.gz
 ```
 
 Both read `MONGO_URI` **from the environment only, never from `.env`**. That file's
 value changes depending on what you were last working on, and a command that can
-overwrite a production database must never guess which one it is pointing at.
+overwrite a production database must not guess which one it is pointing at.
+
+Note the difference between the two: **backup wants a database in the URI**, so
+the dump is scoped and named; **restore refuses one**, because the archive
+already carries the database names it was taken from.
 
 ## Requirements
 
 `mongodump` and `mongorestore` are not installed on the host. Both commands run
 them inside a throwaway container built from the `mongo:8` image, which you
-already have locally for `docker compose up -d mongo`. Nothing is installed and
-no container is left behind.
+already have locally for `docker compose up -d mongo`. Nothing is installed, and
+the container is removed when the command ends — including when you interrupt
+it, which stops the dump or restore rather than leaving it running.
 
 The container runs with `--network host`, so the same command reaches both a
 MongoDB Atlas cluster and the local `docker compose` MongoDB on
@@ -28,9 +33,6 @@ MongoDB Atlas cluster and the local `docker compose` MongoDB on
 MONGO_URI='mongodb+srv://user:pass@cluster.mongodb.net/lag_money' npm run db:backup
 ```
 
-The URI **must name a database**: the dump is scoped to it, so there is no way
-to take a copy without having said out loud what you are copying.
-
 Archives land in `~/ledger-flow-backups` as
 `<database>-<UTC timestamp>.archive.gz`, a single gzipped file. The directory is
 created `700` and each archive `600`. Override the location with `BACKUP_DIR`;
@@ -40,36 +42,52 @@ real user data.
 The command prints the database, the host, the collection and document counts
 and the size, and fails rather than leaving a half-written file: the archive is
 written to a `.partial` name, checked for gzip integrity and for having dumped
-at least one collection, and only then moved into place. Interrupting it with
-Ctrl-C removes the partial file.
+at least one collection, and only then moved into place. Interrupting it removes
+the partial file.
+
+### What a backup does not give you
+
+`mongodump` scoped to one database cannot use `--oplog`, so the archive is **not
+a point-in-time snapshot**. Collections are read one after another, and a write
+that lands between two of them is captured on one side and not the other. In
+this product a transfer writes `transactions` and `accounts` inside a single
+MongoDB transaction, so a dump taken under load can capture half of one.
+
+For a backup you intend to restore from, take it when nothing is writing.
 
 ## Restore
 
 ```bash
-MONGO_URI='mongodb://cluster.mongodb.net' npm run db:restore -- <archive>
+MONGO_URI='mongodb+srv://user:pass@cluster.mongodb.net/' npm run db:restore -- <archive>
 ```
 
 Note the `--`: without it, npm keeps the argument for itself.
 
-**Give the server, with no database path.** An archive carries the database
-names it was taken from, and restores into them. A path in the URI is read by
-`mongorestore` as a filter on the archive's own namespaces, so it matches
-nothing and restores nothing while reporting success — the command refuses to
-run in that case rather than let that happen quietly.
+**Give the server, with no database path.** The archive carries the database
+names it was taken from and restores into them. A path in the URI is read by
+`mongorestore` as a filter over those names, which at best does nothing and at
+worst silently restores nothing while reporting success, so the command refuses
+a URI that has one. If you need options after a `?`, keep the `/` before it —
+`mongodb://host/?ssl=true` — because `mongorestore` rejects a URI with a query
+and no path.
 
 Before writing anything, the command does a dry run against the server. That
 proves the URI and credentials work, and tells it exactly which collections the
-archive will write. It then prints them and asks you to type the database names
-back before it does anything.
+archive will write. It then prints them and asks you to type **the server host**
+back — not the database name, which is the same string on your laptop and in
+production, and so confirms nothing.
 
 **A restore destroys data.** Every collection carried by the archive is dropped
 and rewritten. A collection that exists on the server and is *not* in the
-archive is left alone — a restore is not a reset of the whole database.
+archive is left alone — a restore is not a reset of the whole database. If you
+interrupt it, it stops, and says plainly that the target is now half-written and
+unusable until you run the restore through to the end.
 
 Afterwards the command reports how many documents were restored, and fails if
-any document failed. Restoring into the local MongoDB first, and looking at the
-result, costs one command and is the way to check an archive is what you think
-it is:
+any document failed, or if it dropped collections and then restored nothing.
+
+Restoring into the local MongoDB first, and looking at the result, costs one
+command and is the way to check an archive is what you think it is:
 
 ```bash
 MONGO_URI='mongodb://localhost:27017' npm run db:restore -- <archive>
@@ -77,17 +95,23 @@ MONGO_URI='mongodb://localhost:27017' npm run db:restore -- <archive>
 
 ## Keeping the URI out of your shell history
 
-Typing the production URI inline puts the password in your shell history and, for
-as long as the command runs, in the host process list. Keep it in a file outside
-all three repositories, as the Sentry credentials already are:
+Typing the production URI inline puts the password in your shell history. Keep
+it in a file outside all three repositories, as the Sentry credentials already
+are:
 
 ```bash
 install -m 600 /dev/null ~/.config/ledger-flow/prod-uri   # once
 MONGO_URI="$(cat ~/.config/ledger-flow/prod-uri)" npm run db:backup
 ```
 
-The URI reaches the container through the environment, never as a command-line
-argument, so it does not appear in the process list on either side.
+The URI reaches the container through its environment rather than on the host
+command line, so it does not appear in the host process list. It **is** visible
+to anyone who can query the Docker daemon while the command runs — `docker
+inspect` shows a container's environment, and `mongodump` inside the container
+receives the URI as an argument. Both end when the container is removed, which
+is every exit path including an interrupt. Anything the tools print is filtered
+first, so a failed connection reports the host and database but not the
+password.
 
 ## Options
 
@@ -102,6 +126,8 @@ argument, so it does not appear in the process list on either side.
 | What you see | What it means |
 | --- | --- |
 | `mongodump reported 0 collections` | The database in the URI is empty or misspelled. Nothing was written. |
-| `the dry run resolved 0 collections` | The restore URI carries a database path. Pass the server alone. |
-| `server selection error … connection refused` | The server is unreachable. `mongodump` retries for 30 seconds before saying so. |
+| `MONGO_URI names a database` | A restore URI must be the server alone. Drop the `/<database>`. |
+| `the dry run resolved 0 collections` | The archive carries nothing to restore. Nothing was written. |
+| `is not a usable database name` | The URI's path is not a plain database name — often a trailing `/`, or options without a `?`. |
+| `server selection error … connection refused` | The server is unreachable. `mongodump` retries for about 30 seconds when the connection is refused outright, and longer when the address simply does not answer. |
 | `image 'mongo:8' is not available locally` | `docker pull mongo:8`. |

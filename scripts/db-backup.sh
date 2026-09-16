@@ -6,7 +6,7 @@ BACKUP_DIR="${BACKUP_DIR:-$HOME/ledger-flow-backups}"
 
 usage() {
   cat <<'USAGE'
-Usage: MONGO_URI='mongodb+srv://user:pass@host/database' npm run db:backup
+Usage: MONGO_URI='mongodb+srv://user:pass@cluster.mongodb.net/lag_money' npm run db:backup
 
 Dumps the database named in MONGO_URI to a dated, gzipped archive.
 
@@ -19,7 +19,7 @@ Optional:
   MONGO_TOOLS_IMAGE  image providing mongodump (default: mongo:8)
 
 The archive restores with:
-  MONGO_URI='mongodb://host' npm run db:restore -- <archive>
+  MONGO_URI='mongodb+srv://user:pass@cluster.mongodb.net/' npm run db:restore -- <archive>
 USAGE
 }
 
@@ -32,6 +32,11 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
 fi
+
+[[ $# -eq 0 ]] || {
+  usage >&2
+  die "This command takes no arguments; configuration comes from the environment."
+}
 
 [[ -n "${MONGO_URI:-}" ]] || {
   usage >&2
@@ -46,13 +51,13 @@ esac
 
 body="${MONGO_URI#mongodb://}"
 body="${body#mongodb+srv://}"
+body="${body%%\?*}"
 if [[ "$body" == *@* ]]; then
   CREDENTIALS="${body%@*}"
+  body="${body##*@}"
 else
   CREDENTIALS=""
 fi
-body="${body##*@}"
-body="${body%%\?*}"
 URI_HOST="${body%%/*}"
 if [[ "$body" == */* ]]; then
   DB="${body#*/}"
@@ -62,13 +67,14 @@ fi
 
 [[ -n "$URI_HOST" ]] || die "MONGO_URI has no host."
 [[ -n "$DB" ]] || die "MONGO_URI names no database. Append /<database> so the dump is scoped to it."
+[[ "$DB" =~ ^[A-Za-z0-9_-]+$ ]] ||
+  die "'$DB' is not a usable database name. Give MONGO_URI as <host>/<database>, with any options after a '?'."
 
 mkdir -p "$BACKUP_DIR"
 BACKUP_DIR="$(cd "$BACKUP_DIR" && pwd)"
 if git -C "$BACKUP_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   die "BACKUP_DIR is inside a git repository ($BACKUP_DIR). A dump carries real user data: choose a directory outside git."
 fi
-chmod 700 "$BACKUP_DIR"
 
 command -v docker >/dev/null 2>&1 || die "docker is not installed; mongodump runs inside a container."
 docker info >/dev/null 2>&1 || die "the Docker daemon is not reachable. Start Docker and retry."
@@ -81,7 +87,7 @@ redact() {
     cat
     return
   fi
-  while IFS= read -r line; do
+  while IFS= read -r line || [[ -n "$line" ]]; do
     printf '%s\n' "${line//"$CREDENTIALS"/<credentials hidden>}"
   done
 }
@@ -91,15 +97,23 @@ NAME="${DB}-${STAMP}.archive.gz"
 FINAL="$BACKUP_DIR/$NAME"
 PARTIAL="$BACKUP_DIR/.${NAME}.partial"
 LOG="$(mktemp)"
-trap 'rm -f "$PARTIAL" "$LOG"' EXIT
-trap 'exit 130' INT
+CIDFILE="$(mktemp -u)"
+
+cleanup() {
+  if [[ -s "$CIDFILE" ]]; then
+    docker rm -f "$(cat "$CIDFILE")" >/dev/null 2>&1 || true
+  fi
+  rm -f "$CIDFILE" "$PARTIAL" "$LOG"
+}
+trap cleanup EXIT
+trap 'echo >&2; echo "Interrupted: the dump was stopped and nothing was written." >&2; exit 130' INT
 trap 'exit 143' TERM HUP
 
 echo "==> Dumping '$DB' from $URI_HOST"
 echo "    into $FINAL"
 
 status=0
-docker run --rm --network host -e MONGO_URI "$IMAGE" \
+docker run --rm --cidfile "$CIDFILE" --network host -e MONGO_URI "$IMAGE" \
   sh -c 'exec mongodump --uri="$MONGO_URI" --archive --gzip' 2>&1 >"$PARTIAL" | redact | tee "$LOG" >&2 || status=$?
 
 if [[ $status -ne 0 ]]; then
@@ -126,5 +140,5 @@ echo "    documents   $DOCUMENTS"
 echo "    size        $(du -h "$FINAL" | cut -f1)"
 echo "    file        $FINAL"
 echo
-echo "Restore it with:"
-echo "    MONGO_URI='mongodb://<host>' npm run db:restore -- '$FINAL'"
+echo "Restore it with (the server only, no database path):"
+echo "    MONGO_URI='<scheme>://<user>:<pass>@$URI_HOST/' npm run db:restore -- '$FINAL'"
