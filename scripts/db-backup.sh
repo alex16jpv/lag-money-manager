@@ -70,8 +70,12 @@ fi
 [[ "$DB" =~ ^[A-Za-z0-9_-]+$ ]] ||
   die "'$DB' is not a usable database name. Give MONGO_URI as <host>/<database>, with any options after a '?'."
 
-mkdir -p "$BACKUP_DIR"
+mkdir -m 700 -p "$BACKUP_DIR"
 BACKUP_DIR="$(cd "$BACKUP_DIR" && pwd)"
+if [[ "$(stat -c '%a' "$BACKUP_DIR")" != "700" ]]; then
+  echo "WARNING: $BACKUP_DIR is readable beyond you ($(stat -c '%A' "$BACKUP_DIR")). The archives" >&2
+  echo "         themselves are written 600, but consider: chmod 700 '$BACKUP_DIR'" >&2
+fi
 if git -C "$BACKUP_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   die "BACKUP_DIR is inside a git repository ($BACKUP_DIR). A dump carries real user data: choose a directory outside git."
 fi
