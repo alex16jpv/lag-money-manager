@@ -24,6 +24,8 @@
     "format": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\"",
     "db:sync-indexes": "tsx scripts/sync-indexes.ts",
+    "db:backup": "bash scripts/db-backup.sh",
+    "db:restore": "bash scripts/db-restore.sh",
     "test:mongo": "jest -c jest.mongo.config.js",
     "fixtures:offline": "tsx scripts/offline-fixtures/build.ts",
     "fixtures:check": "tsx scripts/offline-fixtures/build.ts --check",

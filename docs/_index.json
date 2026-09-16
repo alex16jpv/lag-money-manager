@@ -7,7 +7,12 @@
       "path": "docs/agent-context.md",
       "title": "Agent Context & Working Instructions",
       "description": "Critical file for AI agents: project context, architecture summary, coding standards, change protocol, and anti-patterns.",
-      "tags": ["agent", "standards", "conventions", "architecture"],
+      "tags": [
+        "agent",
+        "standards",
+        "conventions",
+        "architecture"
+      ],
       "audience": "both",
       "mustReadFirst": true
     },
@@ -15,7 +20,11 @@
       "path": "docs/architecture/overview.md",
       "title": "Architecture Overview",
       "description": "High-level system architecture, layer descriptions, key decisions, and external dependencies.",
-      "tags": ["architecture", "overview", "layers"],
+      "tags": [
+        "architecture",
+        "overview",
+        "layers"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -23,7 +32,11 @@
       "path": "docs/architecture/folder-structure.md",
       "title": "Folder Structure",
       "description": "Complete directory map with purpose, contents, and naming rules for each folder.",
-      "tags": ["architecture", "structure", "folders"],
+      "tags": [
+        "architecture",
+        "structure",
+        "folders"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -45,7 +58,12 @@
       "path": "docs/architecture/request-lifecycle.md",
       "title": "Request Lifecycle",
       "description": "Complete trace of an HTTP request from entry to response with sequence diagram.",
-      "tags": ["architecture", "request", "middleware", "lifecycle"],
+      "tags": [
+        "architecture",
+        "request",
+        "middleware",
+        "lifecycle"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -53,7 +71,12 @@
       "path": "docs/architecture/dependency-rules.md",
       "title": "Dependency Rules",
       "description": "Layer import rules, forbidden dependencies, and dependency direction diagram.",
-      "tags": ["architecture", "dependencies", "layers", "rules"],
+      "tags": [
+        "architecture",
+        "dependencies",
+        "layers",
+        "rules"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -61,7 +84,11 @@
       "path": "docs/architecture/decisions/_template.md",
       "title": "ADR Template",
       "description": "Architecture Decision Record template for documenting technical decisions.",
-      "tags": ["architecture", "decisions", "template"],
+      "tags": [
+        "architecture",
+        "decisions",
+        "template"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -69,7 +96,13 @@
       "path": "docs/architecture/decisions/001-dual-database-support.md",
       "title": "ADR-001: Dual Database Support (superseded)",
       "description": "Historical record of the dual-database decision, superseded: the project is MongoDB-only and the repository/factory seam is kept only for testing.",
-      "tags": ["architecture", "decisions", "database", "repository", "superseded"],
+      "tags": [
+        "architecture",
+        "decisions",
+        "database",
+        "repository",
+        "superseded"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -77,7 +110,12 @@
       "path": "docs/architecture/decisions/002-uuid-v7-for-identifiers.md",
       "title": "ADR-002: UUID v7 for Identifiers",
       "description": "Decision to use UUID v7 for all entity IDs — time-ordered, globally unique, database-agnostic.",
-      "tags": ["architecture", "decisions", "uuid", "identifiers"],
+      "tags": [
+        "architecture",
+        "decisions",
+        "uuid",
+        "identifiers"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -85,7 +123,12 @@
       "path": "docs/architecture/decisions/003-express-5.md",
       "title": "ADR-003: Express 5",
       "description": "Decision to use Express 5 for native async error handling and latest framework improvements.",
-      "tags": ["architecture", "decisions", "express", "framework"],
+      "tags": [
+        "architecture",
+        "decisions",
+        "express",
+        "framework"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -93,7 +136,12 @@
       "path": "docs/architecture/decisions/004-zod-for-validation.md",
       "title": "ADR-004: Zod for Validation",
       "description": "Decision to use Zod 4 for TypeScript-first request validation with superRefine for complex rules.",
-      "tags": ["architecture", "decisions", "zod", "validation"],
+      "tags": [
+        "architecture",
+        "decisions",
+        "zod",
+        "validation"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -101,7 +149,12 @@
       "path": "docs/guides/getting-started.md",
       "title": "Getting Started",
       "description": "Step-by-step guide from zero to running: prerequisites, install, env setup, database, run, verify.",
-      "tags": ["guide", "setup", "install", "quickstart"],
+      "tags": [
+        "guide",
+        "setup",
+        "install",
+        "quickstart"
+      ],
       "audience": "both",
       "mustReadFirst": true
     },
@@ -109,7 +162,11 @@
       "path": "docs/guides/contributing.md",
       "title": "Contributing Guide",
       "description": "Contribution workflow, the npm run ci gate, code style, commit conventions, the generated OpenAPI spec, and the conventions a review checks.",
-      "tags": ["guide", "contributing", "workflow"],
+      "tags": [
+        "guide",
+        "contributing",
+        "workflow"
+      ],
       "audience": "human",
       "mustReadFirst": false
     },
@@ -117,7 +174,12 @@
       "path": "docs/guides/adding-new-features.md",
       "title": "Adding New Features",
       "description": "Step-by-step instructions for adding each type of component: entities, DTOs, Mongoose models, repositories, services, controllers, validation, routes, env vars and indexes.",
-      "tags": ["guide", "features", "development", "boilerplate"],
+      "tags": [
+        "guide",
+        "features",
+        "development",
+        "boilerplate"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -125,7 +187,11 @@
       "path": "docs/guides/environment-vars.md",
       "title": "Environment Variables",
       "description": "Complete table of all environment variables with descriptions, defaults, and how to obtain values.",
-      "tags": ["guide", "environment", "configuration"],
+      "tags": [
+        "guide",
+        "environment",
+        "configuration"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -133,7 +199,13 @@
       "path": "docs/guides/testing.md",
       "title": "Testing Guide",
       "description": "How to run the 374-test suite and the npm run ci gate, write new tests, mock repositories and constants, and what the mocked suite cannot cover.",
-      "tags": ["guide", "testing", "jest", "mocking", "ci"],
+      "tags": [
+        "guide",
+        "testing",
+        "jest",
+        "mocking",
+        "ci"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -141,7 +213,42 @@
       "path": "docs/guides/deployment.md",
       "title": "Production Deployment Guide",
       "description": "AWS Lambda deploy scripts and credentials, MongoDB Atlas requirements, index sync, rate limiting, HTTPS, and the production environment checklist.",
-      "tags": ["guide", "deployment", "production", "lambda", "aws", "atlas", "security"],
+      "tags": [
+        "guide",
+        "deployment",
+        "production",
+        "lambda",
+        "aws",
+        "atlas",
+        "security"
+      ],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
+      "path": "docs/guides/backup-restore.md",
+      "title": "Backup and Restore",
+      "description": "Taking a gzipped copy of a live database and putting one back, with the guards that stop a restore from silently writing nothing.",
+      "tags": [
+        "guide",
+        "backup",
+        "restore",
+        "database",
+        "operations"
+      ],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
+      "path": "docs/guides/testing-seed.md",
+      "title": "Deterministic Test Seed",
+      "description": "The seeded dataset the frontend test suite runs against, and how to regenerate it.",
+      "tags": [
+        "guide",
+        "testing",
+        "seed",
+        "fixtures"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -149,7 +256,13 @@
       "path": "docs/modules/auth.md",
       "title": "Auth Module",
       "description": "Authentication module: registration, login, JWT token issuance, password hashing.",
-      "tags": ["module", "auth", "jwt", "registration", "login"],
+      "tags": [
+        "module",
+        "auth",
+        "jwt",
+        "registration",
+        "login"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -157,7 +270,11 @@
       "path": "docs/modules/users.md",
       "title": "Users Module",
       "description": "User management module: CRUD operations, password updates, self-access enforcement.",
-      "tags": ["module", "users", "crud"],
+      "tags": [
+        "module",
+        "users",
+        "crud"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -165,7 +282,12 @@
       "path": "docs/modules/accounts.md",
       "title": "Accounts Module",
       "description": "Financial accounts module: CRUD operations, account types, balance tracking.",
-      "tags": ["module", "accounts", "crud", "balance"],
+      "tags": [
+        "module",
+        "accounts",
+        "crud",
+        "balance"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -173,7 +295,11 @@
       "path": "docs/modules/categories.md",
       "title": "Categories Module",
       "description": "Transaction categories module: CRUD operations, user-scoped categories.",
-      "tags": ["module", "categories", "crud"],
+      "tags": [
+        "module",
+        "categories",
+        "crud"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -181,7 +307,13 @@
       "path": "docs/modules/transactions.md",
       "title": "Transactions Module",
       "description": "Transactions module: income/expense/transfer/adjustment, balance adjustments, complex validation, cross-repository operations.",
-      "tags": ["module", "transactions", "crud", "balance", "transfer"],
+      "tags": [
+        "module",
+        "transactions",
+        "crud",
+        "balance",
+        "transfer"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -189,7 +321,12 @@
       "path": "docs/modules/budgets.md",
       "title": "Budgets Module",
       "description": "Budgets module: recurring periods resolved from a reference date, per-period amount overrides, category scoping, and archive semantics.",
-      "tags": ["module", "budgets", "crud", "periods"],
+      "tags": [
+        "module",
+        "budgets",
+        "crud",
+        "periods"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -197,7 +334,12 @@
       "path": "docs/modules/stats.md",
       "title": "Stats Module",
       "description": "Stats module: GET /stats/spending, aggregating transactions over a date range grouped by category, day or tag.",
-      "tags": ["module", "stats", "aggregation", "reporting"],
+      "tags": [
+        "module",
+        "stats",
+        "aggregation",
+        "reporting"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -205,7 +347,13 @@
       "path": "docs/modules/sync.md",
       "title": "Sync Module",
       "description": "Sync module: GET /sync/changes, the incremental change feed and initial snapshot that feeds the offline mirror, tombstones included.",
-      "tags": ["module", "sync", "offline", "pagination", "cursor"],
+      "tags": [
+        "module",
+        "sync",
+        "offline",
+        "pagination",
+        "cursor"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -213,7 +361,12 @@
       "path": "docs/examples/full-module-walkthrough.md",
       "title": "Full Module Walkthrough",
       "description": "Step-by-step tutorial building the Transactions module — the most representative module in the project.",
-      "tags": ["example", "walkthrough", "tutorial", "transactions"],
+      "tags": [
+        "example",
+        "walkthrough",
+        "tutorial",
+        "transactions"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -221,7 +374,12 @@
       "path": "docs/reference/error-handling.md",
       "title": "Error Handling Reference",
       "description": "Global error handling strategy, custom error classes, response formats, and HTTP status conventions.",
-      "tags": ["reference", "errors", "middleware", "status-codes"],
+      "tags": [
+        "reference",
+        "errors",
+        "middleware",
+        "status-codes"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -229,7 +387,11 @@
       "path": "docs/reference/anti-patterns.md",
       "title": "Anti-Patterns",
       "description": "Explicit list of things that must never be done, with bad/good code examples.",
-      "tags": ["reference", "anti-patterns", "best-practices"],
+      "tags": [
+        "reference",
+        "anti-patterns",
+        "best-practices"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -237,7 +399,11 @@
       "path": "docs/reference/glossary.md",
       "title": "Glossary",
       "description": "All domain-specific terms, entity names, and project-specific concepts.",
-      "tags": ["reference", "glossary", "domain"],
+      "tags": [
+        "reference",
+        "glossary",
+        "domain"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -245,7 +411,11 @@
       "path": "docs/prompts/README.md",
       "title": "Prompts Index",
       "description": "Index of all reusable AI agent prompts with descriptions and usage instructions.",
-      "tags": ["prompts", "agent", "index"],
+      "tags": [
+        "prompts",
+        "agent",
+        "index"
+      ],
       "audience": "agent",
       "mustReadFirst": false
     },
@@ -253,7 +423,12 @@
       "path": "docs/prompts/scan-improvements.md",
       "title": "Prompt: Scan for Improvements",
       "description": "Reusable prompt for AI agents to perform a full technical audit of the codebase.",
-      "tags": ["prompts", "agent", "audit", "improvements"],
+      "tags": [
+        "prompts",
+        "agent",
+        "audit",
+        "improvements"
+      ],
       "audience": "agent",
       "mustReadFirst": false
     },
@@ -261,7 +436,12 @@
       "path": "docs/prompts/add-feature.md",
       "title": "Prompt: Add a New Feature",
       "description": "Reusable prompt for AI agents to implement a new feature following project conventions.",
-      "tags": ["prompts", "agent", "feature", "development"],
+      "tags": [
+        "prompts",
+        "agent",
+        "feature",
+        "development"
+      ],
       "audience": "agent",
       "mustReadFirst": false
     },
@@ -269,7 +449,12 @@
       "path": "docs/prompts/qa-and-docs-update.md",
       "title": "Prompt: Q&A and Docs Update",
       "description": "Reusable prompt for answering questions and automatically updating documentation gaps.",
-      "tags": ["prompts", "agent", "qa", "documentation"],
+      "tags": [
+        "prompts",
+        "agent",
+        "qa",
+        "documentation"
+      ],
       "audience": "agent",
       "mustReadFirst": false
     },
@@ -277,7 +462,12 @@
       "path": "docs/prompts/fix-audit-issues.md",
       "title": "Prompt: Fix Audit Issues",
       "description": "Reusable prompt for fixing specific issues from a technical audit report, one commit per issue.",
-      "tags": ["prompts", "agent", "audit", "fixes"],
+      "tags": [
+        "prompts",
+        "agent",
+        "audit",
+        "fixes"
+      ],
       "audience": "agent",
       "mustReadFirst": false
     }

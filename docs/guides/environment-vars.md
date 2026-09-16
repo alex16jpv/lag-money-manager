@@ -78,6 +78,11 @@ transactions, so the URI **must** point at a replica set:
 **Always include the database name** (`/lag_money`) before the query string. A
 URI without one connects to a database called `test`, with no warning.
 
+`npm run db:backup` and `npm run db:restore` are the exception: they read
+`MONGO_URI` from the environment and **never** from `.env`, because they can
+copy or overwrite a production database and must not guess which one — see
+[Backup and Restore](./backup-restore.md).
+
 ### Indexes
 
 Outside production the application creates the declared indexes right after
