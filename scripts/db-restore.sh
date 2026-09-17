@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Bash reads a script as it runs: these braces force it to parse the whole file
+# first, so editing this file mid-run cannot resume into a different one.
+{
+
 IMAGE="${MONGO_TOOLS_IMAGE:-mongo:8}"
 
 usage() {
@@ -222,3 +226,6 @@ echo
 echo "==> Restore complete"
 echo "    databases $EXPECTED on $URI_HOST"
 echo "    documents $RESTORED"
+
+  exit 0
+}

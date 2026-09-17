@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Bash reads a script as it runs: these braces force it to parse the whole file
+# first, so editing this file mid-run cannot resume into a different one.
+{
+
 IMAGE="${MONGO_TOOLS_IMAGE:-mongo:8}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-$REPO_ROOT/backups}"
@@ -154,3 +158,6 @@ echo "Restore it with:"
 echo "    MONGO_URI='${SCHEME}<user>:<pass>@$URI_HOST' npm run db:restore -- '$FINAL'"
 echo "Or into a scratch database, to check it without touching anything real:"
 echo "    MONGO_URI='mongodb://localhost:27017/${DB}_check' npm run db:restore -- '$FINAL'"
+
+  exit 0
+}
