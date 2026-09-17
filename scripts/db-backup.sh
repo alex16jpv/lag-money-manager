@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Bash reads a script as it runs: these braces force it to parse the whole file
+# first, so editing this file mid-run cannot resume into a different one.
+{
+
 IMAGE="${MONGO_TOOLS_IMAGE:-mongo:8}"
-BACKUP_DIR="${BACKUP_DIR:-$HOME/ledger-flow-backups}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BACKUP_DIR="${BACKUP_DIR:-$REPO_ROOT/backups}"
 
 usage() {
   cat <<'USAGE'
@@ -15,11 +20,12 @@ changes, and a backup must say out loud which database it touched. The URI has
 to name a database -- the dump is scoped to it.
 
 Optional:
-  BACKUP_DIR         where archives are written (default: ~/ledger-flow-backups)
+  BACKUP_DIR         where archives are written (default: <repo>/backups)
   MONGO_TOOLS_IMAGE  image providing mongodump (default: mongo:8)
 
 The archive restores with:
-  MONGO_URI='mongodb+srv://user:pass@cluster.mongodb.net/' npm run db:restore -- <archive>
+  MONGO_URI='mongodb://host'            npm run db:restore -- <archive>   # same databases
+  MONGO_URI='mongodb://host/scratch_db' npm run db:restore -- <archive>   # into scratch_db
 USAGE
 }
 
@@ -45,7 +51,8 @@ fi
 export MONGO_URI
 
 case "$MONGO_URI" in
-  mongodb://* | mongodb+srv://*) ;;
+  mongodb://*) SCHEME="mongodb://" ;;
+  mongodb+srv://*) SCHEME="mongodb+srv://" ;;
   *) die "MONGO_URI must start with mongodb:// or mongodb+srv://" ;;
 esac
 
@@ -76,8 +83,11 @@ if [[ "$(stat -c '%a' "$BACKUP_DIR")" != "700" ]]; then
   echo "WARNING: $BACKUP_DIR is readable beyond you ($(stat -c '%A' "$BACKUP_DIR")). The archives" >&2
   echo "         themselves are written 600, but consider: chmod 700 '$BACKUP_DIR'" >&2
 fi
-if git -C "$BACKUP_DIR" rev-parse --git-dir >/dev/null 2>&1; then
-  die "BACKUP_DIR is inside a git repository ($BACKUP_DIR). A dump carries real user data: choose a directory outside git."
+if git -C "$BACKUP_DIR" rev-parse --git-dir >/dev/null 2>&1 &&
+  ! git -C "$BACKUP_DIR" check-ignore -q "$BACKUP_DIR"; then
+  die "BACKUP_DIR ($BACKUP_DIR) is inside a git repository and not ignored, so a dump
+       would be committable. A dump carries real user data: add it to .gitignore, or
+       point BACKUP_DIR somewhere outside the repository."
 fi
 
 command -v docker >/dev/null 2>&1 || die "docker is not installed; mongodump runs inside a container."
@@ -144,5 +154,10 @@ echo "    documents   $DOCUMENTS"
 echo "    size        $(du -h "$FINAL" | cut -f1)"
 echo "    file        $FINAL"
 echo
-echo "Restore it with (the server only, no database path):"
-echo "    MONGO_URI='<scheme>://<user>:<pass>@$URI_HOST/' npm run db:restore -- '$FINAL'"
+echo "Restore it with:"
+echo "    MONGO_URI='${SCHEME}<user>:<pass>@$URI_HOST' npm run db:restore -- '$FINAL'"
+echo "Or into a scratch database, to check it without touching anything real:"
+echo "    MONGO_URI='mongodb://localhost:27017/${DB}_check' npm run db:restore -- '$FINAL'"
+
+  exit 0
+}
