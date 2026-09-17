@@ -3,9 +3,11 @@ import { v7 as uuidv7 } from "uuid";
 import { Account } from "../../../domain/entities/Account";
 import {
   AccountFilters,
+  AccountWrite,
   IAccountRepository,
 } from "../../../domain/repositories/account/IAccountRepository";
 import { NAME_COLLATION } from "../../../shared/collation";
+import { DEBT_ACCOUNT_FIELD_NAMES } from "../../../shared/constants";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
 import {
@@ -20,6 +22,9 @@ import { AccountModel, IAccountDocument } from "../../models/AccountModel";
 import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
 import { ID_CURSOR_SORT, idCursorFilter } from "../keysetCursor";
 
+const amountOrUndefined = (cents?: number | null): number | undefined =>
+  cents === undefined || cents === null ? undefined : fromCents(cents);
+
 export class AccountRepository implements IAccountRepository {
   private toEntity(doc: IAccountDocument): Account {
     return new Account({
@@ -29,6 +34,8 @@ export class AccountRepository implements IAccountRepository {
       balance: fromCents(doc.balance),
       openingBalance: fromCents(doc.openingBalance),
       color: doc.color as Account["color"],
+      creditLimit: amountOrUndefined(doc.creditLimit),
+      borrowedAmount: amountOrUndefined(doc.borrowedAmount),
       userId: doc.userId,
       isDefault: doc.isDefault,
       currency: doc.currency,
@@ -38,13 +45,19 @@ export class AccountRepository implements IAccountRepository {
     });
   }
 
-  private toStorage(account: Partial<Account>): Record<string, unknown> {
+  private toStorage(account: AccountWrite): Record<string, unknown> {
     const doc: Record<string, unknown> = { ...account };
     if (account.balance !== undefined) {
       doc.balance = toCents(account.balance);
     }
     if (account.openingBalance !== undefined) {
       doc.openingBalance = toCents(account.openingBalance);
+    }
+    for (const field of DEBT_ACCOUNT_FIELD_NAMES) {
+      const amount = account[field];
+      if (amount !== undefined) {
+        doc[field] = amount === null ? null : toCents(amount);
+      }
     }
     return doc;
   }
@@ -135,10 +148,7 @@ export class AccountRepository implements IAccountRepository {
     return this.paginatedFind(filter, pagination);
   }
 
-  async create(
-    account: Partial<Account>,
-    session?: TxSession,
-  ): Promise<Account> {
+  async create(account: AccountWrite, session?: TxSession): Promise<Account> {
     const id = account.id ?? uuidv7();
     const [doc] = await AccountModel.create(
       [{ _id: id, ...this.toStorage(account) }],
@@ -149,7 +159,7 @@ export class AccountRepository implements IAccountRepository {
 
   async update(
     id: string,
-    account: Partial<Account>,
+    account: AccountWrite,
     session?: TxSession,
     expectedUpdatedAt?: Date,
   ): Promise<Account> {

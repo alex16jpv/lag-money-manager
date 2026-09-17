@@ -29,7 +29,10 @@ interface SeedOutput {
     sharedInstantRows: number;
     tombstones: Record<string, number>;
   };
-  accounts: Record<string, { id: string; balance: number; archived: boolean }>;
+  accounts: Record<
+    string,
+    { id: string; balance: number; creditLimit?: number; archived: boolean }
+  >;
   categories: Record<string, string>;
   budgets: Record<string, string>;
   totals: {
@@ -226,6 +229,7 @@ describe("seed:test", () => {
     expect(second.accounts.bancolombia.balance).toBe(3_420_500);
     expect(second.accounts.cash.balance).toBe(184_000);
     expect(second.accounts.visa.balance).toBe(-1_245_900);
+    expect(second.accounts.visa.creditLimit).toBe(4_000_000);
     expect(second.accounts.savings.balance).toBe(8_900_000);
     expect(second.accounts.nequi.archived).toBe(true);
   });

@@ -4,7 +4,11 @@ process.env.CORS_ORIGIN ??= "http://localhost";
 process.env.MONGO_URI ??= "mongodb://localhost:27017/unused";
 
 import { swaggerSpec } from "../../config/swagger";
-import { SPENDING_GROUP_BY, SPENDING_SPLIT_BY } from "../../shared/constants";
+import {
+  DEBT_ACCOUNT_FIELD_NAMES,
+  SPENDING_GROUP_BY,
+  SPENDING_SPLIT_BY,
+} from "../../shared/constants";
 import { ERROR_CODES } from "../../shared/errorCodes";
 import { CATEGORY_ICONS } from "../../shared/icons";
 import { SYNC_MAX_OPERATIONS, SYNC_OP_STATUSES } from "../../shared/syncBatch";
@@ -51,6 +55,8 @@ describe("OpenAPI response views", () => {
     ["User", "reactivated"],
     ["Category", "seedKey"],
     ["Session", "userAgent"],
+    ["Account", "creditLimit"],
+    ["Account", "borrowedAmount"],
   ])(
     "%s leaves %s optional, because it may genuinely be absent",
     (name, field) => {
@@ -61,7 +67,10 @@ describe("OpenAPI response views", () => {
 
   it("requires every other property of a view", () => {
     const account = view("Account");
-    expect(account.required).toEqual(Object.keys(account.properties));
+    const optional: string[] = [...DEBT_ACCOUNT_FIELD_NAMES];
+    expect(account.required).toEqual(
+      Object.keys(account.properties).filter((f) => !optional.includes(f)),
+    );
   });
 
   // W-30: an optional `current` would make the front null-check a flag the API always sends.

@@ -37,6 +37,11 @@ jest.mock("../../shared/constants", () => ({
     BROWN: "BROWN",
     BLACK: "BLACK",
   },
+  DEBT_ACCOUNT_FIELDS: {
+    creditLimit: ["CARD", "OVERDRAFT"],
+    borrowedAmount: ["LOAN"],
+  },
+  DEBT_ACCOUNT_FIELD_NAMES: ["creditLimit", "borrowedAmount"],
   DB_TYPES: { MONGO: "MONGO" },
   TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
   TRANSACTION_TYPES: {
@@ -368,6 +373,180 @@ describe("AccountService", () => {
           validAccountProps.userId,
         ),
       ).rejects.toThrow("Account id does not match");
+    });
+  });
+
+  describe("debt fields [T-87]", () => {
+    const cardProps = {
+      ...validAccountProps,
+      id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac80",
+      name: "Visa Gold",
+      type: "CARD" as const,
+    };
+
+    it("stores a credit limit on a CARD", async () => {
+      repo.create.mockImplementation(async (a) => new Account(a as never));
+
+      const result = await service.createAccount({
+        ...cardProps,
+        creditLimit: 4_000_000,
+      });
+
+      expect(result.creditLimit).toBe(4_000_000);
+    });
+
+    it("stores a credit limit on an OVERDRAFT", async () => {
+      repo.create.mockImplementation(async (a) => new Account(a as never));
+
+      const result = await service.createAccount({
+        ...cardProps,
+        type: "OVERDRAFT",
+        creditLimit: 1_000_000,
+      });
+
+      expect(result.creditLimit).toBe(1_000_000);
+    });
+
+    it("stores the amount borrowed on a LOAN", async () => {
+      repo.create.mockImplementation(async (a) => new Account(a as never));
+
+      const result = await service.createAccount({
+        ...cardProps,
+        type: "LOAN",
+        borrowedAmount: 12_000_000,
+      });
+
+      expect(result.borrowedAmount).toBe(12_000_000);
+    });
+
+    it("leaves an account that sets neither without them", async () => {
+      repo.create.mockImplementation(async (a) => new Account(a as never));
+
+      const result = await service.createAccount(validAccountProps);
+
+      expect(result.creditLimit).toBeUndefined();
+      expect(result.borrowedAmount).toBeUndefined();
+    });
+
+    it("refuses a credit limit on a type that has none", async () => {
+      await expect(
+        service.createAccount({ ...validAccountProps, creditLimit: 100 }),
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        code: "ACCOUNT_FIELD_NOT_FOR_TYPE",
+      });
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses the amount borrowed on a CARD", async () => {
+      await expect(
+        service.createAccount({ ...cardProps, borrowedAmount: 100 }),
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        code: "ACCOUNT_FIELD_NOT_FOR_TYPE",
+      });
+    });
+
+    it("refuses a credit limit with more decimals than the owner's currency has", async () => {
+      userRepo.getById.mockResolvedValue(
+        new User({
+          id: validAccountProps.userId,
+          name: "Owner",
+          email: "owner@test.com",
+          currency: "JPY",
+        }),
+      );
+
+      await expect(
+        service.createAccount({ ...cardProps, creditLimit: 100.5 }),
+      ).rejects.toMatchObject({ code: "AMOUNT_PRECISION" });
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it("sets a credit limit on a card that had none", async () => {
+      const card = new Account(cardProps);
+      repo.getByIdIncludingArchived.mockResolvedValue(card);
+      repo.update.mockImplementation(
+        async (_id, a) => new Account({ ...cardProps, ...a } as never),
+      );
+
+      const result = await service.updateAccount(
+        cardProps.id,
+        { creditLimit: 4_000_000 },
+        cardProps.userId,
+      );
+
+      expect(result.creditLimit).toBe(4_000_000);
+    });
+
+    it("clears a credit limit with null", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...cardProps, creditLimit: 4_000_000 }),
+      );
+      repo.update.mockImplementation(
+        async (_id, a) => new Account({ ...cardProps, ...a } as never),
+      );
+
+      const result = await service.updateAccount(
+        cardProps.id,
+        { creditLimit: null },
+        cardProps.userId,
+      );
+
+      expect(repo.update).toHaveBeenCalledWith(
+        cardProps.id,
+        { creditLimit: null },
+        undefined,
+        undefined,
+      );
+      expect(result.creditLimit).toBeUndefined();
+    });
+
+    it("refuses a type change that would orphan the stored limit", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...cardProps, creditLimit: 4_000_000 }),
+      );
+
+      await expect(
+        service.updateAccount(cardProps.id, { type: "CASH" }, cardProps.userId),
+      ).rejects.toMatchObject({ code: "ACCOUNT_FIELD_NOT_FOR_TYPE" });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it("allows the same type change when the write clears the limit", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...cardProps, creditLimit: 4_000_000 }),
+      );
+      repo.update.mockImplementation(
+        async (_id, a) => new Account({ ...cardProps, ...a } as never),
+      );
+
+      const result = await service.updateAccount(
+        cardProps.id,
+        { type: "CASH", creditLimit: null },
+        cardProps.userId,
+      );
+
+      expect(result.type).toBe("CASH");
+      expect(result.creditLimit).toBeUndefined();
+    });
+
+    it("leaves a stored limit alone when the write does not mention it", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...cardProps, creditLimit: 4_000_000 }),
+      );
+      repo.update.mockImplementation(
+        async (_id, a) =>
+          new Account({ ...cardProps, creditLimit: 4_000_000, ...a } as never),
+      );
+
+      const result = await service.updateAccount(
+        cardProps.id,
+        { name: "Visa Platinum" },
+        cardProps.userId,
+      );
+
+      expect(result.creditLimit).toBe(4_000_000);
     });
   });
 

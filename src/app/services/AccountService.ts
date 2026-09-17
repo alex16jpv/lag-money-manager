@@ -6,6 +6,11 @@ import {
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { assertFresh, guardedWrite } from "../../shared/concurrency";
+import {
+  AccountType,
+  DEBT_ACCOUNT_FIELD_NAMES,
+  DEBT_ACCOUNT_FIELDS,
+} from "../../shared/constants";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { ApiError } from "../../shared/errors";
 import { assertAmountPrecision } from "../../shared/money";
@@ -14,6 +19,12 @@ import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
 
 // Soft cap: protects the shared Atlas M0 tier from runaway creation.
 const MAX_ACCOUNTS_PER_USER = 100;
+
+// What the field holds once the write lands: null clears it, absent keeps what is stored.
+const afterWrite = (
+  sent: number | null | undefined,
+  stored?: number,
+): number | null | undefined => (sent === undefined ? stored : sent);
 
 export class AccountService {
   constructor(
@@ -78,6 +89,7 @@ export class AccountService {
     const owner = await this.userRepo.getById(dto.userId);
     const currency = owner?.currency ?? DEFAULT_CURRENCY;
     assertAmountPrecision(dto.balance, currency, "balance");
+    this.assertDebtFields(dto.type, dto, currency);
     const account = new Account({
       ...dto,
       isDefault: count === 0,
@@ -127,6 +139,15 @@ export class AccountService {
       );
     }
 
+    this.assertDebtFields(
+      dto.type ?? existing.type,
+      {
+        creditLimit: afterWrite(dto.creditLimit, existing.creditLimit),
+        borrowedAmount: afterWrite(dto.borrowedAmount, existing.borrowedAmount),
+      },
+      existing.currency ?? DEFAULT_CURRENCY,
+    );
+
     return guardedWrite(
       expectedUpdatedAt,
       async () =>
@@ -136,6 +157,30 @@ export class AccountService {
       () => this.repo.getOwnById(id, userId),
       (a) => new Account(a),
     );
+  }
+
+  // Rejects rather than dropping: a type change that orphans a field has to clear it in the same write.
+  private assertDebtFields(
+    type: AccountType,
+    amounts: { creditLimit?: number | null; borrowedAmount?: number | null },
+    currency: string,
+  ): void {
+    for (const field of DEBT_ACCOUNT_FIELD_NAMES) {
+      const amount = amounts[field];
+      if (amount === undefined || amount === null) {
+        continue;
+      }
+      const types: readonly AccountType[] = DEBT_ACCOUNT_FIELDS[field];
+      if (!types.includes(type)) {
+        throw new ApiError(
+          "BadRequest",
+          `${field} is only valid on ${types.join(" and ")} accounts`,
+          "ACCOUNT_FIELD_NOT_FOR_TYPE",
+          [{ field, message: `A ${type} account has no ${field}` }],
+        );
+      }
+      assertAmountPrecision(amount, currency, field);
+    }
   }
 
   // F-22: idempotent, and it answers the archived row so a queued restore can guard on its updatedAt.

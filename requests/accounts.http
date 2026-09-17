@@ -99,6 +99,78 @@ Authorization: Bearer {{token}}
 POST {{baseUrl}}/accounts/{{accountA}}/restore
 Authorization: Bearer {{token}}
 
+### ==========================================================
+### T-87 — los dos importes opcionales de una cuenta de deuda:
+### creditLimit en CARD y OVERDRAFT, borrowedAmount en LOAN.
+### Ausentes salvo que se pongan; null los borra.
+### ==========================================================
+
+### Tarjeta con cupo (201) — la respuesta trae creditLimit
+# @name createCard
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Visa {{$randomInt 100 999}}", "type": "CARD", "balance": -1245.90, "creditLimit": 4000000, "color": "PURPLE" }
+
+###
+
+@cardId = {{createCard.response.body.id}}
+
+### Préstamo con el importe prestado (201)
+# @name createLoan
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Prestamo {{$randomInt 100 999}}", "type": "LOAN", "balance": -12000000, "borrowedAmount": 15000000 }
+
+###
+
+@loanId = {{createLoan.response.body.id}}
+
+### Poner el cupo a una tarjeta que no lo tenía (200)
+PUT {{baseUrl}}/accounts/{{cardId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "creditLimit": 5000000 }
+
+### Borrar el cupo con null (200) — la respuesta ya no trae el campo
+PUT {{baseUrl}}/accounts/{{cardId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "creditLimit": null }
+
+### Cupo en un tipo que no lo tiene (400 ACCOUNT_FIELD_NOT_FOR_TYPE)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Efectivo con cupo {{$randomInt 100 999}}", "type": "CASH", "creditLimit": 1000 }
+
+### Cambiar el tipo dejando huérfano el importe (400 ACCOUNT_FIELD_NOT_FOR_TYPE)
+PUT {{baseUrl}}/accounts/{{loanId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "ACCOUNT" }
+
+### El mismo cambio borrando el importe en la misma escritura (200)
+PUT {{baseUrl}}/accounts/{{loanId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "ACCOUNT", "borrowedAmount": null }
+
+### Cupo de cero o negativo (400 VALIDATION)
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Visa sin cupo {{$randomInt 100 999}}", "type": "CARD", "creditLimit": 0 }
+
 ### ---------- Casos de error ----------
 
 ### Archivar la cuenta DEFAULT (400 DEFAULT_ACCOUNT_ARCHIVE_BLOCKED)

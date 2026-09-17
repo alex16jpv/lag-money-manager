@@ -458,6 +458,41 @@ describe("Validation Schemas", () => {
       });
       expect(result.success).toBe(true);
     });
+
+    it("accepts the two debt amounts [T-87]", () => {
+      const result = createAccountSchema.safeParse({
+        body: {
+          name: "Visa Gold",
+          type: "CARD",
+          creditLimit: 4000000,
+          borrowedAmount: 12000000,
+        },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects a debt amount of zero or less [T-87]", () => {
+      for (const creditLimit of [0, -1]) {
+        const result = createAccountSchema.safeParse({
+          body: { name: "Visa Gold", type: "CARD", creditLimit },
+        });
+        expect(result.success).toBe(false);
+      }
+    });
+
+    it("rejects a debt amount with more than two decimals [T-87]", () => {
+      const result = createAccountSchema.safeParse({
+        body: { name: "Visa Gold", type: "CARD", creditLimit: 100.555 },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects null for a debt amount on create [T-87]", () => {
+      const result = createAccountSchema.safeParse({
+        body: { name: "Visa Gold", type: "CARD", creditLimit: null },
+      });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe("updateAccountSchema", () => {
@@ -507,6 +542,33 @@ describe("Validation Schemas", () => {
         body: { color: null },
       });
       expect(result.success).toBe(true);
+    });
+
+    it("accepts a debt amount, and null to clear it [T-87]", () => {
+      for (const creditLimit of [4000000, null]) {
+        const result = updateAccountSchema.safeParse({
+          params: { id: validUUID },
+          body: { creditLimit },
+        });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("rejects a debt amount of zero [T-87]", () => {
+      const result = updateAccountSchema.safeParse({
+        params: { id: validUUID },
+        body: { borrowedAmount: 0 },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("drops a debt amount the body did not declare [T-87]", () => {
+      const result = updateAccountSchema.safeParse({
+        params: { id: validUUID },
+        body: { creditLimit: 4000000, interestRate: 12 },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.body).not.toHaveProperty("interestRate");
     });
   });
 
