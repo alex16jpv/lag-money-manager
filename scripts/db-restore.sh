@@ -188,13 +188,25 @@ printf '%s\n' "$TARGET_NAMESPACES" | sed 's/^/    /'
 echo
 echo "A collection that exists on the server and is not in this list is left untouched."
 echo
-echo "The server is the part that decides whether this is a rehearsal or the real thing,"
-echo "so that is what you confirm. Type it exactly, or anything else to abort."
-echo
-printf 'Server to overwrite [%s]: ' "$URI_HOST"
-read -r answer
-[[ "$answer" == "$URI_HOST" ]] ||
-  die "Typed '$answer', expected '$URI_HOST'. Nothing was written."
+case "$URI_HOST" in
+  localhost | localhost:* | 127.0.0.1 | 127.0.0.1:* | "[::1]" | "[::1]:"*) IS_LOCAL=1 ;;
+  *) IS_LOCAL=0 ;;
+esac
+
+if [[ "$IS_LOCAL" -eq 1 ]]; then
+  echo "This is your own machine, so a short confirmation is enough."
+  printf 'Overwrite %s on %s? [yes/no]: ' "$EXPECTED" "$URI_HOST"
+  read -r answer
+  [[ "$answer" == "yes" ]] || die "Answered '$answer', not 'yes'. Nothing was written."
+else
+  echo "$URI_HOST is NOT your machine. This is a real server, so confirm it by hand:"
+  echo "type its host below -- the host only, not the whole URI."
+  echo
+  printf 'Server to overwrite [%s]: ' "$URI_HOST"
+  read -r answer
+  [[ "$answer" == "$URI_HOST" ]] ||
+    die "Typed '$answer', expected '$URI_HOST'. Nothing was written."
+fi
 
 echo
 echo "==> Restoring"

@@ -87,16 +87,32 @@ command says so and asks you to drop the database from the URI.
 Before writing anything, the command does a dry run against the server. That
 proves the URI and credentials work, and tells it exactly which collections the
 archive will write. It then prints them — under their final names, after any
-rename — and asks you to confirm **the server host**, showing you which one:
+rename — and asks you to confirm, with as much ceremony as the target deserves.
+
+On your own machine, where a mistake costs you a `mongosh` command:
 
 ```
-Server to overwrite [localhost:27017]:
+This is your own machine, so a short confirmation is enough.
+Overwrite lag_money_check on localhost:27017? [yes/no]:
 ```
 
-You type that string back. It asks for the host rather than the database name
-because the name is the same on your laptop and in production, and so confirms
-nothing; the server is what decides whether this is a rehearsal or the real
-thing.
+Anywhere else, because that is where a mistake is expensive:
+
+```
+cluster0.abcde.mongodb.net is NOT your machine. This is a real server, so confirm it by hand:
+type its host below -- the host only, not the whole URI.
+
+Server to overwrite [cluster0.abcde.mongodb.net]:
+```
+
+You type the host — just the host, the same string the `server` line shows, never
+the whole URI. The script already knows where it is pointing; retyping it is not
+how it finds out, it is how *you* stop and read. That is worth the seconds on a
+real server and is not worth them locally, which is why only one of the two asks
+for it.
+
+It asks for the host rather than the database name because the name is the same
+on your laptop and in production, and so confirms nothing.
 
 **A restore destroys data.** Every collection carried by the archive is dropped
 and rewritten in the target. A collection that exists there and is *not* in the
