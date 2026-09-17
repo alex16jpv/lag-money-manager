@@ -153,14 +153,14 @@ describe("db-restore.sh", () => {
     expect(output).toContain("run it from a terminal");
   });
 
-  it("refuses a URI that names a database, which would filter the archive", () => {
+  it("refuses a target database that is not a plain name", () => {
     const archive = path.join(dir, "ok.archive.gz");
     writeFileSync(archive, gzipSync(Buffer.from("payload")));
     const { status, output } = run(RESTORE, [archive], {
-      MONGO_URI: "mongodb://localhost:27017/lag_money",
+      MONGO_URI: "mongodb://localhost:27017/lag_money/?ssl=true",
     });
     expect(status).not.toBe(0);
-    expect(output).toContain("names a database");
+    expect(output).toContain("is not a usable database name");
   });
 
   it("refuses more than one argument", () => {

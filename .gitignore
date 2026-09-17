@@ -8,3 +8,5 @@ docs/.vitepress/cache
 # outDir points at the repo root (see docs/.vitepress/config.mts)
 .vitepress/
 scripts/seed-test.output.json
+# Database dumps: real user data, never committed (npm run db:backup)
+backups/

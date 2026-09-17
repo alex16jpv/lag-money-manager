@@ -398,6 +398,6 @@ npm run format           # aplica Prettier
 npm run db:sync-indexes  # crea/borra índices según los esquemas
 npm run test:mongo       # suite contra Mongo real (NO la incluye `npm run ci`)
 npm run seed:test        # semilla determinística para las pruebas del front
-npm run db:backup        # copia de una base a ~/ledger-flow-backups (MONGO_URI por delante)
+npm run db:backup        # copia de una base a backups/ (MONGO_URI por delante)
 npm run db:restore       # restaura una copia (destruye datos; pide confirmación)
 ```
