@@ -76,6 +76,7 @@ Lambda's own environment variables.
 - [Environment Variables](docs/guides/environment-vars.md)
 - [Testing](docs/guides/testing.md)
 - [Deterministic Test Seed](docs/guides/testing-seed.md) — `npm run seed:test` for the frontend's E2E fixtures
+- [Backup and Restore](docs/guides/backup-restore.md) — `npm run db:backup` / `npm run db:restore`
 
 ### Modules
 

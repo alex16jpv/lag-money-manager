@@ -98,6 +98,10 @@ export default withMermaid({
             { text: "Testing", link: "/docs/guides/testing" },
             { text: "Deployment", link: "/docs/guides/deployment" },
             {
+              text: "Backup and Restore",
+              link: "/docs/guides/backup-restore",
+            },
+            {
               text: "Test Seed",
               link: "/docs/guides/testing-seed",
             },

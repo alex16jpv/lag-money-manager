@@ -146,6 +146,22 @@
       "mustReadFirst": false
     },
     {
+      "path": "docs/guides/backup-restore.md",
+      "title": "Backup and Restore",
+      "description": "Taking a gzipped copy of a live database and putting one back, with the guards that stop a restore from silently writing nothing.",
+      "tags": ["guide", "backup", "restore", "database", "operations"],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
+      "path": "docs/guides/testing-seed.md",
+      "title": "Deterministic Test Seed",
+      "description": "The seeded dataset the frontend test suite runs against, and how to regenerate it.",
+      "tags": ["guide", "testing", "seed", "fixtures"],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
       "path": "docs/modules/auth.md",
       "title": "Auth Module",
       "description": "Authentication module: registration, login, JWT token issuance, password hashing.",
