@@ -184,10 +184,13 @@ printf '%s\n' "$TARGET_NAMESPACES" | sed 's/^/    /'
 echo
 echo "A collection that exists on the server and is not in this list is left untouched."
 echo
-echo "The server is the part that decides whether this is a rehearsal or the real thing."
-printf 'Type the server host to continue: '
+echo "The server is the part that decides whether this is a rehearsal or the real thing,"
+echo "so that is what you confirm. Type it exactly, or anything else to abort."
+echo
+printf 'Server to overwrite [%s]: ' "$URI_HOST"
 read -r answer
-[[ "$answer" == "$URI_HOST" ]] || die "Confirmation did not match the server host. Nothing was written."
+[[ "$answer" == "$URI_HOST" ]] ||
+  die "Typed '$answer', expected '$URI_HOST'. Nothing was written."
 
 echo
 echo "==> Restoring"

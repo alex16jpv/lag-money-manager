@@ -87,9 +87,16 @@ command says so and asks you to drop the database from the URI.
 Before writing anything, the command does a dry run against the server. That
 proves the URI and credentials work, and tells it exactly which collections the
 archive will write. It then prints them — under their final names, after any
-rename — and asks you to type **the server host** back, not the database name,
-which is the same string on your laptop and in production and so confirms
-nothing.
+rename — and asks you to confirm **the server host**, showing you which one:
+
+```
+Server to overwrite [localhost:27017]:
+```
+
+You type that string back. It asks for the host rather than the database name
+because the name is the same on your laptop and in production, and so confirms
+nothing; the server is what decides whether this is a rehearsal or the real
+thing.
 
 **A restore destroys data.** Every collection carried by the archive is dropped
 and rewritten in the target. A collection that exists there and is *not* in the
