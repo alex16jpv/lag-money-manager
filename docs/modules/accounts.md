@@ -194,7 +194,8 @@ The API speaks **decimals** (max 2 decimal places); MongoDB stores **integer cen
 ## How to Extend
 
 - To add a new account type: add it to `ACCOUNT_TYPES` in `src/shared/constants.ts` — the validation schema derives `accountTypeValues` from it automatically
-- To add a debt field to a type: `DEBT_ACCOUNT_FIELDS` in `src/shared/constants.ts` maps each field to the types that carry it, and the service guard, the OpenAPI description and the repository conversion all read it from there
+- To move a debt field between types: `DEBT_ACCOUNT_FIELDS` in `src/shared/constants.ts` maps each field to the types that carry it, and the service guard, the OpenAPI description and the repository conversion all read it from there. Taking a type out of that map makes every stored amount on that type unwritable until it is cleared, so it needs a migration, not just an edit
+- To add a debt field of its own: the map is only the pairing — the name itself is written in the Zod schemas, the DTOs, the entity, the Mongoose model, `AccountWrite` and the service guard, and all of them have to gain it
 - Balance is modified by `TransactionService` via `incrementBalance()` — do not add balance modification logic to this module, and never write `balance` through `update()`
 - Multi-currency: `currency` is already stored per account and asserted on every balance adjustment (`CURRENCY_MISMATCH`); the missing pieces are a minor-units table and FX at transfer time
 

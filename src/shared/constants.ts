@@ -49,7 +49,7 @@ export type AccountType = keyof typeof ACCOUNT_TYPES;
 export const DEBT_ACCOUNT_FIELDS = {
   creditLimit: ["CARD", "OVERDRAFT"],
   borrowedAmount: ["LOAN"],
-} satisfies Record<string, readonly AccountType[]>;
+} as const satisfies Record<string, readonly AccountType[]>;
 
 export type DebtAccountField = keyof typeof DEBT_ACCOUNT_FIELDS;
 

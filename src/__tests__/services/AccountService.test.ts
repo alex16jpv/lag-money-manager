@@ -531,6 +531,82 @@ describe("AccountService", () => {
       expect(result.creditLimit).toBeUndefined();
     });
 
+    it("refuses a limit on the wrong type even when the type is not changing", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(new Account(cardProps));
+
+      await expect(
+        service.updateAccount(
+          cardProps.id,
+          { borrowedAmount: 100 },
+          cardProps.userId,
+        ),
+      ).rejects.toMatchObject({ code: "ACCOUNT_FIELD_NOT_FOR_TYPE" });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it("does not refuse a rename over a pairing the write did not create", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...cardProps, type: "CASH", creditLimit: 4_000_000 }),
+      );
+      repo.update.mockImplementation(
+        async (_id, a) => new Account({ ...cardProps, ...a } as never),
+      );
+
+      const result = await service.updateAccount(
+        cardProps.id,
+        { name: "Wallet" },
+        cardProps.userId,
+      );
+
+      expect(result.name).toBe("Wallet");
+    });
+
+    it("carries the version it read into a write that leans on it", async () => {
+      const version = new Date("2026-09-17T10:00:00.000Z");
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...cardProps, updatedAt: version }),
+      );
+      repo.update.mockImplementation(
+        async (_id, a) => new Account({ ...cardProps, ...a } as never),
+      );
+
+      await service.updateAccount(
+        cardProps.id,
+        { creditLimit: 4_000_000 },
+        cardProps.userId,
+      );
+
+      expect(repo.update).toHaveBeenCalledWith(
+        cardProps.id,
+        { creditLimit: 4_000_000 },
+        undefined,
+        version,
+      );
+    });
+
+    it("leaves a write that touches neither unconditional", async () => {
+      const version = new Date("2026-09-17T10:00:00.000Z");
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...cardProps, updatedAt: version }),
+      );
+      repo.update.mockImplementation(
+        async (_id, a) => new Account({ ...cardProps, ...a } as never),
+      );
+
+      await service.updateAccount(
+        cardProps.id,
+        { name: "Visa Platinum" },
+        cardProps.userId,
+      );
+
+      expect(repo.update).toHaveBeenCalledWith(
+        cardProps.id,
+        { name: "Visa Platinum" },
+        undefined,
+        undefined,
+      );
+    });
+
     it("leaves a stored limit alone when the write does not mention it", async () => {
       repo.getByIdIncludingArchived.mockResolvedValue(
         new Account({ ...cardProps, creditLimit: 4_000_000 }),

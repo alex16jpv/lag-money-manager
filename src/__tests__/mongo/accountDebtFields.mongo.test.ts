@@ -80,6 +80,33 @@ describe("account debt fields", () => {
     expect(cleared.body).not.toHaveProperty("creditLimit");
   });
 
+  it("takes the cleared field out of the document, instead of leaving a null in it", async () => {
+    const stored = await AccountModel.findById(uuid(1)).lean();
+
+    expect(stored).not.toBeNull();
+    expect(stored).not.toHaveProperty("creditLimit");
+  });
+
+  it("writes nothing when a type without the field is told to clear it", async () => {
+    const id = uuid(5);
+    await as(
+      owner,
+      request(app)
+        .post("/accounts")
+        .send({ id, name: "Wallet", type: "CASH", balance: 50 }),
+    );
+
+    const cleared = await as(
+      owner,
+      request(app).put(`/accounts/${id}`).send({ creditLimit: null }),
+    );
+
+    expect(cleared.status).toBe(200);
+    expect(await AccountModel.findById(id).lean()).not.toHaveProperty(
+      "creditLimit",
+    );
+  });
+
   it("refuses a credit limit on a type that has no such field", async () => {
     const res = await as(
       owner,
@@ -128,6 +155,86 @@ describe("account debt fields", () => {
     expect(withClear.status).toBe(200);
     expect(withClear.body.type).toBe("ACCOUNT");
     expect(withClear.body).not.toHaveProperty("borrowedAmount");
+  });
+
+  it("keeps the amount through archive and restore", async () => {
+    const id = uuid(6);
+    await as(
+      owner,
+      request(app).post("/accounts").send({
+        id,
+        name: "Student loan",
+        type: "LOAN",
+        balance: -8000,
+        borrowedAmount: 9000,
+      }),
+    );
+
+    await as(owner, request(app).delete(`/accounts/${id}`));
+    const restored = await as(
+      owner,
+      request(app).post(`/accounts/${id}/restore`),
+    );
+
+    expect(restored.status).toBe(200);
+    expect(restored.body.borrowedAmount).toBe(9000);
+  });
+
+  it("carries the fields through POST /sync, guard included", async () => {
+    const created = await as(
+      owner,
+      request(app)
+        .post("/sync")
+        .send({
+          operations: [
+            {
+              opId: "01950000-0000-7000-8000-b00000000001",
+              seq: 1,
+              opVersion: 1,
+              occurredAt: new Date().toISOString(),
+              entity: "account",
+              action: "create",
+              id: uuid(7),
+              payload: {
+                body: {
+                  id: uuid(7),
+                  name: "Amex",
+                  type: "CARD",
+                  balance: -300,
+                  creditLimit: 9000,
+                },
+              },
+            },
+          ],
+        }),
+    );
+
+    expect(created.status).toBe(200);
+    expect(created.body.results[0].status).toBe("applied");
+    expect(created.body.results[0].result.creditLimit).toBe(9000);
+
+    const orphaned = await as(
+      owner,
+      request(app)
+        .post("/sync")
+        .send({
+          operations: [
+            {
+              opId: "01950000-0000-7000-8000-b00000000002",
+              seq: 2,
+              opVersion: 1,
+              occurredAt: new Date().toISOString(),
+              entity: "account",
+              action: "update",
+              id: uuid(7),
+              payload: { body: { type: "CASH" } },
+            },
+          ],
+        }),
+    );
+
+    expect(orphaned.body.results[0].status).toBe("rejected");
+    expect(orphaned.body.results[0].code).toBe("ACCOUNT_FIELD_NOT_FOR_TYPE");
   });
 
   it("leaves an account of another type untouched by the new fields", async () => {

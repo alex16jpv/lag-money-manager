@@ -129,7 +129,7 @@ Content-Type: application/json
 
 @loanId = {{createLoan.response.body.id}}
 
-### Poner el cupo a una tarjeta que no lo tenía (200)
+### Cambiar el cupo de la tarjeta (200)
 PUT {{baseUrl}}/accounts/{{cardId}}
 Authorization: Bearer {{token}}
 Content-Type: application/json

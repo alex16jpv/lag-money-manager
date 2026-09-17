@@ -10,6 +10,7 @@ import {
   AccountType,
   DEBT_ACCOUNT_FIELD_NAMES,
   DEBT_ACCOUNT_FIELDS,
+  DebtAccountField,
 } from "../../shared/constants";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { ApiError } from "../../shared/errors";
@@ -20,7 +21,6 @@ import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
 // Soft cap: protects the shared Atlas M0 tier from runaway creation.
 const MAX_ACCOUNTS_PER_USER = 100;
 
-// What the field holds once the write lands: null clears it, absent keeps what is stored.
 const afterWrite = (
   sent: number | null | undefined,
   stored?: number,
@@ -139,27 +139,37 @@ export class AccountService {
       );
     }
 
+    // Only the fields this write touches: a rename cannot fix a pairing it did not create.
+    const judged = (field: DebtAccountField): number | null | undefined =>
+      dto.type === undefined && dto[field] === undefined
+        ? undefined
+        : afterWrite(dto[field], existing[field]);
     this.assertDebtFields(
       dto.type ?? existing.type,
       {
-        creditLimit: afterWrite(dto.creditLimit, existing.creditLimit),
-        borrowedAmount: afterWrite(dto.borrowedAmount, existing.borrowedAmount),
+        creditLimit: judged("creditLimit"),
+        borrowedAmount: judged("borrowedAmount"),
       },
       existing.currency ?? DEFAULT_CURRENCY,
     );
 
+    // A write that leans on what the guard read carries that version into its own filter.
+    const guard =
+      expectedUpdatedAt ??
+      (dto.type !== undefined ||
+      DEBT_ACCOUNT_FIELD_NAMES.some((field) => dto[field] !== undefined)
+        ? existing.updatedAt
+        : undefined);
+
     return guardedWrite(
-      expectedUpdatedAt,
+      guard,
       async () =>
-        new Account(
-          await this.repo.update(id, dto, undefined, expectedUpdatedAt),
-        ),
+        new Account(await this.repo.update(id, dto, undefined, guard)),
       () => this.repo.getOwnById(id, userId),
       (a) => new Account(a),
     );
   }
 
-  // Rejects rather than dropping: a type change that orphans a field has to clear it in the same write.
   private assertDebtFields(
     type: AccountType,
     amounts: { creditLimit?: number | null; borrowedAmount?: number | null },

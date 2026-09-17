@@ -1,3 +1,4 @@
+import { UpdateQuery } from "mongoose";
 import { v7 as uuidv7 } from "uuid";
 
 import { Account } from "../../../domain/entities/Account";
@@ -55,11 +56,29 @@ export class AccountRepository implements IAccountRepository {
     }
     for (const field of DEBT_ACCOUNT_FIELD_NAMES) {
       const amount = account[field];
-      if (amount !== undefined) {
-        doc[field] = amount === null ? null : toCents(amount);
+      if (amount !== undefined && amount !== null) {
+        doc[field] = toCents(amount);
       }
     }
     return doc;
+  }
+
+  // A cleared amount leaves the document rather than staying in it as null: absent is the only "unset".
+  private toUpdate(account: AccountWrite): UpdateQuery<IAccountDocument> {
+    const set = this.toStorage(account);
+    const unset: Record<string, ""> = {};
+    for (const field of DEBT_ACCOUNT_FIELD_NAMES) {
+      if (account[field] === null) {
+        delete set[field];
+        unset[field] = "";
+      }
+    }
+    if (Object.keys(unset).length === 0) {
+      return set;
+    }
+    return Object.keys(set).length === 0
+      ? { $unset: unset }
+      : { $set: set, $unset: unset };
   }
 
   private async paginatedFind(
@@ -169,7 +188,7 @@ export class AccountRepository implements IAccountRepository {
         archivedAt: null,
         ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
       },
-      this.toStorage(account),
+      this.toUpdate(account),
       { new: true, session: session ?? undefined },
     ).lean();
     if (!doc) {
