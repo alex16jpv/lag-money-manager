@@ -414,10 +414,19 @@ describe("AccountService", () => {
       const result = await service.createAccount({
         ...cardProps,
         type: "LOAN",
+        balance: -8_400_000,
         borrowedAmount: 12_000_000,
       });
 
       expect(result.borrowedAmount).toBe(12_000_000);
+    });
+
+    // T-93: the state a loan has no honest reading in cannot be created either.
+    it("refuses a LOAN that starts above zero", async () => {
+      await expect(
+        service.createAccount({ ...cardProps, type: "LOAN", balance: 500 }),
+      ).rejects.toMatchObject({ code: "LOAN_OVERPAID" });
+      expect(repo.create).not.toHaveBeenCalled();
     });
 
     it("leaves an account that sets neither without them", async () => {

@@ -220,7 +220,7 @@ describe("TransactionService", () => {
           },
           TZ,
         ),
-      ).rejects.toMatchObject({ code: "INCOME_ON_DEBT_ACCOUNT" });
+      ).rejects.toMatchObject({ code: "INCOME_ON_CARD_OR_LOAN" });
 
       expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
       expect(acctRepo.incrementBalanceCapped).not.toHaveBeenCalled();

@@ -384,7 +384,8 @@ the product say something untrue, not because they look unusual.
 
 | Movement | Side | Account | Verdict |
 | --- | --- | --- | --- |
-| `INCOME` | `to` | CARD, OVERDRAFT, LOAN | **Refused — `INCOME_ON_DEBT_ACCOUNT`.** Money arriving at a debt account is a payment, not income. Counted as income it inflates Home's *Income this month* (`fetchSpending({type: "INCOME"})`), *Estimated savings* (income minus spending) and every income budget — three figures about money nobody earned. It is a `TRANSFER` from the account it came from, or an `ADJUSTMENT` when it came from outside the app |
+| `INCOME` | `to` | CARD, LOAN | **Refused — `INCOME_ON_CARD_OR_LOAN`.** Money arriving at a card or a loan is a payment, not income. Counted as income it inflates Home's *Income this month* (`fetchSpending({type: "INCOME"})`), *Estimated savings* (income minus spending) and every income budget — three figures about money nobody earned. It is a `TRANSFER` from the account it came from, or an `ADJUSTMENT` when it came from outside the app |
+| `INCOME` | `to` | OVERDRAFT | **Allowed**, and it is the one debt type where it is (owner's decision, 2026-09-18, asked as part of this task). An overdraft here is the account that holds the money and sometimes dips below zero — T-101 settled that its **positive balance is its ordinary state** — so a salary landing there is income, and refusing it would take that salary out of *Income this month*: one lie traded for another. A credit line modelled as an overdraft can still record a payment as a transfer |
 | `TRANSFER`, `ADJUSTMENT` | `to` | LOAN | **Refused when it would leave the balance above zero — `LOAN_OVERPAID`.** A loan cannot be paid more than it owes; "money of your own on top" means nothing on one, and the reading of a loan that is past zero has no honest shape. A CARD and an OVERDRAFT are the opposite case and take it: overpaying a card is real, and a positive overdraft is its ordinary state |
 | `INCOME` | `to` | CASH, ACCOUNT, DEBIT_CARD, SAVINGS, INVESTMENT, OTHER | Allowed. This is what income is |
 | `EXPENSE` | `from` | CARD, OVERDRAFT | Allowed, and it is what they are for: the debt grows |
@@ -398,7 +399,7 @@ Two consequences worth stating, because both were asked:
 
 - **A CARD may still be the default account.** A quick expense on a credit card is the most
   ordinary purchase there is. What changes is the quick **income**: with a debt account as the
-  default it is refused with `INCOME_ON_DEBT_ACCOUNT` instead of inflating the month.
+  default it is refused with `INCOME_ON_CARD_OR_LOAN` instead of inflating the month.
 - **Money paid from outside the app** — the *Somewhere else* row of the Pay sheet — only makes
   sense towards a debt account, and it already writes a one-sided `ADJUSTMENT` for exactly this
   reason. Into an account that holds money, money from outside **is** income.
@@ -412,9 +413,20 @@ is a **conditional `$inc`** (`AccountRepository.incrementBalanceCapped`) that th
 decides inside the same transaction. Reading the balance to compare it in the service would
 break house rule 1 and lose to any concurrent payment.
 
-Both are checked only on **forward** adjustments (`direction = +1`). A reversal is never
-refused: an existing movement, however wrong its shape, can always be edited into a legal one or
-deleted. Nothing already stored is rewritten by this task.
+Both are checked only on **forward** adjustments (`direction = +1`), so a reversal is never refused
+and nothing already stored is rewritten by this task. What that means for a row that already has a
+refused shape, exactly:
+
+- **Deleting it always works**, and so does editing anything that does not move money — a note, a
+  date, a category — because the service only reverses and re-applies when the money changed.
+- **An `INCOME` on a card**: changing its amount is refused unless the same request also changes the
+  type or the account, which is the edit that makes it legal. That is deliberate — the row cannot be
+  kept in a shape the product refuses — but it means "fix the amount" alone is not a path.
+- **A `LOAN` already above zero** (data from before this rule, or an account created that way):
+  editing a movement that enters it is impossible, because the reversal leaves it positive and any
+  forward amount then trips `LOAN_OVERPAID`. Deleting it, or moving it to another account, is the way
+  out. `AccountService` refuses to create or leave a loan above zero, so no new account can land
+  there.
 
 ## Balance Adjustment Logic
 
@@ -454,7 +466,7 @@ In both directions, if the `$inc` itself matches no document the service throws 
 | Destination account not found               | `+1`      | `NotFound` (404)                                    |
 | Either account belongs to another user      | `+1`      | `NotFound` (404) — uniform with "missing"           |
 | Currency of the account differs             | `+1`      | `400 CURRENCY_MISMATCH`                             |
-| Income landing on a debt account            | `+1`      | `400 INCOME_ON_DEBT_ACCOUNT`                        |
+| Income landing on a card or a loan          | `+1`      | `400 INCOME_ON_CARD_OR_LOAN`                        |
 | Movement that would leave a LOAN above zero | `+1`      | `400 LOAN_OVERPAID`, transaction aborted            |
 | Archived account during reversal            | `-1`      | Proceeds normally (no ownership/currency re-check)  |
 | Increment matched no account                | any       | `InternalServerError` (500), transaction aborted    |

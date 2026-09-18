@@ -13,6 +13,9 @@ export function isDebtAccountType(type: AccountType): boolean {
   return DEBT_ACCOUNT_TYPES.includes(type);
 }
 
+// An overdraft is the account that holds the money and sometimes dips below zero, so a salary landing there is income.
+export const INCOME_REFUSED_ON: readonly AccountType[] = ["CARD", "LOAN"];
+
 export type MovementSide = "from" | "to";
 
 export interface RefusedMovement {
@@ -25,11 +28,15 @@ export function refuseMovement(
   accountType: AccountType,
   side: MovementSide,
 ): RefusedMovement | null {
-  if (type === "INCOME" && side === "to" && isDebtAccountType(accountType)) {
+  if (
+    type === "INCOME" &&
+    side === "to" &&
+    INCOME_REFUSED_ON.includes(accountType)
+  ) {
     return {
-      code: "INCOME_ON_DEBT_ACCOUNT",
+      code: "INCOME_ON_CARD_OR_LOAN",
       message:
-        "Money arriving at a debt account is not income: record a transfer from the account it came from, or an adjustment when it came from outside",
+        "Money arriving at a card or a loan is not income: record a transfer from the account it came from, or an adjustment when it came from outside",
     };
   }
   return null;

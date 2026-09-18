@@ -1,6 +1,7 @@
 import { ACCOUNT_TYPES, TRANSACTION_TYPES } from "../../shared/constants";
 import {
   DEBT_ACCOUNT_TYPES,
+  INCOME_REFUSED_ON,
   isDebtAccountType,
   refuseMovement,
 } from "../../shared/transactionRules";
@@ -22,12 +23,16 @@ describe("transaction rules", () => {
     ]);
   });
 
-  it("refuses an income landing on any debt account", () => {
-    for (const type of DEBT_ACCOUNT_TYPES) {
+  it("refuses an income landing on a card or a loan", () => {
+    for (const type of ["CARD", "LOAN"] as const) {
       expect(refuseMovement("INCOME", type, "to")?.code).toBe(
-        "INCOME_ON_DEBT_ACCOUNT",
+        "INCOME_ON_CARD_OR_LOAN",
       );
     }
+  });
+
+  it("takes an income on an overdraft, whose positive balance is its ordinary state", () => {
+    expect(refuseMovement("INCOME", "OVERDRAFT", "to")).toBeNull();
   });
 
   it("leaves an income into an account that holds money alone", () => {
@@ -41,11 +46,11 @@ describe("transaction rules", () => {
       for (const account of ALL_ACCOUNT_TYPES) {
         for (const side of ["from", "to"] as const) {
           const refused = refuseMovement(transaction, account, side);
-          const isIncomeIntoDebt =
+          const refusedHere =
             transaction === "INCOME" &&
             side === "to" &&
-            isDebtAccountType(account);
-          expect(refused === null).toBe(!isIncomeIntoDebt);
+            INCOME_REFUSED_ON.includes(account);
+          expect(refused === null).toBe(!refusedHere);
         }
       }
     }

@@ -40,7 +40,7 @@ export const ERROR_CODES = [
   "NO_DEFAULT_ACCOUNT",
   "ACCOUNT_FIELD_NOT_FOR_TYPE",
   // A movement against the type of account it touches
-  "INCOME_ON_DEBT_ACCOUNT",
+  "INCOME_ON_CARD_OR_LOAN",
   "LOAN_OVERPAID",
   // Categories
   "CATEGORY_LIMIT_REACHED",

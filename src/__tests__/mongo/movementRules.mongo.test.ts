@@ -87,7 +87,7 @@ describe("what a movement may do to an account", () => {
     );
 
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe("INCOME_ON_DEBT_ACCOUNT");
+    expect(res.body.code).toBe("INCOME_ON_CARD_OR_LOAN");
     expect(await balanceOf(card)).toBe(before);
   });
 
@@ -159,6 +159,106 @@ describe("what a movement may do to an account", () => {
     expect(again.status).toBe(400);
     expect(again.body.code).toBe("LOAN_OVERPAID");
     expect(await balanceOf(loan)).toBe(0);
+  });
+
+  it("refuses to create a loan that is already above zero, and to turn one into it", async () => {
+    const wrong = await as(
+      owner,
+      request(app)
+        .post("/accounts")
+        .send({
+          id: uuid(9),
+          name: "Loan in credit",
+          type: "LOAN",
+          balance: 500,
+          borrowedAmount: 12000,
+        }),
+    );
+    expect(wrong.status).toBe(400);
+    expect(wrong.body.code).toBe("LOAN_OVERPAID");
+
+    const savings = await as(
+      owner,
+      request(app)
+        .post("/accounts")
+        .send({ id: uuid(10), name: "Savings", type: "SAVINGS", balance: 500 }),
+    );
+    expect(savings.status).toBe(201);
+
+    const turned = await as(
+      owner,
+      request(app)
+        .put(`/accounts/${uuid(10)}`)
+        .send({ type: "LOAN" }),
+    );
+    expect(turned.status).toBe(400);
+    expect(turned.body.code).toBe("LOAN_OVERPAID");
+  });
+
+  it("lets only one of two payments racing for the last cent through", async () => {
+    const racing = uuid(11);
+    const created = await as(
+      owner,
+      request(app).post("/accounts").send({
+        id: racing,
+        name: "Race loan",
+        type: "LOAN",
+        balance: -1000,
+        borrowedAmount: 5000,
+      }),
+    );
+    expect(created.status).toBe(201);
+
+    const pay = (): request.Test =>
+      as(
+        owner,
+        request(app).post("/transactions").send({
+          type: "TRANSFER",
+          amount: 1000,
+          date: new Date().toISOString(),
+          fromAccountId: bank,
+          toAccountId: racing,
+        }),
+      );
+    const [first, second] = await Promise.all([pay(), pay()]);
+
+    expect([first.status, second.status].sort()).toEqual([201, 400]);
+    const refused = first.status === 400 ? first : second;
+    expect(refused.body.code).toBe("LOAN_OVERPAID");
+    expect(await balanceOf(racing)).toBe(0);
+  });
+
+  it("refuses to edit an income on a card into another amount, and takes the fix", async () => {
+    const good = await as(
+      owner,
+      request(app)
+        .post("/transactions")
+        .send({
+          id: uuid(12),
+          type: "INCOME",
+          amount: 100,
+          date: new Date().toISOString(),
+          toAccountId: bank,
+        }),
+    );
+    expect(good.status).toBe(201);
+
+    const moved = await as(
+      owner,
+      request(app)
+        .put(`/transactions/${uuid(12)}`)
+        .send({ toAccountId: card }),
+    );
+    expect(moved.status).toBe(400);
+    expect(moved.body.code).toBe("INCOME_ON_CARD_OR_LOAN");
+
+    const fixed = await as(
+      owner,
+      request(app)
+        .put(`/transactions/${uuid(12)}`)
+        .send({ type: "TRANSFER", fromAccountId: bank, toAccountId: card }),
+    );
+    expect(fixed.status).toBe(200);
   });
 
   it("still lets a loan that is finished be undone: a reversal is never capped", async () => {

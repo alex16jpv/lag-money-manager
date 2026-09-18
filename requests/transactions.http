@@ -485,7 +485,7 @@ Content-Type: application/json
 
 @loanId = {{loan.response.body.id}}
 
-### INCOME sobre una tarjeta (400 INCOME_ON_DEBT_ACCOUNT)
+### INCOME sobre una tarjeta (400 INCOME_ON_CARD_OR_LOAN)
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
