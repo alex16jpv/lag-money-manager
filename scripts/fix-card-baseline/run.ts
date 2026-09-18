@@ -1,8 +1,8 @@
-// Single use (T-90): delete this folder once it has run.
+// Single use (T-90): see the end of this text for what gets deleted once it has run.
 import "dotenv/config";
 import "../../src/infrastructure/models";
 
-import { readdirSync } from "fs";
+import { readdirSync, statSync } from "fs";
 import mongoose from "mongoose";
 import { join } from "path";
 import { createInterface } from "readline";
@@ -19,16 +19,17 @@ import { ENVIRONMENT } from "../../src/shared/constants";
 import { currencyDecimals } from "../../src/shared/currency";
 import { fromCents } from "../../src/shared/money";
 import {
-  backupAgeHours,
+  CARD_SKIP_REASONS,
   CardRow,
   CORRECTION_DESCRIPTION,
   databaseFromUri,
+  INCOME_SKIP_REASONS,
   IncomeRow,
-  latestBackup,
+  judgeBackup,
   LIMIT_ACCOUNT_TYPES,
+  parseArgs,
   Plan,
   planCardBaseline,
-  SKIP_REASONS,
 } from "./plan";
 
 const USAGE = `Usage: MONGO_URI='mongodb+srv://...' npx tsx scripts/fix-card-baseline/run.ts --email=<address> [--apply]
@@ -41,18 +42,31 @@ the credit limit instead of to what is owed. For the one user given by --email:
   - every card carried in positive gets an ADJUSTMENT of its credit limit, so
     the balance drops to what is actually owed.
 
-Nothing is written without --apply. With --apply it also needs a backup from
-npm run db:backup, no older than BACKUP_MAX_AGE_HOURS (default 24), and a typed
-confirmation.
+Run it in this order:
+
+  1. MONGO_URI='<uri>' npm run db:backup
+  2. MONGO_URI='<uri>' npx tsx scripts/fix-card-baseline/run.ts --email=<address>
+  3. the same, with --apply
+
+Nothing is written without --apply. With --apply it also needs the archive from
+step 1, in BACKUP_DIR, for that same database, not empty and no older than
+BACKUP_MAX_AGE_HOURS (default 24) — the name and date are printed so you can see
+which one it found. Then it asks you to type the confirmation.
+
+To undo what it wrote: delete the two kinds of row it created, which are the
+ADJUSTMENT rows described «${CORRECTION_DESCRIPTION}» and the incomes it turned
+into adjustments (their previous shape is kept in the row's revisions).
 
 Options:
   --email=<address>  the only user this touches; required
   --apply            write the changes (without it, nothing is written)
 
 Environment:
-  MONGO_URI              the database to repair; read from the environment only
-  BACKUP_DIR             where db:backup writes (default: <repo>/backups)
-  BACKUP_MAX_AGE_HOURS   how recent the backup must be (default: 24)`;
+  MONGO_URI              the database to repair. Pass it in front of the command:
+                         .env is loaded for the rest of the settings, so leaving
+                         it out falls back to whatever .env names
+  BACKUP_DIR             where db:backup wrote (default: <repo>/backups)
+  BACKUP_MAX_AGE_HOURS   how recent that archive must be (default: 24)`;
 
 const DEFAULT_MAX_AGE_HOURS = 24;
 
@@ -63,26 +77,6 @@ function die(message: string): never {
 
 function money(amount: number, currency: string): string {
   return `${amount.toFixed(currencyDecimals(currency))} ${currency}`;
-}
-
-function parseArgs(argv: string[]): { email: string; apply: boolean } {
-  let email = "";
-  let apply = false;
-  for (const arg of argv) {
-    if (arg === "--apply") {
-      apply = true;
-    } else if (arg.startsWith("--email=")) {
-      email = arg.slice("--email=".length).trim();
-    } else {
-      console.error(USAGE);
-      die(`Unknown argument: ${arg}`);
-    }
-  }
-  if (!email) {
-    console.error(USAGE);
-    die("--email is required: this repair is scoped to a single user.");
-  }
-  return { email: email.toLowerCase(), apply };
 }
 
 async function confirm(question: string, expected: string): Promise<void> {
@@ -112,32 +106,26 @@ function assertRecentBackup(database: string): void {
     );
   }
 
-  let names: string[];
+  const takeOne = `Take one first:\n    MONGO_URI='<the same URI>' npm run db:backup`;
+  let files: { name: string; size: number }[];
   try {
-    names = readdirSync(dir);
+    files = readdirSync(dir).map((name) => ({
+      name,
+      size: statSync(join(dir, name)).size,
+    }));
   } catch {
-    die(
-      `No backup directory at ${dir}. Take one first:\n` +
-        `    MONGO_URI='<the same URI>' npm run db:backup`,
-    );
+    die(`No backup directory at ${dir}. ${takeOne}`);
   }
 
-  const backup = latestBackup(names, database);
-  if (!backup) {
-    die(
-      `No backup of '${database}' in ${dir}. Take one first:\n` +
-        `    MONGO_URI='<the same URI>' npm run db:backup`,
+  const verdict = judgeBackup(files, database, new Date(), maxAgeHours);
+  if (verdict.backup) {
+    console.log(
+      `Backup    ${verdict.backup.name} (${verdict.backup.at.toISOString()}, ` +
+        `${verdict.ageHours.toFixed(1)} h old, ${verdict.backup.size} bytes)`,
     );
   }
-  const ageHours = backupAgeHours(backup.at, new Date());
-  console.log(
-    `Backup    ${backup.name} (${backup.at.toISOString()}, ${ageHours.toFixed(1)} h old)`,
-  );
-  if (ageHours > maxAgeHours) {
-    die(
-      `That backup is older than ${maxAgeHours} h. Take a fresh one:\n` +
-        `    MONGO_URI='<the same URI>' npm run db:backup`,
-    );
+  if (!verdict.ok) {
+    die(`Backup of '${database}' in ${dir}: ${verdict.why}. ${takeOne}`);
   }
 }
 
@@ -193,7 +181,9 @@ async function readIncomes(
   }));
 }
 
-function report(plan: Plan): void {
+function report(plan: Plan, cards: CardRow[]): void {
+  const nameOf = new Map(cards.map((card) => [card.id, card]));
+
   console.log("");
   console.log(`Incomes to turn into adjustments: ${plan.incomes.length}`);
   for (const { income, card } of plan.incomes) {
@@ -203,10 +193,17 @@ function report(plan: Plan): void {
         `${card.name}  ${income.description ?? "(no description)"}${category}`,
     );
   }
-  for (const income of plan.unmatchedIncomes) {
-    console.log(
-      `    SKIPPED ${income.id}: its account is not one of this user's cards`,
-    );
+
+  if (plan.skippedIncomes.length > 0) {
+    console.log("");
+    console.log(`Incomes left alone: ${plan.skippedIncomes.length}`);
+    for (const { income, reason } of plan.skippedIncomes) {
+      const card = nameOf.get(income.toAccountId);
+      console.log(
+        `    ${income.date.toISOString().slice(0, 10)}  ${income.id}  ` +
+          `${card?.name ?? "(unknown account)"}  ${INCOME_SKIP_REASONS[reason]}`,
+      );
+    }
   }
 
   console.log("");
@@ -219,10 +216,10 @@ function report(plan: Plan): void {
   }
 
   console.log("");
-  console.log(`Cards left alone: ${plan.skipped.length}`);
-  for (const { card, reason } of plan.skipped) {
+  console.log(`Cards left alone: ${plan.skippedCards.length}`);
+  for (const { card, reason } of plan.skippedCards) {
     console.log(
-      `    ${card.name} (${card.type})  ${money(card.balance, card.currency)}  ${SKIP_REASONS[reason]}`,
+      `    ${card.name} (${card.type})  ${money(card.balance, card.currency)}  ${CARD_SKIP_REASONS[reason]}`,
     );
   }
 }
@@ -235,29 +232,78 @@ async function apply(
 ): Promise<void> {
   console.log("");
   console.log("==> Writing");
-  for (const { income, card } of plan.incomes) {
-    await service.updateTransaction(
-      income.id,
-      { type: "ADJUSTMENT", categoryId: null },
-      userId,
-      timezone,
-    );
-    console.log(`    income ${income.id} is now an adjustment on ${card.name}`);
-  }
-  for (const { card, creditLimit } of plan.fixes) {
-    const created = await service.createTransaction(
-      {
-        type: "ADJUSTMENT",
-        amount: creditLimit,
-        date: new Date(),
-        description: CORRECTION_DESCRIPTION,
-        fromAccountId: card.id,
+  const written: string[] = [];
+  try {
+    for (const { income, card } of plan.incomes) {
+      await service.updateTransaction(
+        income.id,
+        { type: "ADJUSTMENT", categoryId: null },
         userId,
-      },
-      timezone,
+        timezone,
+      );
+      written.push(`income ${income.id} turned into an adjustment`);
+      console.log(
+        `    income ${income.id} is now an adjustment on ${card.name}`,
+      );
+    }
+    for (const { card, creditLimit } of plan.fixes) {
+      const created = await service.createTransaction(
+        {
+          type: "ADJUSTMENT",
+          amount: creditLimit,
+          date: new Date(),
+          description: CORRECTION_DESCRIPTION,
+          fromAccountId: card.id,
+          userId,
+        },
+        timezone,
+      );
+      written.push(
+        `adjustment ${created.id} of ${creditLimit} on ${card.name}`,
+      );
+      console.log(
+        `    ${card.name}: adjustment ${created.id} of ${money(creditLimit, card.currency)}`,
+      );
+    }
+  } catch (err) {
+    console.error("");
+    console.error(
+      `FAILED after ${written.length} write(s). Each one was its own database transaction, so these are in and the rest are not:`,
     );
+    for (const line of written) console.error(`    ${line}`);
+    console.error(
+      "Fix what the error below says and run it again: what is already written is skipped on a second run.",
+    );
+    throw err;
+  }
+}
+
+async function verify(plan: Plan): Promise<void> {
+  console.log("");
+  console.log("==> Balances now");
+  let drift = false;
+  for (const { card, balanceAfter } of plan.fixes) {
+    const doc = await AccountModel.findById(card.id).select("balance").lean();
+    if (!doc) {
+      drift = true;
+      console.log(
+        `    ${card.name}: GONE — the account could not be read back`,
+      );
+      continue;
+    }
+    const balance = fromCents(doc.balance);
+    const expected =
+      balance === balanceAfter
+        ? ""
+        : ` — expected ${money(balanceAfter, card.currency)}, so something else moved this card meanwhile`;
+    if (expected) drift = true;
     console.log(
-      `    ${card.name}: adjustment ${created.id} of ${money(creditLimit, card.currency)}`,
+      `    ${card.name}: ${money(balance, card.currency)}${expected}`,
+    );
+  }
+  if (drift) {
+    die(
+      "A balance is not what the plan said it would be. The adjustments are in and are relative, so the figure is still the old balance minus the limit; check the account before doing anything else.",
     );
   }
 }
@@ -267,7 +313,12 @@ async function main(): Promise<void> {
     console.log(USAGE);
     return;
   }
-  const { email, apply: write } = parseArgs(process.argv.slice(2));
+  const args = parseArgs(process.argv.slice(2));
+  if (typeof args === "string") {
+    console.error(USAGE);
+    die(args);
+  }
+  const { email, apply: write } = args;
 
   const uri = (ENVIRONMENT as { MONGO_URI: string }).MONGO_URI;
   const database = databaseFromUri(uri);
@@ -306,7 +357,7 @@ async function main(): Promise<void> {
       cards.map((card) => card.id),
     );
     const plan = planCardBaseline(cards, incomes);
-    report(plan);
+    report(plan, cards);
 
     if (plan.fixes.length === 0 && plan.incomes.length === 0) {
       console.log("");
@@ -338,17 +389,15 @@ async function main(): Promise<void> {
       new CategoryRepository(),
     );
     await apply(plan, service, user._id, user.timezone);
+    await verify(plan);
 
     console.log("");
-    console.log("==> Balances now");
-    for (const { card } of plan.fixes) {
-      const doc = await AccountModel.findById(card.id).select("balance").lean();
-      console.log(
-        `    ${card.name}: ${money(fromCents(doc?.balance ?? 0), card.currency)}`,
-      );
-    }
-    console.log("");
-    console.log("Done. Delete scripts/fix-card-baseline/ now that it has run.");
+    console.log(
+      "Done. Now that it has run, delete scripts/fix-card-baseline/, its test\n" +
+        "src/__tests__/scripts/fixCardBaseline.test.ts, and the section «Cards carried\n" +
+        "in positive» of docs/modules/accounts.md — the three go together, and leaving\n" +
+        "the test behind without the script breaks npm run ci.",
+    );
   } finally {
     await mongoose.disconnect();
   }

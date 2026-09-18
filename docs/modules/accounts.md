@@ -197,16 +197,25 @@ A card whose balance was set to its credit limit reads as money the owner does n
 debt reading, the balance has to say what is owed, so the credit limit has to come off it once.
 `scripts/fix-card-baseline/` does that for **one user**, named by `--email`, and for no one else.
 
-It writes nothing without `--apply`, and even then only after it finds an archive from
-`npm run db:backup` for the same database, no older than `BACKUP_MAX_AGE_HOURS` (default 24), and a
-typed confirmation. Both changes are ordinary ledger rows, not balance writes: an `INCOME` onto a
-card — a card payment recorded as money earned — becomes a one-sided `ADJUSTMENT` that leaves the
-balance where it was, and the credit limit comes off as a second `ADJUSTMENT`. So the history says
-why the figure moved, `openingBalance` plus the transaction effects still adds up, and undoing it is
-deleting a row. A card it already corrected is skipped, so a second run cannot subtract the limit
-twice.
+The order is `npm run db:backup`, then a dry run, then `--apply`. It writes nothing without
+`--apply`, and even then only after it finds that archive in `BACKUP_DIR` — same database, not
+empty, no older than `BACKUP_MAX_AGE_HOURS` (default 24) — and a typed confirmation.
 
-It has no npm alias, and it is deleted once it has run.
+Both changes are ordinary ledger rows, not balance writes: an `INCOME` onto a card — a card payment
+recorded as money earned — becomes a one-sided `ADJUSTMENT` that leaves the balance where it was,
+and the credit limit comes off as a second `ADJUSTMENT`. So the history says why the figure moved,
+`openingBalance` plus the transaction effects still adds up, and undoing it is deleting those rows
+(the income keeps its previous shape in its `revisions`).
+
+What it refuses to decide: a card whose balance is **not positive**, because at that point a card
+maxed out under the old reading looks exactly like one that already says what it owes. Those are
+listed, not touched. An archived card is left alone too, and so is an income booked on one — a
+transaction cannot be rebooked on an archived account. A card it already corrected is skipped, so a
+second run cannot subtract the limit twice.
+
+It has no npm alias. Once it has run, three things go together: the folder, its test
+`src/__tests__/scripts/fixCardBaseline.test.ts` and this section. Deleting the folder alone leaves
+the test importing nothing and breaks `npm run ci`.
 
 ## How to Extend
 
