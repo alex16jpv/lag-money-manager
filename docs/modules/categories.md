@@ -18,7 +18,7 @@ Two behaviours set this module apart from plain CRUD:
 | `src/app/services/CategoryService.ts`                            | Business logic: ownership checks, archive/restore, seeding, type-lock, per-user cap |
 | `src/app/dtos/CategoryDTO.ts`                                    | `CreateCategoryDTO`, `UpdateCategoryDTO`                                            |
 | `src/app/validation/schemas.ts`                                  | `createCategorySchema`, `updateCategorySchema`, `getCategoriesSchema`               |
-| `src/shared/defaultCategories.ts`                                | `DEFAULT_CATEGORIES` — the 10 seeded defaults with their `seedKey`s                 |
+| `src/shared/defaultCategories.ts`                                | `DEFAULT_CATEGORIES` — the 11 seeded defaults with their `seedKey`s                 |
 | `src/shared/icons.ts`                                            | `CATEGORY_ICONS` — curated Lucide keys a category may use (mirrors the UI design)   |
 | `src/domain/entities/Category.ts`                                | Category domain entity                                                              |
 | `src/domain/repositories/category/ICategoryRepository.ts`        | Repository interface                                                                |

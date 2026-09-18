@@ -25,7 +25,7 @@ database in the same state.
   archived Nequi. The final balances are the designed ones; the **opening
   balances are derived from them**, so the numbers come out of the real
   transaction flow rather than being written by hand.
-- **14 categories** — the ten defaults plus Coffee, Health, Pets (unused on
+- **15 categories** — the eleven defaults plus Coffee, Health, Pets (unused on
   purpose) and an archived Vacation still referenced by a budget, which is how
   `archivedCategoryIds` shows up.
 - **~66 transactions** — 48 in the reference month plus two earlier months so

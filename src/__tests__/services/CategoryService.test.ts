@@ -473,4 +473,11 @@ describe("CategoryService", () => {
       );
     });
   });
+
+  it("gives every default its own seedKey, which is what restore-defaults matches on", () => {
+    const keys = DEFAULT_CATEGORIES.map((category) => category.seedKey);
+
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toContain("interest");
+  });
 });
