@@ -191,6 +191,23 @@ The API speaks **decimals** (max 2 decimal places); MongoDB stores **integer cen
 
 `openingBalance` is the balance at creation and is fixed thereafter — it exists so a future integrity check can compare the stored balance against `openingBalance` plus the aggregated transaction effects.
 
+## Cards carried in positive (one-off repair)
+
+A card whose balance was set to its credit limit reads as money the owner does not have: with the
+debt reading, the balance has to say what is owed, so the credit limit has to come off it once.
+`scripts/fix-card-baseline/` does that for **one user**, named by `--email`, and for no one else.
+
+It writes nothing without `--apply`, and even then only after it finds an archive from
+`npm run db:backup` for the same database, no older than `BACKUP_MAX_AGE_HOURS` (default 24), and a
+typed confirmation. Both changes are ordinary ledger rows, not balance writes: an `INCOME` onto a
+card — a card payment recorded as money earned — becomes a one-sided `ADJUSTMENT` that leaves the
+balance where it was, and the credit limit comes off as a second `ADJUSTMENT`. So the history says
+why the figure moved, `openingBalance` plus the transaction effects still adds up, and undoing it is
+deleting a row. A card it already corrected is skipped, so a second run cannot subtract the limit
+twice.
+
+It has no npm alias, and it is deleted once it has run.
+
 ## How to Extend
 
 - To add a new account type: add it to `ACCOUNT_TYPES` in `src/shared/constants.ts` — the validation schema derives `accountTypeValues` from it automatically
