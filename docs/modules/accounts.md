@@ -191,31 +191,19 @@ The API speaks **decimals** (max 2 decimal places); MongoDB stores **integer cen
 
 `openingBalance` is the balance at creation and is fixed thereafter — it exists so a future integrity check can compare the stored balance against `openingBalance` plus the aggregated transaction effects.
 
-## Cards carried in positive (one-off repair)
+## Cards carried in positive (repaired on 2026-09-17)
 
-A card whose balance was set to its credit limit reads as money the owner does not have: with the
-debt reading, the balance has to say what is owed, so the credit limit has to come off it once.
-`scripts/fix-card-baseline/` does that for **one user**, named by `--email`, and for no one else.
+The owner kept his credit cards with the balance set to the credit limit, so the balance read as
+money he did not have and a card payment had been recorded as an `INCOME`. A single-use script
+(`scripts/fix-card-baseline/`, T-90) repaired his user on **2026-09-17** and was deleted with the
+same commit, as agreed: it is not something to run twice.
 
-The order is `npm run db:backup`, then a dry run, then `--apply`. It writes nothing without
-`--apply`, and even then only after it finds that archive in `BACKUP_DIR` — same database, not
-empty, no older than `BACKUP_MAX_AGE_HOURS` (default 24) — and a typed confirmation.
-
-Both changes are ordinary ledger rows, not balance writes: an `INCOME` onto a card — a card payment
-recorded as money earned — becomes a one-sided `ADJUSTMENT` that leaves the balance where it was,
-and the credit limit comes off as a second `ADJUSTMENT`. So the history says why the figure moved,
-`openingBalance` plus the transaction effects still adds up, and undoing it is deleting those rows
-(the income keeps its previous shape in its `revisions`).
-
-What it refuses to decide: a card whose balance is **not positive**, because at that point a card
-maxed out under the old reading looks exactly like one that already says what it owes. Those are
-listed, not touched. An archived card is left alone too, and so is an income booked on one — a
-transaction cannot be rebooked on an archived account. A card it already corrected is skipped, so a
-second run cannot subtract the limit twice.
-
-It has no npm alias. Once it has run, three things go together: the folder, its test
-`src/__tests__/scripts/fixCardBaseline.test.ts` and this section. Deleting the folder alone leaves
-the test importing nothing and breaks `npm run ci`.
+What it left in the data, for anyone reading those rows later: the income onto the card became a
+one-sided `ADJUSTMENT` — the balance stayed where it was and it stopped counting as money earned,
+which is the same shape the pay sheet writes when the money came from outside — and the credit limit
+came off the balance as a second `ADJUSTMENT` described **"Credit limit removed from balance"**.
+Both are ordinary ledger rows, not balance writes, so `openingBalance` plus the transaction effects
+still adds up and undoing either one is deleting it.
 
 ## How to Extend
 
