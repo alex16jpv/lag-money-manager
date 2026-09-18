@@ -285,13 +285,23 @@ Codes raised by the services and middleware. Anything not listed here has no `co
 | `DEFAULT_ACCOUNT_ARCHIVE_BLOCKED` | 400    | Archiving the default account before another is made default             |
 | `NO_DEFAULT_ACCOUNT`              | 400    | Quick-add with no account id and no default account set                  |
 | `ACCOUNT_LIMIT_REACHED`           | 400    | Per-user account cap                                                     |
+| `ACCOUNT_FIELD_NOT_FOR_TYPE`      | 400    | A debt amount on an account type that has no such field, or a type change that would orphan one |
+| `AMOUNT_PRECISION`                | 400    | An amount with more decimals than the owner's currency has               |
 | `CATEGORY_LIMIT_REACHED`          | 400    | Per-user category cap                                                    |
 | `BUDGET_PERIOD_OVERLAP`           | 400    | New budget period overlaps an existing one for the same scope            |
 | `IDEMPOTENCY_KEY_INVALID`         | 400    | `Idempotency-Key` outside `[A-Za-z0-9_-]{1,200}`                         |
+| `MALFORMED_JSON`                  | 400    | Body that is not valid JSON (body-parser `entity.parse.failed`)          |
+| `BAD_REQUEST`                     | 400    | A body-parser failure with no code of its own; also a `/sync` operation rejected with no more specific code |
+| `REQUEST_ABORTED`                 | 400    | The client hung up before the body arrived (body-parser `request.aborted`) |
+| `UNSUPPORTED_ENCODING`            | 415    | Body in a content encoding the server does not read                      |
+| `PAYLOAD_TOO_LARGE`               | 413    | Body over the size limit                                                 |
 | `CURRENT_PASSWORD_INVALID`        | 401    | Password change with the wrong current password                          |
 | `REFRESH_INVALID`                 | 401    | Refresh token missing, malformed or expired                              |
 | `REFRESH_REVOKED`                 | 401    | Refresh token belongs to a revoked session                               |
+| `NOT_FOUND`                       | 404    | A `/sync` operation whose row is missing or belongs to another user      |
 | `DUPLICATE`                       | 409    | MongoDB duplicate key (11000)                                            |
+| `ID_TAKEN`                        | 409    | A client-minted id that belongs to another user (the caller's own replays with 200) |
+| `STALE_UPDATE`                    | 409    | `If-Match` no longer matches the stored version; `current` carries the server's copy |
 | `EMAIL_TAKEN`                     | 409    | Registration with an email already in use                                |
 | `IDEMPOTENCY_ORIGINAL_DELETED`    | 409    | The transaction created with this key was deleted — retry with a new key |
 | `IDEMPOTENCY_PAYLOAD_MISMATCH`    | 422    | The key was already used with a different payload                        |

@@ -9,6 +9,13 @@ Two server-managed properties matter to clients:
 - **`currency`** — ISO 4217, stamped from the owner's currency at creation. Never accepted from the client (mono-currency mode).
 - **`isDefault`** — the first account a user creates becomes the default; quick-add transactions fall back to it. Exactly one active account per user can be default.
 
+Two optional amounts belong to the account types that have them, and to no other:
+
+- **`creditLimit`** — CARD and OVERDRAFT.
+- **`borrowedAmount`** — LOAN. It exists because `openingBalance` is the balance the day the account was created, not what was borrowed: a loan tracked from halfway through cannot otherwise say what its progress is a fraction of.
+
+Both are absent until someone sets them, both are decimals like every other amount, and both follow the owner's currency precision. Sending one on a type that has no such field is **400 `ACCOUNT_FIELD_NOT_FOR_TYPE`**, and so is a type change that would leave one behind — the same write has to clear it with `null`. Nothing is dropped silently.
+
 Accounts are **archived**, not deleted: `DELETE` sets `archivedAt` and `POST /accounts/:id/restore` brings them back. There are no hard deletes.
 
 ## Files and Responsibilities
@@ -43,7 +50,7 @@ Get all accounts for the authenticated user (paginated, offset + cursor).
 
 ### `POST /accounts`
 
-Create a new account. Requires: `name`, `type`. Optional: `balance` (defaults to 0, becomes the immutable `openingBalance`) and `color`.
+Create a new account. Requires: `name`, `type`. Optional: `balance` (defaults to 0, becomes the immutable `openingBalance`), `color`, and the debt amount of its type — `creditLimit` (CARD, OVERDRAFT) or `borrowedAmount` (LOAN), both greater than zero.
 
 The server sets `currency` from the owner's currency and marks the **first** account as default. A user is capped at 100 accounts (`ACCOUNT_LIMIT_REACHED`).
 
@@ -57,7 +64,9 @@ Get a single account by ID. Archived accounts stay readable here (`archivedAt` t
 
 ### `PUT /accounts/:id`
 
-Update an account. Partial updates supported (`name`, `type`, `color`). At least one field must be present. Balance cannot be modified directly — it is adjusted automatically through transactions. Archived accounts are not writable (`RESOURCE_ARCHIVED`).
+Update an account. Partial updates supported (`name`, `type`, `color`, `creditLimit`, `borrowedAmount`). At least one field must be present. Balance cannot be modified directly — it is adjusted automatically through transactions. Archived accounts are not writable (`RESOURCE_ARCHIVED`).
+
+`color`, `creditLimit` and `borrowedAmount` accept `null` to clear them. The debt amounts are judged on the state the write leaves behind, not on what it sends: turning a CARD that carries a `creditLimit` into a CASH account is **400 `ACCOUNT_FIELD_NOT_FOR_TYPE`** unless the same request sends `creditLimit: null`.
 
 ### `DELETE /accounts/:id`
 
@@ -84,13 +93,14 @@ sequenceDiagram
     participant REPO as AccountRepository
     participant DB as Database
 
-    C->>VAL: POST /accounts { name, type, balance, color }
+    C->>VAL: POST /accounts { name, type, balance, color, creditLimit? }
     VAL->>CTRL: Validated body
     CTRL->>CTRL: Extract userId, merge into body
     CTRL->>SVC: createAccount({ ...body, userId })
     SVC->>REPO: countByUserId(userId)
     Note over SVC: Reject with ACCOUNT_LIMIT_REACHED past 100
     SVC->>SVC: Read owner's currency, isDefault = (count === 0)
+    Note over SVC: Reject a debt amount the type does not carry (ACCOUNT_FIELD_NOT_FOR_TYPE)
     SVC->>SVC: new Account(dto)
     SVC->>REPO: create(account)
     REPO->>DB: Insert (balance converted to integer cents)
@@ -122,6 +132,8 @@ None specific to this module.
 | `BadRequest`                       | 400    | ID mismatch between URL param and body                           |
 | `ACCOUNT_LIMIT_REACHED`            | 400    | The user already has 100 accounts                                |
 | `RESOURCE_ARCHIVED`                | 400    | Updating an archived account                                     |
+| `ACCOUNT_FIELD_NOT_FOR_TYPE`       | 400    | A debt amount on a type that has no such field, or a type change that would orphan one |
+| `AMOUNT_PRECISION`                 | 400    | `balance`, `creditLimit` or `borrowedAmount` with more decimals than the currency has |
 | `DEFAULT_ACCOUNT_ARCHIVE_BLOCKED`  | 400    | Archiving the default account                                    |
 | `Unauthorized`                     | 401    | Missing, invalid or expired access token                         |
 | `NotFound`                         | 404    | Account missing **or owned by another user**                     |
@@ -175,12 +187,15 @@ Defined in `src/shared/constants.ts` → `ACCOUNT_TYPES`:
 
 The API speaks **decimals** (max 2 decimal places); MongoDB stores **integer cents**. `AccountRepository` converts `balance` and `openingBalance` at the persistence boundary, and balance updates go through an atomic `$inc` (`incrementBalance()`) rather than read-modify-write, so concurrent transactions cannot lose an update.
 
+`creditLimit` and `borrowedAmount` convert the same way and are stored as integer cents too; a cleared one reads back as **absent**, never as `null` or `0`.
+
 `openingBalance` is the balance at creation and is fixed thereafter — it exists so a future integrity check can compare the stored balance against `openingBalance` plus the aggregated transaction effects.
 
 ## How to Extend
 
 - To add a new account type: add it to `ACCOUNT_TYPES` in `src/shared/constants.ts` — the validation schema derives `accountTypeValues` from it automatically
-- To add account-level limits: add fields to entity/model, add validation in `AccountService`
+- To move a debt field between types: `DEBT_ACCOUNT_FIELDS` in `src/shared/constants.ts` maps each field to the types that carry it, and the service guard, the OpenAPI description and the repository conversion all read it from there. Taking a type out of that map makes every stored amount on that type unwritable until it is cleared, so it needs a migration, not just an edit
+- To add a debt field of its own: the map is only the pairing — the name itself is written in the Zod schemas, the DTOs, the entity, the Mongoose model, `AccountWrite` and the service guard, and all of them have to gain it
 - Balance is modified by `TransactionService` via `incrementBalance()` — do not add balance modification logic to this module, and never write `balance` through `update()`
 - Multi-currency: `currency` is already stored per account and asserted on every balance adjustment (`CURRENCY_MISMATCH`); the missing pieces are a minor-units table and FX at transfer time
 

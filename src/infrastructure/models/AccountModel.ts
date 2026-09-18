@@ -16,6 +16,8 @@ export interface IAccountDocument {
   balance: number; // integer cents
   openingBalance: number; // integer cents
   color?: string;
+  creditLimit?: number | null; // integer cents
+  borrowedAmount?: number | null; // integer cents
   userId: string;
   isDefault: boolean;
   currency: string;
@@ -36,6 +38,8 @@ const AccountSchema = new Schema<IAccountDocument>(
     balance: { type: Number, required: true },
     openingBalance: { type: Number, required: true, default: 0 },
     color: { type: String, required: false, enum: Object.keys(COLORS) },
+    creditLimit: { type: Number, required: false, default: undefined },
+    borrowedAmount: { type: Number, required: false, default: undefined },
     userId: { type: String, required: true },
     isDefault: { type: Boolean, required: true, default: false },
     currency: {

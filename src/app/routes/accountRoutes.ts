@@ -94,6 +94,11 @@ router.get(
  *       owns replays with 200 and the stored resource, whatever the payload
  *       says now (the row may have been edited elsewhere since); an id that
  *       belongs to another user is rejected with 409 ID_TAKEN.
+ *
+ *       Two optional amounts belong to the types that have them: `creditLimit`
+ *       to CARD and OVERDRAFT, `borrowedAmount` to LOAN. On any other type they
+ *       are 400 ACCOUNT_FIELD_NOT_FOR_TYPE. Both follow the owner's currency
+ *       precision, like `balance`.
  *     requestBody:
  *       required: true
  *       content:
@@ -114,7 +119,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/Account'
  *       400:
- *         description: Validation error (code VALIDATION) or account limit reached (code ACCOUNT_LIMIT_REACHED)
+ *         description: Validation error (code VALIDATION), account limit reached (code ACCOUNT_LIMIT_REACHED), an amount with more decimals than the currency has (code AMOUNT_PRECISION), or a debt amount sent on a type that has no such field (code ACCOUNT_FIELD_NOT_FOR_TYPE)
  *         content:
  *           application/json:
  *             schema:
@@ -189,6 +194,11 @@ router.get("/:id", validate(idParamSchema), AccountController.getAccountById);
  *   put:
  *     tags: [Accounts]
  *     summary: Update an account
+ *     description: >
+ *       Partial update. `creditLimit` (CARD, OVERDRAFT) and `borrowedAmount`
+ *       (LOAN) accept null to clear them. A write is judged on the state it
+ *       leaves behind: changing the type to one without that field is 400
+ *       ACCOUNT_FIELD_NOT_FOR_TYPE unless the same request clears it.
  *     parameters:
  *       - in: path
  *         name: id
@@ -212,7 +222,7 @@ router.get("/:id", validate(idParamSchema), AccountController.getAccountById);
  *             schema:
  *               $ref: '#/components/schemas/Account'
  *       400:
- *         description: Validation error (code VALIDATION) or account is archived (code RESOURCE_ARCHIVED, restore it first)
+ *         description: Validation error (code VALIDATION), account is archived (code RESOURCE_ARCHIVED, restore it first), an amount with more decimals than the currency has (code AMOUNT_PRECISION), or a debt amount left on a type that has no such field (code ACCOUNT_FIELD_NOT_FOR_TYPE)
  *         content:
  *           application/json:
  *             schema:

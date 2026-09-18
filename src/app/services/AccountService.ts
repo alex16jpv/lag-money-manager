@@ -6,6 +6,12 @@ import {
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { assertFresh, guardedWrite } from "../../shared/concurrency";
+import {
+  AccountType,
+  DEBT_ACCOUNT_FIELD_NAMES,
+  DEBT_ACCOUNT_FIELDS,
+  DebtAccountField,
+} from "../../shared/constants";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { ApiError } from "../../shared/errors";
 import { assertAmountPrecision } from "../../shared/money";
@@ -14,6 +20,11 @@ import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
 
 // Soft cap: protects the shared Atlas M0 tier from runaway creation.
 const MAX_ACCOUNTS_PER_USER = 100;
+
+const afterWrite = (
+  sent: number | null | undefined,
+  stored?: number,
+): number | null | undefined => (sent === undefined ? stored : sent);
 
 export class AccountService {
   constructor(
@@ -78,6 +89,7 @@ export class AccountService {
     const owner = await this.userRepo.getById(dto.userId);
     const currency = owner?.currency ?? DEFAULT_CURRENCY;
     assertAmountPrecision(dto.balance, currency, "balance");
+    this.assertDebtFields(dto.type, dto, currency);
     const account = new Account({
       ...dto,
       isDefault: count === 0,
@@ -127,15 +139,58 @@ export class AccountService {
       );
     }
 
+    // Only the fields this write touches: a rename cannot fix a pairing it did not create.
+    const judged = (field: DebtAccountField): number | null | undefined =>
+      dto.type === undefined && dto[field] === undefined
+        ? undefined
+        : afterWrite(dto[field], existing[field]);
+    this.assertDebtFields(
+      dto.type ?? existing.type,
+      {
+        creditLimit: judged("creditLimit"),
+        borrowedAmount: judged("borrowedAmount"),
+      },
+      existing.currency ?? DEFAULT_CURRENCY,
+    );
+
+    // A write that leans on what the guard read carries that version into its own filter.
+    const guard =
+      expectedUpdatedAt ??
+      (dto.type !== undefined ||
+      DEBT_ACCOUNT_FIELD_NAMES.some((field) => dto[field] !== undefined)
+        ? existing.updatedAt
+        : undefined);
+
     return guardedWrite(
-      expectedUpdatedAt,
+      guard,
       async () =>
-        new Account(
-          await this.repo.update(id, dto, undefined, expectedUpdatedAt),
-        ),
+        new Account(await this.repo.update(id, dto, undefined, guard)),
       () => this.repo.getOwnById(id, userId),
       (a) => new Account(a),
     );
+  }
+
+  private assertDebtFields(
+    type: AccountType,
+    amounts: { creditLimit?: number | null; borrowedAmount?: number | null },
+    currency: string,
+  ): void {
+    for (const field of DEBT_ACCOUNT_FIELD_NAMES) {
+      const amount = amounts[field];
+      if (amount === undefined || amount === null) {
+        continue;
+      }
+      const types: readonly AccountType[] = DEBT_ACCOUNT_FIELDS[field];
+      if (!types.includes(type)) {
+        throw new ApiError(
+          "BadRequest",
+          `${field} is only valid on ${types.join(" and ")} accounts`,
+          "ACCOUNT_FIELD_NOT_FOR_TYPE",
+          [{ field, message: `A ${type} account has no ${field}` }],
+        );
+      }
+      assertAmountPrecision(amount, currency, field);
+    }
   }
 
   // F-22: idempotent, and it answers the archived row so a queued restore can guard on its updatedAt.

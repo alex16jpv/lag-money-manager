@@ -10,6 +10,9 @@ export interface AccountProps {
   // Fixed after creation: enables a future check of stored balance against the aggregated effects.
   openingBalance?: number;
   color?: Color;
+  // Only on the types that carry it (shared/constants DEBT_ACCOUNT_FIELDS); null clears it.
+  creditLimit?: number | null;
+  borrowedAmount?: number | null;
   userId: string;
   isDefault?: boolean;
   // ISO 4217; stamped by the server from the owner's currency at creation.
@@ -26,6 +29,8 @@ export class Account {
   balance: number;
   openingBalance: number;
   color?: Color;
+  creditLimit?: number;
+  borrowedAmount?: number;
   userId: string;
   isDefault: boolean;
   currency?: string;
@@ -40,6 +45,8 @@ export class Account {
     balance,
     openingBalance,
     color,
+    creditLimit,
+    borrowedAmount,
     userId,
     isDefault,
     currency,
@@ -53,6 +60,8 @@ export class Account {
     this.balance = balance ?? 0;
     this.openingBalance = openingBalance ?? this.balance;
     this.color = color;
+    this.creditLimit = creditLimit ?? undefined;
+    this.borrowedAmount = borrowedAmount ?? undefined;
     this.userId = userId;
     this.isDefault = isDefault ?? false;
     this.currency = currency;

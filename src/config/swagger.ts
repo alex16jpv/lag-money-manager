@@ -8,6 +8,9 @@ import {
   BUDGET_TYPES,
   CATEGORY_TYPES,
   COLORS,
+  DEBT_ACCOUNT_FIELD_NAMES,
+  DEBT_ACCOUNT_FIELDS,
+  DebtAccountField,
   SPENDING_GROUP_BY,
   SPENDING_SPLIT_BY,
   TRANSACTION_SOURCES,
@@ -69,6 +72,9 @@ const enumOf = (values: Record<string, string>): object => ({
   type: "string",
   enum: Object.keys(values),
 });
+// Which types carry each optional debt amount; absent on every other type, and on one that never set it.
+const debtFieldDescription = (field: DebtAccountField): string =>
+  `Only on ${DEBT_ACCOUNT_FIELDS[field].join(" and ")} accounts, and only once set. Sending it on another type is 400 ACCOUNT_FIELD_NOT_FOR_TYPE; null on PUT clears it.`;
 
 /**
  * Response views describe what the API *always* sends, so every property is
@@ -179,23 +185,34 @@ const responseViews = {
     },
     ["userAgent"],
   ),
-  Account: withRequired({
-    type: "object",
-    properties: {
-      id: uuid,
-      name: { type: "string" },
-      type: enumOf(ACCOUNT_TYPES),
-      balance: money,
-      openingBalance: money,
-      color: { ...enumOf(COLORS), nullable: true },
-      userId: uuid,
-      isDefault: { type: "boolean" },
-      currency: { type: "string", example: "COP" },
-      archivedAt: nullableDateTime,
-      createdAt: dateTime,
-      updatedAt: dateTime,
+  Account: withRequired(
+    {
+      type: "object",
+      properties: {
+        id: uuid,
+        name: { type: "string" },
+        type: enumOf(ACCOUNT_TYPES),
+        balance: money,
+        openingBalance: money,
+        color: { ...enumOf(COLORS), nullable: true },
+        creditLimit: {
+          ...money,
+          description: debtFieldDescription("creditLimit"),
+        },
+        borrowedAmount: {
+          ...money,
+          description: debtFieldDescription("borrowedAmount"),
+        },
+        userId: uuid,
+        isDefault: { type: "boolean" },
+        currency: { type: "string", example: "COP" },
+        archivedAt: nullableDateTime,
+        createdAt: dateTime,
+        updatedAt: dateTime,
+      },
     },
-  }),
+    DEBT_ACCOUNT_FIELD_NAMES,
+  ),
   Category: withRequired(
     {
       type: "object",

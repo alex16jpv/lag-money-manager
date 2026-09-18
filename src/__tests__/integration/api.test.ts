@@ -134,6 +134,11 @@ jest.mock("../../shared/constants", () => ({
     NODE_ENV: "test",
   },
   DB_TYPES: { MONGO: "MONGO" },
+  DEBT_ACCOUNT_FIELDS: {
+    creditLimit: ["CARD", "OVERDRAFT"],
+    borrowedAmount: ["LOAN"],
+  },
+  DEBT_ACCOUNT_FIELD_NAMES: ["creditLimit", "borrowedAmount"],
   ACCOUNT_TYPES: {
     CASH: "CASH",
     ACCOUNT: "ACCOUNT",

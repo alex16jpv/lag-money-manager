@@ -6,6 +6,8 @@ export interface CreateAccountDTO {
   type: AccountType;
   balance: number;
   color?: Color;
+  creditLimit?: number;
+  borrowedAmount?: number;
   userId: string;
 }
 
@@ -14,4 +16,6 @@ export interface UpdateAccountDTO {
   name?: string;
   type?: AccountType;
   color?: Color;
+  creditLimit?: number | null;
+  borrowedAmount?: number | null;
 }

@@ -336,6 +336,7 @@ export async function seed(): Promise<Record<string, unknown>> {
       type: account.type,
       color: account.color,
       balance: account.finalBalance - (movement.get(account.key) ?? 0),
+      creditLimit: account.creditLimit,
       userId: SEED_USER.id,
     } as never);
   }
@@ -710,6 +711,11 @@ async function verify(
     if (stored.balance !== account.finalBalance) {
       failures.push(
         `${account.name}: balance ${stored.balance}, expected ${account.finalBalance}`,
+      );
+    }
+    if (stored.creditLimit !== account.creditLimit) {
+      failures.push(
+        `${account.name}: creditLimit ${stored.creditLimit}, expected ${account.creditLimit}`,
       );
     }
   }

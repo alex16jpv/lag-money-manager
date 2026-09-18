@@ -329,6 +329,8 @@ export const createAccountSchema = z.object({
         error: `Invalid color. Available: ${colorValues.join(", ")}`,
       })
       .optional(),
+    creditLimit: moneyAmount.optional(),
+    borrowedAmount: moneyAmount.optional(),
   }),
 });
 
@@ -350,6 +352,8 @@ export const updateAccountSchema = z.object({
         })
         .optional()
         .nullable(),
+      creditLimit: moneyAmount.optional().nullable(),
+      borrowedAmount: moneyAmount.optional().nullable(),
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {
       message: "At least one field must be provided",

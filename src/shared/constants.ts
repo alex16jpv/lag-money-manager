@@ -45,6 +45,18 @@ export const ACCOUNT_TYPES = {
 
 export type AccountType = keyof typeof ACCOUNT_TYPES;
 
+// Each debt field belongs to the types that have it: a credit limit means nothing on a loan.
+export const DEBT_ACCOUNT_FIELDS = {
+  creditLimit: ["CARD", "OVERDRAFT"],
+  borrowedAmount: ["LOAN"],
+} as const satisfies Record<string, readonly AccountType[]>;
+
+export type DebtAccountField = keyof typeof DEBT_ACCOUNT_FIELDS;
+
+export const DEBT_ACCOUNT_FIELD_NAMES = Object.keys(
+  DEBT_ACCOUNT_FIELDS,
+) as DebtAccountField[];
+
 export const TRANSACTION_TYPES = {
   INCOME: "INCOME",
   EXPENSE: "EXPENSE",

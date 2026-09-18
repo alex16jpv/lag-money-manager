@@ -76,6 +76,7 @@ export async function writeSeedOutput(args: {
           id: a.id,
           name: a.name,
           balance: a.finalBalance,
+          creditLimit: a.creditLimit,
           archived: "archived" in a,
         },
       ]),

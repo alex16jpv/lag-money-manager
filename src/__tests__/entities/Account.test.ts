@@ -103,5 +103,30 @@ describe("Account Entity", () => {
 
       expect(account.color).toBeUndefined();
     });
+
+    it("keeps the debt amounts it is given [T-87]", () => {
+      const account = new Account({
+        ...validProps,
+        type: "CARD",
+        creditLimit: 4_000_000,
+      });
+
+      expect(account.creditLimit).toBe(4_000_000);
+      expect(account.borrowedAmount).toBeUndefined();
+    });
+
+    it("reads a cleared debt amount as absent, never as null [T-87]", () => {
+      const account = new Account({
+        ...validProps,
+        creditLimit: null,
+        borrowedAmount: null,
+      });
+
+      expect(account.creditLimit).toBeUndefined();
+      expect(account.borrowedAmount).toBeUndefined();
+      expect(JSON.parse(JSON.stringify(account))).not.toHaveProperty(
+        "creditLimit",
+      );
+    });
   });
 });

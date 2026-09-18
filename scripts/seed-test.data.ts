@@ -37,6 +37,7 @@ interface SeedAccount {
   type: string;
   color: string;
   finalBalance: number;
+  creditLimit?: number;
   archived?: boolean;
 }
 
@@ -65,6 +66,7 @@ export const ACCOUNTS: readonly SeedAccount[] = [
     type: "CARD",
     color: "PURPLE",
     finalBalance: -1_245_900,
+    creditLimit: 4_000_000,
   },
   {
     key: "savings",

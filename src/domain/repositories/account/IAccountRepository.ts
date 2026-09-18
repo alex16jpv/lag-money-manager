@@ -4,6 +4,14 @@ import { TxSession } from "../../../shared/unitOfWork";
 import { Account } from "../../entities/Account";
 import { IRepository } from "../IRepository";
 
+// A write that clears an optional amount sends null; absent leaves it as it is.
+export type AccountWrite = Partial<
+  Omit<Account, "creditLimit" | "borrowedAmount">
+> & {
+  creditLimit?: number | null;
+  borrowedAmount?: number | null;
+};
+
 export interface AccountFilters {
   ids?: string[];
   includeArchived?: boolean;
@@ -13,7 +21,7 @@ export interface IAccountRepository extends IRepository<Account> {
   // `expectedUpdatedAt` goes in the write's own filter: a guard checked before would race.
   update(
     id: string,
-    entity: Partial<Account>,
+    entity: AccountWrite,
     session?: TxSession,
     expectedUpdatedAt?: Date,
   ): Promise<Account>;
