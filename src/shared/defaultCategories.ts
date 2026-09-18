@@ -34,7 +34,7 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
     type: "INCOME",
   },
 
-  // EXPENSE (5)
+  // EXPENSE (6)
   {
     seedKey: "housing",
     name: "Housing",
@@ -68,6 +68,13 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
     name: "Lifestyle",
     icon: "shopping-bag",
     color: "PURPLE",
+    type: "EXPENSE",
+  },
+  {
+    seedKey: "interest",
+    name: "Interest",
+    icon: "percent",
+    color: "INDIGO",
     type: "EXPENSE",
   },
 

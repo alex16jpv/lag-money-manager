@@ -88,7 +88,7 @@ export const ACCOUNTS: readonly SeedAccount[] = [
 ];
 
 /**
- * Fixed ids for the ten categories registration seeds. Registration mints its
+ * Fixed ids for the eleven categories registration seeds. Registration mints its
  * own UUIDs, so the seed recreates them with these: the frontend's fixtures
  * reference categories by id, and an id that changes every run is not a
  * fixture.
@@ -102,11 +102,12 @@ export const SEEDED_CATEGORY_IDS: Record<string, string> = {
   transportation: "01920000-0000-7000-8000-00000000c106",
   "bills-services": "01920000-0000-7000-8000-00000000c107",
   lifestyle: "01920000-0000-7000-8000-00000000c108",
+  interest: "01920000-0000-7000-8000-00000000c10b",
   transfer: "01920000-0000-7000-8000-00000000c109",
   "credit-card-payment": "01920000-0000-7000-8000-00000000c10a",
 };
 
-/** Beyond the ten seeded at registration. `vacation` is archived by the seed. */
+/** Beyond the eleven seeded at registration. `vacation` is archived by the seed. */
 export const EXTRA_CATEGORIES = [
   {
     key: "coffee",
