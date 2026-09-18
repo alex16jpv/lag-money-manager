@@ -17,6 +17,7 @@ import {
   PaginationParams,
   TransactionPagination,
 } from "../../shared/pagination";
+import { refuseMovement } from "../../shared/transactionRules";
 import { TxSession, withTransaction } from "../../shared/unitOfWork";
 import {
   CreateTransactionDTO,
@@ -461,6 +462,36 @@ export class TransactionService {
         // The currency is only known once the account is read, and a reversal replays a validated amount.
         if (direction === 1) {
           transaction.assertValidPrecision();
+        }
+        const refusal = refuseMovement(
+          type,
+          account.type,
+          sign < 0 ? "from" : "to",
+        );
+        if (refusal) {
+          throw new ApiError("BadRequest", refusal.message, refusal.code);
+        }
+        if (account.type === "LOAN" && sign > 0) {
+          const outcome = await this.accountRepo.incrementBalanceCapped(
+            accountId,
+            amount * sign * direction,
+            0,
+            session,
+          );
+          if (outcome === "over") {
+            throw new ApiError(
+              "BadRequest",
+              "A loan cannot be paid more than it still owes",
+              "LOAN_OVERPAID",
+            );
+          }
+          if (outcome === "missing") {
+            throw new ApiError(
+              "InternalServerError",
+              "Account missing during balance adjustment",
+            );
+          }
+          return;
         }
       }
 

@@ -286,6 +286,8 @@ Codes raised by the services and middleware. Anything not listed here has no `co
 | `NO_DEFAULT_ACCOUNT`              | 400    | Quick-add with no account id and no default account set                  |
 | `ACCOUNT_LIMIT_REACHED`           | 400    | Per-user account cap                                                     |
 | `ACCOUNT_FIELD_NOT_FOR_TYPE`      | 400    | A debt amount on an account type that has no such field, or a type change that would orphan one |
+| `INCOME_ON_DEBT_ACCOUNT`          | 400    | An income landing on a CARD, an OVERDRAFT or a LOAN: money arriving at a debt account is a payment, not income |
+| `LOAN_OVERPAID`                   | 400    | A movement that would leave a LOAN above zero: a loan cannot be paid more than it owes |
 | `AMOUNT_PRECISION`                | 400    | An amount with more decimals than the owner's currency has               |
 | `CATEGORY_LIMIT_REACHED`          | 400    | Per-user category cap                                                    |
 | `BUDGET_PERIOD_OVERLAP`           | 400    | New budget period overlaps an existing one for the same scope            |

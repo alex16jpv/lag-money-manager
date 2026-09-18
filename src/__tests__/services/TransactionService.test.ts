@@ -10,6 +10,10 @@ jest.mock("../../shared/constants", () => ({
   },
   DB_TYPES: { MONGO: "MONGO" },
   TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
+  DEBT_ACCOUNT_FIELDS: {
+    creditLimit: ["CARD", "OVERDRAFT"],
+    borrowedAmount: ["LOAN"],
+  },
   TRANSACTION_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",
@@ -81,6 +85,7 @@ const createMockAccountRepo = (): jest.Mocked<IAccountRepository> => ({
   update: jest.fn(),
   delete: jest.fn(),
   incrementBalance: jest.fn().mockResolvedValue(true),
+  incrementBalanceCapped: jest.fn().mockResolvedValue("applied"),
   archiveNonDefault: jest.fn().mockResolvedValue(null),
   restore: jest.fn(),
   getDefaultByUserId: jest.fn(),
@@ -195,6 +200,118 @@ describe("TransactionService", () => {
       expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
         ACC_B,
         30,
+        "test-session",
+      );
+    });
+
+    it("refuses an income landing on a debt account, and touches no balance [T-93]", async () => {
+      acctRepo.getById.mockResolvedValue(
+        account({ type: "CARD", balance: -1245.9 }),
+      );
+
+      await expect(
+        service.createTransaction(
+          {
+            type: "INCOME",
+            amount: 600,
+            date: new Date("2026-09-05"),
+            toAccountId: ACC_A,
+            userId: USER,
+          },
+          TZ,
+        ),
+      ).rejects.toMatchObject({ code: "INCOME_ON_DEBT_ACCOUNT" });
+
+      expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
+      expect(acctRepo.incrementBalanceCapped).not.toHaveBeenCalled();
+      expect(txRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("lets money reach a debt account as a transfer or an adjustment [T-93]", async () => {
+      acctRepo.getById.mockResolvedValue(
+        account({ type: "CARD", balance: -1245.9 }),
+      );
+      txRepo.create.mockImplementation(async (tx) => tx as Transaction);
+
+      await service.createTransaction(
+        {
+          type: "ADJUSTMENT",
+          amount: 600,
+          date: new Date("2026-09-05"),
+          toAccountId: ACC_A,
+          userId: USER,
+        },
+        TZ,
+      );
+
+      expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
+        ACC_A,
+        600,
+        "test-session",
+      );
+    });
+
+    it("caps what reaches a loan at what it still owes [T-93]", async () => {
+      acctRepo.getById.mockResolvedValue(
+        account({ type: "LOAN", balance: -8400 }),
+      );
+      txRepo.create.mockImplementation(async (tx) => tx as Transaction);
+
+      await service.createTransaction(
+        {
+          type: "ADJUSTMENT",
+          amount: 8400,
+          date: new Date("2026-09-05"),
+          toAccountId: ACC_A,
+          userId: USER,
+        },
+        TZ,
+      );
+
+      expect(acctRepo.incrementBalanceCapped).toHaveBeenCalledWith(
+        ACC_A,
+        8400,
+        0,
+        "test-session",
+      );
+      expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
+
+      acctRepo.incrementBalanceCapped.mockResolvedValue("over");
+      await expect(
+        service.createTransaction(
+          {
+            type: "ADJUSTMENT",
+            amount: 9000,
+            date: new Date("2026-09-05"),
+            toAccountId: ACC_A,
+            userId: USER,
+          },
+          TZ,
+        ),
+      ).rejects.toMatchObject({ code: "LOAN_OVERPAID" });
+    });
+
+    it("leaves money going out of a loan alone: only what arrives is capped [T-93]", async () => {
+      acctRepo.getById.mockResolvedValue(
+        account({ type: "LOAN", balance: -8400 }),
+      );
+      txRepo.create.mockImplementation(async (tx) => tx as Transaction);
+
+      await service.createTransaction(
+        {
+          type: "EXPENSE",
+          amount: 100,
+          date: new Date("2026-09-05"),
+          fromAccountId: ACC_A,
+          userId: USER,
+        },
+        TZ,
+      );
+
+      expect(acctRepo.incrementBalanceCapped).not.toHaveBeenCalled();
+      expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
+        ACC_A,
+        -100,
         "test-session",
       );
     });

@@ -8,6 +8,7 @@ module.exports = {
   // needs a database, and `npm run ci` has to pass without one.
   testPathIgnorePatterns: ["/node_modules/", "\\.mongo\\.test\\.ts$"],
   moduleFileExtensions: ["ts", "js", "json"],
+  setupFiles: ["<rootDir>/src/__tests__/env.setup.ts"],
   clearMocks: true,
   transformIgnorePatterns: ["/node_modules/(?!uuid/)"],
   transform: {

@@ -211,6 +211,25 @@ export class AccountRepository implements IAccountRepository {
     return res.matchedCount === 1;
   }
 
+  async incrementBalanceCapped(
+    id: string,
+    delta: number,
+    maxBalance: number,
+    session?: TxSession,
+  ): Promise<"applied" | "over" | "missing"> {
+    const cents = toCents(delta);
+    const res = await AccountModel.updateOne(
+      { _id: id, balance: { $lte: toCents(maxBalance) - cents } },
+      { $inc: { balance: cents } },
+      { session: session ?? undefined },
+    );
+    if (res.matchedCount === 1) return "applied";
+    const present = await AccountModel.exists({ _id: id }).session(
+      session ?? null,
+    );
+    return present ? "over" : "missing";
+  }
+
   async delete(id: string, session?: TxSession): Promise<void> {
     const doc = await AccountModel.findOneAndUpdate(
       { _id: id, archivedAt: null },

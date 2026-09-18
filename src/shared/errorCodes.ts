@@ -39,6 +39,9 @@ export const ERROR_CODES = [
   "DEFAULT_ACCOUNT_ARCHIVE_BLOCKED",
   "NO_DEFAULT_ACCOUNT",
   "ACCOUNT_FIELD_NOT_FOR_TYPE",
+  // A movement against the type of account it touches
+  "INCOME_ON_DEBT_ACCOUNT",
+  "LOAN_OVERPAID",
   // Categories
   "CATEGORY_LIMIT_REACHED",
   "CATEGORY_ARCHIVED",

@@ -91,6 +91,7 @@ const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   update: jest.fn(),
   delete: jest.fn(),
   incrementBalance: jest.fn().mockResolvedValue(true),
+  incrementBalanceCapped: jest.fn().mockResolvedValue("applied"),
   archiveNonDefault: jest.fn().mockResolvedValue(null),
   restore: jest.fn(),
   getDefaultByUserId: jest.fn(),
