@@ -156,10 +156,16 @@ Pushes the offline outbox as one batch: 1–200 operations, body up to 1 MB. The
 | `duplicate` | Already landed: a resent `opId` (answered from the registry, no `result`), a create whose `id` the user already owns (O-B1 replay, `result` carries the row as stored), a `transaction:delete` of a movement another device already deleted, or a write whose `baseUpdatedAt` no longer matches but whose state the row already carries (no `result`) | `result` in the second case; `mergedInto` when the remembered operation was a merge |
 | `merged` | A `category:create` whose name and type an **active** category of the user already has: the two are the same category, so the create landed on the server's row and the rest of the batch was redirected to it | `mergedInto`: that row's id; `result`: the row |
 | `conflict` | The route would have answered **409** (`STALE_UPDATE`, `DUPLICATE`, `ID_TAKEN`), or a row the server has explains the refusal: a `DUPLICATE` whose name an active row holds, and `RESOURCE_ARCHIVED` for an account archived online | `code`, `message`, and `current` — the row as the server has it, exactly like the HTTP 409 |
-| `rejected` | The route would have answered another **4xx**: `VALIDATION` (with `details`), `NOT_FOUND`, `CATEGORY_ARCHIVED`, `BUDGET_PERIOD_OVERLAP`, `FUTURE_DATE`, `DEFAULT_ACCOUNT_ARCHIVE_BLOCKED`… | `code`, `message`, `details` when the route sends them |
+| `rejected` | The route would have answered another **4xx**: `VALIDATION` (with `details`), `NOT_FOUND`, `CATEGORY_ARCHIVED`, `BUDGET_PERIOD_OVERLAP`, `FUTURE_DATE`, `DEFAULT_ACCOUNT_ARCHIVE_BLOCKED`, `INCOME_ON_CARD_OR_LOAN`, `LOAN_OVERPAID`… | `code`, `message`, `details` when the route sends them |
 | `blocked` | Not attempted: a row it names — one of `dependsOn`, **or its own `id`** — had an operation fail (`conflict`, `rejected` or `blocked`) earlier in this batch | `blockedBy`: that operation's `opId` |
 
 A code-less 404 from a route (`Account not found`) arrives as `NOT_FOUND`, the same default `PATCH /transactions/batch` uses: with no HTTP status per operation, the client needs a code to branch on. `BUDGET_PERIOD_OVERLAP` is a `rejected`, not a `conflict`: the budget routes answer it with **400**, and the batch never invents a status the route would not have.
+
+**A shape the server refuses now** (T-93) arrives here as an ordinary `rejected`: a movement queued
+before the rule existed — an income onto a card, a payment that would overpay a loan — loses **its own
+operation**, not the batch, and what came after it in the same request still lands. It stays on the
+device, as every `rejected` does, so the person can fix the movement and send it again; nothing of it
+is lost and no balance moved. `syncBatch.mongo.test.ts` holds the case.
 
 **What the client does with each status** is the O-F5b engine's business, but the intent is: `applied` and `duplicate` leave the queue; `conflict` and `rejected` stay, shown to the user; `blocked` stays and is resent once the blocker is resolved.
 

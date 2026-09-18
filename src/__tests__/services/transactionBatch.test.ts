@@ -7,6 +7,10 @@ jest.mock("../../shared/constants", () => ({
     ADJUSTMENT: "ADJUSTMENT",
   },
   TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
+  DEBT_ACCOUNT_FIELDS: {
+    creditLimit: ["CARD", "OVERDRAFT"],
+    borrowedAmount: ["LOAN"],
+  },
   CATEGORY_TYPES: {
     INCOME: "INCOME",
     EXPENSE: "EXPENSE",

@@ -54,6 +54,14 @@ export interface IAccountRepository extends IRepository<Account> {
     session?: TxSession,
   ): Promise<boolean>;
 
+  // The same $inc, refused in the same write when it would push the balance past `maxBalance`.
+  incrementBalanceCapped(
+    id: string,
+    delta: number,
+    maxBalance: number,
+    session?: TxSession,
+  ): Promise<"applied" | "over" | "missing">;
+
   // Atomic archive that refuses the default account even under races.
   archiveNonDefault(
     id: string,

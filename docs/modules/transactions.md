@@ -371,6 +371,63 @@ Without the header nothing changes: the write is unconditional, exactly as befor
 | `TRANSFER`   | `fromAccountId`, `toAccountId`      | `fromAccount.balance -= amount`, `toAccount.balance += amount` |
 | `ADJUSTMENT` | Exactly one side, no `categoryId`   | The set side moves; `fromAccountId` decreases, `toAccountId` increases |
 
+## What a movement may do to the account it touches (T-93)
+
+Nothing used to relate the **type of movement** to the **type of account**: the contract took
+every combination, and one of them made three figures lie. The owner's rule, 2026-09-17: "si
+hacer un income sobre una tarjeta es incorrecto entonces no se debe de permitir. ese es el caso
+especifico pero ahi que revisar que otros casos asi no deberian de presentarse".
+
+The review below is the whole grid — four movement types against the nine account types, on the
+side each one touches. Only two combinations are refused, and both are refused because they make
+the product say something untrue, not because they look unusual.
+
+| Movement | Side | Account | Verdict |
+| --- | --- | --- | --- |
+| `INCOME` | `to` | CARD, LOAN | **Refused — `INCOME_ON_CARD_OR_LOAN`.** Money arriving at a card or a loan is a payment, not income. Counted as income it inflates Home's *Income this month* (`fetchSpending({type: "INCOME"})`), *Estimated savings* (income minus spending) and every income budget — three figures about money nobody earned. It is a `TRANSFER` from the account it came from, or an `ADJUSTMENT` when it came from outside the app |
+| `INCOME` | `to` | OVERDRAFT | **Allowed**, and it is the one debt type where it is (owner's decision, 2026-09-18, asked as part of this task). An overdraft here is the account that holds the money and sometimes dips below zero — T-101 settled that its **positive balance is its ordinary state** — so a salary landing there is income, and refusing it would take that salary out of *Income this month*: one lie traded for another. A credit line modelled as an overdraft can still record a payment as a transfer |
+| `TRANSFER`, `ADJUSTMENT` | `to` | LOAN | **Refused when it would leave the balance above zero — `LOAN_OVERPAID`.** A loan cannot be paid more than it owes; "money of your own on top" means nothing on one, and the reading of a loan that is past zero has no honest shape. A CARD and an OVERDRAFT are the opposite case and take it: overpaying a card is real, and a positive overdraft is its ordinary state |
+| `INCOME` | `to` | CASH, ACCOUNT, DEBIT_CARD, SAVINGS, INVESTMENT, OTHER | Allowed. This is what income is |
+| `EXPENSE` | `from` | CARD, OVERDRAFT | Allowed, and it is what they are for: the debt grows |
+| `EXPENSE` | `from` | LOAN | **Allowed.** Unusual — you do not buy with a loan — but nothing lies: the money was spent, the debt grows past what was borrowed, and the progress bar already reads that state as nothing paid. Refusing it would be a matter of taste, not of truth |
+| `TRANSFER` | `from` | CARD, OVERDRAFT, LOAN | Allowed. Out of a card it is a cash advance; out of a loan it is borrowing more. Both are real, and neither makes a figure lie |
+| `TRANSFER` | `to` | CARD, OVERDRAFT | Allowed. This is paying a debt, the movement the whole Pay sheet exists for |
+| `ADJUSTMENT` | either | Any | Allowed (except the LOAN cap above). Reconciliation is the tool that repairs a balance; closing it would leave a wrong balance unfixable |
+| Any | either | An archived account | Already refused, and before this task: `getById` filters `archivedAt`, so a new movement on an archived account answers **404**. A reversal still reaches it, which is what lets an old movement be deleted |
+
+Two consequences worth stating, because both were asked:
+
+- **A CARD may still be the default account.** A quick expense on a credit card is the most
+  ordinary purchase there is. What changes is the quick **income**: with a debt account as the
+  default it is refused with `INCOME_ON_CARD_OR_LOAN` instead of inflating the month.
+- **Money paid from outside the app** — the *Somewhere else* row of the Pay sheet — only makes
+  sense towards a debt account, and it already writes a one-sided `ADJUSTMENT` for exactly this
+  reason. Into an account that holds money, money from outside **is** income.
+
+### Where each rule lives
+
+`shared/transactionRules.ts` holds the static half — the pair (movement, account type, side) —
+as a pure function, so the grid above is one function and not a condition scattered over the
+service. The LOAN cap is not static: it depends on the balance the movement would leave, so it
+is a **conditional `$inc`** (`AccountRepository.incrementBalanceCapped`) that the database
+decides inside the same transaction. Reading the balance to compare it in the service would
+break house rule 1 and lose to any concurrent payment.
+
+Both are checked only on **forward** adjustments (`direction = +1`), so a reversal is never refused
+and nothing already stored is rewritten by this task. What that means for a row that already has a
+refused shape, exactly:
+
+- **Deleting it always works**, and so does editing anything that does not move money — a note, a
+  date, a category — because the service only reverses and re-applies when the money changed.
+- **An `INCOME` on a card**: changing its amount is refused unless the same request also changes the
+  type or the account, which is the edit that makes it legal. That is deliberate — the row cannot be
+  kept in a shape the product refuses — but it means "fix the amount" alone is not a path.
+- **A `LOAN` already above zero** (data from before this rule, or an account created that way):
+  editing a movement that enters it is impossible, because the reversal leaves it positive and any
+  forward amount then trips `LOAN_OVERPAID`. Deleting it, or moving it to another account, is the way
+  out. `AccountService` refuses to create or leave a loan above zero, so no new account can land
+  there.
+
 ## Balance Adjustment Logic
 
 The `adjustBalances()` private method in `TransactionService` modifies account balances whenever a transaction is created, updated, or deleted. It always runs inside a MongoDB session opened by `withTransaction()`.
@@ -409,6 +466,8 @@ In both directions, if the `$inc` itself matches no document the service throws 
 | Destination account not found               | `+1`      | `NotFound` (404)                                    |
 | Either account belongs to another user      | `+1`      | `NotFound` (404) — uniform with "missing"           |
 | Currency of the account differs             | `+1`      | `400 CURRENCY_MISMATCH`                             |
+| Income landing on a card or a loan          | `+1`      | `400 INCOME_ON_CARD_OR_LOAN`                        |
+| Movement that would leave a LOAN above zero | `+1`      | `400 LOAN_OVERPAID`, transaction aborted            |
 | Archived account during reversal            | `-1`      | Proceeds normally (no ownership/currency re-check)  |
 | Increment matched no account                | any       | `InternalServerError` (500), transaction aborted    |
 

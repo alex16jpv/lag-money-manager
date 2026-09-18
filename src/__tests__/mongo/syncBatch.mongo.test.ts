@@ -934,6 +934,54 @@ describe("POST /sync against mongod", () => {
       expect(await TransactionModel.findById(uuid("e", 4)).lean()).toBeNull();
     });
 
+    // T-93: a phone can carry a shape the server refuses now. It must lose the item, not the batch.
+    it("rejects a queued income on a card without touching the rest of the batch", async () => {
+      const card = uuid("a", 50);
+      const income = uuid("e", 50);
+      const later = uuid("e", 51);
+
+      const results = await push(alice, [
+        op({
+          entity: "account",
+          action: "create",
+          id: card,
+          payload: {
+            body: {
+              name: "Visa queued",
+              type: "CARD",
+              balance: -500,
+              creditLimit: 4000,
+            },
+          },
+        }),
+        op({
+          entity: "transaction",
+          action: "create",
+          id: income,
+          payload: {
+            body: {
+              type: "INCOME",
+              amount: 100,
+              date: "2026-09-01T12:00:00.000Z",
+              toAccountId: card,
+            },
+          },
+        }),
+        op({
+          entity: "transaction",
+          action: "create",
+          id: later,
+          payload: { body: { ...expense(card, 30) } },
+        }),
+      ]);
+
+      expect(statuses(results)).toEqual(["applied", "rejected", "applied"]);
+      expect(results[1]).toMatchObject({ code: "INCOME_ON_CARD_OR_LOAN" });
+      expect(await TransactionModel.findById(income).lean()).toBeNull();
+      // The batch is not a transaction: what came after the refusal still lands.
+      expect(await balanceOf(card)).toBe(-53000);
+    });
+
     it("lands an archive of an already-archived row and a delete of an already-deleted movement", async () => {
       const acc = uuid("a", 14);
       const txId = uuid("e", 5);

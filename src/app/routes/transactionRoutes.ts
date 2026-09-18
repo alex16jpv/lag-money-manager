@@ -158,6 +158,13 @@ router.get(
  *       - **TRANSFER**: Subtracts from `fromAccountId` and adds to `toAccountId` (both required, must differ).
  *       - **ADJUSTMENT**: Balance reconciliation; exactly one of `fromAccountId` (decrease) or `toAccountId` (increase), no `categoryId`. Excluded from spending stats and budgets.
  *
+ *       Two rules bind the movement to the **type** of account it touches: money arriving
+ *       at a CARD or a LOAN is never an INCOME — it is a TRANSFER from wherever it came
+ *       from, or an ADJUSTMENT when it came from outside the app — and nothing may leave a
+ *       LOAN above zero, because a loan cannot be paid more than it owes. An OVERDRAFT does
+ *       take income: its positive balance is its ordinary state. Everything else stays open:
+ *       spending with a card, a cash advance out of one, or reconciling any account.
+ *
  *       The server stamps `currency` (from the involved account) and `source`; client-sent values are ignored.
  *
  *       Accepts an optional client-minted `id` (UUID). An id the user already
@@ -195,7 +202,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/Transaction'
  *       400:
- *         description: Validation error. Codes include FUTURE_DATE (date more than 24h in the future), CURRENCY_MISMATCH (transfer between accounts with different currencies), CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH, IDEMPOTENCY_KEY_INVALID (malformed Idempotency-Key header).
+ *         description: Validation error. Codes include FUTURE_DATE (date more than 24h in the future), CURRENCY_MISMATCH (transfer between accounts with different currencies), INCOME_ON_CARD_OR_LOAN (an income landing on a CARD or a LOAN), LOAN_OVERPAID (a movement that would leave a LOAN above zero), CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH, IDEMPOTENCY_KEY_INVALID (malformed Idempotency-Key header).
  *         content:
  *           application/json:
  *             schema:
@@ -274,7 +281,7 @@ router.post(
  *             schema:
  *               $ref: '#/components/schemas/Transaction'
  *       400:
- *         description: Validation error. Codes include NO_DEFAULT_ACCOUNT (no account id given and no default account set), FUTURE_DATE, CURRENCY_MISMATCH, CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH, IDEMPOTENCY_KEY_INVALID.
+ *         description: Validation error. Codes include NO_DEFAULT_ACCOUNT (no account id given and no default account set), FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN (a quick income whose default account is a card or a loan), LOAN_OVERPAID, CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH, IDEMPOTENCY_KEY_INVALID.
  *         content:
  *           application/json:
  *             schema:
@@ -448,7 +455,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/Transaction'
  *       400:
- *         description: Validation error. Codes include FUTURE_DATE, CURRENCY_MISMATCH, CATEGORY_ARCHIVED (assigning an archived category; keeping the one it already had is allowed), CATEGORY_TYPE_MISMATCH.
+ *         description: Validation error. Codes include FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN and LOAN_OVERPAID (both checked again whenever the edit moves money), CATEGORY_ARCHIVED (assigning an archived category; keeping the one it already had is allowed), CATEGORY_TYPE_MISMATCH.
  *         content:
  *           application/json:
  *             schema:

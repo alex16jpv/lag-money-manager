@@ -26,6 +26,17 @@ const afterWrite = (
   stored?: number,
 ): number | null | undefined => (sent === undefined ? stored : sent);
 
+// T-93: the state a loan cannot be read in, closed here too, or a movement could never be edited out of it.
+function assertLoanNotInCredit(type: AccountType, balance: number): void {
+  if (type !== "LOAN" || balance <= 0) return;
+  throw new ApiError(
+    "BadRequest",
+    "A loan cannot hold money of its own: its balance is what is still owed",
+    "LOAN_OVERPAID",
+    [{ field: "balance", message: "A loan cannot be above zero" }],
+  );
+}
+
 export class AccountService {
   constructor(
     private repo: IAccountRepository,
@@ -90,6 +101,7 @@ export class AccountService {
     const currency = owner?.currency ?? DEFAULT_CURRENCY;
     assertAmountPrecision(dto.balance, currency, "balance");
     this.assertDebtFields(dto.type, dto, currency);
+    assertLoanNotInCredit(dto.type, dto.balance);
     const account = new Account({
       ...dto,
       isDefault: count === 0,
@@ -152,6 +164,7 @@ export class AccountService {
       },
       existing.currency ?? DEFAULT_CURRENCY,
     );
+    assertLoanNotInCredit(dto.type ?? existing.type, existing.balance);
 
     // A write that leans on what the guard read carries that version into its own filter.
     const guard =
