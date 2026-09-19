@@ -6,24 +6,24 @@ Manages transaction categories. Categories are user-scoped — each user has the
 
 Two behaviours set this module apart from plain CRUD:
 
-- **Seeded defaults** — registering a user seeds 10 default categories. Each carries a stable `seedKey`, which makes `POST /categories/restore-defaults` idempotent across renames and archives.
+- **Seeded defaults** — registering a user seeds 11 default categories. Each carries a stable `seedKey`, which makes `POST /categories/restore-defaults` idempotent across renames and archives.
 - **Archiving** — `DELETE` is a soft delete (`archivedAt`), reversible through `POST /categories/:id/restore`. Transactions keep pointing at archived categories, so history is never rewritten.
 
 ## Files and Responsibilities
 
-| File                                                            | Role                                                                            |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `src/app/routes/categoryRoutes.ts`                              | Route definitions with OpenAPI docs (CRUD at `/categories` + restore endpoints)  |
-| `src/app/controllers/CategoryController.ts`                     | Thin HTTP handler, delegates to CategoryService                                  |
-| `src/app/services/CategoryService.ts`                           | Business logic: ownership checks, archive/restore, seeding, type-lock, per-user cap |
-| `src/app/dtos/CategoryDTO.ts`                                   | `CreateCategoryDTO`, `UpdateCategoryDTO`                                         |
-| `src/app/validation/schemas.ts`                                 | `createCategorySchema`, `updateCategorySchema`, `getCategoriesSchema`            |
-| `src/shared/defaultCategories.ts`                               | `DEFAULT_CATEGORIES` — the 10 seeded defaults with their `seedKey`s              |
-| `src/shared/icons.ts`                                           | `CATEGORY_ICONS` — curated Lucide keys a category may use (mirrors the UI design) |
-| `src/domain/entities/Category.ts`                               | Category domain entity                                                           |
-| `src/domain/repositories/category/ICategoryRepository.ts`       | Repository interface                                                             |
-| `src/infrastructure/repositories/category/CategoryRepository.ts` | Mongoose implementation                                                          |
-| `src/infrastructure/models/CategoryModel.ts`                    | Mongoose model and indexes (case-insensitive unique name)                        |
+| File                                                             | Role                                                                                |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `src/app/routes/categoryRoutes.ts`                               | Route definitions with OpenAPI docs (CRUD at `/categories` + restore endpoints)     |
+| `src/app/controllers/CategoryController.ts`                      | Thin HTTP handler, delegates to CategoryService                                     |
+| `src/app/services/CategoryService.ts`                            | Business logic: ownership checks, archive/restore, seeding, type-lock, per-user cap |
+| `src/app/dtos/CategoryDTO.ts`                                    | `CreateCategoryDTO`, `UpdateCategoryDTO`                                            |
+| `src/app/validation/schemas.ts`                                  | `createCategorySchema`, `updateCategorySchema`, `getCategoriesSchema`               |
+| `src/shared/defaultCategories.ts`                                | `DEFAULT_CATEGORIES` — the 11 seeded defaults with their `seedKey`s                 |
+| `src/shared/icons.ts`                                            | `CATEGORY_ICONS` — curated Lucide keys a category may use (mirrors the UI design)   |
+| `src/domain/entities/Category.ts`                                | Category domain entity                                                              |
+| `src/domain/repositories/category/ICategoryRepository.ts`        | Repository interface                                                                |
+| `src/infrastructure/repositories/category/CategoryRepository.ts` | Mongoose implementation                                                             |
+| `src/infrastructure/models/CategoryModel.ts`                     | Mongoose model and indexes (case-insensitive unique name)                           |
 
 ## Public API
 
@@ -31,14 +31,14 @@ Two behaviours set this module apart from plain CRUD:
 
 Get all categories for the authenticated user (paginated, offset + cursor).
 
-| Parameter         | Type   | Description                                                    |
-| ----------------- | ------ | -------------------------------------------------------------- |
-| `limit`           | number | 1–100, default 20                                              |
-| `offset`          | number | Items to skip (offset pagination)                              |
-| `cursor`          | string | Last ID of the previous page (overrides `offset`)              |
-| `ids`             | string | Comma-separated list of category UUIDs (1–100)                 |
-| `type`            | enum   | Filter by `INCOME`, `EXPENSE`, or `TRANSFER`                   |
-| `includeArchived` | enum   | `"true"` also returns archived categories (hidden by default)  |
+| Parameter         | Type   | Description                                                   |
+| ----------------- | ------ | ------------------------------------------------------------- |
+| `limit`           | number | 1–100, default 20                                             |
+| `offset`          | number | Items to skip (offset pagination)                             |
+| `cursor`          | string | Last ID of the previous page (overrides `offset`)             |
+| `ids`             | string | Comma-separated list of category UUIDs (1–100)                |
+| `type`            | enum   | Filter by `INCOME`, `EXPENSE`, or `TRANSFER`                  |
+| `includeArchived` | enum   | `"true"` also returns archived categories (hidden by default) |
 
 > A `cursor` has to name a row the caller owns. One that names none is `400 INVALID_CURSOR`, never a silent page one — that fallback used to restart the list from the top and make an infinite scroll repeat itself. `hasMore` is read from one row past the page, so a last page that is exactly `limit` long says `hasMore: false` and `nextCursor: null`.
 
@@ -49,7 +49,6 @@ Create a new category. Requires: `name` (1–255 chars). Optional: `icon` (one o
 Names are unique per user, **case-insensitively** — "Comida" and "comida" collide; accents stay distinct. A user is capped at 200 categories (`CATEGORY_LIMIT_REACHED`).
 
 **Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. An id the user already owns replays with **200** and the stored category **whatever the payload says now** — the row may have been edited from another device between a lost response and the retry, and a 409 there would make the client mint a second id and duplicate it. An id that belongs to **another user** is rejected with **409 `ID_TAKEN`**, worded so the caller cannot tell it exists; the foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
-
 
 ### `POST /categories/restore-defaults`
 
@@ -137,18 +136,18 @@ None specific to this module.
 
 ## Error States
 
-| Error / code              | Status | Condition                                                       |
-| ------------------------- | ------ | --------------------------------------------------------------- |
-| `ValidationError`         | 400    | Invalid input (missing name, name too long, unknown type/color)  |
-| `BadRequest`              | 400    | ID mismatch between URL param and body                           |
-| `CATEGORY_LIMIT_REACHED`  | 400    | The user already has 200 categories                              |
-| `RESOURCE_ARCHIVED`       | 400    | Updating an archived category (restore it first)                 |
-| `CATEGORY_TYPE_LOCKED`    | 400    | Changing `type` on a category that already has transactions      |
-| `Unauthorized`            | 401    | Missing, invalid or expired access token                         |
-| `NotFound`                | 404    | Category missing **or owned by another user**                    |
-| `DUPLICATE`               | 409    | An active category already uses this name (case-insensitively)   |
-| `ID_TAKEN`                | 409    | The client-minted `id` belongs to another user (the user's own id always replays with 200) |
-| `STALE_UPDATE`            | 409    | `If-Match` no longer matches the stored version (`current` carries the server's copy) |
+| Error / code             | Status | Condition                                                                                  |
+| ------------------------ | ------ | ------------------------------------------------------------------------------------------ |
+| `ValidationError`        | 400    | Invalid input (missing name, name too long, unknown type/color)                            |
+| `BadRequest`             | 400    | ID mismatch between URL param and body                                                     |
+| `CATEGORY_LIMIT_REACHED` | 400    | The user already has 200 categories                                                        |
+| `RESOURCE_ARCHIVED`      | 400    | Updating an archived category (restore it first)                                           |
+| `CATEGORY_TYPE_LOCKED`   | 400    | Changing `type` on a category that already has transactions                                |
+| `Unauthorized`           | 401    | Missing, invalid or expired access token                                                   |
+| `NotFound`               | 404    | Category missing **or owned by another user**                                              |
+| `DUPLICATE`              | 409    | An active category already uses this name (case-insensitively)                             |
+| `ID_TAKEN`               | 409    | The client-minted `id` belongs to another user (the user's own id always replays with 200) |
+| `STALE_UPDATE`           | 409    | `If-Match` no longer matches the stored version (`current` carries the server's copy)      |
 
 > Foreign categories return **404, not 403** — the response is uniform for "missing" and "not yours" so category ids cannot be probed.
 
@@ -178,7 +177,9 @@ Without the header nothing changes: the write is unconditional, exactly as befor
 
 ## Default Categories
 
-`DEFAULT_CATEGORIES` in `src/shared/defaultCategories.ts` holds 10 entries — 3 `INCOME` (Salary, Business, Other Income), 5 `EXPENSE` (Housing, Food, Transportation, Bills & Services, Lifestyle) and 2 `TRANSFER` (Transfer, Credit Card Payment) — each with an icon, a color, and a stable `seedKey` such as `"salary"` or `"bills-services"`.
+`DEFAULT_CATEGORIES` in `src/shared/defaultCategories.ts` holds 11 entries — 3 `INCOME` (Salary, Business, Other Income), 6 `EXPENSE` (Housing, Food, Transportation, Bills & Services, Lifestyle, Interest) and 2 `TRANSFER` (Transfer, Credit Card Payment) — each with an icon, a color, and a stable `seedKey` such as `"salary"` or `"bills-services"`.
+
+**`interest` was added for T-94** (2026-09-18, the owner's decision): a loan instalment is recorded as two movements — a transfer that lowers the debt and an expense for the interest — and the expense needs somewhere to land. The client finds it by `seedKey`, never by name, so a user who renames it keeps the link; a user registered before this can get it from `POST /categories/restore-defaults`, which is idempotent by `seedKey`.
 
 The `seedKey` is the category's identity for re-seeding: it survives renames, so `restore-defaults` never duplicates a default the user simply renamed, and archived seeds count as present because their removal was deliberate.
 
@@ -194,7 +195,7 @@ The `seedKey` is the category's identity for re-seeding: it survives renames, so
 name, so by the time you restore, another category may hold it — and then restore
 answers **409 `DUPLICATE`** while `PUT` refuses the archived row with
 **400 `RESOURCE_ARCHIVED`**. Without a way to rename on the way out, the only
-escape was to go and rename the *other* category first.
+escape was to go and rename the _other_ category first.
 
 The rename happens in the same write that clears `archivedAt`, so the unique
 index judges the final state and nobody can take the name in between.

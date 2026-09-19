@@ -1,7 +1,7 @@
 ### ==========================================================
 ### CATEGORIES — CRUD, filtros, archivar/restaurar (idempotentes),
 ### restaurar defaults (seedKey)
-### (el registro ya siembra 10 categorías por defecto)
+### (el registro ya siembra 11 categorías por defecto)
 ### ==========================================================
 @baseUrl = http://localhost:3000
 @email = tester@test.com

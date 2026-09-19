@@ -138,7 +138,7 @@ locks once the user has accounts.
 ```bash
 TOKEN="<accessToken from the response>"
 
-# The 10 default categories seeded at registration
+# The 11 default categories seeded at registration
 curl http://localhost:3000/categories -H "Authorization: Bearer $TOKEN"
 
 # First account becomes the default one automatically

@@ -168,7 +168,7 @@ describe("seed:test", () => {
   it("duplicates nothing on the second run", () => {
     if (!ran()) return;
     expect(counts.accounts).toBe(5);
-    expect(counts.categories).toBe(14);
+    expect(counts.categories).toBe(15);
     expect(counts.budgets).toBe(10);
     expect(counts.sessions).toBe(2);
     expect(counts.transactions).toBe(second.totals.transactions);
