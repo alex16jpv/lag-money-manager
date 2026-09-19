@@ -202,7 +202,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/Transaction'
  *       400:
- *         description: Validation error. Codes include FUTURE_DATE (date more than 24h in the future), CURRENCY_MISMATCH (transfer between accounts with different currencies), INCOME_ON_CARD_OR_LOAN (an income landing on a CARD or a LOAN), LOAN_OVERPAID (a movement that would leave a LOAN above zero), CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH, IDEMPOTENCY_KEY_INVALID (malformed Idempotency-Key header).
+ *         description: Validation error. Codes include FUTURE_DATE (date more than 24h in the future), CURRENCY_MISMATCH (transfer between accounts with different currencies), INCOME_ON_CARD_OR_LOAN (an income landing on an account type listed in `IncomeRefusedAccountType`), LOAN_OVERPAID (a movement that would leave a LOAN above zero), CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH, IDEMPOTENCY_KEY_INVALID (malformed Idempotency-Key header).
  *         content:
  *           application/json:
  *             schema:
@@ -281,7 +281,7 @@ router.post(
  *             schema:
  *               $ref: '#/components/schemas/Transaction'
  *       400:
- *         description: Validation error. Codes include NO_DEFAULT_ACCOUNT (no account id given and no default account set), FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN (a quick income whose default account is a card or a loan), LOAN_OVERPAID, CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH, IDEMPOTENCY_KEY_INVALID.
+ *         description: Validation error. Codes include NO_DEFAULT_ACCOUNT (no account id given and no default account set), FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN (a quick income whose destination account has a type listed in `IncomeRefusedAccountType`), LOAN_OVERPAID, CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH, IDEMPOTENCY_KEY_INVALID.
  *         content:
  *           application/json:
  *             schema:
@@ -455,7 +455,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/Transaction'
  *       400:
- *         description: Validation error. Codes include FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN and LOAN_OVERPAID (both checked again whenever the edit moves money), CATEGORY_ARCHIVED (assigning an archived category; keeping the one it already had is allowed), CATEGORY_TYPE_MISMATCH.
+ *         description: Validation error. Codes include FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN (an income moved onto an account type listed in `IncomeRefusedAccountType`) and LOAN_OVERPAID (a movement that would leave a LOAN above zero), both checked again whenever the edit moves money, CATEGORY_ARCHIVED (assigning an archived category; keeping the one it already had is allowed), CATEGORY_TYPE_MISMATCH.
  *         content:
  *           application/json:
  *             schema:

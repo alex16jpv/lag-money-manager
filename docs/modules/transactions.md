@@ -413,6 +413,16 @@ is a **conditional `$inc`** (`AccountRepository.incrementBalanceCapped`) that th
 decides inside the same transaction. Reading the balance to compare it in the service would
 break house rule 1 and lose to any concurrent payment.
 
+The static half is also **published**, not only enforced (T-103): `INCOME_REFUSED_ON` is the enum of
+the `IncomeRefusedAccountType` schema in the OpenAPI document, so a client derives the types it must
+not offer instead of keeping its own copy of the list. `swaggerContract.test.ts` holds the schema to
+the constant, and holds every endpoint description that names `INCOME_ON_CARD_OR_LOAN` to pointing at
+that schema rather than spelling the types out again. What this buys, exactly: changing
+`INCOME_REFUSED_ON` changes the contract, so the next time the frontend regenerates its types
+(`npm run check:contract`, inside its `check:all`) its own gate fails until its list agrees. Nothing
+on this side fires — the grid above and the sentence the server sends the user are prose, and prose
+still has to be changed by hand.
+
 Both are checked only on **forward** adjustments (`direction = +1`), so a reversal is never refused
 and nothing already stored is rewritten by this task. What that means for a row that already has a
 refused shape, exactly:
