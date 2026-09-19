@@ -156,13 +156,16 @@ export class AccountService {
       dto.type === undefined && dto[field] === undefined
         ? undefined
         : afterWrite(dto[field], existing[field]);
+    const currency = existing.currency ?? DEFAULT_CURRENCY;
     this.assertDebtFields(
       dto.type ?? existing.type,
       {
         creditLimit: judged("creditLimit"),
         borrowedAmount: judged("borrowedAmount"),
       },
-      existing.currency ?? DEFAULT_CURRENCY,
+      currency,
+      // T-67: the pairing is judged on what the row will hold, the precision only on what was sent.
+      dto,
     );
     assertLoanNotInCredit(dto.type ?? existing.type, existing.balance);
 
@@ -187,6 +190,10 @@ export class AccountService {
     type: AccountType,
     amounts: { creditLimit?: number | null; borrowedAmount?: number | null },
     currency: string,
+    written: {
+      creditLimit?: number | null;
+      borrowedAmount?: number | null;
+    } = amounts,
   ): void {
     for (const field of DEBT_ACCOUNT_FIELD_NAMES) {
       const amount = amounts[field];
@@ -202,7 +209,10 @@ export class AccountService {
           [{ field, message: `A ${type} account has no ${field}` }],
         );
       }
-      assertAmountPrecision(amount, currency, field);
+      const sent = written[field];
+      if (sent !== undefined && sent !== null) {
+        assertAmountPrecision(sent, currency, field);
+      }
     }
   }
 

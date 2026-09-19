@@ -506,7 +506,15 @@ Monetary edits keep a pre-update snapshot in the document's `revisions[]` array:
 
 ## Money Representation
 
-The API speaks **decimals** (capped at `MAX_AMOUNT`); MongoDB stores **integer cents**. How many decimals an amount may carry depends on the currency: two for most, **zero** for currencies with no minor unit (JPY, CLP, KRW, VND...), which reject `¥1000.50` with **400 `AMOUNT_PRECISION`**. The three-decimal ISO currencies (KWD, BHD, JOD) are capped at two — integer-cent storage cannot hold a third decimal, and rejecting it beats rounding it away silently. `TransactionRepository` converts at the persistence boundary, and integer storage is what keeps the `$inc` balance updates exact.
+The API speaks **decimals** (capped at `MAX_AMOUNT`); MongoDB stores **integer cents**. How many decimals an amount may carry depends on the currency: two for most, **zero** for the
+currencies with no minor unit, which reject `¥1000.50` with **400 `AMOUNT_PRECISION`**. That list is
+`ZERO_DECIMAL_CURRENCIES` in `shared/currency.ts`, it is judged on the amount a request **carries** —
+never on one already stored, so a row written before a currency joined the list stays editable in
+everything but its amount (T-67) — it is **published in the contract** as `ZeroDecimalCurrency` so a client derives it instead of keeping its own copy, and since T-67 it
+holds **34** codes rather than the 17 of ISO exponent 0: the seventeen a current CLDR also prints
+without decimals — **COP** among them, the default currency — were answered `2` here while the app
+already refused to type a decimal in them, so an amount with cents could enter through any of the four
+write paths and the screen would show it rounded. The three-decimal ISO currencies (KWD, BHD, JOD) are capped at two — integer-cent storage cannot hold a third decimal, and rejecting it beats rounding it away silently. `TransactionRepository` converts at the persistence boundary, and integer storage is what keeps the `$inc` balance updates exact.
 
 ## How to Extend
 

@@ -104,6 +104,14 @@ export class BudgetService {
     // Before assertWritable: an old-version caller needs to re-read, not a reason it cannot know.
     await this.assertFreshBudget(existing, expectedUpdatedAt, userId, ctx);
     this.assertWritable(existing);
+    // T-67: only what this write carries — a rename does not re-judge an amount stored before the rule.
+    if (dto.amount !== undefined) {
+      assertAmountPrecision(
+        dto.amount,
+        existing.currency ?? DEFAULT_CURRENCY,
+        "amount",
+      );
+    }
     const patch: Partial<Budget> = { ...dto };
     if (dto.periodType && dto.periodType !== existing.periodType) {
       // Override keys are period-type-specific: stale ones would never match.

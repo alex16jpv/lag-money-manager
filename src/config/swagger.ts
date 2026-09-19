@@ -16,6 +16,7 @@ import {
   TRANSACTION_SOURCES,
   TRANSACTION_TYPES,
 } from "../shared/constants";
+import { ZERO_DECIMAL_CURRENCIES } from "../shared/currency";
 import { ERROR_CODES } from "../shared/errorCodes";
 import { CATEGORY_ICONS } from "../shared/icons";
 import { LOCALES } from "../shared/locale";
@@ -624,6 +625,13 @@ const incomeRefusedAccountType = {
     "The account types an INCOME may not land on: money arriving at one of them is a payment, not income. A transaction whose type is INCOME and whose destination account has one of these types is rejected with 400 INCOME_ON_CARD_OR_LOAN; record a TRANSFER from the account the money came from, or an ADJUSTMENT when it came from outside. OVERDRAFT is deliberately absent — it is the account that holds the money and sometimes dips below zero, so a salary landing there is income.",
 };
 
+const zeroDecimalCurrency = {
+  type: "string",
+  enum: [...ZERO_DECIMAL_CURRENCIES],
+  description:
+    "The currencies this API stores with no minor unit. An amount carrying decimals in one of them is rejected with 400 AMOUNT_PRECISION wherever one is written: a transaction, an account balance, a credit limit or a borrowed amount, a budget amount and a budget period override, through the /sync batch as well as through these routes. It is judged on the amount a request carries, never on one already stored, so a row written before a currency joined this list stays editable in everything but its amount. Read this list instead of copying it; a client that keeps its own can refuse what the server takes, or offer what the server refuses. The ISO three-decimal currencies are absent on purpose: storage is integer cents, so they are capped at two.",
+};
+
 const conflictOf = (view: string): Record<string, unknown> => ({
   allOf: [
     { $ref: "#/components/schemas/ErrorResponse" },
@@ -674,6 +682,7 @@ const options: swaggerJsdoc.Options = {
         ...responseViews,
         ...syncViews,
         IncomeRefusedAccountType: incomeRefusedAccountType,
+        ZeroDecimalCurrency: zeroDecimalCurrency,
         SyncChangesResponse: syncChangesResponse,
         SyncOpResult: syncOpResult,
         SyncBatchResponse: syncBatchResponse,

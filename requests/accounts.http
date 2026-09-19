@@ -24,7 +24,7 @@ POST {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "Ahorros {{$randomInt 100 999}}", "type": "SAVINGS", "balance": 1000.50, "color": "TEAL" }
+{ "name": "Ahorros {{$randomInt 100 999}}", "type": "SAVINGS", "balance": 1000500, "color": "TEAL" }
 
 ###
 
@@ -111,7 +111,7 @@ POST {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "Visa {{$randomInt 100 999}}", "type": "CARD", "balance": -1245.90, "creditLimit": 4000000, "color": "PURPLE" }
+{ "name": "Visa {{$randomInt 100 999}}", "type": "CARD", "balance": -1245900, "creditLimit": 4000000, "color": "PURPLE" }
 
 ###
 
@@ -192,12 +192,13 @@ Content-Type: application/json
 
 { "name": "X", "type": "NOPE" }
 
-### Crear — balance con 3 decimales (400)
+### Crear — balance con decimales en COP (400 AMOUNT_PRECISION: el peso no tiene centavos)
+### Con tres decimales sería 400 VALIDATION, que lo para Zod antes de llegar aquí.
 POST {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "X", "type": "CASH", "balance": 10.555 }
+{ "name": "X", "type": "CASH", "balance": 10.5 }
 
 ### Mass assignment — balance/userId/currency directos (se ignoran)
 PUT {{baseUrl}}/accounts/{{accountA}}

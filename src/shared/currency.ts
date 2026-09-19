@@ -6,18 +6,34 @@ export function isValidCurrencyCode(value: string): boolean {
   return /^[A-Z]{3}$/.test(value);
 }
 
-// Currencies with no minor unit: ¥1000.50 is not a real amount.
-const ZERO_DECIMAL_CURRENCIES = new Set([
+// Currencies with no minor unit: ¥1000.50 is not a real amount. Published in the contract as ZeroDecimalCurrency.
+export const ZERO_DECIMAL_CURRENCIES: readonly string[] = [
+  "AFN",
+  "ALL",
   "BIF",
   "CLP",
+  "COP",
   "DJF",
   "GNF",
+  "HUF",
+  "IDR",
+  "IQD",
+  "IRR",
   "ISK",
   "JPY",
   "KMF",
+  "KPW",
   "KRW",
+  "LAK",
+  "LBP",
+  "MGA",
+  "MMK",
+  "PKR",
   "PYG",
   "RWF",
+  "SLL",
+  "SOS",
+  "SYP",
   "UGX",
   "UYI",
   "VND",
@@ -25,7 +41,10 @@ const ZERO_DECIMAL_CURRENCIES = new Set([
   "XAF",
   "XOF",
   "XPF",
-]);
+  "YER",
+];
+
+const ZERO_DECIMAL = new Set(ZERO_DECIMAL_CURRENCIES);
 
 /**
  * Decimal places an amount may carry in this currency.
@@ -38,5 +57,5 @@ const ZERO_DECIMAL_CURRENCIES = new Set([
  * stage 3.
  */
 export function currencyDecimals(currency?: string): number {
-  return currency && ZERO_DECIMAL_CURRENCIES.has(currency) ? 0 : 2;
+  return currency && ZERO_DECIMAL.has(currency) ? 0 : 2;
 }

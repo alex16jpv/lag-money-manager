@@ -371,6 +371,31 @@ describe("BudgetService", () => {
     });
   });
 
+  // T-67: create and the period override checked precision; the plain update never did.
+  describe("amount precision", () => {
+    it("refuses an amount with decimals in a zero-decimal currency", async () => {
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(
+        makeBudget({ currency: "COP" }),
+      );
+
+      await expect(
+        service.updateBudget("b1", { amount: 1000.5 }, USER, CTX),
+      ).rejects.toThrow("COP amounts cannot have decimals");
+      expect(budgetRepo.update).not.toHaveBeenCalled();
+    });
+
+    it("leaves an amount stored before the rule alone when the write does not touch it", async () => {
+      budgetRepo.getByIdIncludingArchived.mockResolvedValue(
+        makeBudget({ currency: "COP", amount: 1000.5 }),
+      );
+      budgetRepo.update.mockResolvedValue(makeBudget());
+
+      await expect(
+        service.updateBudget("b1", { name: "Otro nombre" }, USER, CTX),
+      ).resolves.toBeDefined();
+    });
+  });
+
   describe("override management [R2-16b]", () => {
     it("exposes hasOverride and resolves a 0 override", async () => {
       const b = makeBudget({ amountOverrides: { "2026-08": 0 } });

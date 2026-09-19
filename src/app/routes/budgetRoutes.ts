@@ -105,7 +105,7 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/Budget'
  *       400:
- *         description: Validation error. Codes include BUDGET_PERIOD_OVERLAP (a budget for this category and period type already exists; CUSTOM budgets only conflict when their date windows intersect), CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH.
+ *         description: Validation error. Codes include BUDGET_PERIOD_OVERLAP (a budget for this category and period type already exists; CUSTOM budgets only conflict when their date windows intersect), AMOUNT_PRECISION (an amount with decimals in a `ZeroDecimalCurrency`), CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH.
  *         content:
  *           application/json:
  *             schema:
@@ -188,7 +188,7 @@ router.post("/", validate(createBudgetSchema), BudgetController.createBudget);
  *             schema:
  *               $ref: '#/components/schemas/Budget'
  *       400:
- *         description: Validation error. Codes include RESOURCE_ARCHIVED (writing to an archived budget), BUDGET_PERIOD_OVERLAP, CATEGORY_ARCHIVED (assigning an archived category; keeping one it already had is allowed), CATEGORY_TYPE_MISMATCH.
+ *         description: Validation error. Codes include RESOURCE_ARCHIVED (writing to an archived budget), BUDGET_PERIOD_OVERLAP, AMOUNT_PRECISION (only when the write carries an amount), CATEGORY_ARCHIVED (assigning an archived category; keeping one it already had is allowed), CATEGORY_TYPE_MISMATCH.
  *         content:
  *           application/json:
  *             schema:
@@ -354,7 +354,7 @@ router.post(
  *             schema:
  *               $ref: '#/components/schemas/Budget'
  *       400:
- *         description: Validation error, or RESOURCE_ARCHIVED when the budget is archived
+ *         description: Validation error (AMOUNT_PRECISION when the amount has decimals the currency has not), or RESOURCE_ARCHIVED when the budget is archived
  *         content:
  *           application/json:
  *             schema:

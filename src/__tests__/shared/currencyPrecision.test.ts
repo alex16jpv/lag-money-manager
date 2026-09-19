@@ -11,8 +11,31 @@ describe("currencyDecimals", () => {
     expect(currencyDecimals(c)).toBe(0);
   });
 
-  it.each(["COP", "USD", "EUR", "MXN", "ARS"])("%s has two", (c) => {
+  it.each(["USD", "EUR", "MXN", "ARS"])("%s has two", (c) => {
     expect(currencyDecimals(c)).toBe(2);
+  });
+
+  // T-67: these seventeen were answered 2 while the app refused to type a decimal in them.
+  it.each([
+    "AFN",
+    "ALL",
+    "COP",
+    "HUF",
+    "IDR",
+    "IQD",
+    "IRR",
+    "KPW",
+    "LAK",
+    "LBP",
+    "MGA",
+    "MMK",
+    "PKR",
+    "SLL",
+    "SOS",
+    "SYP",
+    "YER",
+  ])("%s has no minor unit either", (c) => {
+    expect(currencyDecimals(c)).toBe(0);
   });
 
   // Storage is integer cents, so a third decimal could only be kept by rounding it away.
@@ -61,7 +84,15 @@ describe("assertAmountPrecision", () => {
   });
 
   it("accepts two decimals in a normal currency", () => {
-    expect(() => assertAmountPrecision(42.5, "COP", "amount")).not.toThrow();
+    expect(() => assertAmountPrecision(42.5, "USD", "amount")).not.toThrow();
+  });
+
+  // The default currency, and the one the owner uses: a peso has no cents.
+  it("rejects a COP amount with cents, whole or not", () => {
+    expect(() => assertAmountPrecision(1000.5, "COP", "amount")).toThrow(
+      "COP amounts cannot have decimals",
+    );
+    expect(() => assertAmountPrecision(1000, "COP", "amount")).not.toThrow();
   });
 
   it("carries the field and a stable code", () => {
