@@ -7,11 +7,6 @@
  * the app's constants would agree with it by construction, which is the one
  * thing it must not do.
  *
- * The enums below repeat the API's on purpose. This whole directory is a second
- * reading of the rules and imports nothing from `src/`: a fixture that shared
- * the app's constants would agree with it by construction, which is the one
- * thing it must not do.
- *
  * Two layers live here. The `Scenario*` types are how a scenario is authored
  * (by key, so a human can read it); the `Fixture*` types are what is written
  * out (by id, in the shape the mirror holds, so the frontend can feed the file
@@ -20,6 +15,8 @@
 
 export type TransactionType = "EXPENSE" | "INCOME" | "TRANSFER" | "ADJUSTMENT";
 export type MoneyType = "EXPENSE" | "INCOME";
+/** A category can also belong to a transfer; a budget cannot be of transfers. */
+export type CategoryType = MoneyType | "TRANSFER";
 export type GroupBy = "day" | "month" | "category" | "account" | "tag";
 export type SplitBy = "category";
 export type SortField = "date" | "amount";
@@ -43,7 +40,7 @@ export interface ScenarioAccount {
 export interface ScenarioCategory {
   key: string;
   name: string;
-  type: MoneyType;
+  type: CategoryType;
   archived?: boolean;
 }
 
@@ -146,7 +143,7 @@ export interface FixtureCategory {
   key: string;
   id: string;
   name: string;
-  type: MoneyType;
+  type: CategoryType;
   archivedAt: string | null;
 }
 

@@ -33,6 +33,8 @@ import {
   FixtureCategory,
   FixtureTransaction,
   Scenario,
+  ScenarioCategory,
+  ScenarioTransaction,
 } from "./types";
 
 export const OUT_DIR =
@@ -94,6 +96,7 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
         throw new Error(`${scenario.id}: a quick-add needs a default account`);
       }
       assertPrecision(scenario, t.key, t.amount, decimals);
+      assertTypedCategory(scenario, t, categories);
       return {
         key: t.key,
         id: fixtureId(index, "t", i + 1),
@@ -258,6 +261,25 @@ function assertPrecision(
  * the opposite: one carries a deliberate tie, because there the tiebreak is
  * the contract.
  */
+/**
+ * The server refuses a category whose type is not the movement's
+ * (`CATEGORY_TYPE_MISMATCH`), so a scenario that wrote one would only be caught
+ * by `test:mongo`, which nobody runs for you. This puts it in the gate instead.
+ */
+function assertTypedCategory(
+  scenario: Scenario,
+  t: ScenarioTransaction,
+  categories: ScenarioCategory[],
+): void {
+  if (t.category === undefined) return;
+  const category = categories.find((c) => c.key === t.category);
+  if (category && category.type !== t.type) {
+    throw new Error(
+      `${scenario.id}/${t.key}: a ${t.type} cannot carry ${t.category}, which is a ${category.type} category`,
+    );
+  }
+}
+
 function assertNoTies(
   scenario: Scenario,
   name: string,
@@ -319,7 +341,9 @@ function readme(fixtures: Fixture[]): string {
     "- **Deleted rows (`deletedAt`) are invisible** to every figure, balances included.",
     "  Archived rows (`archivedAt`) still count: archiving is not deleting.",
     "- **`ADJUSTMENT` never counts as spending** unless the query names that type; it",
-    "  does move balances. `TRANSFER` moves two balances and is never spending.",
+    "  does move balances. A `TRANSFER` moves two balances and is never spending either,",
+    "  but it can carry a category, and `type: TRANSFER` is a spending query like any",
+    "  other: it buckets those rows and the ones with no category under `uncategorized`.",
     "- **A query with `type: null` means everything but `ADJUSTMENT`** — income and",
     "  transfers included. It is the API's default, and it surprises people.",
     "- **Tag buckets unwind**: a row with two tags is counted in both, so the buckets",
