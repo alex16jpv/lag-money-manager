@@ -40,7 +40,9 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
 - **Deleted rows (`deletedAt`) are invisible** to every figure, balances included.
   Archived rows (`archivedAt`) still count: archiving is not deleting.
 - **`ADJUSTMENT` never counts as spending** unless the query names that type; it
-  does move balances. `TRANSFER` moves two balances and is never spending.
+  does move balances. A `TRANSFER` moves two balances and is never spending either,
+  but it can carry a category, and `type: TRANSFER` is a spending query like any
+  other: it buckets those rows and the ones with no category under `uncategorized`.
 - **A query with `type: null` means everything but `ADJUSTMENT`** — income and
   transfers included. It is the API's default, and it surprises people.
 - **Tag buckets unwind**: a row with two tags is counted in both, so the buckets
@@ -84,19 +86,21 @@ query) and `budgets` (the views as of `expected.budgets.reference`).
 - A month window is [first day 00:00 local, next month 00:00 local) — not a UTC month.
 - Deleted transactions leave every figure: totals, buckets, budgets and balances.
 - ADJUSTMENT moves a balance but is excluded from spending unless asked for by name.
-- TRANSFER moves two balances and is not spending.
+- TRANSFER moves two balances and is not spending, but it can carry a category.
 - An archived category keeps its totals; archiving is not deleting.
 - Quick-adds count as spending under `uncategorized`, and are the pending summary.
 - Tag buckets double-count a transaction with two tags: their sum exceeds the total.
 - With no `type`, the server means EXPENSE + INCOME + TRANSFER, everything but ADJUSTMENT.
-- An account bucket is the account the money left; a quick-add leaves the default one.
+- `type: TRANSFER` is a spending query like any other: it groups transfers by their category.
+- A transfer with no category lands in `uncategorized`, beside the ones that have one.
+- An account bucket is the account the money left; a quick-add leaves the default one, and a transfer is keyed by its origin, never by both ends.
 - A month bucket is the first seven characters of the frozen day, so months and days agree.
 - A category filter drops the quick-adds with it: they have no category to match.
 - A LISTING has no opinion about spending: with no `type` it shows the transfer and the adjustment too.
 - Two rows with the same amount are ordered by id, in the direction the page runs.
 - A backdated row lands by its own date, not by when it was written: id order is not date order.
 
-17 transactions · 5 accounts · 5 categories · 7 budgets · 8 spending queries · 6 ordered lists · reference `2026-08-20T12:00:00-05:00`
+18 transactions · 5 accounts · 6 categories · 7 budgets · 10 spending queries · 6 ordered lists · reference `2026-08-20T12:00:00-05:00`
 
 ### `eur-madrid.json` — EUR · Europe/Madrid · two decimals and the spring DST jump
 
