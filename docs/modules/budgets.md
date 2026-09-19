@@ -244,6 +244,7 @@ None specific to this module.
 | `BadRequest`                | 400    | `CUSTOM` without both dates, or `startDate >= endDate`                          |
 | `BadRequest`                | 400    | `periodStartDate` / `periodEndDate` sent for a non-CUSTOM budget                |
 | `BUDGET_PERIOD_OVERLAP`     | 400    | A budget for this type + period type already covers one of the categories (`CUSTOM`: only when the date windows intersect) |
+| `AMOUNT_PRECISION`          | 400    | `amount`, on create, update or a period override, with more decimals than the currency has — none at all in a `ZeroDecimalCurrency`. Judged on the amount the request carries, never on one already stored (T-67) |
 | `CATEGORY_ARCHIVED`         | 400    | Assigning an archived category (keeping one the budget already had is allowed)  |
 | `CATEGORY_TYPE_MISMATCH`    | 400    | Category type differs from the budget type                                      |
 | `RESOURCE_ARCHIVED`         | 400    | Writing to (or overriding the amount of) an archived budget                     |

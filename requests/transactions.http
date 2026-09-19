@@ -77,7 +77,7 @@ Content-Type: application/json
 
 {
   "type": "EXPENSE",
-  "amount": 42.50,
+  "amount": 42500,
   "date": "{{date}}",
   "fromAccountId": "{{accAId}}",
   "categoryId": "{{catId}}",
@@ -109,7 +109,7 @@ POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "ADJUSTMENT", "amount": 12.34, "date": "{{date}}", "toAccountId": "{{accBId}}" }
+{ "type": "ADJUSTMENT", "amount": 12340, "date": "{{date}}", "toAccountId": "{{accBId}}" }
 
 ### ADJUSTMENT — BAJA el saldo de A (fromAccountId)
 POST {{baseUrl}}/transactions
@@ -125,7 +125,7 @@ Authorization: Bearer {{token}}
 Idempotency-Key: demo-key-001
 Content-Type: application/json
 
-{ "type": "EXPENSE", "amount": 9.99, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
+{ "type": "EXPENSE", "amount": 9990, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
 
 ### Idempotencia — reintento con la misma clave (devuelve la existente)
 POST {{baseUrl}}/transactions
@@ -133,7 +133,7 @@ Authorization: Bearer {{token}}
 Idempotency-Key: demo-key-001
 Content-Type: application/json
 
-{ "type": "EXPENSE", "amount": 9.99, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
+{ "type": "EXPENSE", "amount": 9990, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
 
 ### Quick-add — solo amount (usa la cuenta default, marca pendingDetails y source=QUICK)
 ### También acepta Idempotency-Key (el flujo del doble-tap).
@@ -142,7 +142,7 @@ Authorization: Bearer {{token}}
 Idempotency-Key: quick-key-001
 Content-Type: application/json
 
-{ "amount": 5.25 }
+{ "amount": 5250 }
 
 ### Bandeja de pendientes de detallar
 GET {{baseUrl}}/transactions?pendingDetails=true
@@ -354,12 +354,13 @@ Content-Type: application/json
 
 { "type": "EXPENSE", "amount": 0, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
 
-### Monto con 3 decimales (400)
+### Monto con decimales en COP (400 AMOUNT_PRECISION: el peso no tiene centavos)
+### Con tres decimales sería 400 VALIDATION, que lo para Zod antes de llegar aquí.
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "EXPENSE", "amount": 10.555, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
+{ "type": "EXPENSE", "amount": 10.5, "date": "{{date}}", "fromAccountId": "{{accAId}}" }
 
 ### fromAccountId de otro usuario / inexistente (404 uniforme)
 POST {{baseUrl}}/transactions
@@ -382,14 +383,14 @@ POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "id": "019a0000-0b01-7000-8000-0000000000f1", "type": "EXPENSE", "amount": 12.5, "date": "{{date}}", "fromAccountId": "{{accAId}}", "categoryId": "{{catId}}", "description": "Offline" }
+{ "id": "019a0000-0b01-7000-8000-0000000000f1", "type": "EXPENSE", "amount": 12500, "date": "{{date}}", "fromAccountId": "{{accAId}}", "categoryId": "{{catId}}", "description": "Offline" }
 
 ### Replay idéntico (200, sin mover saldos otra vez)
 POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "id": "019a0000-0b01-7000-8000-0000000000f1", "type": "EXPENSE", "amount": 12.5, "date": "{{date}}", "fromAccountId": "{{accAId}}", "categoryId": "{{catId}}", "description": "Offline" }
+{ "id": "019a0000-0b01-7000-8000-0000000000f1", "type": "EXPENSE", "amount": 12500, "date": "{{date}}", "fromAccountId": "{{accAId}}", "categoryId": "{{catId}}", "description": "Offline" }
 
 ### Mismo id, importe distinto (200: replay, gana la fila guardada)
 POST {{baseUrl}}/transactions
@@ -467,7 +468,7 @@ POST {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "name": "TxCard {{$randomInt 100 999}}", "type": "CARD", "balance": -1245.9, "creditLimit": 4000 }
+{ "name": "TxCard {{$randomInt 100 999}}", "type": "CARD", "balance": -1245, "creditLimit": 4000 }
 
 ###
 
@@ -504,7 +505,7 @@ POST {{baseUrl}}/transactions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "type": "TRANSFER", "amount": 8400.01, "date": "{{date}}", "fromAccountId": "{{accAId}}", "toAccountId": "{{loanId}}" }
+{ "type": "TRANSFER", "amount": 8401, "date": "{{date}}", "fromAccountId": "{{accAId}}", "toAccountId": "{{loanId}}" }
 
 ### Ajustar el préstamo por encima de cero (400 LOAN_OVERPAID)
 POST {{baseUrl}}/transactions

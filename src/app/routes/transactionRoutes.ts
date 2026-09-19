@@ -202,7 +202,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/Transaction'
  *       400:
- *         description: Validation error. Codes include FUTURE_DATE (date more than 24h in the future), CURRENCY_MISMATCH (transfer between accounts with different currencies), INCOME_ON_CARD_OR_LOAN (an income landing on an account type listed in `IncomeRefusedAccountType`), LOAN_OVERPAID (a movement that would leave a LOAN above zero), CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH, IDEMPOTENCY_KEY_INVALID (malformed Idempotency-Key header).
+ *         description: Validation error. Codes include FUTURE_DATE (date more than 24h in the future), CURRENCY_MISMATCH (transfer between accounts with different currencies), INCOME_ON_CARD_OR_LOAN (an income landing on an account type listed in `IncomeRefusedAccountType`), AMOUNT_PRECISION (decimals in a `ZeroDecimalCurrency`), LOAN_OVERPAID (a movement that would leave a LOAN above zero), CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH, IDEMPOTENCY_KEY_INVALID (malformed Idempotency-Key header).
  *         content:
  *           application/json:
  *             schema:
@@ -455,7 +455,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/Transaction'
  *       400:
- *         description: Validation error. Codes include FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN (an income moved onto an account type listed in `IncomeRefusedAccountType`) and LOAN_OVERPAID (a movement that would leave a LOAN above zero), both checked again whenever the edit moves money, CATEGORY_ARCHIVED (assigning an archived category; keeping the one it already had is allowed), CATEGORY_TYPE_MISMATCH.
+ *         description: Validation error. Codes include FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN (an income moved onto an account type listed in `IncomeRefusedAccountType`), AMOUNT_PRECISION (only when the edit carries an amount) and LOAN_OVERPAID (a movement that would leave a LOAN above zero), the first and the last checked again whenever the edit moves money, CATEGORY_ARCHIVED (assigning an archived category; keeping the one it already had is allowed), CATEGORY_TYPE_MISMATCH.
  *         content:
  *           application/json:
  *             schema:

@@ -288,7 +288,7 @@ Codes raised by the services and middleware. Anything not listed here has no `co
 | `ACCOUNT_FIELD_NOT_FOR_TYPE`      | 400    | A debt amount on an account type that has no such field, or a type change that would orphan one |
 | `INCOME_ON_CARD_OR_LOAN`          | 400    | An income landing on one of the `IncomeRefusedAccountType` types the contract publishes: money arriving there is a payment, not income (an OVERDRAFT takes income: its positive balance is its ordinary state) |
 | `LOAN_OVERPAID`                   | 400    | A movement, or an account write, that would leave a LOAN above zero: a loan cannot be paid more than it owes |
-| `AMOUNT_PRECISION`                | 400    | An amount with more decimals than the owner's currency has               |
+| `AMOUNT_PRECISION`                | 400    | An amount with more decimals than the owner's currency has — none at all when it is one of the `ZeroDecimalCurrency` codes the contract publishes |
 | `CATEGORY_LIMIT_REACHED`          | 400    | Per-user category cap                                                    |
 | `BUDGET_PERIOD_OVERLAP`           | 400    | New budget period overlaps an existing one for the same scope            |
 | `IDEMPOTENCY_KEY_INVALID`         | 400    | `Idempotency-Key` outside `[A-Za-z0-9_-]{1,200}`                         |

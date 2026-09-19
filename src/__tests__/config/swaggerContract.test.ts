@@ -9,6 +9,7 @@ import {
   SPENDING_GROUP_BY,
   SPENDING_SPLIT_BY,
 } from "../../shared/constants";
+import { ZERO_DECIMAL_CURRENCIES } from "../../shared/currency";
 import { ERROR_CODES } from "../../shared/errorCodes";
 import { CATEGORY_ICONS } from "../../shared/icons";
 import { SYNC_MAX_OPERATIONS, SYNC_OP_STATUSES } from "../../shared/syncBatch";
@@ -205,6 +206,20 @@ describe("OpenAPI response views", () => {
     expect(glosses.length).toBeGreaterThan(0);
     for (const gloss of glosses)
       expect(gloss).toContain("`IncomeRefusedAccountType`");
+  });
+
+  // T-67: the client refuses to type a decimal in these, so it has to read the server's own list.
+  it("publishes the currencies that take no decimals", () => {
+    const zero = spec.components.schemas.ZeroDecimalCurrency as {
+      type: string;
+      enum: string[];
+      description?: string;
+    };
+    expect(zero.type).toBe("string");
+    expect(zero.enum).toEqual([...ZERO_DECIMAL_CURRENCIES]);
+    expect(zero.description).toContain("AMOUNT_PRECISION");
+    // Sorted, because it is read as a list by a human as often as by a generator.
+    expect(zero.enum).toEqual([...zero.enum].sort());
   });
 
   it("publishes the icon enum on the response view, not just the request body", () => {

@@ -585,6 +585,30 @@ describe("TransactionService", () => {
       );
     });
 
+    // T-67: precision is a rule about the amount being written, not about the one already stored.
+    it("edits a row stored before the rule without touching its amount", async () => {
+      const legacy = new Transaction({
+        id: TX_ID,
+        type: "EXPENSE",
+        amount: 1000.5,
+        currency: "COP",
+        date: new Date("2026-03-28"),
+        fromAccountId: ACC_A,
+        userId: USER,
+      });
+      txRepo.getById.mockResolvedValue(legacy);
+      acctRepo.getById.mockResolvedValue(account());
+      txRepo.update.mockResolvedValue(legacy);
+
+      await expect(
+        service.updateTransaction(TX_ID, { description: "otro" }, USER, TZ),
+      ).resolves.toBeDefined();
+
+      await expect(
+        service.updateTransaction(TX_ID, { amount: 2000.5 }, USER, TZ),
+      ).rejects.toThrow("COP amounts cannot have decimals");
+    });
+
     it("records a pre-update snapshot only on monetary changes [R2-27]", async () => {
       const existing = new Transaction({
         id: TX_ID,

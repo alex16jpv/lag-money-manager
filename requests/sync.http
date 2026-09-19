@@ -163,7 +163,7 @@ Content-Type: application/json
       "entity": "transaction",
       "action": "create",
       "id": "{{$guid}}",
-      "payload": { "body": { "type": "EXPENSE", "amount": 12.5, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}" } },
+      "payload": { "body": { "type": "EXPENSE", "amount": 12500, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}" } },
       "dependsOn": ["{{batchAccId}}"],
       "opVersion": 1
     }
@@ -299,7 +299,7 @@ Content-Type: application/json
       "entity": "transaction",
       "action": "create",
       "id": "{{$guid}}",
-      "payload": { "body": { "type": "EXPENSE", "amount": 3.5, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}", "categoryId": "0195a000-0000-7000-8000-0000000000d2" } },
+      "payload": { "body": { "type": "EXPENSE", "amount": 3500, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}", "categoryId": "0195a000-0000-7000-8000-0000000000d2" } },
       "dependsOn": ["0195a000-0000-7000-8000-0000000000d2"],
       "opVersion": 1
     }

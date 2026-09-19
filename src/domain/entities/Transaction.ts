@@ -70,8 +70,10 @@ export class Transaction {
    * Zod caps every amount at 2 decimals; currencies with no minor unit
    * (JPY, CLP, KRW...) need the stricter rule. Separate from assertValid
    * because the currency is stamped from the account, which the service only
-   * reads later — at creation time this is a no-op and the service calls it
-   * again once the currency is known.
+   * reads later. `assertValid` does NOT call it (T-67): precision is a rule
+   * about the amount being written, and a row stored before the rule tightened
+   * must stay editable in everything but its amount — `adjustBalances` asserts
+   * it whenever money is applied forward, which is every path that writes one.
    */
   assertValidPrecision(): void {
     const decimals = currencyDecimals(this.currency);
@@ -108,7 +110,6 @@ export class Transaction {
         "amount",
       );
     }
-    this.assertValidPrecision();
     if (this.type === "EXPENSE") {
       if (!this.fromAccountId) {
         throw new DomainValidationError(
