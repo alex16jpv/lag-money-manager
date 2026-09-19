@@ -12,6 +12,7 @@ import {
 import { ERROR_CODES } from "../../shared/errorCodes";
 import { CATEGORY_ICONS } from "../../shared/icons";
 import { SYNC_MAX_OPERATIONS, SYNC_OP_STATUSES } from "../../shared/syncBatch";
+import { INCOME_REFUSED_ON } from "../../shared/transactionRules";
 
 interface View {
   properties: Record<string, unknown>;
@@ -19,10 +20,16 @@ interface View {
 }
 
 const spec = swaggerSpec as {
-  components: { schemas: Record<string, View> };
+  components: { schemas: Record<string, unknown> };
   paths: Record<string, unknown>;
 };
-const view = (name: string): View => spec.components.schemas[name];
+const view = (name: string): View => spec.components.schemas[name] as View;
+const descriptions = (): string[] =>
+  [
+    ...JSON.stringify(spec.paths).matchAll(
+      /"description":"((?:[^"\\]|\\.)*)"/g,
+    ),
+  ].map(([, text]) => text);
 
 // W-06: a view without `required` makes every field optional downstream, and a free string hides enums.
 describe("OpenAPI response views", () => {
@@ -177,6 +184,27 @@ describe("OpenAPI response views", () => {
   it("publishes the error codes as an enum the frontend can derive", () => {
     const code = view("ErrorResponse").properties.code as { enum?: string[] };
     expect(code.enum).toEqual([...ERROR_CODES]);
+  });
+
+  // T-103: the frontend hides these types in its picker, so the list has to be the server's own.
+  it("publishes the account types an income cannot land on", () => {
+    const refused = spec.components.schemas.IncomeRefusedAccountType as {
+      type: string;
+      enum: string[];
+      description?: string;
+    };
+    expect(refused.type).toBe("string");
+    expect(refused.enum).toEqual([...INCOME_REFUSED_ON]);
+    expect(refused.description).toContain("INCOME_ON_CARD_OR_LOAN");
+  });
+
+  it("sends every description that names the refusal to that schema", () => {
+    const glosses = descriptions().filter((d) =>
+      d.includes("INCOME_ON_CARD_OR_LOAN"),
+    );
+    expect(glosses.length).toBeGreaterThan(0);
+    for (const gloss of glosses)
+      expect(gloss).toContain("`IncomeRefusedAccountType`");
   });
 
   it("publishes the icon enum on the response view, not just the request body", () => {

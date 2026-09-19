@@ -24,6 +24,7 @@ import {
   SYNC_OP_STATUSES,
   SYNC_WARNINGS,
 } from "../shared/syncBatch";
+import { INCOME_REFUSED_ON } from "../shared/transactionRules";
 
 // GENERATED from the Zod schemas: never hand-write a request schema here, edit schemas.ts.
 
@@ -616,6 +617,13 @@ const syncBatchResponse = withRequired({
  * when the code is STALE_UPDATE. Optional, because the same status also covers
  * DUPLICATE and ID_TAKEN, which carry nothing.
  */
+const incomeRefusedAccountType = {
+  type: "string",
+  enum: [...INCOME_REFUSED_ON],
+  description:
+    "The account types an INCOME may not land on: money arriving at one of them is a payment, not income. A transaction whose type is INCOME and whose destination account has one of these types is rejected with 400 INCOME_ON_CARD_OR_LOAN; record a TRANSFER from the account the money came from, or an ADJUSTMENT when it came from outside. OVERDRAFT is deliberately absent — it is the account that holds the money and sometimes dips below zero, so a salary landing there is income.",
+};
+
 const conflictOf = (view: string): Record<string, unknown> => ({
   allOf: [
     { $ref: "#/components/schemas/ErrorResponse" },
@@ -665,6 +673,7 @@ const options: swaggerJsdoc.Options = {
         ...requestBodies,
         ...responseViews,
         ...syncViews,
+        IncomeRefusedAccountType: incomeRefusedAccountType,
         SyncChangesResponse: syncChangesResponse,
         SyncOpResult: syncOpResult,
         SyncBatchResponse: syncBatchResponse,
