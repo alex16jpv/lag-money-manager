@@ -13,7 +13,13 @@
  * straight into `derive`).
  */
 
-export type TransactionType = "EXPENSE" | "INCOME" | "TRANSFER" | "ADJUSTMENT";
+export type TransactionType =
+  "EXPENSE" | "INCOME" | "TRANSFER" | "ADJUSTMENT" | "SETTLEMENT";
+export type SplitMode = "EQUAL" | "PERCENT" | "EXACT" | "FIXED_REST";
+export type PartyKind = "USER" | "CONTACT" | "GUESTS";
+/** Derived from the money, except the last one, which is a decision. */
+export type PersonState =
+  "NOT_PAID" | "PARTIALLY_PAID" | "PAID" | "WRITTEN_OFF";
 export type MoneyType = "EXPENSE" | "INCOME";
 /** A category can also belong to a transfer; a budget cannot be of transfers. */
 export type CategoryType = MoneyType | "TRANSFER";
@@ -60,6 +66,60 @@ export interface ScenarioTransaction {
   deleted?: boolean;
   /** Why this row is in the fixture. Travels to the JSON. */
   note?: string;
+}
+
+export interface ScenarioShare {
+  /** A contact key, or "you"; "guests" is the block whose head count is on the expense. */
+  party: string;
+  percent?: number;
+  fixedAmount?: number;
+}
+
+export interface ScenarioSharedExpense {
+  key: string;
+  /** The movement it is, when you fronted it. Absent means somebody else did. */
+  transaction?: string;
+  /** Who fronted it, when it was not you. */
+  paidBy?: string;
+  description?: string;
+  date?: string;
+  amount?: number;
+  mode?: SplitMode;
+  guests?: { count: number; name?: string };
+  /** Absent inherits the group's default, as the API does. */
+  shares?: ScenarioShare[];
+  note?: string;
+}
+
+export interface ScenarioSettlement {
+  key: string;
+  /** A contact key, or the key of the expense whose block of guests paid. */
+  with: string;
+  date: string;
+  collected?: number;
+  paid?: number;
+  outsideApp?: boolean;
+  /** The category of the expenses that paying somebody back writes. */
+  category?: string;
+  note?: string;
+}
+
+export interface ScenarioSharedGroup {
+  key: string;
+  name: string;
+  /** Contact keys; you are always in it and are never listed. */
+  contacts: string[];
+  defaultMode?: "EQUAL" | "PERCENT";
+  defaultShares?: ScenarioShare[];
+  expenses: ScenarioSharedExpense[];
+  /** Contact keys, or expense keys for a block of guests. */
+  writeOffs?: string[];
+  note?: string;
+}
+
+export interface ScenarioContact {
+  key: string;
+  name: string;
 }
 
 export interface ScenarioBudget {
@@ -123,6 +183,9 @@ export interface Scenario {
   budgets: ScenarioBudget[];
   spending: ScenarioSpendingQuery[];
   lists: ScenarioListQuery[];
+  contacts?: ScenarioContact[];
+  sharedGroups?: ScenarioSharedGroup[];
+  settlements?: ScenarioSettlement[];
 }
 
 /* ---------- written form ---------- */
@@ -163,6 +226,8 @@ export interface FixtureTransaction {
   currency: string;
   source: "MANUAL" | "QUICK";
   pendingDetails: boolean;
+  /** What is left of it as yours once what came back is imputed; absent means the whole amount. */
+  countsAsYours?: number;
   deletedAt: string | null;
   note?: string;
 }
@@ -244,6 +309,100 @@ export interface ExpectedBudgetView {
   archivedCategoryIds: string[];
 }
 
+export interface FixtureContact {
+  key: string;
+  id: string;
+  name: string;
+  archivedAt: string | null;
+}
+
+export interface FixtureShare {
+  party: PartyKind;
+  contactId: string | null;
+  percent: number | null;
+  fixedAmount: number | null;
+  amount: number;
+  /** What the imputation of the live payments left on it; never a typed figure. */
+  collected: number;
+}
+
+export interface FixtureSharedExpense {
+  key: string;
+  id: string;
+  groupId: string;
+  /** The movement it is, when the user fronted it. */
+  transactionId: string | null;
+  description: string | null;
+  date: string;
+  amount: number;
+  paidByContactId: string | null;
+  customSplit: boolean;
+  split: {
+    mode: SplitMode;
+    guests: { count: number; name: string | null } | null;
+    shares: FixtureShare[];
+  };
+  deletedAt: string | null;
+  note?: string;
+}
+
+export interface FixtureSettlement {
+  key: string;
+  id: string;
+  counterparty: {
+    kind: "CONTACT" | "GUESTS";
+    contactId: string | null;
+    expenseId: string | null;
+  };
+  date: string;
+  collected: number;
+  paid: number;
+  outsideApp: boolean;
+  deletedAt: string | null;
+  note?: string;
+}
+
+export interface FixtureSharedGroup {
+  key: string;
+  id: string;
+  name: string;
+  participantContactIds: string[];
+  defaultSplit: {
+    mode: "EQUAL" | "PERCENT";
+    shares: { contactId: string | null; percent: number }[];
+  };
+  writeOffs: {
+    contactId: string | null;
+    expenseId: string | null;
+    amount: number;
+  }[];
+  archivedAt: string | null;
+  note?: string;
+}
+
+/** What one person, or one block of guests, is down for across the group. */
+export interface ExpectedPerson {
+  key: string;
+  contactId: string | null;
+  expenseId: string | null;
+  owesYou: number;
+  youOwe: number;
+  state: PersonState;
+}
+
+export interface ExpectedSharedGroup {
+  key: string;
+  id: string;
+  amount: number;
+  yourShare: number;
+  owedToYou: number;
+  youOwe: number;
+  collected: number;
+  writtenOff: number;
+  status: "OPEN" | "SETTLED";
+  people: ExpectedPerson[];
+}
+
 export interface Fixture {
   id: string;
   title: string;
@@ -254,11 +413,18 @@ export interface Fixture {
   categories: FixtureCategory[];
   transactions: FixtureTransaction[];
   budgets: FixtureBudget[];
+  contacts: FixtureContact[];
+  sharedGroups: FixtureSharedGroup[];
+  sharedExpenses: FixtureSharedExpense[];
+  settlements: FixtureSettlement[];
   expected: {
     balances: { key: string; accountId: string; balance: number }[];
     pending: { count: number; total: number; transactionIds: string[] };
     spending: ExpectedSpending[];
     lists: ExpectedList[];
     budgets: { reference: string; views: ExpectedBudgetView[] };
+    // What each movement is left counting as yours, and where every group stands.
+    countsAsYours: { key: string; transactionId: string; amount: number }[];
+    shared: ExpectedSharedGroup[];
   };
 }

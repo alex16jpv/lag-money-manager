@@ -11,7 +11,7 @@ import { Scenario } from "./types";
 /** `01930001-…-00000000a001`: scenario 1, kind `a` (account), number 1. */
 export const fixtureId = (
   scenario: number,
-  kind: "u" | "a" | "c" | "t" | "b",
+  kind: "u" | "a" | "c" | "t" | "b" | "k" | "g" | "s" | "p",
   n: number,
 ): string =>
   `0193000${scenario}-0000-7000-8000-0000000${kind}${String(n).padStart(4, "0")}`;
@@ -1112,4 +1112,196 @@ const newYork: Scenario = {
   ],
 };
 
-export const SCENARIOS: Scenario[] = [bogota, madrid, tokyo, newYork];
+/**
+ * COP again, and on purpose: the currency with no minor unit is where a split
+ * leaves a remainder and where two implementations drift. Everything shared
+ * lives here — the four modes, a block of guests, several payers, a payment
+ * imputed oldest line first, one in cash the app never saw, and a write-off
+ * that moves no figure at all.
+ */
+const shared: Scenario = {
+  id: "cop-shared",
+  title:
+    "COP · America/Bogota · the split, the imputation and what counts as yours",
+  pins: [
+    "100.000 between three does not divide: the odd peso is whoever fronted it.",
+    "A block of twenty guests weighs twenty parts and is one party to collect from.",
+    "A payment covers the oldest line first, across the whole group.",
+    "Cash outside the app moves no account and lowers what counts as yours all the same.",
+    "A write-off gives up on what was open and moves no figure.",
+    "What Stats and the budgets measure is what is left as yours, never the amount.",
+  ],
+  user: {
+    id: "01930005-0000-7000-8000-00000000u005",
+    timezone: "America/Bogota",
+    currency: "COP",
+    minorUnits: 0,
+  },
+  reference: "2026-08-20T12:00:00-05:00",
+  accounts: [
+    {
+      key: "bank",
+      name: "Bancolombia",
+      type: "ACCOUNT",
+      openingBalance: 2000000,
+      isDefault: true,
+    },
+  ],
+  categories: [{ key: "outings", name: "Salidas", type: "EXPENSE" }],
+  transactions: [
+    {
+      key: "dinner",
+      type: "EXPENSE",
+      amount: 100000,
+      date: "2026-08-10T20:00:00-05:00",
+      description: "Cena",
+      category: "outings",
+      from: "bank",
+      note: "Split three ways in a currency with no cents: 33.333 each and the odd peso to you.",
+    },
+    {
+      key: "party",
+      type: "EXPENSE",
+      amount: 100000,
+      date: "2026-08-12T21:00:00-05:00",
+      description: "Fiesta",
+      category: "outings",
+      from: "bank",
+      note: "Three people and twenty guests: 23 parts, and the three left over are yours.",
+    },
+    {
+      key: "taxi",
+      type: "EXPENSE",
+      amount: 60000,
+      date: "2026-08-14T23:00:00-05:00",
+      description: "Taxi",
+      category: "outings",
+      from: "bank",
+    },
+    {
+      key: "lunch",
+      type: "EXPENSE",
+      amount: 45000,
+      date: "2026-08-16T13:00:00-05:00",
+      description: "Almuerzo",
+      category: "outings",
+      from: "bank",
+    },
+  ],
+  contacts: [
+    { key: "ana", name: "Ana" },
+    { key: "beto", name: "Beto" },
+  ],
+  sharedGroups: [
+    {
+      key: "trip",
+      name: "Cartagena",
+      contacts: ["ana", "beto"],
+      defaultMode: "EQUAL",
+      writeOffs: ["beto"],
+      note: "Beto is written off after every payment below, which is the order they are written in.",
+      expenses: [
+        { key: "e-dinner", transaction: "dinner" },
+        {
+          key: "e-party",
+          transaction: "party",
+          mode: "EQUAL",
+          guests: { count: 20, name: "La oficina" },
+          shares: [
+            { party: "you" },
+            { party: "ana" },
+            { party: "beto" },
+            { party: "guests" },
+          ],
+        },
+        {
+          key: "e-taxi",
+          transaction: "taxi",
+          mode: "PERCENT",
+          shares: [
+            { party: "you", percent: 50 },
+            { party: "ana", percent: 30 },
+            { party: "beto", percent: 20 },
+          ],
+        },
+        {
+          key: "e-lunch",
+          transaction: "lunch",
+          mode: "EXACT",
+          shares: [
+            { party: "you", fixedAmount: 25000 },
+            { party: "ana", fixedAmount: 10000 },
+            { party: "beto", fixedAmount: 10000 },
+          ],
+        },
+        {
+          key: "e-tickets",
+          paidBy: "ana",
+          description: "Tickets",
+          date: "2026-08-11T18:00:00-05:00",
+          amount: 90000,
+          note: "Ana fronted this one, so no movement of yours exists for it and you owe her a third.",
+        },
+      ],
+    },
+  ],
+  settlements: [
+    {
+      key: "ana-pays",
+      with: "ana",
+      date: "2026-08-18T10:00:00-05:00",
+      collected: 40000,
+      note: "Covers the dinner, then the party, then part of the taxi: oldest line first.",
+    },
+    {
+      key: "guests-pay",
+      with: "e-party",
+      date: "2026-08-19T10:00:00-05:00",
+      collected: 50000,
+      outsideApp: true,
+      note: "Cash the app never saw: no movement, and what counts as yours falls all the same.",
+    },
+  ],
+  spending: [
+    {
+      name: "august-by-category",
+      groupBy: "category",
+      type: "EXPENSE",
+      from: "2026-08-01T00:00:00-05:00",
+      to: "2026-09-01T00:00:00-05:00",
+      note: "What is left as yours after everything that came back, never the amounts.",
+    },
+    {
+      name: "august-by-day",
+      groupBy: "day",
+      type: "EXPENSE",
+      from: "2026-08-01T00:00:00-05:00",
+      to: "2026-09-01T00:00:00-05:00",
+    },
+  ],
+  lists: [
+    {
+      name: "august-newest-first",
+      sort: "date",
+      order: "desc",
+      type: "EXPENSE",
+      from: "2026-08-01T00:00:00-05:00",
+      to: "2026-09-01T00:00:00-05:00",
+      limit: 10,
+      note: "The list is gross: a row's amount is what left the account. Asked by type, because the movements a settle-up writes carry ids the server mints and a fixture cannot name.",
+    },
+  ],
+  budgets: [
+    {
+      key: "august",
+      name: "Salidas de agosto",
+      categories: ["outings"],
+      amount: 400000,
+      periodType: "MONTHLY",
+      effectiveFrom: "2026-01-01T00:00:00-05:00",
+      note: "Its spend is what counts as yours, so every payment lowers it in the month it happened.",
+    },
+  ],
+};
+
+export const SCENARIOS: Scenario[] = [bogota, madrid, tokyo, newYork, shared];

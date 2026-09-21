@@ -25,6 +25,7 @@ import {
   loadFixtures,
   seedFixture,
   services,
+  shared,
 } from "./support";
 
 const PAGE = { limit: 100, offset: 0 };
@@ -61,6 +62,55 @@ describe("offline parity fixtures", () => {
         expect([expected.key, account?.balance]).toEqual([
           expected.key,
           expected.balance,
+        ]);
+      }
+    });
+
+    it("leaves each movement counting as yours what the payments left", async () => {
+      const repo = repositoryFactory.getTransactionRepository();
+      for (const expected of fixture.expected.countsAsYours) {
+        const movement = await repo.getById(expected.transactionId);
+        expect([expected.key, movement?.countsAsYours]).toEqual([
+          expected.key,
+          expected.amount,
+        ]);
+      }
+    });
+
+    it("splits every shared expense the same way, down to the odd unit", async () => {
+      const repo = repositoryFactory.getSharedExpenseRepository();
+      for (const expected of fixture.sharedExpenses ?? []) {
+        const stored = await repo.getById(expected.id);
+        expect([expected.key, stored?.split.shares]).toEqual([
+          expected.key,
+          expected.split.shares,
+        ]);
+      }
+    });
+
+    it("stands where the fixture says every shared group stands", async () => {
+      const { sharedGroups } = shared();
+      for (const expected of fixture.expected.shared ?? []) {
+        const view = await sharedGroups.getGroupById(expected.id, userId);
+        expect([
+          expected.key,
+          view.totals.amount,
+          view.totals.yourShare,
+        ]).toEqual([expected.key, expected.amount, expected.yourShare]);
+        expect([
+          expected.key,
+          view.totals.owedToYou,
+          view.totals.youOwe,
+          view.totals.collected,
+          view.totals.writtenOff,
+          view.status,
+        ]).toEqual([
+          expected.key,
+          expected.owedToYou,
+          expected.youOwe,
+          expected.collected,
+          expected.writtenOff,
+          expected.status,
         ]);
       }
     });

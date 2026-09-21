@@ -23,12 +23,13 @@ describe("offline parity fixtures", () => {
     expect(driftAgainst(OUT_DIR, files)).toEqual([]);
   });
 
-  it("covers the four scenarios the frontend vendors", () => {
+  it("covers the scenarios the frontend vendors", () => {
     expect(fixtures.map((f) => f.id)).toEqual([
       "cop-bogota",
       "eur-madrid",
       "jpy-tokyo",
       "usd-new-york",
+      "cop-shared",
     ]);
   });
 

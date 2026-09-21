@@ -300,6 +300,10 @@
       "archivedAt": null
     }
   ],
+  "contacts": [],
+  "sharedGroups": [],
+  "sharedExpenses": [],
+  "settlements": [],
   "expected": {
     "balances": [
       {
@@ -512,6 +516,54 @@
         ]
       }
     ],
+    "countsAsYours": [
+      {
+        "key": "first-hour",
+        "transactionId": "01930004-0000-7000-8000-0000000t0001",
+        "amount": 12.34
+      },
+      {
+        "key": "first-one-thirty",
+        "transactionId": "01930004-0000-7000-8000-0000000t0002",
+        "amount": 5
+      },
+      {
+        "key": "second-one-thirty",
+        "transactionId": "01930004-0000-7000-8000-0000000t0003",
+        "amount": 5.01
+      },
+      {
+        "key": "rent",
+        "transactionId": "01930004-0000-7000-8000-0000000t0004",
+        "amount": 1850
+      },
+      {
+        "key": "paycheck",
+        "transactionId": "01930004-0000-7000-8000-0000000t0005",
+        "amount": 3200
+      },
+      {
+        "key": "side-gig",
+        "transactionId": "01930004-0000-7000-8000-0000000t0006",
+        "amount": 450.5
+      },
+      {
+        "key": "quick-coffee",
+        "transactionId": "01930004-0000-7000-8000-0000000t0007",
+        "amount": 8.25
+      },
+      {
+        "key": "last-minute",
+        "transactionId": "01930004-0000-7000-8000-0000000t0009",
+        "amount": 27.75
+      },
+      {
+        "key": "next-month",
+        "transactionId": "01930004-0000-7000-8000-0000000t0010",
+        "amount": 99.99
+      }
+    ],
+    "shared": [],
     "budgets": {
       "reference": "2025-11-15T12:00:00-05:00",
       "views": [

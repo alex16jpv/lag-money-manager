@@ -18,6 +18,11 @@ import { sharedLedgerService } from "../../app/factories/sharedLedger";
 import { AccountService } from "../../app/services/AccountService";
 import { BudgetService } from "../../app/services/BudgetService";
 import { CategoryService } from "../../app/services/CategoryService";
+import { ContactService } from "../../app/services/ContactService";
+import { SharedExpenseService } from "../../app/services/SharedExpenseService";
+import { SharedGroupService } from "../../app/services/SharedGroupService";
+import { SharedLedgerService } from "../../app/services/SharedLedgerService";
+import { SharedSettlementService } from "../../app/services/SharedSettlementService";
 import { StatsService } from "../../app/services/StatsService";
 import { TransactionService } from "../../app/services/TransactionService";
 import { connectMongo } from "../../config/mongoConnection";
@@ -73,8 +78,76 @@ export interface Fixture {
     effectiveFrom: string | null;
     archivedAt: string | null;
   }[];
+  contacts: { key: string; id: string; name: string }[];
+  sharedGroups: {
+    key: string;
+    id: string;
+    name: string;
+    participantContactIds: string[];
+    defaultSplit: {
+      mode: "EQUAL" | "PERCENT";
+      shares: { contactId: string | null; percent: number }[];
+    };
+    writeOffs: { contactId: string | null; expenseId: string | null }[];
+  }[];
+  sharedExpenses: {
+    key: string;
+    id: string;
+    groupId: string;
+    transactionId: string | null;
+    description: string | null;
+    date: string;
+    amount: number;
+    paidByContactId: string | null;
+    customSplit: boolean;
+    split: {
+      mode: "EQUAL" | "PERCENT" | "EXACT" | "FIXED_REST";
+      guests: { count: number; name: string | null } | null;
+      shares: {
+        party: "USER" | "CONTACT" | "GUESTS";
+        contactId: string | null;
+        percent: number | null;
+        fixedAmount: number | null;
+        amount: number;
+        collected: number;
+      }[];
+    };
+  }[];
+  settlements: {
+    key: string;
+    id: string;
+    counterparty: {
+      kind: "CONTACT" | "GUESTS";
+      contactId: string | null;
+      expenseId: string | null;
+    };
+    date: string;
+    collected: number;
+    paid: number;
+    outsideApp: boolean;
+  }[];
   expected: {
     balances: { key: string; accountId: string; balance: number }[];
+    countsAsYours: { key: string; transactionId: string; amount: number }[];
+    shared: {
+      key: string;
+      id: string;
+      amount: number;
+      yourShare: number;
+      owedToYou: number;
+      youOwe: number;
+      collected: number;
+      writtenOff: number;
+      status: "OPEN" | "SETTLED";
+      people: {
+        key: string;
+        contactId: string | null;
+        expenseId: string | null;
+        owesYou: number;
+        youOwe: number;
+        state: string;
+      }[];
+    }[];
     pending: { count: number; total: number; transactionIds: string[] };
     spending: {
       name: string;
@@ -146,6 +219,132 @@ export function loadFixtures(): Fixture[] {
 }
 
 export const fixtureDir = (): string => FIXTURE_DIR;
+
+/** The shared layer of a fixture, through the same services its routes call. */
+async function seedShared(fixture: Fixture): Promise<void> {
+  const userId = fixture.user.id;
+  const { contacts, sharedGroups, sharedExpenses, settlements } = shared();
+
+  for (const contact of fixture.contacts ?? []) {
+    await contacts.createContact({
+      id: contact.id,
+      name: contact.name,
+      userId,
+    } as never);
+  }
+  for (const group of fixture.sharedGroups ?? []) {
+    await sharedGroups.createGroup({
+      id: group.id,
+      name: group.name,
+      contactIds: group.participantContactIds,
+      defaultSplit: group.defaultSplit,
+      userId,
+    } as never);
+  }
+  for (const expense of fixture.sharedExpenses ?? []) {
+    const split = expense.customSplit
+      ? {
+          mode: expense.split.mode,
+          guests: expense.split.guests,
+          shares: expense.split.shares.map((share) => ({
+            party: share.party,
+            contactId: share.contactId,
+            percent: share.percent,
+            fixedAmount: share.fixedAmount,
+          })),
+        }
+      : undefined;
+    await sharedExpenses.createExpense({
+      id: expense.id,
+      groupId: expense.groupId,
+      userId,
+      ...(expense.transactionId
+        ? { transactionId: expense.transactionId }
+        : {
+            description: expense.description,
+            date: new Date(expense.date),
+            amount: expense.amount,
+            paidByContactId: expense.paidByContactId,
+          }),
+      split,
+    } as never);
+  }
+  for (const one of fixture.settlements ?? []) {
+    await settlements.createSettlement(
+      {
+        id: one.id,
+        userId,
+        contactId: one.counterparty.contactId ?? undefined,
+        expenseId: one.counterparty.expenseId ?? undefined,
+        date: new Date(one.date),
+        collected: one.collected || undefined,
+        paid: one.paid || undefined,
+        outsideApp: one.outsideApp,
+        accountId: one.outsideApp
+          ? undefined
+          : (fixture.accounts.find((a) => a.isDefault)?.id ?? undefined),
+      } as never,
+      fixture.user.timezone,
+    );
+  }
+  // Last, so each one gives up on what was still open by then.
+  for (const group of fixture.sharedGroups ?? []) {
+    for (const writeOff of group.writeOffs) {
+      await sharedGroups.writeOff(
+        group.id,
+        {
+          contactId: writeOff.contactId ?? undefined,
+          expenseId: writeOff.expenseId ?? undefined,
+        },
+        userId,
+      );
+    }
+  }
+}
+
+export function shared(): {
+  contacts: ContactService;
+  sharedGroups: SharedGroupService;
+  sharedExpenses: SharedExpenseService;
+  settlements: SharedSettlementService;
+} {
+  const expenseRepo = repositoryFactory.getSharedExpenseRepository();
+  const settlementRepo = repositoryFactory.getSharedSettlementRepository();
+  const transactionRepo = repositoryFactory.getTransactionRepository();
+  const groupRepo = repositoryFactory.getSharedGroupRepository();
+  const contactRepo = repositoryFactory.getContactRepository();
+  const userRepo = repositoryFactory.getUserRepository();
+  const ledger = new SharedLedgerService(
+    expenseRepo,
+    settlementRepo,
+    transactionRepo,
+  );
+  return {
+    contacts: new ContactService(contactRepo),
+    sharedGroups: new SharedGroupService(
+      groupRepo,
+      expenseRepo,
+      contactRepo,
+      userRepo,
+      transactionRepo,
+      ledger,
+    ),
+    sharedExpenses: new SharedExpenseService(
+      expenseRepo,
+      groupRepo,
+      transactionRepo,
+      ledger,
+    ),
+    settlements: new SharedSettlementService(
+      settlementRepo,
+      expenseRepo,
+      contactRepo,
+      userRepo,
+      ledger,
+      services().transactions,
+    ),
+  };
+}
 
 export function services(): {
   accounts: AccountService;
@@ -279,6 +478,8 @@ export async function seedFixture(fixture: Fixture): Promise<void> {
       await transactions.deleteTransaction(t.id, userId);
     }
   }
+
+  await seedShared(fixture);
 
   const ctx = {
     reference: new Date(fixture.expected.budgets.reference),

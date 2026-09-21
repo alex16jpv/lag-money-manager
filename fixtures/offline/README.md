@@ -61,6 +61,24 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
   This is the rule, not the client's recipe: on the device the shown balance is
   the server's `balance` from the mirror plus the effect of the unsent outbox,
   and the two agree whenever the outbox is empty.
+- **What a figure of spending measures is `countsAsYours`**, not the amount:
+  what left the account minus what has come back for it. A row without the
+  field counts its whole amount, and the **listing is the other way round** —
+  a row's amount there is what moved through the account.
+- **A split always adds up to its expense**, and each share is
+  `floor(total × its parts ÷ all the parts)` — its parts, not one floored part
+  repeated. Whatever is left over after flooring goes **whole to whoever
+  fronted it**, in every mode, so two implementations reach the same figures
+  without agreeing on an order. A block of guests weighs as many parts as it
+  counts and is one party to collect from.
+- **A payment belongs to the person, not to the line**: it covers the **oldest
+  line first** across every group shared with them, ties broken by expense id.
+  What you hand over covers your own lines first, and whatever is left of it is
+  their money going back, so it comes off what they gave you **before** any of
+  that is imputed. `collected` on a share is never typed: it is that answer.
+- **A write-off gives up on what was open when it was decided** and never more
+  than is open now. It moves no figure: what left the account was counted as
+  yours the day it left.
 - **`pending.transactionIds` is a set.** No order is part of the contract.
 - **`lists` are the opposite: there the order IS the contract.** Each one is the
   first page of `GET /transactions` under its `sort` and `order`, and two rows with
@@ -70,13 +88,23 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
 
 ## Shape of a file
 
-`user`, `accounts`, `categories`, `transactions` and `budgets` are the input, in
+`user`, `accounts`, `categories`, `transactions`, `budgets`, `contacts`,
+`sharedGroups`, `sharedExpenses` and `settlements` are the input, in
 the shape the mirror holds them — the same shape `GET /sync/changes` sends, so
 budgets are **as stored** (`amount`, `amountOverrides`, `periodType`, dates), with
 no `periodKey`, `spent` or `expired`. Every row also carries a `key`, which is a
 human handle, never an id. `expected` holds `balances`, `pending`, `spending`
 (one entry per query, with the query spelled out), `lists` (one ordered page per
-query) and `budgets` (the views as of `expected.budgets.reference`).
+query), `budgets` (the views as of `expected.budgets.reference`),
+`countsAsYours` (what each movement is left counting as) and `shared` (where
+every group stands, and every person in it).
+
+`expected.shared[].people` is for the device: the server has no per-person
+endpoint, so the mongod suite checks the figures it does expose and that block
+is the app's to meet. And **paying somebody back is not in any fixture**: it
+writes one movement per line with ids the server mints, which a file of fixed
+ids cannot name — the generator refuses a `paid` settlement rather than write
+a balance it cannot explain.
 
 ## The fixtures
 
@@ -131,3 +159,14 @@ query) and `budgets` (the views as of `expected.budgets.reference`).
 - An INCOME bucket is keyed by the account the money reached, not the one it left.
 
 10 transactions · 2 accounts · 4 categories · 3 budgets · 5 spending queries · 1 ordered list · reference `2025-11-15T12:00:00-05:00`
+
+### `cop-shared.json` — COP · America/Bogota · the split, the imputation and what counts as yours
+
+- 100.000 between three does not divide: the odd peso is whoever fronted it.
+- A block of twenty guests weighs twenty parts and is one party to collect from.
+- A payment covers the oldest line first, across the whole group.
+- Cash outside the app moves no account and lowers what counts as yours all the same.
+- A write-off gives up on what was open and moves no figure.
+- What Stats and the budgets measure is what is left as yours, never the amount.
+
+4 transactions · 1 accounts · 1 categories · 1 budgets · 2 spending queries · 1 ordered list · reference `2026-08-20T12:00:00-05:00`

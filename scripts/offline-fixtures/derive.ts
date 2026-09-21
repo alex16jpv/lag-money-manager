@@ -17,16 +17,25 @@ import { DateTime } from "luxon";
 
 import {
   ExpectedBucket,
+  ExpectedPerson,
+  ExpectedSharedGroup,
   ExpectedSplit,
   FixtureAccount,
   FixtureBudget,
   FixtureCategory,
+  FixtureSettlement,
+  FixtureShare,
+  FixtureSharedExpense,
+  FixtureSharedGroup,
   FixtureTransaction,
   GroupBy,
+  PartyKind,
   PeriodType,
+  PersonState,
   SortField,
   SortOrder,
   SplitBy,
+  SplitMode,
   TransactionType,
 } from "./types";
 
@@ -34,6 +43,13 @@ export const toCents = (amount: number): number => Math.round(amount * 100);
 export const fromCents = (cents: number): number => cents / 100;
 
 const live = (t: FixtureTransaction): boolean => t.deletedAt === null;
+
+/**
+ * What Stats and the budgets measure: what left the account minus what came
+ * back. A row written before the figure existed carries its whole amount.
+ */
+const yoursCents = (t: FixtureTransaction): number =>
+  toCents(t.countsAsYours ?? t.amount);
 const instant = (iso: string): number => new Date(iso).getTime();
 
 const dayOf = (iso: string, timezone: string): string =>
@@ -59,6 +75,8 @@ const withinDays = (
 export function deriveBalances(
   accounts: FixtureAccount[],
   transactions: FixtureTransaction[],
+  // A collection lands in an account and a refund leaves one: the fifth kind of movement.
+  settlements: FixtureSettlement[] = [],
 ): { key: string; accountId: string; balance: number }[] {
   const cents = new Map<string, number>(
     accounts.map((a) => [a.id, toCents(a.openingBalance)]),
@@ -77,6 +95,13 @@ export function deriveBalances(
       move(t.fromAccountId, -amount);
       move(t.toAccountId, amount);
     }
+  }
+
+  // Everything a settle-up writes lands in the default account of the fixture.
+  const settlementAccount = accounts.find((a) => a.isDefault)?.id ?? null;
+  for (const one of settlements) {
+    if (one.deletedAt !== null || one.outsideApp) continue;
+    move(settlementAccount, toCents(one.collected) - toCents(one.paid));
   }
 
   return accounts.map((a) => ({
@@ -174,7 +199,7 @@ export function deriveSpending(
 
   const totals = new Map<string, Tally>();
   for (const t of matched) {
-    const cents = toCents(t.amount);
+    const cents = yoursCents(t);
     for (const key of bucketKeys(t, window.groupBy)) {
       const bucket = totals.get(key) ?? {
         cents: 0,
@@ -229,7 +254,7 @@ export function deriveSpending(
 
   return {
     // The total is over the matched rows, not over the buckets.
-    total: fromCents(matched.reduce((acc, t) => acc + toCents(t.amount), 0)),
+    total: fromCents(matched.reduce((acc, t) => acc + yoursCents(t), 0)),
     buckets,
   };
 }
@@ -395,7 +420,7 @@ export function deriveBudgetViews(
             b.categoryIds.length === 0 ||
             (t.categoryId !== null && b.categoryIds.includes(t.categoryId)),
         )
-        .reduce((acc, t) => acc + toCents(t.amount), 0);
+        .reduce((acc, t) => acc + yoursCents(t), 0);
       const override = b.amountOverrides[period.key];
 
       return {
@@ -415,4 +440,373 @@ export function deriveBudgetViews(
         archivedCategoryIds: b.categoryIds.filter((c) => archived.has(c)),
       };
     });
+}
+
+/* ---------- the shared layer ---------- */
+
+/**
+ * `floor(total × part ÷ whole)`, split so no product can pass 2^53. Written
+ * again here, from the rule and not from the app's code: if the two ever
+ * disagree, the fixture is what says so.
+ */
+const partOf = (total: number, part: number, whole: number): number =>
+  Math.floor(total / whole) * part +
+  Math.floor(((total % whole) * part) / whole);
+
+export interface DerivedShare {
+  party: PartyKind;
+  contactId: string | null;
+  percent: number | null;
+  fixedAmount: number | null;
+  /** Minor units. */
+  amount: number;
+  collected: number;
+}
+
+interface ShareInput {
+  party: PartyKind;
+  contactId: string | null;
+  percent?: number;
+  fixedAmount?: number;
+  units: number;
+}
+
+/** The shares of one expense, adding up to it exactly, with the odd unit on whoever fronted it. */
+export function resolveSharesMinor(
+  totalMinor: number,
+  mode: SplitMode,
+  rows: ShareInput[],
+  payerIndex: number,
+  scale: number,
+): number[] {
+  const units = rows.reduce((sum, row) => sum + row.units, 0);
+  const amounts = rows.map((row) => {
+    if (mode === "EQUAL") return partOf(totalMinor, row.units, units);
+    if (mode === "PERCENT") {
+      const basisPoints = Math.round((row.percent ?? 0) * 100);
+      return partOf(totalMinor, basisPoints, 10_000);
+    }
+    return Math.round((row.fixedAmount ?? 0) * scale);
+  });
+  if (mode === "FIXED_REST") {
+    const pinnedTotal = rows.reduce(
+      (sum, row, i) =>
+        sum + (row.fixedAmount === undefined ? 0 : (amounts[i] ?? 0)),
+      0,
+    );
+    const restUnits = rows.reduce(
+      (sum, row) => sum + (row.fixedAmount === undefined ? row.units : 0),
+      0,
+    );
+    const rest = totalMinor - pinnedTotal;
+    rows.forEach((row, i) => {
+      if (row.fixedAmount === undefined) {
+        amounts[i] = partOf(rest, row.units, restUnits);
+      }
+    });
+  }
+  const assigned = amounts.reduce((sum, one) => sum + one, 0);
+  amounts[payerIndex] = (amounts[payerIndex] ?? 0) + (totalMinor - assigned);
+  return amounts;
+}
+
+interface OwedLine {
+  key: string;
+  date: string;
+  owed: number;
+}
+
+/** Oldest line first, ties broken by id, so two devices reach the same answer. */
+export function imputeMinor(
+  lines: OwedLine[],
+  pool: number,
+): { settled: Map<string, number>; surplus: number } {
+  let left = Math.max(0, pool);
+  const settled = new Map<string, number>();
+  const ordered = [...lines].sort(
+    (a, b) =>
+      instant(a.date) - instant(b.date) ||
+      (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+  );
+  for (const line of ordered) {
+    const covered = Math.min(Math.max(0, line.owed), left);
+    settled.set(line.key, covered);
+    left -= covered;
+  }
+  return { settled, surplus: left };
+}
+
+const keyOfParty = (party: {
+  contactId: string | null;
+  expenseId: string | null;
+}): string =>
+  party.expenseId ? `guests:${party.expenseId}` : `contact:${party.contactId}`;
+
+export interface SharedInput {
+  transactions: FixtureTransaction[];
+  groups: FixtureSharedGroup[];
+  expenses: FixtureSharedExpense[];
+  settlements: FixtureSettlement[];
+}
+
+export interface DerivedShared {
+  expenses: FixtureSharedExpense[];
+  groups: FixtureSharedGroup[];
+  countsAsYours: { key: string; transactionId: string; amount: number }[];
+  shared: ExpectedSharedGroup[];
+}
+
+/**
+ * The whole shared layer worked out from the rows: what each payment covers,
+ * what that leaves as yours, what a write-off gives up on, and where every
+ * group stands. Second reading of the rules, like everything else here.
+ */
+export function deriveShared(input: SharedInput): DerivedShared {
+  const live = input.expenses.filter((e) => e.deletedAt === null);
+  const paid = input.settlements.filter((s) => s.deletedAt === null);
+  const collected = new Map<string, number>();
+
+  const parties = new Set<string>();
+  for (const expense of live) {
+    for (const share of expense.split.shares) {
+      if (share.party === "CONTACT" && share.contactId) {
+        parties.add(`contact:${share.contactId}`);
+      }
+      if (share.party === "GUESTS") parties.add(`guests:${expense.id}`);
+    }
+  }
+
+  for (const party of parties) {
+    const [kind, id] = party.split(":");
+    const theirs = (expense: FixtureSharedExpense): FixtureShare | undefined =>
+      expense.split.shares.find((share) =>
+        kind === "guests"
+          ? share.party === "GUESTS" && expense.id === id
+          : share.party === "CONTACT" && share.contactId === id,
+      );
+    const yours = (expense: FixtureSharedExpense): FixtureShare | undefined =>
+      expense.split.shares.find((share) => share.party === "USER");
+
+    const theyOweLines: OwedLine[] = [];
+    const youOweLines: OwedLine[] = [];
+    for (const expense of live) {
+      const share = theirs(expense);
+      if (expense.paidByContactId === null && share) {
+        theyOweLines.push({
+          key: expense.id,
+          date: expense.date,
+          owed: toCents(share.amount),
+        });
+      }
+      const mine = yours(expense);
+      if (kind === "contact" && expense.paidByContactId === id && mine) {
+        youOweLines.push({
+          key: expense.id,
+          date: expense.date,
+          owed: toCents(mine.amount),
+        });
+      }
+    }
+
+    const withThem = paid.filter((s) => keyOfParty(s.counterparty) === party);
+    const pools = {
+      theyOwe: withThem.reduce((sum, s) => sum + toCents(s.collected), 0),
+      youOwe: withThem.reduce((sum, s) => sum + toCents(s.paid), 0),
+    };
+    // What you handed over covers your own lines first; the rest is their money going back.
+    const mine = imputeMinor(youOweLines, pools.youOwe);
+    const theirsImputed = imputeMinor(
+      theyOweLines,
+      pools.theyOwe - mine.surplus,
+    );
+    for (const [expenseId, amount] of theirsImputed.settled) {
+      collected.set(`${party}|${expenseId}`, amount);
+    }
+    for (const [expenseId, amount] of mine.settled) {
+      collected.set(`user|${expenseId}|${party}`, amount);
+    }
+  }
+
+  const expenses = input.expenses.map((expense) => ({
+    ...expense,
+    split: {
+      ...expense.split,
+      shares: expense.split.shares.map((share) => {
+        const party =
+          share.party === "GUESTS"
+            ? `guests:${expense.id}`
+            : `contact:${share.contactId}`;
+        if (share.party === "USER") {
+          const owner = expense.paidByContactId
+            ? `contact:${expense.paidByContactId}`
+            : null;
+          const settled = owner
+            ? (collected.get(`user|${expense.id}|${owner}`) ?? 0)
+            : 0;
+          return { ...share, collected: fromCents(settled) };
+        }
+        return {
+          ...share,
+          collected: fromCents(collected.get(`${party}|${expense.id}`) ?? 0),
+        };
+      }),
+    },
+  }));
+
+  const openOf = (groupId: string, party: string): number =>
+    expenses
+      .filter(
+        (e) =>
+          e.groupId === groupId &&
+          e.deletedAt === null &&
+          e.paidByContactId === null,
+      )
+      .reduce((sum, expense) => {
+        const share = expense.split.shares.find(
+          (one) =>
+            (one.party === "GUESTS" && party === `guests:${expense.id}`) ||
+            (one.party === "CONTACT" && party === `contact:${one.contactId}`),
+        );
+        if (!share) return sum;
+        return (
+          sum + Math.max(0, toCents(share.amount) - toCents(share.collected))
+        );
+      }, 0);
+
+  // Decided after every payment above, which is the order the rows are written in.
+  const groups = input.groups.map((group) => ({
+    ...group,
+    writeOffs: group.writeOffs.map((one) => ({
+      ...one,
+      amount: fromCents(openOf(group.id, keyOfParty(one))),
+    })),
+  }));
+
+  const countsAsYours = input.transactions
+    .filter((t) => t.deletedAt === null)
+    .map((t) => {
+      const expense = expenses.find(
+        (e) => e.transactionId === t.id && e.deletedAt === null,
+      );
+      const cameBack = expense
+        ? expense.split.shares
+            .filter((share) => share.party !== "USER")
+            .reduce((sum, share) => sum + toCents(share.collected), 0)
+        : 0;
+      return {
+        key: t.key,
+        transactionId: t.id,
+        amount: fromCents(toCents(t.amount) - cameBack),
+      };
+    });
+
+  const shared = groups.map((group) => {
+    const rows = expenses.filter(
+      (e) => e.groupId === group.id && e.deletedAt === null,
+    );
+    const given = new Map(
+      group.writeOffs.map((one) => [keyOfParty(one), toCents(one.amount)]),
+    );
+    const people = new Map<string, ExpectedPerson>();
+    let amount = 0;
+    let yourShare = 0;
+    let owedGross = 0;
+    let youOwe = 0;
+    let collectedTotal = 0;
+
+    for (const expense of rows) {
+      amount += toCents(expense.amount);
+      for (const share of expense.split.shares) {
+        const open = Math.max(
+          0,
+          toCents(share.amount) - toCents(share.collected),
+        );
+        if (share.party === "USER") {
+          yourShare += toCents(share.amount);
+          if (expense.paidByContactId !== null) {
+            youOwe += open;
+            const key = `contact:${expense.paidByContactId}`;
+            const row = people.get(key) ?? {
+              key,
+              contactId: expense.paidByContactId,
+              expenseId: null,
+              owesYou: 0,
+              youOwe: 0,
+              state: "NOT_PAID" as PersonState,
+            };
+            row.youOwe += open;
+            people.set(key, row);
+          }
+          continue;
+        }
+        if (expense.paidByContactId !== null) continue;
+        const key =
+          share.party === "GUESTS"
+            ? `guests:${expense.id}`
+            : `contact:${share.contactId}`;
+        owedGross += open;
+        collectedTotal += toCents(share.collected);
+        const row = people.get(key) ?? {
+          key,
+          contactId: share.party === "GUESTS" ? null : share.contactId,
+          expenseId: share.party === "GUESTS" ? expense.id : null,
+          owesYou: 0,
+          youOwe: 0,
+          state: "NOT_PAID" as PersonState,
+        };
+        row.owesYou += open;
+        people.set(key, row);
+      }
+    }
+
+    let writtenOff = 0;
+    for (const [key, row] of people) {
+      const ceiling = given.get(key);
+      if (ceiling !== undefined) {
+        const forgiven = Math.min(ceiling, row.owesYou);
+        writtenOff += forgiven;
+        row.owesYou -= forgiven;
+        row.state = "WRITTEN_OFF";
+        continue;
+      }
+      const settled = rows
+        .filter((e) => e.paidByContactId === null)
+        .reduce((sum, expense) => {
+          const share = expense.split.shares.find(
+            (one) =>
+              (one.party === "GUESTS" && key === `guests:${expense.id}`) ||
+              (one.party === "CONTACT" && key === `contact:${one.contactId}`),
+          );
+          return sum + (share ? toCents(share.collected) : 0);
+        }, 0);
+      row.state =
+        row.owesYou === 0
+          ? "PAID"
+          : settled > 0
+            ? "PARTIALLY_PAID"
+            : "NOT_PAID";
+    }
+
+    const owedToYou = owedGross - writtenOff;
+    return {
+      key: group.key,
+      id: group.id,
+      amount: fromCents(amount),
+      yourShare: fromCents(yourShare),
+      owedToYou: fromCents(owedToYou),
+      youOwe: fromCents(youOwe),
+      collected: fromCents(collectedTotal),
+      writtenOff: fromCents(writtenOff),
+      status: owedToYou === 0 && youOwe === 0 ? "SETTLED" : "OPEN",
+      people: [...people.values()]
+        .map((row) => ({
+          ...row,
+          owesYou: fromCents(row.owesYou),
+          youOwe: fromCents(row.youOwe),
+        }))
+        .sort((a, b) => (a.key < b.key ? -1 : 1)),
+    } as ExpectedSharedGroup;
+  });
+
+  return { expenses, groups, countsAsYours, shared };
 }
