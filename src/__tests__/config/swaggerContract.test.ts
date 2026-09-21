@@ -62,7 +62,7 @@ describe("OpenAPI response views", () => {
     "ErrorResponse",
     "SyncTransaction",
     "SyncBudget",
-    "SyncSharedExpense",
+    "SyncSharedGroup",
     "SyncSettlement",
     "SyncChangesResponse",
     "SyncOpResult",
@@ -82,6 +82,7 @@ describe("OpenAPI response views", () => {
     ["Contact", "email"],
     ["Contact", "color"],
     ["SharedGroup", "color"],
+    ["SyncSharedGroup", "color"],
   ])(
     "%s leaves %s optional, because it may genuinely be absent",
     (name, field) => {
@@ -131,10 +132,21 @@ describe("OpenAPI response views", () => {
   it("keeps the sync feed's tombstones mandatory", () => {
     expect(view("SyncTransaction").required).toContain("deletedAt");
     expect(view("SyncBudget").required).toContain("archivedAt");
-    expect(view("SyncSharedExpense").required).toContain("deletedAt");
+    expect(view("SharedExpense").required).toContain("deletedAt");
     expect(view("SyncSettlement").required).toContain("deletedAt");
     expect(view("Contact").required).toContain("archivedAt");
-    expect(view("SharedGroup").required).toContain("archivedAt");
+    expect(view("SyncSharedGroup").required).toContain("archivedAt");
+  });
+
+  // The feed answers with the stored row: totals and status are read-time work nobody did there.
+  it("derives SyncSharedGroup from SharedGroup without what a read computes", () => {
+    const stored = Object.keys(view("SyncSharedGroup").properties);
+    expect(Object.keys(view("SharedGroup").properties)).toEqual([
+      ...stored.slice(0, stored.indexOf("currency") + 1),
+      "totals",
+      "status",
+      ...stored.slice(stored.indexOf("currency") + 1),
+    ]);
   });
 
   it("derives SyncTransaction from the Transaction view instead of copying it", () => {

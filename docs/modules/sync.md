@@ -73,7 +73,7 @@ The feed owns no data and no writes: it is a merge over nine repositories. The b
 
 `contacts`, `sharedGroups`, `sharedExpenses` and `settlements` come down the same feed as everything else. What they hold is the **fact** — the outing, its people, its lines, the split, who fronted each one and what has been settled — and nothing of anybody's ledger: no account, no category, no note, no `countsAsYours` and no link to a movement. Those live on the user's own transactions, which travel in `transactions` as they always did.
 
-That separation is not tidiness: it is what makes the second delivery possible. The day a group is shown to the person you split with, the rows above are the ones that can be shown as they are, and nothing has to be stripped out of them first ([settlements.md](settlements.md), [shared-groups.md](shared-groups.md)).
+That separation is not tidiness: it is what makes the second delivery possible. The day a group is shown to the person you split with, the group, its expenses and its payments are the rows that can be shown as they are, with nothing to strip out of them first ([settlements.md](settlements.md), [shared-groups.md](shared-groups.md)). **A contact is not one of them**: it is the owner's address book — it carries an email and the `linkedUserId` that an invitation will fill — and what the other side would ever see of it is a name and a colour.
 
 ### Paging, and why the cursor goes backwards at the end
 
@@ -82,6 +82,8 @@ Send `nextCursor` back as `cursor` until `hasMore` is false. While `hasMore` is 
 **When `hasMore` is false, the cursor is deliberately 60 seconds behind `serverTime`.** `updatedAt` is stamped by the application server (Mongoose timestamps), not by MongoDB, so two instances with drifted clocks can confirm writes out of order: a row stamped `12:00:00` can become visible *after* one stamped `12:00:01`. A watermark set to the last row read would skip it forever. Rows inside that window arrive again on the next pull; the client applies by `id` with an upsert, so reprocessing them costs nothing.
 
 The alternative — a `ChangeLog` collection with a monotonic `seq` per user — is exact and needs no window, at the price of an extra write per operation. It is not needed while data belongs to exactly one user.
+
+A group comes down as stored too: `totals` and `status` are not in it. Both are worked out from the group's live expenses on every read of `GET /shared-groups`, and the client already holds those expenses, so the feed would be paying for an aggregation per group to send a figure the mirror can add up itself.
 
 ### Budgets come as stored, not as the view
 
@@ -190,7 +192,7 @@ is lost and no balance moved. `syncBatch.mongo.test.ts` holds the case.
 
 ### What a batch may carry, beyond the body
 
-Most operations need the body the matching route takes and nothing else. Four of them need what that route reads from its **path**, and `payload.params` carries it: `groupId` for creating, editing or deleting an expense of a group, and `partyId` for taking somebody out of a group or undoing a write-off. Missing it rejects **that operation** with `VALIDATION`, like any other bad body: the envelope is still valid and the rest of the batch runs.
+Most operations need the body the matching route takes and nothing else. Five of them need what that route reads from its **path**, and `payload.params` carries it: `groupId` for creating, editing or deleting an expense of a group, and `partyId` for taking somebody out of a group or undoing a write-off. `partyId` is the batch's one name for two segments — the route spells it `contactId` when it removes a participant and `partyId` when it undoes a write-off, and both are a contact or, for a block of guests, its expense. Missing it rejects **that operation** with `VALIDATION` and its `details`, like any other bad body: the envelope is still valid and the rest of the batch runs. A `groupId` also counts as a dependency, so an expense whose group failed earlier in the batch answers `blocked` rather than `rejected`.
 
 ### Reconciliation, per entity
 
@@ -229,6 +231,8 @@ Every entity in the feed carries `(userId, updatedAt, _id)`. The keyset predicat
 The index has **no partial filter**: a filter on `archivedAt`/`deletedAt` would exclude exactly the rows the feed exists to report.
 
 Adding a new entity to the sync feed means adding this index to it in the same change. It is invariant 5 of the offline contract, not an optimization. The four of the shared layer — contacts, groups, expenses and payments — declared theirs when they were written, before the feed carried them.
+
+**One page costs one read per source**, nine of them plus the profile, each of `limit + 1` whole documents. They are all keyset scans over their own index, so they are cheap per row, but the page keeps only `limit` of what they bring: with one entity dominating a page the other eight are read for nothing. The lever, when it is worth pulling, is reading `{_id, updatedAt}` first — covered by the index — and fetching whole documents only for the rows that made the page. The feed caps rows, never bytes.
 
 `syncops` carries a TTL index on `createdAt` (`expireAfterSeconds` = 30 days) and is keyed by `${userId}:${opId}`, so two users' opIds can never collide and the lookup per operation is a primary-key read.
 

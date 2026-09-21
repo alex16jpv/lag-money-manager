@@ -5,7 +5,6 @@ import { Category } from "../../domain/entities/Category";
 import { ISyncOpRepository } from "../../domain/repositories/syncOp/ISyncOpRepository";
 import { ErrorCode } from "../../shared/errorCodes";
 import { describeFailure } from "../../shared/errorResponse";
-import { ApiError } from "../../shared/errors";
 import {
   SYNC_ACTIONS,
   SYNC_LANDED_STATUSES,
@@ -89,6 +88,8 @@ interface Handler {
   accountFields?: readonly string[];
   // The route removes the row, and a 404 may mean it is already gone, which is what was wanted (§5.4).
   removesRow?: boolean;
+  // What the matching route reads from its path; without it the operation is refused, not run.
+  params?: readonly PathParam[];
   // Conservative: what it cannot compare answers false and the conflict stands.
   holds?: (current: unknown, body: Body) => boolean;
   run: (args: RunArgs) => Promise<unknown>;
@@ -96,21 +97,11 @@ interface Handler {
 
 const ACCOUNT_SIDES = ["fromAccountId", "toAccountId"] as const;
 
-/** What the matching route reads from its path; missing is the client's mistake, not a fault. */
-function pathParam(
-  op: SyncOperationInput,
-  name: "groupId" | "partyId",
-): string {
-  const value = op.payload.params?.[name];
-  if (!value) {
-    throw new ApiError(
-      "BadRequest",
-      `payload.params.${name} is required for ${op.entity}:${op.action}`,
-      "VALIDATION",
-    );
-  }
-  return value;
-}
+type PathParam = "groupId" | "partyId";
+
+/** What the matching route reads from its path; `execute` refuses the operation without it. */
+const pathParam = (op: SyncOperationInput, name: PathParam): string =>
+  op.payload.params?.[name] as string;
 
 function sameValue(stored: unknown, sent: unknown): boolean {
   if (sent === null || sent === undefined) {
@@ -180,6 +171,19 @@ function redirect(
     typeof id === "string" ? (merged.get(id) ?? id) : id;
   const next = { ...body };
   for (const field of fields) {
+    // `rows[].id`: the one nested shape the contract has, a list of objects naming a category.
+    const [outer, inner] = field.split("[].");
+    if (inner) {
+      const rows = next[outer];
+      if (Array.isArray(rows)) {
+        next[outer] = rows.map((row) =>
+          row && typeof row === "object"
+            ? { ...row, [inner]: swap((row as Body)[inner]) }
+            : row,
+        );
+      }
+      continue;
+    }
     const value = next[field];
     next[field] = Array.isArray(value) ? value.map(swap) : swap(value);
   }
@@ -477,6 +481,7 @@ export class SyncBatchService {
           ),
       },
       "sharedGroup:removeParticipant": {
+        params: ["partyId"],
         run: ({ op, id, ctx, guard }) =>
           this.sharedGroups.removeParticipant(
             id,
@@ -491,6 +496,7 @@ export class SyncBatchService {
           this.sharedGroups.writeOff(id, body as never, ctx.userId, guard),
       },
       "sharedGroup:undoWriteOff": {
+        params: ["partyId"],
         run: ({ op, id, ctx, guard }) =>
           this.sharedGroups.undoWriteOff(
             id,
@@ -502,6 +508,7 @@ export class SyncBatchService {
       "sharedExpense:create": {
         body: bodyOf(v.createSharedExpenseSchema),
         create: true,
+        params: ["groupId"],
         run: ({ op, body, ctx, outcome }) =>
           this.sharedExpenses.createExpense(
             {
@@ -515,6 +522,7 @@ export class SyncBatchService {
       "sharedExpense:update": {
         body: bodyOf(v.updateSharedExpenseSchema),
         holds: fieldsHold(),
+        params: ["groupId"],
         run: ({ op, id, body, ctx, guard }) =>
           this.sharedExpenses.updateExpense(
             id,
@@ -525,7 +533,8 @@ export class SyncBatchService {
           ),
       },
       "sharedExpense:delete": {
-        removesRow: true,
+        // No `removesRow`: deleting one twice is idempotent in its own service.
+        params: ["groupId"],
         run: ({ op, id, ctx, guard }) =>
           this.sharedExpenses.deleteExpense(
             id,
@@ -537,6 +546,8 @@ export class SyncBatchService {
       "settlement:create": {
         body: bodyOf(v.createSettlementSchema),
         create: true,
+        categoryFields: ["categoryId", "categories[].categoryId"],
+        accountFields: ["accountId"],
         run: ({ body, ctx, outcome }) =>
           this.settlements.createSettlement(
             { ...body, userId: ctx.userId } as never,
@@ -545,7 +556,6 @@ export class SyncBatchService {
           ),
       },
       "settlement:delete": {
-        removesRow: true,
         run: ({ id, ctx, guard }) =>
           this.settlements.deleteSettlement(id, ctx.userId, guard),
       },
@@ -595,7 +605,12 @@ export class SyncBatchService {
     merged: Map<string, string>,
   ): Promise<Outcome> {
     // The row is its own dependency: a second write on a failed row repeats the same failure.
-    const rows = [id, ...op.dependsOn.map((dep) => merged.get(dep) ?? dep)];
+    // The group in the path is one too: the client does not have to name what the path already says.
+    const rows = [
+      id,
+      ...op.dependsOn,
+      ...(op.payload.params?.groupId ? [op.payload.params.groupId] : []),
+    ].map((row) => merged.get(row) ?? row);
     const blockedBy = rows
       .map((row) => failed.get(row))
       .find((opId) => opId !== undefined);
@@ -668,6 +683,15 @@ export class SyncBatchService {
         };
       }
       body = redirect(parsed.data as Body, handler.categoryFields, merged);
+    }
+
+    for (const name of handler.params ?? []) {
+      if (!op.payload.params?.[name]) {
+        return rejected(
+          `payload.params.${name}`,
+          `payload.params.${name} is required for ${op.entity}:${op.action}`,
+        );
+      }
     }
 
     const args: RunArgs = {

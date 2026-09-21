@@ -81,7 +81,7 @@ Every write accepts `If-Match: <updatedAt ISO>` and answers `409 STALE_UPDATE` w
 | -------------------------------- | ------------------------------------------------------------------------------- |
 | `{ userId: 1, _id: 1 }`          | Every read is user-scoped, and the listing's keyset runs over `_id`             |
 | `{ userId: 1, name: 1 }` unique  | One **active** name per user (`partialFilterExpression: { archivedAt: null }`), with the `es` strength-2 collation that folds case and keeps accents |
-| `{ userId: 1, updatedAt: 1, _id: 1 }` | The keyset the offline change feed will scan. Declared with the model so the index exists before the feed reads it |
+| `{ userId: 1, updatedAt: 1, _id: 1 }` | The keyset the offline change feed scans ([sync.md](sync.md)); archived contacts travel with it, which is how a device learns one is gone |
 
 `email` carries **no** uniqueness constraint: an invitation names a contact, so two contacts sharing an address is ambiguous to nobody, and refusing it would be a rule the product never asked for.
 

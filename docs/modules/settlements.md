@@ -86,4 +86,4 @@ Money is integer cents here too. **The payment carries no account and no categor
 
 - **It does not write `countsAsYours` by itself.** `SharedLedgerService` does, and it is the only thing that does.
 - **It does not write off anything.** Giving up on what somebody owes is a decision about a group, and it lives there ([shared-groups.md](shared-groups.md)); it moves no figure either way.
-- **It does not sync.** The index the change feed will need is declared; `SyncService` does not carry it yet.
+- **It does not decide what travels.** Payments ride the change feed with their tombstone, and come back from the outbox as `settlement:create` and `settlement:delete` ([sync.md](sync.md)).

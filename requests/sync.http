@@ -271,7 +271,7 @@ POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "id": "0195a000-0000-7000-8000-0000000000d1", "name": "Sync merge cat", "type": "EXPENSE" }
+{ "id": "{{sharedContactId}}", "name": "Sync merge cat", "type": "EXPENSE" }
 
 ### ...y ahora el lote la crea con OTRO id, el nombre en minúsculas y el mismo
 ### tipo: sale `merged`, `mergedInto` = el id del servidor, y el gasto del mismo
@@ -288,7 +288,7 @@ Content-Type: application/json
       "occurredAt": "2026-09-05T11:00:00.000Z",
       "entity": "category",
       "action": "create",
-      "id": "0195a000-0000-7000-8000-0000000000d2",
+      "id": "{{sharedGroupId}}",
       "payload": { "body": { "name": "sync merge cat", "type": "EXPENSE" } },
       "opVersion": 1
     },
@@ -299,8 +299,8 @@ Content-Type: application/json
       "entity": "transaction",
       "action": "create",
       "id": "{{$guid}}",
-      "payload": { "body": { "type": "EXPENSE", "amount": 3500, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}", "categoryId": "0195a000-0000-7000-8000-0000000000d2" } },
-      "dependsOn": ["0195a000-0000-7000-8000-0000000000d2"],
+      "payload": { "body": { "type": "EXPENSE", "amount": 3500, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}", "categoryId": "{{sharedGroupId}}" } },
+      "dependsOn": ["{{sharedGroupId}}"],
       "opVersion": 1
     }
   ]
@@ -353,7 +353,7 @@ POST {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "id": "0195a000-0000-7000-8000-0000000000d3", "name": "Sync taken name", "type": "CASH", "balance": 10 }
+{ "id": "{{sharedExpenseId}}", "name": "Sync taken name", "type": "CASH", "balance": 10 }
 
 ### Categoría archivada online: el movimiento se guarda SIN categoría, con
 ### pendingDetails y warnings ["CATEGORY_ARCHIVED_DROPPED"]. Primero, archivarla.
@@ -361,10 +361,10 @@ POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "id": "0195a000-0000-7000-8000-0000000000d4", "name": "Sync archived cat", "type": "EXPENSE" }
+{ "id": "{{sharedSettlementId}}", "name": "Sync archived cat", "type": "EXPENSE" }
 
 ### Archivarla
-DELETE {{baseUrl}}/categories/0195a000-0000-7000-8000-0000000000d4
+DELETE {{baseUrl}}/categories/{{sharedSettlementId}}
 Authorization: Bearer {{token}}
 
 ### El movimiento offline que la nombra: applied, sin categoría, para revisar
@@ -381,7 +381,7 @@ Content-Type: application/json
       "entity": "transaction",
       "action": "create",
       "id": "{{$guid}}",
-      "payload": { "body": { "type": "EXPENSE", "amount": 2, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}", "categoryId": "0195a000-0000-7000-8000-0000000000d4" } },
+      "payload": { "body": { "type": "EXPENSE", "amount": 2, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}", "categoryId": "{{sharedSettlementId}}" } },
       "opVersion": 1
     }
   ]
@@ -433,6 +433,14 @@ Content-Type: application/json
 ### ---------- Lo compartido, por la misma puerta (T-118) ----------
 
 ### Una salida entera desde la bandeja de salida: contacto, grupo, gasto y cobro
+### Los ids se generan por envío: un `@var = {{$guid}}` se resuelve una vez por
+### petición, así que las cuatro operaciones hablan de las mismas filas y el
+### archivo se puede volver a ejecutar sin que todo conteste "ya estaba".
+@sharedContactId = {{$guid}}
+@sharedGroupId = {{$guid}}
+@sharedExpenseId = {{$guid}}
+@sharedSettlementId = {{$guid}}
+
 # @name sharedBatch
 POST {{baseUrl}}/sync
 Authorization: Bearer {{token}}
@@ -442,27 +450,27 @@ Content-Type: application/json
   "operations": [
     {
       "opId": "{{$guid}}", "seq": 20, "occurredAt": "2026-09-05T10:00:00.000Z",
-      "entity": "contact", "action": "create", "id": "0195a000-0000-7000-8000-0000000000d1",
+      "entity": "contact", "action": "create", "id": "{{sharedContactId}}",
       "payload": { "body": { "name": "Ana offline {{$randomInt 100 999}}" } },
       "opVersion": 1
     },
     {
       "opId": "{{$guid}}", "seq": 21, "occurredAt": "2026-09-05T10:01:00.000Z",
-      "entity": "sharedGroup", "action": "create", "id": "0195a000-0000-7000-8000-0000000000d2",
-      "payload": { "body": { "name": "Salida offline {{$randomInt 100 999}}", "contactIds": ["0195a000-0000-7000-8000-0000000000d1"] } },
-      "dependsOn": ["0195a000-0000-7000-8000-0000000000d1"], "opVersion": 1
+      "entity": "sharedGroup", "action": "create", "id": "{{sharedGroupId}}",
+      "payload": { "body": { "name": "Salida offline {{$randomInt 100 999}}", "contactIds": ["{{sharedContactId}}"] } },
+      "dependsOn": ["{{sharedContactId}}"], "opVersion": 1
     },
     {
       "opId": "{{$guid}}", "seq": 22, "occurredAt": "2026-09-05T10:02:00.000Z",
-      "entity": "sharedExpense", "action": "create", "id": "0195a000-0000-7000-8000-0000000000d3",
-      "payload": { "params": { "groupId": "0195a000-0000-7000-8000-0000000000d2" }, "body": { "description": "Cena", "date": "2026-09-05T02:00:00.000Z", "amount": 90000 } },
-      "dependsOn": ["0195a000-0000-7000-8000-0000000000d2"], "opVersion": 1
+      "entity": "sharedExpense", "action": "create", "id": "{{sharedExpenseId}}",
+      "payload": { "params": { "groupId": "{{sharedGroupId}}" }, "body": { "description": "Cena", "date": "2026-09-05T02:00:00.000Z", "amount": 90000 } },
+      "dependsOn": ["{{sharedGroupId}}"], "opVersion": 1
     },
     {
       "opId": "{{$guid}}", "seq": 23, "occurredAt": "2026-09-05T10:03:00.000Z",
-      "entity": "settlement", "action": "create", "id": "0195a000-0000-7000-8000-0000000000d4",
-      "payload": { "body": { "contactId": "0195a000-0000-7000-8000-0000000000d1", "date": "2026-09-05T15:00:00.000Z", "collected": 20000, "accountId": "{{batchAccId}}" } },
-      "dependsOn": ["0195a000-0000-7000-8000-0000000000d1"], "opVersion": 1
+      "entity": "settlement", "action": "create", "id": "{{sharedSettlementId}}",
+      "payload": { "body": { "contactId": "{{sharedContactId}}", "date": "2026-09-05T15:00:00.000Z", "collected": 20000, "accountId": "{{batchAccId}}" } },
+      "dependsOn": ["{{sharedContactId}}"], "opVersion": 1
     }
   ]
 }

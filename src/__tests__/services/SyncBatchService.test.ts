@@ -734,6 +734,40 @@ describe("SyncBatchService", () => {
       expect(results[2].blockedBy).toBe(results[1].opId);
     });
 
+    it("blocks an expense on the group in its path, with no dependsOn", async () => {
+      const groupId = uuid(60);
+      const failing = op({
+        entity: "sharedGroup",
+        action: "create",
+        id: groupId,
+        payload: { body: { name: "Night out" } },
+      });
+      sharedGroups.createGroup.mockRejectedValueOnce(
+        new ApiError("BadRequest", "no", "VALIDATION"),
+      );
+
+      const { results } = await service.apply(ctx, [
+        failing,
+        op({
+          entity: "sharedExpense",
+          action: "create",
+          id: uuid(61),
+          payload: {
+            params: { groupId },
+            body: {
+              description: "Dinner",
+              date: "2026-08-10T18:00:00.000Z",
+              amount: 90000,
+            },
+          },
+        }),
+      ]);
+
+      expect(results.map((r) => r.status)).toEqual(["rejected", "blocked"]);
+      expect(results[1].blockedBy).toBe(failing.opId);
+      expect(sharedExpenses.createExpense).not.toHaveBeenCalled();
+    });
+
     it("does not block on a dependency that has no operation in this batch", async () => {
       transactions.createTransaction.mockResolvedValue({ id: uuid(30) });
 
@@ -1523,6 +1557,221 @@ describe("SyncBatchService", () => {
         status: "conflict",
         code: "STALE_UPDATE",
       });
+    });
+  });
+  /**
+   * Every action of the shared layer, and what it hands its service. Three
+   * strings in a row compile in any order: only this says which is which.
+   */
+  describe("the shared layer [T-118]", () => {
+    const GROUP = uuid(701);
+    const PARTY = uuid(702);
+    const ROW = uuid(703);
+
+    const params = { groupId: GROUP, partyId: PARTY };
+
+    it.each([
+      [
+        "contact:create",
+        { body: { name: "Ana" } },
+        () => contacts.createContact,
+        [{ id: ROW, name: "Ana", userId: USER }, expect.anything()],
+      ],
+      [
+        "contact:update",
+        { body: { name: "Ana M" } },
+        () => contacts.updateContact,
+        [ROW, { name: "Ana M" }, USER, undefined],
+      ],
+      [
+        "contact:archive",
+        {},
+        () => contacts.deleteContact,
+        [ROW, USER, undefined],
+      ],
+      [
+        "contact:restore",
+        { body: { name: "Ana" } },
+        () => contacts.restoreContact,
+        [ROW, USER, "Ana", undefined],
+      ],
+      [
+        "sharedGroup:create",
+        { body: { name: "Night out" } },
+        () => sharedGroups.createGroup,
+        [{ id: ROW, name: "Night out", userId: USER }, expect.anything()],
+      ],
+      [
+        "sharedGroup:update",
+        { body: { name: "Trip" } },
+        () => sharedGroups.updateGroup,
+        [ROW, { name: "Trip" }, USER, undefined],
+      ],
+      [
+        "sharedGroup:archive",
+        {},
+        () => sharedGroups.deleteGroup,
+        [ROW, USER, undefined],
+      ],
+      [
+        "sharedGroup:restore",
+        { body: {} },
+        () => sharedGroups.restoreGroup,
+        [ROW, USER, undefined, undefined],
+      ],
+      [
+        "sharedGroup:addParticipants",
+        { body: { contactIds: [PARTY] } },
+        () => sharedGroups.addParticipants,
+        [ROW, { contactIds: [PARTY] }, USER, undefined],
+      ],
+      [
+        "sharedGroup:removeParticipant",
+        { params },
+        () => sharedGroups.removeParticipant,
+        [ROW, PARTY, USER, undefined],
+      ],
+      [
+        "sharedGroup:writeOff",
+        { params, body: { contactId: PARTY } },
+        () => sharedGroups.writeOff,
+        [ROW, { contactId: PARTY }, USER, undefined],
+      ],
+      [
+        "sharedGroup:undoWriteOff",
+        { params },
+        () => sharedGroups.undoWriteOff,
+        [ROW, PARTY, USER, undefined],
+      ],
+      [
+        "sharedExpense:create",
+        {
+          params,
+          body: {
+            description: "Dinner",
+            date: "2026-08-10T18:00:00.000Z",
+            amount: 90000,
+          },
+        },
+        () => sharedExpenses.createExpense,
+        [
+          expect.objectContaining({ id: ROW, groupId: GROUP, userId: USER }),
+          expect.anything(),
+        ],
+      ],
+      [
+        "sharedExpense:update",
+        { params, body: { amount: 80000 } },
+        () => sharedExpenses.updateExpense,
+        [ROW, { amount: 80000 }, USER, undefined, GROUP],
+      ],
+      [
+        "sharedExpense:delete",
+        { params },
+        () => sharedExpenses.deleteExpense,
+        [ROW, USER, undefined, GROUP],
+      ],
+      [
+        "settlement:create",
+        {
+          body: {
+            contactId: PARTY,
+            date: "2026-08-25T18:00:00.000Z",
+            collected: 20000,
+            accountId: uuid(704),
+          },
+        },
+        () => settlements.createSettlement,
+        [
+          expect.objectContaining({ id: ROW, userId: USER, collected: 20000 }),
+          TZ,
+          expect.anything(),
+        ],
+      ],
+      [
+        "settlement:delete",
+        {},
+        () => settlements.deleteSettlement,
+        [ROW, USER, undefined],
+      ],
+    ])(
+      "%s calls its service the way its route does",
+      async (name, payload, method, args) => {
+        const [entity, action] = (name as string).split(":");
+
+        const { results } = await service.apply(ctx, [
+          op({
+            entity: entity as never,
+            action: action as string,
+            id: ROW,
+            payload: payload as never,
+          }),
+        ]);
+
+        expect(results[0]?.status).toBe("applied");
+        expect((method as () => jest.Mock)()).toHaveBeenCalledWith(
+          ...(args as unknown[]),
+        );
+      },
+    );
+
+    it("refuses the operation, not the batch, when the path it needs is missing", async () => {
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "sharedExpense",
+          action: "delete",
+          id: ROW,
+        }),
+        op({ entity: "contact", action: "archive", id: uuid(705) }),
+      ]);
+
+      expect(results[0]).toMatchObject({
+        status: "rejected",
+        code: "VALIDATION",
+        details: [{ field: "payload.params.groupId" }],
+      });
+      expect(results[1]?.status).toBe("applied");
+    });
+
+    it("redirects a merged category into the payment that names it", async () => {
+      const mine = uuid(706);
+      const theirs = uuid(707);
+      categories.findActiveByName.mockResolvedValue(category(theirs));
+      categories.getCategoryById.mockResolvedValue(category(theirs));
+
+      await service.apply(ctx, [
+        op({
+          entity: "category",
+          action: "create",
+          id: mine,
+          payload: { body: { name: "Comida", type: "EXPENSE" } },
+        }),
+        op({
+          entity: "settlement",
+          action: "create",
+          id: ROW,
+          payload: {
+            body: {
+              contactId: PARTY,
+              date: "2026-08-25T18:00:00.000Z",
+              paid: 10000,
+              accountId: uuid(708),
+              categoryId: mine,
+              categories: [{ expenseId: uuid(709), categoryId: mine }],
+            },
+          },
+        }),
+      ]);
+
+      // The category the server already had, both at the top and inside the list.
+      expect(settlements.createSettlement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          categoryId: theirs,
+          categories: [{ expenseId: expect.any(String), categoryId: theirs }],
+        }),
+        TZ,
+        expect.anything(),
+      );
     });
   });
 });

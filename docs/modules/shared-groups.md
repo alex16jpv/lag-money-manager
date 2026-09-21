@@ -146,4 +146,4 @@ Money is stored as integer cents, shares included; `percent` is not money and is
 - **It knows nothing about categories.** The shared layer carries none, on purpose: categories are private and never travel.
 - **It records no payments.** What has been settled reaches a share through `SharedLedgerService`, and the payments themselves are [settlements.md](settlements.md).
 - **It moves no money, ever.** Not even a write-off: what that changes is what is owed.
-- **It does not sync.** Contacts, groups and expenses reach the offline mirror in the task that adds them to the change feed; the indexes they will need are already declared.
+- **It does not decide what travels.** The group, its people and its expenses ride the change feed like everything else ([sync.md](sync.md)), archived and deleted rows included.

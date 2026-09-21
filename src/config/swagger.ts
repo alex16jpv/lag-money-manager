@@ -105,6 +105,14 @@ const debtFieldDescription = (field: DebtAccountField): string =>
  * Derived from the properties rather than listed by hand: a new field is
  * required by default, which is the safe direction to forget.
  */
+const without = (
+  properties: Record<string, unknown>,
+  drop: readonly string[],
+): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(properties).filter(([key]) => !drop.includes(key)),
+  );
+
 const withRequired = <T extends { properties: Record<string, unknown> }>(
   view: T,
   optional: readonly string[] = [],
@@ -343,6 +351,11 @@ const responseViews = {
         description:
           "What the split resolved to. The shares always add up to the expense: the odd minor unit goes to whoever paid.",
       },
+      collected: {
+        ...money,
+        description:
+          "How much of this share has been settled. Never typed: it is the imputation of the live payments, rewritten by every write that touches a split or a payment.",
+      },
     },
   }),
   SharedSplit: withRequired({
@@ -424,6 +437,11 @@ const responseViews = {
                 ...uuid,
                 nullable: true,
                 description: "GUESTS only: the expense the block lives in.",
+              },
+              amount: {
+                ...money,
+                description:
+                  "What was open when it was decided: the ceiling of what is given up, never a figure that moves.",
               },
               at: dateTime,
             },
@@ -792,19 +810,6 @@ const syncViews = {
       },
     },
   }),
-  SyncSharedExpense: withRequired({
-    type: "object",
-    description:
-      "An expense of a shared group in the change feed: the usual shape plus the tombstone.",
-    properties: {
-      ...responseViews.SharedExpense.properties,
-      deletedAt: {
-        ...nullableDateTime,
-        description:
-          "Set when the expense was deleted. Only the sync feed reports it.",
-      },
-    },
-  }),
   SyncSettlement: withRequired({
     type: "object",
     description:
@@ -818,6 +823,20 @@ const syncViews = {
       },
     },
   }),
+  SyncSharedGroup: withRequired(
+    {
+      type: "object",
+      description:
+        "A group as STORED, not the view GET /shared-groups returns: no " +
+        "totals and no status. Both are worked out from the group's expenses " +
+        "on every read, and the client already holds the expenses.",
+      properties: without(responseViews.SharedGroup.properties, [
+        "totals",
+        "status",
+      ]),
+    },
+    ["color"],
+  ),
   SyncBudget: withRequired({
     type: "object",
     description:
@@ -912,11 +931,12 @@ const syncChangesResponse = withRequired({
         },
         sharedGroups: {
           type: "array",
-          items: { $ref: "#/components/schemas/SharedGroup" },
+          items: { $ref: "#/components/schemas/SyncSharedGroup" },
         },
         sharedExpenses: {
           type: "array",
-          items: { $ref: "#/components/schemas/SyncSharedExpense" },
+          // The expense's own view already carries its tombstone, so there is nothing to add.
+          items: { $ref: "#/components/schemas/SharedExpense" },
         },
         settlements: {
           type: "array",

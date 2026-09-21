@@ -6,6 +6,7 @@
 import request from "supertest";
 
 import app from "../../app";
+import { swaggerSpec } from "../../config/swagger";
 import { connect, disconnect, dropDatabase } from "./support";
 
 interface Session {
@@ -30,6 +31,25 @@ const CONTACT_ID = "019576a0-d7b6-7d6d-af6a-2b7545700002";
 const GROUP_ID = "019576a0-d7b6-7d6d-af6a-2b7545700003";
 const EXPENSE_ID = "019576a0-d7b6-7d6d-af6a-2b7545700004";
 const SETTLEMENT_ID = "019576a0-d7b6-7d6d-af6a-2b7545700005";
+const RESPLIT_GROUP_ID = "019576a0-d7b6-7d6d-af6a-2b7545700020";
+const RESPLIT_CONTACTS = [
+  "019576a0-d7b6-7d6d-af6a-2b7545700021",
+  "019576a0-d7b6-7d6d-af6a-2b7545700022",
+];
+const RESPLIT_EXPENSES = [
+  "019576a0-d7b6-7d6d-af6a-2b7545700023",
+  "019576a0-d7b6-7d6d-af6a-2b7545700024",
+  "019576a0-d7b6-7d6d-af6a-2b7545700025",
+];
+
+interface View {
+  properties: Record<string, unknown>;
+  required?: string[];
+}
+
+const view = (name: string): View =>
+  (swaggerSpec as { components: { schemas: Record<string, View> } }).components
+    .schemas[name];
 
 let opCounter = 0;
 const op = (
@@ -200,6 +220,46 @@ describe("the shared layer through sync, against mongod", () => {
     }
   });
 
+  // The list above only catches what somebody thought of: this one catches everything else.
+  it("carries in every shared row exactly the fields the OpenAPI declares", async () => {
+    const changes = await feed();
+    const rowsOf = (key: string): Record<string, unknown>[] =>
+      changes[key] as unknown as Record<string, unknown>[];
+
+    const check = (row: Record<string, unknown>, name: string): void => {
+      const declared = Object.keys(view(name).properties);
+      expect({
+        [name]: Object.keys(row).filter((key) => !declared.includes(key)),
+      }).toEqual({ [name]: [] });
+      expect({
+        [name]: (view(name).required ?? []).filter((key) => !(key in row)),
+      }).toEqual({ [name]: [] });
+    };
+
+    for (const [key, name] of [
+      ["contacts", "Contact"],
+      ["sharedGroups", "SyncSharedGroup"],
+      ["sharedExpenses", "SharedExpense"],
+      ["settlements", "SyncSettlement"],
+    ] as const) {
+      expect(rowsOf(key).length).toBeGreaterThan(0);
+      for (const row of rowsOf(key)) check(row, name);
+    }
+
+    for (const group of rowsOf("sharedGroups")) {
+      for (const one of group.participants as Record<string, unknown>[]) {
+        check(one, "SharedGroupParticipant");
+      }
+    }
+    for (const expense of rowsOf("sharedExpenses")) {
+      const split = expense.split as Record<string, unknown>;
+      check(split, "SharedSplit");
+      for (const share of split.shares as Record<string, unknown>[]) {
+        check(share, "SharedShare");
+      }
+    }
+  });
+
   it("rejects the operation, not the batch, when the path it needs is missing", async () => {
     const [result] = await push([
       op({
@@ -233,5 +293,82 @@ describe("the shared layer through sync, against mongod", () => {
 
     expect(first[0]?.status).toBe("applied");
     expect(second[0]?.status).toBe("duplicate");
+  });
+
+  // One write, many rows changed: what the mocks cannot see is that all of them travel.
+  it("brings back every expense a new participant re-split", async () => {
+    await push([
+      ...RESPLIT_CONTACTS.map((id, i) =>
+        op({
+          entity: "contact",
+          action: "create",
+          id,
+          payload: { body: { name: `Resplit ${i}` } },
+        }),
+      ),
+      op({
+        entity: "sharedGroup",
+        action: "create",
+        id: RESPLIT_GROUP_ID,
+        payload: {
+          body: { name: "Trip", contactIds: [RESPLIT_CONTACTS[0]] },
+        },
+      }),
+      ...RESPLIT_EXPENSES.map((id, i) =>
+        op({
+          entity: "sharedExpense",
+          action: "create",
+          id,
+          payload: {
+            params: { groupId: RESPLIT_GROUP_ID },
+            body: {
+              description: `Leg ${i}`,
+              date: `2026-08-1${i}T18:00:00.000Z`,
+              amount: 60_000,
+            },
+          },
+        }),
+      ),
+    ]);
+
+    const before = await as(request(app).get("/sync/changes?limit=100"));
+    const since = before.body.serverTime as string;
+
+    const [added] = await push([
+      op({
+        entity: "sharedGroup",
+        action: "addParticipants",
+        id: RESPLIT_GROUP_ID,
+        payload: {
+          body: {
+            contactIds: [RESPLIT_CONTACTS[1]],
+            applyToExistingExpenses: true,
+          },
+        },
+      }),
+    ]);
+    expect(added?.status).toBe("applied");
+
+    const res = await as(
+      request(app).get(
+        `/sync/changes?limit=100&since=${encodeURIComponent(since)}`,
+      ),
+    );
+    expect(res.status).toBe(200);
+    const expenses = (
+      res.body.changes.sharedExpenses as {
+        id: string;
+        split: { shares: { amount: number }[] };
+      }[]
+    ).filter((one) => RESPLIT_EXPENSES.includes(one.id));
+
+    expect(expenses.map((one) => one.id).sort()).toEqual(
+      [...RESPLIT_EXPENSES].sort(),
+    );
+    for (const expense of expenses) {
+      expect(expense.split.shares.map((share) => share.amount)).toEqual([
+        20_000, 20_000, 20_000,
+      ]);
+    }
   });
 });
