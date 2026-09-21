@@ -19,6 +19,7 @@ import {
   TRANSACTION_SOURCES,
   TRANSACTION_TYPES,
   TransactionSource,
+  TYPES_RECORDED_ELSEWHERE,
 } from "../../shared/constants";
 import { CATEGORY_ICONS } from "../../shared/icons";
 import { Locale, LOCALES } from "../../shared/locale";
@@ -63,6 +64,10 @@ const transactionTypeValues = Object.keys(TRANSACTION_TYPES) as [
   string,
   ...string[],
 ];
+// A payment between people is recorded by a settle-up, which writes the shared side with it.
+const writableTypeValues = Object.keys(TRANSACTION_TYPES).filter(
+  (t) => !TYPES_RECORDED_ELSEWHERE.includes(t),
+) as [string, ...string[]];
 const transactionSourceValues = Object.keys(TRANSACTION_SOURCES) as [
   TransactionSource,
   ...TransactionSource[],
@@ -702,6 +707,67 @@ export const updateSharedExpenseSchema = z.object({
     }),
 });
 
+export const getSettlementsSchema = z.object({
+  query: z.object({
+    limit: z.coerce
+      .number()
+      .int("Limit must be an integer")
+      .min(1, "Limit must be at least 1")
+      .max(MAX_LIMIT, `Limit must be at most ${MAX_LIMIT}`)
+      .optional(),
+    offset: z.coerce
+      .number()
+      .int("Offset must be an integer")
+      .min(0, "Offset must be non-negative")
+      .optional(),
+    cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
+    contactId: z.string().uuid("contactId must be a valid UUID").optional(),
+    expenseId: z.string().uuid("expenseId must be a valid UUID").optional(),
+  }),
+});
+
+export const createSettlementSchema = z.object({
+  body: z
+    .object({
+      id: clientMintedId,
+      contactId: z.string().uuid("contactId must be a valid UUID").optional(),
+      expenseId: z.string().uuid("expenseId must be a valid UUID").optional(),
+      date: isoDate,
+      collected: moneyAmount.optional(),
+      paid: moneyAmount.optional(),
+      outsideApp: z.boolean().optional(),
+      accountId: z.string().uuid("accountId must be a valid UUID").optional(),
+      categoryId: z.string().uuid("categoryId must be a valid UUID").optional(),
+      categories: z
+        .array(
+          z.object({
+            expenseId: z.string().uuid("expenseId must be a valid UUID"),
+            categoryId: z.string().uuid("categoryId must be a valid UUID"),
+          }),
+        )
+        .max(MAX_LIMIT)
+        .optional(),
+    })
+    .superRefine((data, ctx) => {
+      const named = [data.contactId, data.expenseId].filter(Boolean).length;
+      if (named !== 1) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["contactId"],
+          message:
+            "A payment names exactly one counterparty: contactId, or expenseId for its block of guests",
+        });
+      }
+      if (!data.collected && !data.paid) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["collected"],
+          message: "A payment has to move something: collected, paid, or both",
+        });
+      }
+    }),
+});
+
 export const spendingStatsSchema = z.object({
   query: z
     .object({
@@ -974,8 +1040,8 @@ export const createTransactionSchema = z.object({
   body: z
     .object({
       id: clientMintedId,
-      type: z.enum(transactionTypeValues, {
-        error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
+      type: z.enum(writableTypeValues, {
+        error: `Invalid transaction type. Available: ${writableTypeValues.join(", ")}`,
       }),
       amount: moneyAmount,
       date: z.string().datetime({
@@ -1071,8 +1137,8 @@ export const updateTransactionSchema = z.object({
   body: z
     .object({
       type: z
-        .enum(transactionTypeValues, {
-          error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
+        .enum(writableTypeValues, {
+          error: `Invalid transaction type. Available: ${writableTypeValues.join(", ")}`,
         })
         .optional(),
       amount: moneyAmount.optional(),
@@ -1110,7 +1176,7 @@ export const updateTransactionSchema = z.object({
 
 // ADJUSTMENT would create an un-detailable pendingDetails entry: it cannot take a category.
 const quickAddTypeValues = Object.keys(TRANSACTION_TYPES).filter(
-  (t) => t !== "ADJUSTMENT",
+  (t) => t !== "ADJUSTMENT" && !TYPES_RECORDED_ELSEWHERE.includes(t),
 ) as [string, ...string[]];
 
 /**

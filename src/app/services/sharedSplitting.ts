@@ -1,4 +1,3 @@
-import { DomainValidationError } from "../../domain/errors";
 import {
   SharedExpense,
   SharedSplit,
@@ -8,10 +7,11 @@ import {
   SharedGroup,
   SharedParticipant,
 } from "../../domain/entities/SharedGroup";
+import { DomainValidationError } from "../../domain/errors";
 import { SHARE_PARTIES, SPLIT_MODES, SplitMode } from "../../shared/constants";
 import { resolveShares, SplitRow } from "../../shared/splitShares";
-import { DefaultSplitDTO } from "../dtos/SharedGroupDTO";
 import { SplitDTO, SplitShareDTO } from "../dtos/SharedExpenseDTO";
+import { DefaultSplitDTO } from "../dtos/SharedGroupDTO";
 
 const invalid = (message: string): DomainValidationError =>
   new DomainValidationError(message, "split", "SPLIT_INVALID");
@@ -195,6 +195,8 @@ function resolveStated(input: {
           ? (share.fixedAmount ?? null)
           : null,
       amount: amounts[index] as number,
+      // A split states what is owed; what has been paid is the imputation, written by the ledger.
+      collected: 0,
     })),
   };
 }

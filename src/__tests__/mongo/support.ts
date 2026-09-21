@@ -14,6 +14,7 @@ import mongoose from "mongoose";
 import { join } from "path";
 
 import repositoryFactory from "../../app/factories/RepositoryFactory";
+import { sharedLedgerService } from "../../app/factories/sharedLedger";
 import { AccountService } from "../../app/services/AccountService";
 import { BudgetService } from "../../app/services/BudgetService";
 import { CategoryService } from "../../app/services/CategoryService";
@@ -165,7 +166,7 @@ export function services(): {
       accountRepo,
       repositoryFactory.getIdempotencyRepository(),
       categoryRepo,
-      repositoryFactory.getSharedExpenseRepository(),
+      sharedLedgerService,
     ),
     budgets: new BudgetService(
       repositoryFactory.getBudgetRepository(),

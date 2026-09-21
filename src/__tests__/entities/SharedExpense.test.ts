@@ -13,6 +13,7 @@ const split = (): SharedExpense["split"] => ({
       percent: null,
       fixedAmount: null,
       amount: 90000,
+      collected: 0,
     },
   ],
 });

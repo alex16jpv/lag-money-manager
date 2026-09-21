@@ -3,12 +3,12 @@ import jwt from "jsonwebtoken";
 
 import { AuthService } from "../../app/services/AuthService";
 import { CategoryService } from "../../app/services/CategoryService";
+import { User } from "../../domain/entities/User";
 import {
   IRefreshSessionRepository,
   RefreshSession,
   SessionSummary,
 } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
-import { User } from "../../domain/entities/User";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
 
@@ -23,6 +23,18 @@ jest.mock("../../shared/constants", () => ({
   },
   DB_TYPES: { MONGO: "MONGO" },
   ACCOUNT_TYPES: {},
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
+  SHARED_HISTORY_REASONS: {
+    SPLIT: "SPLIT",
+    SPLIT_EDITED: "SPLIT_EDITED",
+    AMOUNT_CHANGED: "AMOUNT_CHANGED",
+    UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
+  },
 }));
 
 jest.mock("../../shared/logger", () => ({

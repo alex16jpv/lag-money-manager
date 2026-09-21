@@ -115,6 +115,13 @@ export interface ITransactionRepository extends IRepository<Transaction> {
     session?: unknown,
   ): Promise<Transaction[]>;
 
+  // Everything one settle-up recorded, so undoing it reverses exactly those movements.
+  listBySettlementId(
+    userId: string,
+    sharedSettlementId: string,
+    session?: unknown,
+  ): Promise<Transaction[]>;
+
   // The link, the figure and the line of history that explains it, in one write.
   applySharedChange(
     id: string,

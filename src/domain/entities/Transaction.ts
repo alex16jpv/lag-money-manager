@@ -38,6 +38,8 @@ export interface TransactionProps {
   countsAsYours?: number;
   sharedExpenseId?: string | null;
   sharedGroupId?: string | null;
+  // The settle-up that recorded this movement: a collection, a refund, or your side of a line.
+  sharedSettlementId?: string | null;
   sharedHistory?: SharedHistoryEntry[];
   createdAt?: Date;
   updatedAt?: Date;
@@ -62,6 +64,7 @@ export class Transaction {
   countsAsYours: number;
   sharedExpenseId: string | null;
   sharedGroupId: string | null;
+  sharedSettlementId: string | null;
   sharedHistory: SharedHistoryEntry[];
   createdAt: Date;
   updatedAt: Date;
@@ -85,6 +88,7 @@ export class Transaction {
     this.countsAsYours = props.countsAsYours ?? props.amount;
     this.sharedExpenseId = props.sharedExpenseId ?? null;
     this.sharedGroupId = props.sharedGroupId ?? null;
+    this.sharedSettlementId = props.sharedSettlementId ?? null;
     this.sharedHistory = props.sharedHistory ?? [];
     this.createdAt = props.createdAt ?? new Date();
     this.updatedAt = props.updatedAt ?? new Date();
@@ -152,6 +156,34 @@ export class Transaction {
         "type",
         "TRANSACTION_NOT_SPLITTABLE",
       );
+    }
+    if (this.sharedExpenseId && this.sharedSettlementId) {
+      throw new DomainValidationError(
+        "A movement is either an expense of a shared group or one a settle-up recorded",
+        "sharedSettlementId",
+      );
+    }
+    if (this.type === "SETTLEMENT") {
+      const sides = [this.fromAccountId, this.toAccountId].filter(Boolean);
+      if (sides.length !== 1) {
+        throw new DomainValidationError(
+          "A payment between people touches exactly one account: fromAccountId (you paid) or toAccountId (you were paid)",
+          "toAccountId",
+        );
+      }
+      if (this.categoryId) {
+        throw new DomainValidationError(
+          "categoryId is not allowed for a payment between people",
+          "categoryId",
+        );
+      }
+      // Recorded by Settle up and nowhere else, so one without its settlement cannot exist.
+      if (!this.sharedSettlementId) {
+        throw new DomainValidationError(
+          "A payment between people is recorded by a settle-up",
+          "sharedSettlementId",
+        );
+      }
     }
     if (this.type === "EXPENSE") {
       if (!this.fromAccountId) {

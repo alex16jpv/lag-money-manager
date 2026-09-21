@@ -37,7 +37,7 @@ A split states a **mode** and one **share** per party. A party is `USER` (you), 
 | `EXACT`      | `fixedAmount`, adding up to the expense                                         |
 | `FIXED_REST` | `fixedAmount` on the shares you pin; the rest divides between the others        |
 
-Every share also carries the resolved `amount`, which is the only figure anything downstream reads.
+Every share also carries the resolved `amount`, which is the only figure anything downstream reads, and **`collected`, which is how much of it has been settled**. `collected` is never typed: it is the imputation of the live payments, rewritten from scratch by every write that touches a split or a payment ([settlements.md](settlements.md)).
 
 **Shares need not cover every participant.** Leaving somebody out of one expense is exactly what an expense's own split is for. What they must do is name only people who are in the group, name nobody twice, and include whoever paid — the payer's share is the one that absorbs the remainder.
 
@@ -60,7 +60,7 @@ Everything hangs off `/shared-groups`.
 
 ### `GET /shared-groups`
 
-Paginated (offset + cursor, keyset over `_id`), with `ids`, `contactId` and `includeArchived` filters. Every row carries `totals`.
+Paginated (offset + cursor, keyset over `_id`), with `ids`, `contactId` and `includeArchived` filters. Every row carries `totals` — what it cost, your share, **what people still owe you, what you still owe them and what has come back** — and `status`, which is `SETTLED` once nobody owes anything here. All of it is derived on every read; none of it is stored, because a figure that can only be kept in step is a figure that goes out of step.
 
 ### `POST /shared-groups`
 
@@ -132,5 +132,6 @@ Money is stored as integer cents, shares included; `percent` is not money and is
 
 - **It does not touch the user's money.** No balance, category or budget is read or written from here, and the only thing it knows about a transaction is whether one can be split into it.
 - **It knows nothing about categories.** The shared layer carries none, on purpose: categories are private and never travel.
-- **It has no payments, no write-offs and no `Settled` state.** All three are about money that came back, and a group is `Open` until something says otherwise — which is why the state is not stored as a field that could only ever hold one value today.
+- **It records no payments.** What has been settled reaches a share through `SharedLedgerService`, and the payments themselves are [settlements.md](settlements.md).
+- **It has no write-offs.** Giving up on what somebody owes is the next task, and it moves no figure.
 - **It does not sync.** Contacts, groups and expenses reach the offline mirror in the task that adds them to the change feed; the indexes they will need are already declared.

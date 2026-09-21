@@ -14,6 +14,8 @@ import { IUserRepository } from "../../domain/repositories/user/IUserRepository"
 import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { assertFresh, guardedWrite } from "../../shared/concurrency";
 import {
+  GROUP_STATUSES,
+  GroupStatus,
   MAX_GROUP_PARTICIPANTS,
   SHARED_HISTORY_REASONS,
   SPLIT_MODES,
@@ -29,6 +31,7 @@ import {
   UpdateSharedGroupDTO,
 } from "../dtos/SharedGroupDTO";
 import { stampSharedChange } from "./sharedLedger";
+import { counterpartiesOf, SharedLedgerService } from "./SharedLedgerService";
 import {
   assertDefaultSplit,
   rescaleDefaultSplit,
@@ -39,13 +42,19 @@ import {
 export interface GroupTotalsView {
   amount: number;
   yourShare: number;
+  owedToYou: number;
+  youOwe: number;
+  collected: number;
   expenseCount: number;
   dateFrom: Date | null;
   dateTo: Date | null;
 }
 
-/** A group plus what its expenses add up to; the range is derived, never stored. */
-export type SharedGroupView = SharedGroup & { totals: GroupTotalsView };
+/** A group plus what its expenses add up to; the range and the state are derived, never stored. */
+export type SharedGroupView = SharedGroup & {
+  totals: GroupTotalsView;
+  status: GroupStatus;
+};
 
 export interface ParticipantChange {
   contactId: string | null;
@@ -61,10 +70,19 @@ export interface AddParticipantsPreview {
 const EMPTY_TOTALS: GroupTotalsView = {
   amount: 0,
   yourShare: 0,
+  owedToYou: 0,
+  youOwe: 0,
+  collected: 0,
   expenseCount: 0,
   dateFrom: null,
   dateTo: null,
 };
+
+/** Open until nobody owes anybody here, by paying or by being written off. */
+const statusOf = (totals: GroupTotalsView): GroupStatus =>
+  totals.owedToYou === 0 && totals.youOwe === 0
+    ? GROUP_STATUSES.SETTLED
+    : GROUP_STATUSES.OPEN;
 
 export class SharedGroupService {
   constructor(
@@ -73,6 +91,7 @@ export class SharedGroupService {
     private contactRepo: IContactRepository,
     private userRepo: IUserRepository,
     private transactionRepo: ITransactionRepository,
+    private ledger: SharedLedgerService,
   ) {}
 
   private async withTotals(
@@ -86,16 +105,21 @@ export class SharedGroupService {
     const byGroup = new Map(totals.map((row) => [row.groupId, row]));
     return groups.map((group) => {
       const row = byGroup.get(group.id);
+      const view: GroupTotalsView = row
+        ? {
+            amount: row.total,
+            yourShare: row.yourShare,
+            owedToYou: row.owedToYou,
+            youOwe: row.youOwe,
+            collected: row.collected,
+            expenseCount: row.expenseCount,
+            dateFrom: row.dateFrom,
+            dateTo: row.dateTo,
+          }
+        : EMPTY_TOTALS;
       return Object.assign(new SharedGroup(group), {
-        totals: row
-          ? {
-              amount: row.total,
-              yourShare: row.yourShare,
-              expenseCount: row.expenseCount,
-              dateFrom: row.dateFrom,
-              dateTo: row.dateTo,
-            }
-          : EMPTY_TOTALS,
+        totals: view,
+        status: statusOf(view),
       });
     });
   }
@@ -203,7 +227,10 @@ export class SharedGroupService {
         currency: await this.currencyOf(dto.userId),
       }),
     );
-    return Object.assign(new SharedGroup(created), { totals: EMPTY_TOTALS });
+    return Object.assign(new SharedGroup(created), {
+      totals: EMPTY_TOTALS,
+      status: statusOf(EMPTY_TOTALS),
+    });
   }
 
   async updateGroup(
@@ -331,6 +358,8 @@ export class SharedGroupService {
   ): Promise<{
     preview: AddParticipantsPreview;
     updates: { id: string; split: SharedExpense["split"] }[];
+    // The expenses as they are left, which is what their people's payments are imputed over.
+    resplit: SharedExpense[];
   }> {
     const currency = plannedGroup.currency ?? DEFAULT_CURRENCY;
     const expenses = await this.expenseRepo.listByGroup(
@@ -340,6 +369,7 @@ export class SharedGroupService {
     );
     const before = sharesByParticipant(expenses);
     const updates: { id: string; split: SharedExpense["split"] }[] = [];
+    const resplit: SharedExpense[] = [];
     const after = apply
       ? expenses.map((expense) => {
           const split = resplitForNewParticipants({
@@ -348,7 +378,10 @@ export class SharedGroupService {
             newContactIds: contactIds,
             currency,
           });
-          if (split) updates.push({ id: expense.id, split });
+          if (split) {
+            updates.push({ id: expense.id, split });
+            resplit.push(new SharedExpense({ ...expense, split }));
+          }
           return { split: split ?? expense.split };
         })
       : expenses;
@@ -368,6 +401,7 @@ export class SharedGroupService {
         },
       },
       updates,
+      resplit,
     };
   }
 
@@ -438,11 +472,7 @@ export class SharedGroupService {
             session,
           );
           await this.expenseRepo.replaceSplits(plan.updates, session);
-          await this.recordResplit(
-            userId,
-            plan.updates.map((update) => update.id),
-            session,
-          );
+          await this.recordResplit(userId, plan.resplit, session);
           return {
             updated: await this.repo.update(
               id,
@@ -463,18 +493,30 @@ export class SharedGroupService {
     return { group: view as SharedGroupView, applied: preview };
   }
 
-  // A re-split changes what each person owes, so every movement it touches says so in its history.
+  /**
+   * A re-split changes what each person owes, so their payments are imputed
+   * over it again and every movement it touches says so in its history — once,
+   * whether or not what counts as yours moved with it.
+   */
   private async recordResplit(
     userId: string,
-    expenseIds: string[],
+    expenses: SharedExpense[],
     session: TxSession,
   ): Promise<void> {
+    if (expenses.length === 0) return;
+    const { stamped } = await this.ledger.recompute(
+      userId,
+      expenses.flatMap(counterpartiesOf),
+      SHARED_HISTORY_REASONS.SPLIT_EDITED,
+      session,
+    );
     const movements = await this.transactionRepo.listBySharedExpenseIds(
       userId,
-      expenseIds,
+      expenses.map((expense) => expense.id),
       session,
     );
     for (const movement of movements) {
+      if (stamped.has(movement.sharedExpenseId as string)) continue;
       await stampSharedChange(
         this.transactionRepo,
         session,

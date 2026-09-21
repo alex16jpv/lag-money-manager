@@ -60,6 +60,8 @@ export const ERROR_CODES = [
   "SHARED_EXPENSE_LINKED",
   "TRANSACTION_ALREADY_SHARED",
   "TRANSACTION_NOT_SPLITTABLE",
+  "SETTLEMENT_OVER_PAID",
+  "SETTLEMENT_MOVEMENT_LOCKED",
   // Client-minted ids
   "ID_TAKEN",
   // Optimistic concurrency

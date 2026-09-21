@@ -12,6 +12,7 @@ import { ICategoryRepository } from "../../domain/repositories/category/ICategor
 import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
@@ -103,9 +104,21 @@ const mockSharedExpenseRepo: jest.Mocked<ISharedExpenseRepository> = {
   getByIdIncludingDeleted: jest.fn(),
   getOwnById: jest.fn(),
   listByGroup: jest.fn().mockResolvedValue([]),
+  listByCounterparty: jest.fn().mockResolvedValue([]),
   countSharesOfContact: jest.fn().mockResolvedValue(0),
   totalsByGroup: jest.fn().mockResolvedValue([]),
   replaceSplits: jest.fn().mockResolvedValue(undefined),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+};
+
+const mockSharedSettlementRepo: jest.Mocked<ISharedSettlementRepository> = {
+  getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
+  getById: jest.fn(),
+  getOwnById: jest.fn(),
+  listByCounterparty: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -119,6 +132,7 @@ const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   isDeleted: jest.fn().mockResolvedValue(false),
   getBySharedExpenseId: jest.fn().mockResolvedValue(null),
   listBySharedExpenseIds: jest.fn().mockResolvedValue([]),
+  listBySettlementId: jest.fn().mockResolvedValue([]),
   applySharedChange: jest.fn(),
   changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
@@ -224,6 +238,7 @@ jest.mock("../../shared/constants", () => ({
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
     ADJUSTMENT: "ADJUSTMENT",
+    SETTLEMENT: "SETTLEMENT",
   },
   BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
   SPENDING_GROUP_BY: {
@@ -267,6 +282,19 @@ jest.mock("../../shared/constants", () => ({
     CONTACT: "Contact",
     SHARED_GROUP: "SharedGroup",
     SHARED_EXPENSE: "SharedExpense",
+    SHARED_SETTLEMENT: "SharedSettlement",
+  },
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
+  SHARED_HISTORY_REASONS: {
+    SPLIT: "SPLIT",
+    SPLIT_EDITED: "SPLIT_EDITED",
+    AMOUNT_CHANGED: "AMOUNT_CHANGED",
+    UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
   },
 }));
 
@@ -306,6 +334,7 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getContactRepository: () => mockContactRepo,
     getSharedGroupRepository: () => mockSharedGroupRepo,
     getSharedExpenseRepository: () => mockSharedExpenseRepo,
+    getSharedSettlementRepository: () => mockSharedSettlementRepo,
     getTransactionRepository: () => mockTransactionRepo,
     getIdempotencyRepository: () => mockIdempotencyRepo,
     getBudgetRepository: () => mockBudgetRepo,
@@ -1183,6 +1212,9 @@ describe("Integration Tests", () => {
           groupId,
           total: 90000,
           yourShare: 45000,
+          owedToYou: 0,
+          youOwe: 0,
+          collected: 0,
           expenseCount: 1,
           dateFrom: new Date("2026-09-01T00:00:00.000Z"),
           dateTo: new Date("2026-09-02T00:00:00.000Z"),

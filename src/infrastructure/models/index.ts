@@ -8,6 +8,7 @@ export { RateLimitModel } from "./RateLimitModel";
 export { RefreshSessionModel } from "./RefreshSessionModel";
 export { SharedExpenseModel } from "./SharedExpenseModel";
 export { SharedGroupModel } from "./SharedGroupModel";
+export { SharedSettlementModel } from "./SharedSettlementModel";
 export { SyncOpModel } from "./SyncOpModel";
 export { TransactionModel } from "./TransactionModel";
 export { UserModel } from "./UserModel";

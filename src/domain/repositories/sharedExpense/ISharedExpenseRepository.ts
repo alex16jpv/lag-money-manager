@@ -1,6 +1,7 @@
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
 import { TxSession } from "../../../shared/unitOfWork";
 import { SharedExpense } from "../../entities/SharedExpense";
+import { SettlementCounterparty } from "../../entities/SharedSettlement";
 import { IRepository } from "../IRepository";
 
 /** What a group's expenses add up to; the group derives its range from it. */
@@ -8,6 +9,10 @@ export interface GroupTotals {
   groupId: string;
   total: number;
   yourShare: number;
+  // What people still owe you here, what you still owe them, and what has already come back.
+  owedToYou: number;
+  youOwe: number;
+  collected: number;
   expenseCount: number;
   dateFrom: Date | null;
   dateTo: Date | null;
@@ -44,6 +49,13 @@ export interface ISharedExpenseRepository extends IRepository<SharedExpense> {
     groupId: string,
     session?: TxSession,
   ): Promise<SharedExpense[]>;
+  // Every live expense, in any group, where this counterparty holds a share. The imputation reads it.
+  listByCounterparty(
+    userId: string,
+    counterparty: SettlementCounterparty,
+    session?: TxSession,
+  ): Promise<SharedExpense[]>;
+
   // Live expenses of the group where this contact holds a share.
   countSharesOfContact(
     userId: string,

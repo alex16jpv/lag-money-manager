@@ -12,9 +12,11 @@ import {
   DEBT_ACCOUNT_FIELDS,
   DebtAccountField,
   GROUP_SPLIT_MODES,
+  GROUP_STATUSES,
   MAX_CONTACTS_PER_USER,
   MAX_EXPENSE_GUESTS,
   MAX_GROUP_PARTICIPANTS,
+  SETTLEMENT_PARTIES,
   SHARE_PARTIES,
   SHARED_HISTORY_REASONS,
   SPENDING_GROUP_BY,
@@ -64,6 +66,7 @@ const requestBodies = {
   UpdateSharedGroupInput: bodyOf(v.updateSharedGroupSchema),
   AddParticipantsInput: bodyOf(v.addParticipantsSchema),
   CreateSharedExpenseInput: bodyOf(v.createSharedExpenseSchema),
+  CreateSettlementInput: bodyOf(v.createSettlementSchema),
   UpdateSharedExpenseInput: bodyOf(v.updateSharedExpenseSchema),
   UpdateCategoryInput: bodyOf(v.updateCategorySchema),
   CreateTransactionInput: bodyOf(v.createTransactionSchema),
@@ -369,6 +372,19 @@ const responseViews = {
     properties: {
       amount: money,
       yourShare: money,
+      owedToYou: {
+        ...money,
+        description: "What people still owe you for the lines you fronted.",
+      },
+      youOwe: {
+        ...money,
+        description:
+          "Your share of the lines somebody else fronted, still unpaid.",
+      },
+      collected: {
+        ...money,
+        description: "What has already come back to you here.",
+      },
       expenseCount: { type: "integer" },
       dateFrom: nullableDateTime,
       dateTo: nullableDateTime,
@@ -391,6 +407,11 @@ const responseViews = {
         userId: uuid,
         currency: { type: "string", example: "COP" },
         totals: { $ref: "#/components/schemas/SharedGroupTotals" },
+        status: {
+          ...enumOf(GROUP_STATUSES),
+          description:
+            "Derived: SETTLED once nobody owes anything here, by paying or by being written off.",
+        },
         archivedAt: nullableDateTime,
         createdAt: dateTime,
         updatedAt: dateTime,
@@ -460,6 +481,71 @@ const responseViews = {
     properties: {
       group: { $ref: "#/components/schemas/SharedGroup" },
       applied: { $ref: "#/components/schemas/AddParticipantsPreview" },
+    },
+  }),
+  Settlement: withRequired({
+    type: "object",
+    description:
+      "Money that changed hands with one person, or with the block of guests " +
+      "of one expense. It carries no account and no category: those are " +
+      "yours, and what everybody in a group can see is that it was paid.",
+    properties: {
+      id: uuid,
+      userId: uuid,
+      counterparty: withRequired({
+        type: "object",
+        properties: {
+          kind: enumOf(SETTLEMENT_PARTIES),
+          contactId: { ...uuid, nullable: true },
+          expenseId: {
+            ...uuid,
+            nullable: true,
+            description: "GUESTS only: the expense the block lives in.",
+          },
+        },
+      }),
+      date: dateTime,
+      collected: { ...money, description: "What came back to you." },
+      paid: { ...money, description: "What you handed over." },
+      outsideApp: {
+        type: "boolean",
+        description:
+          "Cash the app never saw: no movement was written and no balance moved.",
+      },
+      currency: { type: "string", example: "COP" },
+      createdAt: dateTime,
+      updatedAt: dateTime,
+    },
+  }),
+  SettlementCoverage: withRequired({
+    type: "object",
+    properties: {
+      expenseId: uuid,
+      description: { type: "string", nullable: true },
+      date: dateTime,
+      amount: money,
+      direction: {
+        type: "string",
+        enum: ["COLLECTED", "PAID"],
+        description:
+          "COLLECTED came off what that line still counts as yours; PAID is a line of theirs you covered.",
+      },
+    },
+  }),
+  SettlementResult: withRequired({
+    type: "object",
+    properties: {
+      settlement: { $ref: "#/components/schemas/Settlement" },
+      covered: {
+        type: "array",
+        items: { $ref: "#/components/schemas/SettlementCoverage" },
+        description: "Oldest line first, which is the order it was imputed in.",
+      },
+      refunded: {
+        ...money,
+        description:
+          "What you handed over that covered no line: their money going back to them.",
+      },
     },
   }),
   Transaction: withRequired({
@@ -1009,6 +1095,7 @@ const options: swaggerJsdoc.Options = {
         ContactConflict: conflictOf("Contact"),
         SharedGroupConflict: conflictOf("SharedGroup"),
         SharedExpenseConflict: conflictOf("SharedExpense"),
+        SettlementList: listOf("Settlement"),
         TransactionConflict: conflictOf("Transaction"),
         BudgetConflict: conflictOf("Budget"),
       },

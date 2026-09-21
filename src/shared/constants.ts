@@ -13,6 +13,7 @@ export const MODEL_NAMES = {
   CONTACT: "Contact",
   SHARED_GROUP: "SharedGroup",
   SHARED_EXPENSE: "SharedExpense",
+  SHARED_SETTLEMENT: "SharedSettlement",
 } as const;
 
 export const BUDGET_PERIOD_TYPES = {
@@ -66,7 +67,20 @@ export const TRANSACTION_TYPES = {
   TRANSFER: "TRANSFER",
   // Balance reconciliation: excluded from stats and budgets, no category.
   ADJUSTMENT: "ADJUSTMENT",
+  // Money between you and a person: one account, no category, out of stats and budgets.
+  SETTLEMENT: "SETTLEMENT",
 } as const;
+
+// Neither is spending: they move a balance without being money you earned or spent.
+export const TYPES_OUTSIDE_SPENDING: readonly string[] = [
+  TRANSACTION_TYPES.ADJUSTMENT,
+  TRANSACTION_TYPES.SETTLEMENT,
+];
+
+// Recorded from Settle up and nowhere else, so the two write paths of a movement refuse it.
+export const TYPES_RECORDED_ELSEWHERE: readonly string[] = [
+  TRANSACTION_TYPES.SETTLEMENT,
+];
 
 export type TransactionType = keyof typeof TRANSACTION_TYPES;
 
@@ -128,9 +142,27 @@ export const SHARED_HISTORY_REASONS = {
   SPLIT_EDITED: "SPLIT_EDITED",
   AMOUNT_CHANGED: "AMOUNT_CHANGED",
   UNSPLIT: "UNSPLIT",
+  PAYMENT: "PAYMENT",
+  REIMPUTED: "REIMPUTED",
 } as const;
 
 export type SharedHistoryReason = keyof typeof SHARED_HISTORY_REASONS;
+
+// Derived on every read: a group is open until nobody owes anything in it.
+export const GROUP_STATUSES = {
+  OPEN: "OPEN",
+  SETTLED: "SETTLED",
+} as const;
+
+export type GroupStatus = keyof typeof GROUP_STATUSES;
+
+// Who a payment is with. A guest block is one of them, and it lives in a single expense.
+export const SETTLEMENT_PARTIES = {
+  CONTACT: "CONTACT",
+  GUESTS: "GUESTS",
+} as const;
+
+export type SettlementPartyKind = keyof typeof SETTLEMENT_PARTIES;
 
 export const SHARE_PARTIES = {
   USER: "USER",

@@ -1,0 +1,203 @@
+### ==========================================================
+### SETTLEMENTS — la plata que va y viene con la gente con la
+### que compartes gastos. Lo que te devuelven NO es income: entra
+### a una cuenta, sin categoría, y fuera de Stats y de Budgets.
+### Pagarle a otro SÍ es gasto tuyo: uno por línea, con su fecha.
+### Un cobro se imputa SIEMPRE al gasto más viejo primero.
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+
+@token = {{login.response.body.accessToken}}
+
+### La cuenta por donde entra y sale (éxito)
+# @name createAccount
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Bancolombia {{$randomInt 100 999}}", "type": "ACCOUNT", "balance": 5000000 }
+
+###
+
+@accountId = {{createAccount.response.body.id}}
+
+### La categoría con la que se registra lo que le pagas a otro
+# @name createCategory
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Salidas {{$randomInt 100 999}}", "type": "EXPENSE" }
+
+###
+
+@categoryId = {{createCategory.response.body.id}}
+
+### El contacto y la salida
+# @name createAna
+POST {{baseUrl}}/contacts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Ana {{$randomInt 100 999}}", "color": "TEAL" }
+
+###
+
+@anaId = {{createAna.response.body.id}}
+
+# @name createGroup
+POST {{baseUrl}}/shared-groups
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Salida {{$randomInt 100 999}}", "contactIds": ["{{anaId}}"] }
+
+###
+
+@groupId = {{createGroup.response.body.id}}
+
+### El gasto viejo, que es el que se cubre primero
+# @name older
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 90000, "date": "2026-08-10T23:00:00.000Z", "description": "Cena", "categoryId": "{{categoryId}}", "fromAccountId": "{{accountId}}" }
+
+###
+
+@olderId = {{older.response.body.id}}
+
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "transactionId": "{{olderId}}" }
+
+### Y el nuevo
+# @name newer
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 60000, "date": "2026-08-20T23:00:00.000Z", "description": "Taxi", "categoryId": "{{categoryId}}", "fromAccountId": "{{accountId}}" }
+
+###
+
+@newerId = {{newer.response.body.id}}
+
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "transactionId": "{{newerId}}" }
+
+### Ana te paga 30.000 — cubre el gasto MÁS VIEJO primero (éxito)
+# @name collect
+POST {{baseUrl}}/settlements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{anaId}}", "date": "2026-08-25T23:00:00.000Z", "collected": 30000, "accountId": "{{accountId}}" }
+
+###
+
+@settlementId = {{collect.response.body.settlement.id}}
+
+### El movimiento de la cena ya cuenta 60.000, y su historial lo dice
+GET {{baseUrl}}/transactions/{{olderId}}
+Authorization: Bearer {{token}}
+
+### El cobro, en la lista, como quinto tipo de movimiento
+GET {{baseUrl}}/transactions?type=SETTLEMENT
+Authorization: Bearer {{token}}
+
+### Stats no lo ve: lo que mide es lo que cuenta como tuyo
+GET {{baseUrl}}/stats/spending?groupBy=category&type=EXPENSE&from=2026-08-01T05:00:00.000Z&to=2026-09-01T05:00:00.000Z
+Authorization: Bearer {{token}}
+
+### Un cobro en efectivo, fuera de la app — no mueve ninguna cuenta
+POST {{baseUrl}}/settlements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{anaId}}", "date": "2026-08-26T23:00:00.000Z", "collected": 15000, "outsideApp": true }
+
+### Un cobro con cuenta y «fuera de la app» a la vez — 400 VALIDATION
+POST {{baseUrl}}/settlements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{anaId}}", "date": "2026-08-26T23:00:00.000Z", "collected": 1000, "outsideApp": true, "accountId": "{{accountId}}" }
+
+### Un gasto que pagó Ana: ahí el que debe eres tú
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Tickets", "date": "2026-08-12T23:00:00.000Z", "amount": 80000, "paidByContactId": "{{anaId}}" }
+
+### Le pagas su línea — crea TU gasto, con la fecha de esa línea y tu categoría
+POST {{baseUrl}}/settlements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{anaId}}", "date": "2026-08-27T23:00:00.000Z", "paid": 40000, "accountId": "{{accountId}}", "categoryId": "{{categoryId}}" }
+
+### Pagarle sin categoría — 400 VALIDATION: la capa compartida no lleva categorías
+POST {{baseUrl}}/settlements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{anaId}}", "date": "2026-08-27T23:00:00.000Z", "paid": 1000, "accountId": "{{accountId}}" }
+
+### Pagarle más de lo que le debes — 400 SETTLEMENT_OVER_PAID
+POST {{baseUrl}}/settlements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{anaId}}", "date": "2026-08-27T23:00:00.000Z", "paid": 900000, "accountId": "{{accountId}}", "categoryId": "{{categoryId}}" }
+
+### Un cobro sin contraparte, o con las dos — 400 VALIDATION
+POST {{baseUrl}}/settlements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "date": "2026-08-27T23:00:00.000Z", "collected": 1000, "accountId": "{{accountId}}" }
+
+### Escribir el quinto tipo a mano — 400: lo registra Settle up y nadie más
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "SETTLEMENT", "amount": 1000, "date": "2026-08-27T23:00:00.000Z", "toAccountId": "{{accountId}}" }
+
+### Lo que ha ido y venido con Ana
+GET {{baseUrl}}/settlements?contactId={{anaId}}
+Authorization: Bearer {{token}}
+
+### Un cobro concreto
+GET {{baseUrl}}/settlements/{{settlementId}}
+Authorization: Bearer {{token}}
+
+### Deshacerlo — revierte sus movimientos y reimputa lo que quede
+DELETE {{baseUrl}}/settlements/{{settlementId}}
+Authorization: Bearer {{token}}
+
+### Deshacerlo otra vez — IDEMPOTENTE (200)
+DELETE {{baseUrl}}/settlements/{{settlementId}}
+Authorization: Bearer {{token}}
+
+### Un cobro ajeno o inexistente — 404 uniforme
+GET {{baseUrl}}/settlements/019576a0-d7b6-7d6d-af6a-000000000000
+Authorization: Bearer {{token}}

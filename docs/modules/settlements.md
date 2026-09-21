@@ -1,0 +1,83 @@
+# Settlements Module
+
+## What This Module Does
+
+Records **the money that changes hands between you and the people you split expenses with**: what came back to you, what you handed over, and what each of those covered. One endpoint family, `/settlements`, and one collection.
+
+It is the answer to the owner's rule, and everything here follows from it:
+
+> **What counts as yours is the money that left your accounts minus the money that came back.**
+
+So a payment is never a figure somebody types onto a line. It is money, and where it lands is **derived**: a payment belongs to the person, not to the expense, and it covers **the oldest line first** across every group you share with them. Change anything — delete a line, edit a split, add somebody to a group — and it is imputed again over what is left, with nothing undone.
+
+## Files and Responsibilities
+
+| File                                                                             | Role                                                                     |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `src/app/routes/sharedSettlementRoutes.ts`                                       | The four routes, with their OpenAPI blocks                               |
+| `src/app/controllers/SharedSettlementController.ts`                              | Thin HTTP handler                                                        |
+| `src/app/services/SharedSettlementService.ts`                                    | One settle-up: what it covers, and the movements it writes               |
+| `src/app/services/SharedLedgerService.ts`                                        | **The imputation**, and what it leaves on every movement                 |
+| `src/shared/sharedImputation.ts`                                                 | `impute()` — oldest line first, in one place for the server and the phone |
+| `src/domain/entities/SharedSettlement.ts`                                        | The entity                                                               |
+| `src/infrastructure/models/SharedSettlementModel.ts`                             | Document and indexes                                                     |
+
+## One payment, two halves
+
+A settle-up is **one record** with a counterparty, a date, and two figures:
+
+- **`collected`** — what came back to you.
+- **`paid`** — what you handed over.
+
+Both can be on the same payment, which is what happens when the two of you owe each other: Ana owes you $60,000 for the dinner, you owe her $30,000 for the tickets, she sends $30,000. What is **recorded** is the collection of $60,000 **and** your expense of $30,000; what **moves** is the net. Splitting it in two is what keeps the categories exact — a single net movement would leave your share of the tickets counted nowhere.
+
+The counterparty is a **contact** or the **block of guests of one expense** (`expenseId`). A block has no other expense to net against, no email and no history across groups; everything else about it works the same, write-offs included.
+
+## What each half writes in your ledger
+
+| Half | In the shared layer | In your ledger |
+| --- | --- | --- |
+| `collected` | Covers what they owe you, oldest line first | **One `SETTLEMENT` movement** into `accountId`. Not income: no category, out of Stats and of the budgets — the shape `ADJUSTMENT` already has |
+| `paid`, over lines they fronted | Covers what you owe them, oldest line first | **One ordinary `EXPENSE` per line**, with that line's description, **dated that line**, in the category you give |
+| `paid`, beyond that | Returns what they paid ahead | **One `SETTLEMENT` movement** out of `accountId`. You never spent it, so it carries no category either |
+
+**Paying somebody back is not one movement.** The shared layer carries no categories — they are private and never travel — so the request states one in `categoryId`, or one per line in `categories`. An expense per line is more rows and the right figures: it lands in the month the money was spent, under the category it belongs to.
+
+**`outsideApp` is cash the app never saw.** Nothing is written in an account and no balance moves, and what is owed falls all the same, because that money did change hands. It is the only place where what counts as yours moves without an account moving. The same applies to the other direction: paying somebody back in cash the app never held records the payment and creates no expense, because that spending never went through a tracked account.
+
+**You cannot hand over more than you owe** plus whatever they have paid ahead: `400 SETTLEMENT_OVER_PAID`. A collection is not capped the same way — somebody paying more than their share is a real thing, and it leaves them with a surplus that is theirs to get back.
+
+## What a payment leaves behind
+
+`collected` on each share of an expense is **the imputation, never a typed figure**: every write that touches a split or a payment computes it again from the live payments. What that leaves on the movement you fronted is `amount − what came back`, written on it as `countsAsYours` with a line of history — see [transactions.md](transactions.md#what-counts-as-yours-countsasyours). **It falls in the month the expense happened**, not on the day of the payment, so a month you had already closed can change; the history is what explains it.
+
+Deleting a payment reverses **every movement it recorded** and imputes what is left over the lines that are still open. The movements themselves cannot be edited or deleted on their own (`400 SETTLEMENT_MOVEMENT_LOCKED`): their money belongs to the payment, and the payment is the door.
+
+## Public API
+
+| Route | What it does |
+| --- | --- |
+| `GET /settlements` | Newest first, keyset over `(date, _id)`; `contactId` or `expenseId` narrows it to one counterparty |
+| `POST /settlements` | One settle-up. Answers the payment **and what it covered**, line by line, plus what was refunded |
+| `GET /settlements/{id}` | One payment |
+| `DELETE /settlements/{id}` | Undoes it, movements included. Idempotent |
+
+## Storage
+
+| Collection         | Index                                              | Why                                                            |
+| ------------------ | -------------------------------------------------- | -------------------------------------------------------------- |
+| `SharedSettlement` | `{ userId, "counterparty.contactId", deletedAt }`  | Everything settled with one person, which is what an imputation reads |
+| `SharedSettlement` | `{ userId, "counterparty.expenseId", deletedAt }`  | The same for a block of guests                                  |
+| `SharedSettlement` | `{ userId, deletedAt, date, _id }`                 | The listing and its keyset                                      |
+| `SharedSettlement` | `{ userId, updatedAt, _id }`                       | The keyset the offline change feed will scan                    |
+| `Transaction`      | `{ userId, sharedSettlementId }`, partial          | The movements one settle-up recorded, so undoing it reverses exactly those |
+
+Money is integer cents here too. **The payment carries no account and no category**: those are yours, and a shared group is seen by everybody in it. What travels is that it was paid.
+
+**An imputation is bounded by one counterparty.** It reads every live expense where they hold a share — one indexed query — and every payment with them, and rewrites only the shares that moved. Recomputing one person never has to look at anybody else's, which is what keeps a write cheap no matter how many groups you share.
+
+## What This Module Does Not Do
+
+- **It does not write `countsAsYours` by itself.** `SharedLedgerService` does, and it is the only thing that does.
+- **It has no write-offs yet.** Giving up on what somebody owes is the next task; it moves no figure, because that money was already counted as yours the day it left.
+- **It does not sync.** The index the change feed will need is declared; `SyncService` does not carry it yet.

@@ -6,6 +6,7 @@ import { IIdempotencyRepository } from "../../domain/repositories/idempotency/II
 import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ISyncOpRepository } from "../../domain/repositories/syncOp/ISyncOpRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
@@ -30,6 +31,7 @@ export const REPO_KEYS = {
   CONTACT: "contact",
   SHARED_GROUP: "sharedGroup",
   SHARED_EXPENSE: "sharedExpense",
+  SHARED_SETTLEMENT: "sharedSettlement",
 } as const;
 
 type DbProvider = (factory: RepositoryFactory) => void;
@@ -107,6 +109,12 @@ export class RepositoryFactory {
 
   getSharedGroupRepository(): ISharedGroupRepository {
     return this.getRepository<ISharedGroupRepository>(REPO_KEYS.SHARED_GROUP);
+  }
+
+  getSharedSettlementRepository(): ISharedSettlementRepository {
+    return this.getRepository<ISharedSettlementRepository>(
+      REPO_KEYS.SHARED_SETTLEMENT,
+    );
   }
 
   getSharedExpenseRepository(): ISharedExpenseRepository {

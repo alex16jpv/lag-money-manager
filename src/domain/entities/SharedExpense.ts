@@ -16,6 +16,8 @@ export interface SharedShare {
   fixedAmount: number | null;
   // What the split resolved to, and the only figure anything downstream reads.
   amount: number;
+  // How much of this share has been settled. Always the imputation of the live payments, never typed.
+  collected: number;
 }
 
 export interface GuestBlock {

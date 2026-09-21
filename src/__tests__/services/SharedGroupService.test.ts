@@ -3,12 +3,14 @@ jest.mock("../../shared/unitOfWork", () => ({
 }));
 
 import { SharedGroupService } from "../../app/services/SharedGroupService";
+import { SharedLedgerService } from "../../app/services/SharedLedgerService";
 import { SharedExpense } from "../../domain/entities/SharedExpense";
 import { SharedGroup } from "../../domain/entities/SharedGroup";
 import { Transaction } from "../../domain/entities/Transaction";
 import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { MAX_GROUP_PARTICIPANTS } from "../../shared/constants";
@@ -54,6 +56,7 @@ const equalExpense = (
         percent: null,
         fixedAmount: null,
         amount: amount / contactIds.length,
+        collected: 0,
       })),
     },
     ...props,
@@ -83,6 +86,7 @@ const expenseRepo = (): jest.Mocked<ISharedExpenseRepository> => ({
   getByIdIncludingDeleted: jest.fn(),
   getOwnById: jest.fn(),
   listByGroup: jest.fn().mockResolvedValue([]),
+  listByCounterparty: jest.fn().mockResolvedValue([]),
   countSharesOfContact: jest.fn().mockResolvedValue(0),
   totalsByGroup: jest.fn().mockResolvedValue([]),
   replaceSplits: jest.fn().mockResolvedValue(undefined),
@@ -101,6 +105,17 @@ const userRepo = (): jest.Mocked<IUserRepository> =>
     getById: jest.fn().mockResolvedValue({ id: userId, currency: "COP" }),
   }) as unknown as jest.Mocked<IUserRepository>;
 
+const settlementRepo = (): jest.Mocked<ISharedSettlementRepository> => ({
+  getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
+  getById: jest.fn(),
+  getOwnById: jest.fn(),
+  listByCounterparty: jest.fn().mockResolvedValue([]),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+});
+
 const transactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
@@ -109,6 +124,7 @@ const transactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   isDeleted: jest.fn().mockResolvedValue(false),
   getBySharedExpenseId: jest.fn().mockResolvedValue(null),
   listBySharedExpenseIds: jest.fn().mockResolvedValue([]),
+  listBySettlementId: jest.fn().mockResolvedValue([]),
   applySharedChange: jest.fn(),
   changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
@@ -133,12 +149,14 @@ describe("SharedGroupService", () => {
     expenses = expenseRepo();
     contacts = contactRepo();
     transactions = transactionRepo();
+    const settlements = settlementRepo();
     service = new SharedGroupService(
       groups,
       expenses,
       contacts,
       userRepo(),
       transactions,
+      new SharedLedgerService(expenses, settlements, transactions),
     );
   });
 
@@ -304,6 +322,7 @@ describe("SharedGroupService", () => {
                 percent: null,
                 fixedAmount: 50000,
                 amount: 50000,
+                collected: 0,
               },
               {
                 party: "CONTACT",
@@ -311,6 +330,7 @@ describe("SharedGroupService", () => {
                 percent: null,
                 fixedAmount: 40000,
                 amount: 40000,
+                collected: 0,
               },
             ],
           },
@@ -464,6 +484,9 @@ describe("SharedGroupService", () => {
           groupId,
           total: 150000,
           yourShare: 50000,
+          owedToYou: 0,
+          youOwe: 0,
+          collected: 0,
           expenseCount: 2,
           dateFrom: new Date("2026-08-01T00:00:00.000Z"),
           dateTo: new Date("2026-09-30T00:00:00.000Z"),
@@ -483,10 +506,15 @@ describe("SharedGroupService", () => {
       expect(view.totals).toEqual({
         amount: 0,
         yourShare: 0,
+        owedToYou: 0,
+        youOwe: 0,
+        collected: 0,
         expenseCount: 0,
         dateFrom: null,
         dateTo: null,
       });
+      // Nobody owes anything in a group with nothing in it.
+      expect(view.status).toBe("SETTLED");
     });
 
     it("answers 404 for somebody else's group", async () => {

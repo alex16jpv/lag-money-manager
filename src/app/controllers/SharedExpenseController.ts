@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 
 import { extractPagination } from "../../shared/pagination";
 import repositoryFactory from "../factories/RepositoryFactory";
+import { sharedLedgerService } from "../factories/sharedLedger";
 import { SharedExpenseService } from "../services/SharedExpenseService";
 import { ifMatch } from "./ifMatch";
 
@@ -9,6 +10,7 @@ const sharedExpenseService = new SharedExpenseService(
   repositoryFactory.getSharedExpenseRepository(),
   repositoryFactory.getSharedGroupRepository(),
   repositoryFactory.getTransactionRepository(),
+  sharedLedgerService,
 );
 
 export class SharedExpenseController {

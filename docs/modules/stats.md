@@ -6,6 +6,8 @@ Read-only aggregation over the user's transactions. A single endpoint, `GET /sta
 
 The module owns no data of its own: it is a thin service over one MongoDB aggregation pipeline in `TransactionRepository.aggregateSpending()`. Buckets are computed in the **user's timezone**, so a "day" is their local day, not UTC's.
 
+`ADJUSTMENT` and `SETTLEMENT` are not cash flow, so neither appears unless it is asked for by name with `type=`.
+
 **What it measures is `countsAsYours`, not `amount`** — what left the account minus what has come back, which is the same figure on everything except an expense split with other people ([transactions.md](transactions.md#what-counts-as-yours-countsasyours)). Rows written before that field existed count their whole amount. `GET /transactions` is deliberately the other way: its rows and its summary are gross, because a list of movements is what moved through the accounts.
 
 ## Files and Responsibilities

@@ -161,7 +161,7 @@ A budget does not exist before its floor. `Budget.lifetimeFloor()` returns `effe
 - Windows containing per-category budgets → `sumAmountsByCategory()` over the union of their category ids, then each budget sums its own slice.
 - Windows containing a global budget → `sumAmounts()`, the window's total for that flow type regardless of category.
 
-Both aggregations skip soft-deleted transactions (`deletedAt: null`), sum `countsAsYours` rather than `amount`, and match only the budget's `type` (`EXPENSE` or `INCOME`), so `ADJUSTMENT` and `TRANSFER` never move a budget.
+Both aggregations skip soft-deleted transactions (`deletedAt: null`), sum `countsAsYours` rather than `amount`, and match only the budget's `type` (`EXPENSE` or `INCOME`), so `ADJUSTMENT`, `TRANSFER` and `SETTLEMENT` never move a budget. Money coming back from somebody is not income and never was: what it does is lower what the expense it covers counts as.
 
 ## Internal Flow
 

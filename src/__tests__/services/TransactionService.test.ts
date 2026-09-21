@@ -19,6 +19,7 @@ jest.mock("../../shared/constants", () => ({
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
     ADJUSTMENT: "ADJUSTMENT",
+    SETTLEMENT: "SETTLEMENT",
   },
   CATEGORY_TYPES: {
     INCOME: "INCOME",
@@ -36,6 +37,8 @@ jest.mock("../../shared/constants", () => ({
     SPLIT_EDITED: "SPLIT_EDITED",
     AMOUNT_CHANGED: "AMOUNT_CHANGED",
     UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
   },
   SHARE_PARTIES: { USER: "USER", CONTACT: "CONTACT", GUESTS: "GUESTS" },
   SPLIT_MODES: {
@@ -44,6 +47,10 @@ jest.mock("../../shared/constants", () => ({
     EXACT: "EXACT",
     FIXED_REST: "FIXED_REST",
   },
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
 }));
 
 // The transactional callback runs inline with a dummy session: no real MongoDB session here.
@@ -54,6 +61,7 @@ jest.mock("../../shared/unitOfWork", () => ({
 }));
 
 import { CreateTransactionDTO } from "../../app/dtos/TransactionDTO";
+import { SharedLedgerService } from "../../app/services/SharedLedgerService";
 import { TransactionService } from "../../app/services/TransactionService";
 import { Account } from "../../domain/entities/Account";
 import { Category } from "../../domain/entities/Category";
@@ -63,6 +71,7 @@ import { IAccountRepository } from "../../domain/repositories/account/IAccountRe
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
+import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 
 const USER = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
@@ -79,9 +88,22 @@ const createMockSharedExpenseRepo =
     getByIdIncludingDeleted: jest.fn(),
     getOwnById: jest.fn(),
     listByGroup: jest.fn().mockResolvedValue([]),
+    listByCounterparty: jest.fn().mockResolvedValue([]),
     countSharesOfContact: jest.fn().mockResolvedValue(0),
     totalsByGroup: jest.fn().mockResolvedValue([]),
     replaceSplits: jest.fn().mockResolvedValue(undefined),
+    create: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+  });
+
+const createMockSettlementRepo =
+  (): jest.Mocked<ISharedSettlementRepository> => ({
+    getAll: jest.fn(),
+    getAllByUserId: jest.fn(),
+    getById: jest.fn(),
+    getOwnById: jest.fn(),
+    listByCounterparty: jest.fn().mockResolvedValue([]),
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
@@ -95,6 +117,7 @@ const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   isDeleted: jest.fn().mockResolvedValue(false),
   getBySharedExpenseId: jest.fn().mockResolvedValue(null),
   listBySharedExpenseIds: jest.fn().mockResolvedValue([]),
+  listBySettlementId: jest.fn().mockResolvedValue([]),
   applySharedChange: jest.fn(),
   changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
@@ -179,7 +202,11 @@ describe("TransactionService", () => {
       acctRepo,
       idempotencyRepo,
       categoryRepo,
-      sharedExpenseRepo,
+      new SharedLedgerService(
+        sharedExpenseRepo,
+        createMockSettlementRepo(),
+        txRepo,
+      ),
     );
     acctRepo.incrementBalance.mockResolvedValue(true);
   });
@@ -836,6 +863,7 @@ describe("TransactionService", () => {
               percent: null,
               fixedAmount: mode === "EXACT" ? 100000 : null,
               amount: mode === "EXACT" ? 100000 : 60000,
+              collected: 0,
             },
             {
               party: "CONTACT",
@@ -843,6 +871,7 @@ describe("TransactionService", () => {
               percent: null,
               fixedAmount: mode === "EXACT" ? 20000 : null,
               amount: mode === "EXACT" ? 20000 : 60000,
+              collected: 0,
             },
           ],
         },

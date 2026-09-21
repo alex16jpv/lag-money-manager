@@ -1,14 +1,16 @@
+import { PipelineStage } from "mongoose";
 import { v7 as uuidv7 } from "uuid";
 
 import {
   SharedExpense,
   SharedSplit,
 } from "../../../domain/entities/SharedExpense";
+import { SettlementCounterparty } from "../../../domain/entities/SharedSettlement";
 import {
   GroupTotals,
   ISharedExpenseRepository,
 } from "../../../domain/repositories/sharedExpense/ISharedExpenseRepository";
-import { SHARE_PARTIES } from "../../../shared/constants";
+import { SETTLEMENT_PARTIES, SHARE_PARTIES } from "../../../shared/constants";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
 import {
@@ -44,6 +46,7 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
         fixedAmount:
           share.fixedAmount === null ? null : fromCents(share.fixedAmount),
         amount: fromCents(share.amount),
+        collected: fromCents(share.collected ?? 0),
       })),
     };
   }
@@ -76,6 +79,7 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
         percent: share.percent,
         fixedAmount: centsOrNull(share.fixedAmount),
         amount: toCents(share.amount),
+        collected: toCents(share.collected ?? 0),
       })),
     };
   }
@@ -187,6 +191,26 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
     return docs.map((doc) => this.toEntity(doc));
   }
 
+  async listByCounterparty(
+    userId: string,
+    counterparty: SettlementCounterparty,
+    session?: TxSession,
+  ): Promise<SharedExpense[]> {
+    // A guest block belongs to one expense and has nothing else to net against.
+    const filter =
+      counterparty.kind === SETTLEMENT_PARTIES.GUESTS
+        ? { _id: counterparty.expenseId }
+        : { "split.shares.contactId": counterparty.contactId };
+    const docs = await SharedExpenseModel.find({
+      userId,
+      deletedAt: null,
+      ...filter,
+    })
+      .session(session ?? null)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
   async countSharesOfContact(
     userId: string,
     groupId: string,
@@ -203,6 +227,50 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
     });
   }
 
+  /** Adds up one field of the shares that are yours, or of the shares that are not. */
+  private shareSum(
+    yours: boolean,
+    field: "amount" | "collected" | "open",
+  ): Record<string, unknown> {
+    const value =
+      field === "open"
+        ? {
+            $subtract: [
+              "$$share.amount",
+              { $ifNull: ["$$share.collected", 0] },
+            ],
+          }
+        : field === "collected"
+          ? { $ifNull: ["$$share.collected", 0] }
+          : "$$share.amount";
+    return {
+      $sum: {
+        $map: {
+          input: {
+            $filter: {
+              input: "$split.shares",
+              as: "share",
+              cond: yours
+                ? { $eq: ["$$share.party", SHARE_PARTIES.USER] }
+                : { $ne: ["$$share.party", SHARE_PARTIES.USER] },
+            },
+          },
+          as: "share",
+          in: value,
+        },
+      },
+    };
+  }
+
+  // Only a line you fronted is money owed to you, and only somebody else's is money you owe.
+  private whenYouPaid(
+    paid: boolean,
+    inner: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const mine = { $eq: [{ $ifNull: ["$paidByContactId", null] }, null] };
+    return { $sum: { $cond: [paid ? mine : { $not: [mine] }, inner, 0] } };
+  }
+
   async totalsByGroup(
     userId: string,
     groupIds: string[],
@@ -212,42 +280,36 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
       _id: string;
       total: number;
       yourShare: number;
+      owedToYou: number;
+      youOwe: number;
+      collected: number;
       expenseCount: number;
       dateFrom: Date;
       dateTo: Date;
     }>([
       { $match: { userId, groupId: { $in: groupIds }, deletedAt: null } },
       {
+        // The accumulators are built above, which the driver's types cannot follow.
         $group: {
           _id: "$groupId",
           total: { $sum: "$amount" },
-          yourShare: {
-            $sum: {
-              $sum: {
-                $map: {
-                  input: {
-                    $filter: {
-                      input: "$split.shares",
-                      as: "share",
-                      cond: { $eq: ["$$share.party", SHARE_PARTIES.USER] },
-                    },
-                  },
-                  as: "share",
-                  in: "$$share.amount",
-                },
-              },
-            },
-          },
+          yourShare: { $sum: this.shareSum(true, "amount") },
+          owedToYou: this.whenYouPaid(true, this.shareSum(false, "open")),
+          collected: this.whenYouPaid(true, this.shareSum(false, "collected")),
+          youOwe: this.whenYouPaid(false, this.shareSum(true, "open")),
           expenseCount: { $sum: 1 },
           dateFrom: { $min: "$date" },
           dateTo: { $max: "$date" },
         },
-      },
+      } as PipelineStage,
     ]);
     return rows.map((row) => ({
       groupId: row._id,
       total: fromCents(row.total),
       yourShare: fromCents(row.yourShare),
+      owedToYou: fromCents(row.owedToYou),
+      youOwe: fromCents(row.youOwe),
+      collected: fromCents(row.collected),
       expenseCount: row.expenseCount,
       dateFrom: row.dateFrom ?? null,
       dateTo: row.dateTo ?? null,

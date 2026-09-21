@@ -5,6 +5,7 @@ jest.mock("../../shared/constants", () => ({
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
     ADJUSTMENT: "ADJUSTMENT",
+    SETTLEMENT: "SETTLEMENT",
   },
   TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
   SHARED_HISTORY_REASONS: {
@@ -12,7 +13,13 @@ jest.mock("../../shared/constants", () => ({
     SPLIT_EDITED: "SPLIT_EDITED",
     AMOUNT_CHANGED: "AMOUNT_CHANGED",
     UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
   },
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
 }));
 
 import { TransactionModel } from "../../infrastructure/models/TransactionModel";

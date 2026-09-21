@@ -1,18 +1,14 @@
-import { SharedExpense } from "../../domain/entities/SharedExpense";
 import { Transaction } from "../../domain/entities/Transaction";
 import { DomainValidationError } from "../../domain/errors";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
-import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import {
   ITransactionRepository,
   TransactionFilters,
 } from "../../domain/repositories/transaction/ITransactionRepository";
 import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { assertFresh } from "../../shared/concurrency";
-import { SHARED_HISTORY_REASONS } from "../../shared/constants";
-import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { dayKeyOf } from "../../shared/dayKey";
 import { ErrorCode } from "../../shared/errorCodes";
 import { ApiError } from "../../shared/errors";
@@ -28,8 +24,7 @@ import {
   QuickAddTransactionDTO,
   UpdateTransactionDTO,
 } from "../dtos/TransactionDTO";
-import { stampSharedChange } from "./sharedLedger";
-import { resplitForNewAmount } from "./sharedSplitting";
+import { SharedLedgerService } from "./SharedLedgerService";
 
 function isDuplicateKeyError(err: unknown): boolean {
   return (
@@ -87,7 +82,7 @@ export class TransactionService {
     private accountRepo: IAccountRepository,
     private idempotencyRepo: IIdempotencyRepository,
     private categoryRepo: ICategoryRepository,
-    private sharedExpenseRepo: ISharedExpenseRepository,
+    private ledger: SharedLedgerService,
   ) {}
 
   async getAllTransactions(
@@ -151,8 +146,7 @@ export class TransactionService {
 
     try {
       return await withTransaction(async (session) => {
-        await this.adjustBalances(transaction, 1, session);
-        const created = await this.transactionRepo.create(transaction, session);
+        const created = await this.applyAndCreate(transaction, session);
         if (idempotency) {
           await this.idempotencyRepo.record(
             dto.userId,
@@ -172,6 +166,71 @@ export class TransactionService {
       }
       throw err;
     }
+  }
+
+  /**
+   * A movement written inside somebody else's transaction: a settle-up records
+   * its own, and they have to land or fail with it.
+   */
+  async recordWithin(
+    dto: CreateTransactionDTO,
+    timezone: string,
+    session: TxSession,
+  ): Promise<Transaction> {
+    const transaction = new Transaction({
+      ...dto,
+      dayKey: dayKeyOf(new Date(dto.date), timezone),
+    });
+    transaction.assertValid();
+    await this.assertCategoryUsable(transaction);
+    return this.applyAndCreate(transaction, session);
+  }
+
+  /** A settle-up wrote this movement's money, so undoing the payment is what changes it. */
+  private assertOnlyDetailChanges(dto: UpdateTransactionDTO): void {
+    const monetary =
+      dto.amount !== undefined ||
+      dto.date !== undefined ||
+      dto.type !== undefined ||
+      dto.fromAccountId !== undefined ||
+      dto.toAccountId !== undefined;
+    if (monetary) {
+      throw new ApiError(
+        "BadRequest",
+        "A settle-up recorded this movement: undo the payment instead of editing what it moved",
+        "SETTLEMENT_MOVEMENT_LOCKED",
+      );
+    }
+  }
+
+  // What one settle-up recorded, which is what undoing it has to reverse.
+  async settlementMovements(
+    userId: string,
+    sharedSettlementId: string,
+    session: TxSession,
+  ): Promise<Transaction[]> {
+    return this.transactionRepo.listBySettlementId(
+      userId,
+      sharedSettlementId,
+      session,
+    );
+  }
+
+  /** Reverses what a movement did to the balances and drops it, inside the caller's transaction. */
+  async reverseWithin(
+    transaction: Transaction,
+    session: TxSession,
+  ): Promise<void> {
+    await this.adjustBalances(transaction, -1, session);
+    await this.transactionRepo.delete(transaction.id, session);
+  }
+
+  private async applyAndCreate(
+    transaction: Transaction,
+    session: TxSession,
+  ): Promise<Transaction> {
+    await this.adjustBalances(transaction, 1, session);
+    return this.transactionRepo.create(transaction, session);
   }
 
   private async replayIdempotent(
@@ -328,6 +387,7 @@ export class TransactionService {
       // Read and write share the session, so this and the update's filter are one atomic decision.
       assertFresh(existing, expectedUpdatedAt, (t) => t);
 
+      if (existing.sharedSettlementId) this.assertOnlyDetailChanges(dto);
       // A new amount carries whatever came back with it, so a payment is not undone by an edit.
       const amountChanged =
         dto.amount !== undefined && dto.amount !== existing.amount;
@@ -336,7 +396,10 @@ export class TransactionService {
         ...existing,
         ...dto,
         ...(amountChanged
-          ? { countsAsYours: (dto.amount as number) - cameBack }
+          ? {
+              // The ledger has the last word; this only has to be a figure the entity accepts.
+              countsAsYours: Math.max(0, (dto.amount as number) - cameBack),
+            }
           : {}),
       });
       updated.assertValid();
@@ -384,60 +447,13 @@ export class TransactionService {
         expectedUpdatedAt,
       );
       if (!existing.sharedExpenseId) return saved;
-      return await this.restateSharedExpense(
+      return await this.ledger.restateExpense(
         existing,
         saved,
         existing.sharedExpenseId,
         session,
       );
     });
-  }
-
-  // The expense and the movement are one fact, so neither may be left stating what the other does not.
-  private async restateSharedExpense(
-    before: Transaction,
-    after: Transaction,
-    sharedExpenseId: string,
-    session: TxSession,
-  ): Promise<Transaction> {
-    const amountChanged = after.amount !== before.amount;
-    const restated =
-      amountChanged ||
-      after.date.getTime() !== before.date.getTime() ||
-      after.description !== before.description;
-    if (!restated) return after;
-
-    const expense = await this.sharedExpenseRepo.getById(
-      sharedExpenseId,
-      session,
-    );
-    if (!expense) {
-      throw new ApiError(
-        "InternalServerError",
-        "The shared expense this transaction belongs to is missing",
-      );
-    }
-    const write: Partial<SharedExpense> = {
-      amount: after.amount,
-      date: after.date,
-      description: after.description,
-    };
-    if (amountChanged) {
-      write.split = resplitForNewAmount({
-        split: expense.split,
-        amount: after.amount,
-        currency: expense.currency ?? DEFAULT_CURRENCY,
-        paidByContactId: expense.paidByContactId,
-      });
-    }
-    await this.sharedExpenseRepo.update(expense.id, write, session);
-    if (!amountChanged) return after;
-    return await stampSharedChange(
-      this.transactionRepo,
-      session,
-      after,
-      SHARED_HISTORY_REASONS.AMOUNT_CHANGED,
-    );
   }
 
   async deleteTransaction(
@@ -454,11 +470,19 @@ export class TransactionService {
         throw new ApiError("NotFound", "Transaction not found");
       }
       assertFresh(transaction, expectedUpdatedAt, (t) => t);
+      if (transaction.sharedSettlementId) {
+        throw new ApiError(
+          "BadRequest",
+          "A settle-up recorded this movement: undo the payment and it goes with it",
+          "SETTLEMENT_MOVEMENT_LOCKED",
+        );
+      }
 
       await this.adjustBalances(transaction, -1, session);
       // The group's expense is this movement seen from the other side: one cannot outlive the other.
       if (transaction.sharedExpenseId) {
-        await this.sharedExpenseRepo.delete(
+        await this.ledger.dropExpenseOf(
+          transaction,
           transaction.sharedExpenseId,
           session,
         );
@@ -598,7 +622,8 @@ export class TransactionService {
       await adjustAccount(toAccountId, 1);
     }
 
-    if (type === "TRANSFER" || type === "ADJUSTMENT") {
+    // The three that name their own side: a transfer both, the other two exactly one.
+    if (type === "TRANSFER" || type === "ADJUSTMENT" || type === "SETTLEMENT") {
       if (fromAccountId) {
         await adjustAccount(fromAccountId, -1);
       }

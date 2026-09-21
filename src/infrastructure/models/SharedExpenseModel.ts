@@ -15,6 +15,7 @@ export interface ISharedShareDocument {
   percent: number | null;
   fixedAmount: number | null; // integer cents
   amount: number; // integer cents
+  collected: number; // integer cents
 }
 
 export interface ISharedExpenseDocument {
@@ -44,6 +45,7 @@ const ShareSchema = new Schema<ISharedShareDocument>(
     percent: { type: Number, default: null },
     fixedAmount: { type: Number, default: null },
     amount: { type: Number, required: true },
+    collected: { type: Number, required: true, default: 0 },
   },
   { _id: false },
 );

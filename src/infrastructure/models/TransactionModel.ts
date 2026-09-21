@@ -31,6 +31,7 @@ export interface ITransactionDocument {
   // Absent unless the movement is in a shared group, which is what makes the index over it partial.
   sharedExpenseId?: string;
   sharedGroupId?: string;
+  sharedSettlementId?: string;
   sharedHistory: {
     at: Date;
     reason: SharedHistoryReason;
@@ -85,6 +86,7 @@ const TransactionSchema = new Schema<ITransactionDocument>(
     countsAsYours: { type: Number, default: null },
     sharedExpenseId: { type: String },
     sharedGroupId: { type: String },
+    sharedSettlementId: { type: String },
     sharedHistory: {
       type: [
         new Schema(
@@ -150,6 +152,12 @@ TransactionSchema.index({ userId: 1, deletedAt: 1, amount: -1, _id: -1 });
 
 // Change feed: keyset over (updatedAt, _id), archived and deleted rows included.
 TransactionSchema.index({ userId: 1, updatedAt: 1, _id: 1 });
+
+// The movements one settle-up recorded, so undoing it reverses exactly those. Several per settlement.
+TransactionSchema.index(
+  { userId: 1, sharedSettlementId: 1 },
+  { partialFilterExpression: { sharedSettlementId: { $exists: true } } },
+);
 
 // Which movement a shared expense is, and no more than one. The planner only uses a partial index
 // whose filter its own predicate implies, and an equality does not imply `$type`: hence `$exists`.

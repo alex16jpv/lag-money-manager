@@ -5,11 +5,13 @@ jest.mock("../../shared/unitOfWork", () => ({
 }));
 
 import { SharedExpenseService } from "../../app/services/SharedExpenseService";
+import { SharedLedgerService } from "../../app/services/SharedLedgerService";
 import { SharedExpense } from "../../domain/entities/SharedExpense";
 import { SharedGroup } from "../../domain/entities/SharedGroup";
 import { Transaction } from "../../domain/entities/Transaction";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 
 const userId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
@@ -55,6 +57,7 @@ const expenseRepo = (): jest.Mocked<ISharedExpenseRepository> => ({
   getByIdIncludingDeleted: jest.fn(),
   getOwnById: jest.fn(),
   listByGroup: jest.fn().mockResolvedValue([]),
+  listByCounterparty: jest.fn().mockResolvedValue([]),
   countSharesOfContact: jest.fn().mockResolvedValue(0),
   totalsByGroup: jest.fn().mockResolvedValue([]),
   replaceSplits: jest.fn().mockResolvedValue(undefined),
@@ -71,6 +74,7 @@ const transactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   isDeleted: jest.fn().mockResolvedValue(false),
   getBySharedExpenseId: jest.fn().mockResolvedValue(null),
   listBySharedExpenseIds: jest.fn().mockResolvedValue([]),
+  listBySettlementId: jest.fn().mockResolvedValue([]),
   applySharedChange: jest.fn(),
   changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
@@ -83,17 +87,35 @@ const transactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   sumAmounts: jest.fn().mockResolvedValue(0),
 });
 
+const settlementRepo = (): jest.Mocked<ISharedSettlementRepository> => ({
+  getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
+  getById: jest.fn(),
+  getOwnById: jest.fn(),
+  listByCounterparty: jest.fn().mockResolvedValue([]),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+});
+
 describe("SharedExpenseService", () => {
   let service: SharedExpenseService;
   let expenses: jest.Mocked<ISharedExpenseRepository>;
   let groups: jest.Mocked<ISharedGroupRepository>;
   let transactions: jest.Mocked<ITransactionRepository>;
+  let settlements: jest.Mocked<ISharedSettlementRepository>;
 
   beforeEach(() => {
     expenses = expenseRepo();
     groups = groupRepo();
     transactions = transactionRepo();
-    service = new SharedExpenseService(expenses, groups, transactions);
+    settlements = settlementRepo();
+    service = new SharedExpenseService(
+      expenses,
+      groups,
+      transactions,
+      new SharedLedgerService(expenses, settlements, transactions),
+    );
   });
 
   const create = (body: Record<string, unknown> = {}) =>
@@ -368,6 +390,7 @@ describe("SharedExpenseService", () => {
               percent: null,
               fixedAmount: null,
               amount: 30000,
+              collected: 0,
             },
             {
               party: "CONTACT",
@@ -375,6 +398,7 @@ describe("SharedExpenseService", () => {
               percent: null,
               fixedAmount: null,
               amount: 30000,
+              collected: 0,
             },
             {
               party: "CONTACT",
@@ -382,6 +406,7 @@ describe("SharedExpenseService", () => {
               percent: null,
               fixedAmount: null,
               amount: 30000,
+              collected: 0,
             },
           ],
         },
@@ -443,6 +468,7 @@ describe("SharedExpenseService", () => {
                 percent: 50,
                 fixedAmount: null,
                 amount: 45000,
+                collected: 0,
               },
               {
                 party: "CONTACT",
@@ -450,6 +476,7 @@ describe("SharedExpenseService", () => {
                 percent: 50,
                 fixedAmount: null,
                 amount: 45000,
+                collected: 0,
               },
             ],
           },
@@ -481,6 +508,7 @@ describe("SharedExpenseService", () => {
                 percent: null,
                 fixedAmount: 50000,
                 amount: 50000,
+                collected: 0,
               },
               {
                 party: "CONTACT",
@@ -488,6 +516,7 @@ describe("SharedExpenseService", () => {
                 percent: null,
                 fixedAmount: 40000,
                 amount: 40000,
+                collected: 0,
               },
             ],
           },
@@ -513,6 +542,7 @@ describe("SharedExpenseService", () => {
                 percent: null,
                 fixedAmount: 50000,
                 amount: 50000,
+                collected: 0,
               },
               {
                 party: "CONTACT",
@@ -520,6 +550,7 @@ describe("SharedExpenseService", () => {
                 percent: null,
                 fixedAmount: 40000,
                 amount: 40000,
+                collected: 0,
               },
             ],
           },
@@ -572,6 +603,7 @@ describe("SharedExpenseService", () => {
                 percent: null,
                 fixedAmount: 90000,
                 amount: 90000,
+                collected: 0,
               },
             ],
           },

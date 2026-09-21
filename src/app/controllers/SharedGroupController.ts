@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { SharedGroupFilters } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
 import { extractPagination } from "../../shared/pagination";
 import repositoryFactory from "../factories/RepositoryFactory";
+import { sharedLedgerService } from "../factories/sharedLedger";
 import { SharedGroupService } from "../services/SharedGroupService";
 import { splitIdList } from "../validation/schemas";
 import { ifMatch } from "./ifMatch";
@@ -13,6 +14,7 @@ const sharedGroupService = new SharedGroupService(
   repositoryFactory.getContactRepository(),
   repositoryFactory.getUserRepository(),
   repositoryFactory.getTransactionRepository(),
+  sharedLedgerService,
 );
 
 export class SharedGroupController {

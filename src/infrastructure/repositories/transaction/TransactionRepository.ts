@@ -17,6 +17,7 @@ import {
   TransactionPage,
   TransactionRevision,
 } from "../../../domain/repositories/transaction/ITransactionRepository";
+import { TYPES_OUTSIDE_SPENDING } from "../../../shared/constants";
 import { dayKeyOf, lastDayKeyOf } from "../../../shared/dayKey";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
@@ -69,7 +70,11 @@ const storedEntry = (entry: SharedHistoryEntry): Record<string, unknown> => ({
 const COUNTS_AS_YOURS = { $ifNull: ["$countsAsYours", "$amount"] };
 
 // Stored only while the movement is in a group: the index that finds it is partial over `$exists`.
-const SHARED_LINK_FIELDS = ["sharedExpenseId", "sharedGroupId"] as const;
+const SHARED_LINK_FIELDS = [
+  "sharedExpenseId",
+  "sharedGroupId",
+  "sharedSettlementId",
+] as const;
 
 export class TransactionRepository implements ITransactionRepository {
   private toEntity(doc: ITransactionDocument): Transaction {
@@ -92,6 +97,7 @@ export class TransactionRepository implements ITransactionRepository {
       countsAsYours: fromCents(doc.countsAsYours ?? doc.amount),
       sharedExpenseId: doc.sharedExpenseId ?? null,
       sharedGroupId: doc.sharedGroupId ?? null,
+      sharedSettlementId: doc.sharedSettlementId ?? null,
       sharedHistory: (doc.sharedHistory ?? []).map((entry) => ({
         at: entry.at,
         reason: entry.reason,
@@ -251,6 +257,21 @@ export class TransactionRepository implements ITransactionRepository {
     const docs = await TransactionModel.find({
       userId,
       sharedExpenseId: { $in: sharedExpenseIds },
+      deletedAt: null,
+    })
+      .session(session ?? null)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
+  async listBySettlementId(
+    userId: string,
+    sharedSettlementId: string,
+    session?: TxSession,
+  ): Promise<Transaction[]> {
+    const docs = await TransactionModel.find({
+      userId,
+      sharedSettlementId,
       deletedAt: null,
     })
       .session(session ?? null)
@@ -495,8 +516,8 @@ export class TransactionRepository implements ITransactionRepository {
     query: SpendingQuery,
   ): Promise<SpendingResult> {
     const match: Record<string, unknown> = { userId, deletedAt: null };
-    // ADJUSTMENT is reconciliation, not real cash flow: hidden unless asked for.
-    match.type = query.type ?? { $ne: "ADJUSTMENT" };
+    // Reconciliation and money between people are not cash flow: hidden unless asked for.
+    match.type = query.type ?? { $nin: TYPES_OUTSIDE_SPENDING };
     if (query.categoryIds?.length) {
       match.categoryId = { $in: query.categoryIds };
     }

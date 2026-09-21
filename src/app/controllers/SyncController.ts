@@ -7,6 +7,7 @@ import {
 } from "../../shared/syncCursor";
 import { DEFAULT_TIMEZONE } from "../../shared/timezone";
 import repositoryFactory from "../factories/RepositoryFactory";
+import { sharedLedgerService } from "../factories/sharedLedger";
 import { AuthPayload } from "../middlewares/authMiddleware";
 import { AccountService } from "../services/AccountService";
 import { BudgetService } from "../services/BudgetService";
@@ -39,7 +40,7 @@ const syncBatchService = new SyncBatchService(
     accountRepository,
     repositoryFactory.getIdempotencyRepository(),
     categoryRepository,
-    repositoryFactory.getSharedExpenseRepository(),
+    sharedLedgerService,
   ),
   new BudgetService(
     budgetRepository,

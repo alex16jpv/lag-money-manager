@@ -3,6 +3,18 @@ const mockEnv = { NODE_ENV: "development", MONGO_URI: "" };
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: mockEnv,
   DB_TYPES: { MONGO: "MONGO" },
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
+  SHARED_HISTORY_REASONS: {
+    SPLIT: "SPLIT",
+    SPLIT_EDITED: "SPLIT_EDITED",
+    AMOUNT_CHANGED: "AMOUNT_CHANGED",
+    UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
+  },
 }));
 
 // jest.resetModules() re-runs the factory, so a fresh object would leave the assertions unwatched.

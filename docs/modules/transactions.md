@@ -8,6 +8,7 @@ The most complex module in the system. Records financial transactions and automa
 - **EXPENSE**: Money flowing out of `fromAccountId` (balance decreases)
 - **TRANSFER**: Money moving from `fromAccountId` to `toAccountId` (one decreases, other increases)
 - **ADJUSTMENT**: Balance reconciliation on exactly one account. Carries no category and is **excluded from spending stats and budgets** — it is not real cash flow.
+- **SETTLEMENT**: Money between you and a person you split expenses with, on exactly one account. The same shape as an adjustment — no category, out of stats and budgets — and **recorded by a settle-up and nowhere else**: `POST /transactions` and the quick-add refuse it, and the movement cannot be edited or deleted on its own ([settlements.md](settlements.md)).
 
 Create, update, and delete all run inside a **MongoDB transaction**, so the ledger and the account balances can never drift apart. On update, the original balance adjustments are reversed before applying new ones. Deletes are **soft** (`deletedAt`). All transactions are user-scoped.
 
@@ -50,7 +51,8 @@ and out of the budget period that already counted it.
 - It is **stored, not derived on read**. The alternative is every aggregation joining the shared collections to work out a figure it needs per row, and an offline mirror that cannot reproduce them.
 - **Stats and the budgets measure it** — `aggregateSpending`, `sumAmountsByCategory` and `sumAmounts` all sum `countsAsYours`. **The listing does not**: a row's amount, a day's total and `summary.totalAmount` stay gross, because a list of movements is what moved through the accounts. The two figures are different on purpose and the transaction's detail is where the difference is explained.
 - Rows written before the field existed have no `countsAsYours`, and **their whole amount is theirs** — every aggregation reads `$ifNull: ["$countsAsYours", "$amount"]`. That is the meaning of an absent field, not a migration waiting to happen: the field arrived with splitting, so a row without it was never split.
-- A new amount on a movement carries the figure with it. Nothing can lower it yet: **only a payment does, and payments are the next task**.
+- A new amount on a movement carries the figure with it (`amount − what came back`), so an edit can never undo a payment.
+- **What lowers it is a payment**, and only in the month the expense happened ([settlements.md](settlements.md)).
 
 ### The link to a shared expense
 
@@ -65,9 +67,11 @@ The two are **one fact seen from two sides**, so nothing may leave them saying d
 | The movement's amount changes and the split is `EXACT` | **400 `SPLIT_INVALID`**: it states amounts, so they stop adding up. Restate the split on the expense first, rather than have the server rescale what somebody typed |
 | The movement's type changes | **400 `TRANSACTION_NOT_SPLITTABLE`**: only an expense can be split |
 | Editing the expense's amount, date, description or payer | **400 `SHARED_EXPENSE_LINKED`**: those come from the movement. The expense takes only its split |
-| `DELETE /transactions/{id}` | **The expense goes with it**, soft-deleted in the same database transaction: the group now costs that much less and every share falls |
+| `DELETE /transactions/{id}` | **The expense goes with it**, soft-deleted in the same database transaction: the group now costs that much less and every share falls, and what anybody had paid imputes over the lines that are left |
 | `DELETE …/expenses/{expenseId}` | The movement stays, leaves the group, counts as yours in full again and records `UNSPLIT` |
 | People are added to the group with `applyToExistingExpenses` | Every movement whose expense was re-split records `SPLIT_EDITED`, in the same database transaction as the re-split |
+
+A movement a settle-up recorded is locked the other way round: its money is the payment's, so an edit that touches the amount, the date, the type or the accounts is `400 SETTLEMENT_MOVEMENT_LOCKED` and so is deleting it — undo the payment and it goes with it. Its description, its category and its tags are yours to change.
 
 Two of those are deliberately one-sided. **An archived group does not freeze your movements**: editing one still writes its expense, because an archived group is a read-only view of what happened and refusing to fix your own amount over it would block the wrong half. And **a new amount carries what has come back with it** — the figure is re-derived as `amount − what came back`, never reset — so a later edit cannot undo a payment. Only one thing still waits for payments to exist: taking an expense out of a group hands the movement its whole amount back, which is right **because a payment is re-imputed over the expenses that are left** (T-116) rather than belonging to the one that went.
 
@@ -75,7 +79,7 @@ Two of those are deliberately one-sided. **An archived group does not freeze you
 
 ### Its history (`sharedHistory`)
 
-One entry per thing that could have moved the figure, oldest first: `{ at, reason, countsAsYours }`, where `countsAsYours` is what it left behind. The reasons are `SPLIT`, `SPLIT_EDITED` (the expense's own split saved or cleared, or the group re-split by adding people), `AMOUNT_CHANGED` and `UNSPLIT`; payments and write-offs add theirs. A new date is not one of them: it moves which month the figure counts in, not the figure, and `revisions[]` already holds it. **An event that moved nothing repeats the figure and says so** — splitting an expense and writing one off never move it, and only a payment does, in the month the expense happened. Without this list, a figure that falls two weeks later in a month already closed is inexplicable, which is why the owner asked for it rather than it being an extra.
+One entry per thing that could have moved the figure, oldest first: `{ at, reason, countsAsYours }`, where `countsAsYours` is what it left behind. The reasons are `SPLIT`, `SPLIT_EDITED` (the expense's own split saved or cleared, or the group re-split by adding people), `AMOUNT_CHANGED`, `UNSPLIT`, **`PAYMENT`** (money came back and this is what it left) and **`REIMPUTED`** (a payment moved onto other lines because these ones changed). A new date is not one of them: it moves which month the figure counts in, not the figure, and `revisions[]` already holds it. **An event that moved nothing repeats the figure and says so** — splitting an expense and writing one off never move it, and only a payment does, in the month the expense happened. Without this list, a figure that falls two weeks later in a month already closed is inexplicable, which is why the owner asked for it rather than it being an extra.
 
 Unlike `revisions[]` it is **public**: it is the answer to a question the user asks. It is also uncapped, and deliberately: capping the explanation of a figure loses the oldest events, which are the ones nobody remembers. It grows by one entry per split edit and per payment — tens over a group's life. A group large enough to make that a document-size problem is a group whose payments belong in a collection of their own.
 

@@ -16,6 +16,7 @@ import budgetRoutes from "./app/routes/budgetRoutes";
 import categoryRoutes from "./app/routes/categoryRoutes";
 import contactRoutes from "./app/routes/contactRoutes";
 import sharedGroupRoutes from "./app/routes/sharedGroupRoutes";
+import sharedSettlementRoutes from "./app/routes/sharedSettlementRoutes";
 import statsRoutes from "./app/routes/statsRoutes";
 import syncRoutes from "./app/routes/syncRoutes";
 import transactionRoutes from "./app/routes/transactionRoutes";
@@ -23,9 +24,9 @@ import userRoutes from "./app/routes/userRoutes";
 import { pingDatabase } from "./config/dbHealth";
 import { swaggerSpec } from "./config/swagger";
 import { ENVIRONMENT } from "./shared/constants";
-import { SYNC_BODY_LIMIT } from "./shared/syncBatch";
 import { errorMiddleware } from "./shared/middlewares";
 import { requestIdMiddleware } from "./shared/requestId";
+import { SYNC_BODY_LIMIT } from "./shared/syncBatch";
 
 const app = express();
 
@@ -100,6 +101,7 @@ app.use("/contacts", apiLimiter, contactRoutes);
 app.use("/transactions", apiLimiter, transactionRoutes);
 app.use("/budgets", apiLimiter, budgetRoutes);
 app.use("/shared-groups", apiLimiter, sharedGroupRoutes);
+app.use("/settlements", apiLimiter, sharedSettlementRoutes);
 app.use("/stats", apiLimiter, statsRoutes);
 app.use("/sync", apiLimiter, syncRoutes);
 

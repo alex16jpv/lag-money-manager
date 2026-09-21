@@ -1,7 +1,7 @@
 import { CategoryService } from "../../app/services/CategoryService";
-import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { Category } from "../../domain/entities/Category";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
 import { ApiError } from "../../shared/errors";
 
