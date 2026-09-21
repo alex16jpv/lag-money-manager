@@ -26,181 +26,20 @@ import { SharedSettlementService } from "../../app/services/SharedSettlementServ
 import { StatsService } from "../../app/services/StatsService";
 import { TransactionService } from "../../app/services/TransactionService";
 import { connectMongo } from "../../config/mongoConnection";
+import type {
+  Fixture,
+  FixtureSettlement,
+} from "../../../scripts/offline-fixtures/types";
 import { UserModel } from "../../infrastructure/models/UserModel";
 
-export interface Fixture {
-  id: string;
-  title: string;
-  user: { id: string; timezone: string; currency: string; minorUnits: number };
-  accounts: {
-    key: string;
-    id: string;
-    name: string;
-    type: string;
-    color?: string;
-    openingBalance: number;
-    isDefault: boolean;
-    archivedAt: string | null;
-  }[];
-  categories: {
-    key: string;
-    id: string;
-    name: string;
-    type: "EXPENSE" | "INCOME";
-    archivedAt: string | null;
-  }[];
-  transactions: {
-    key: string;
-    id: string;
-    type: "EXPENSE" | "INCOME" | "TRANSFER" | "ADJUSTMENT";
-    amount: number;
-    date: string;
-    description: string | null;
-    categoryId: string | null;
-    fromAccountId: string | null;
-    toAccountId: string | null;
-    tags: string[];
-    source: "MANUAL" | "QUICK";
-    pendingDetails: boolean;
-    deletedAt: string | null;
-  }[];
-  budgets: {
-    key: string;
-    id: string;
-    name: string;
-    type: "EXPENSE" | "INCOME";
-    categoryIds: string[];
-    amount: number;
-    amountOverrides: Record<string, number>;
-    periodType: string;
-    periodStartDate: string | null;
-    periodEndDate: string | null;
-    effectiveFrom: string | null;
-    archivedAt: string | null;
-  }[];
-  contacts: { key: string; id: string; name: string }[];
-  sharedGroups: {
-    key: string;
-    id: string;
-    name: string;
-    participantContactIds: string[];
-    defaultSplit: {
-      mode: "EQUAL" | "PERCENT";
-      shares: { contactId: string | null; percent: number }[];
-    };
-    writeOffs: { contactId: string | null; expenseId: string | null }[];
-  }[];
-  sharedExpenses: {
-    key: string;
-    id: string;
-    groupId: string;
-    transactionId: string | null;
-    description: string | null;
-    date: string;
-    amount: number;
-    paidByContactId: string | null;
-    customSplit: boolean;
-    split: {
-      mode: "EQUAL" | "PERCENT" | "EXACT" | "FIXED_REST";
-      guests: { count: number; name: string | null } | null;
-      shares: {
-        party: "USER" | "CONTACT" | "GUESTS";
-        contactId: string | null;
-        percent: number | null;
-        fixedAmount: number | null;
-        amount: number;
-        collected: number;
-      }[];
-    };
-  }[];
-  settlements: {
-    key: string;
-    id: string;
-    counterparty: {
-      kind: "CONTACT" | "GUESTS";
-      contactId: string | null;
-      expenseId: string | null;
-    };
-    date: string;
-    collected: number;
-    paid: number;
-    outsideApp: boolean;
-  }[];
-  expected: {
-    balances: { key: string; accountId: string; balance: number }[];
-    countsAsYours: { key: string; transactionId: string; amount: number }[];
-    shared: {
-      key: string;
-      id: string;
-      amount: number;
-      yourShare: number;
-      owedToYou: number;
-      youOwe: number;
-      collected: number;
-      writtenOff: number;
-      status: "OPEN" | "SETTLED";
-      people: {
-        key: string;
-        contactId: string | null;
-        expenseId: string | null;
-        owesYou: number;
-        youOwe: number;
-        state: string;
-      }[];
-    }[];
-    pending: { count: number; total: number; transactionIds: string[] };
-    spending: {
-      name: string;
-      query: {
-        groupBy: "day" | "month" | "category" | "account" | "tag";
-        splitBy: "category" | null;
-        categoryIds: string[] | null;
-        type: string | null;
-        from: string;
-        to: string;
-        timezone: string;
-      };
-      total: number;
-      buckets: {
-        key: string;
-        total: number;
-        count: number;
-        avg: number;
-        splits?: { key: string; total: number; count: number; avg: number }[];
-      }[];
-    }[];
-    lists: {
-      name: string;
-      query: {
-        sort: "date" | "amount";
-        order: "asc" | "desc";
-        categoryIds: string[] | null;
-        type: string | null;
-        from: string;
-        to: string;
-        timezone: string;
-        limit: number;
-      };
-      transactionIds: string[];
-    }[];
-    budgets: {
-      reference: string;
-      views: {
-        key: string;
-        id: string;
-        periodKey: string;
-        periodFrom: string;
-        periodTo: string;
-        baseAmount: number;
-        amount: number;
-        hasOverride: boolean;
-        spent: number;
-        expired: boolean;
-        archivedCategoryIds: string[];
-      }[];
-    };
-  };
-}
+/**
+ * The committed fixture, typed by the generator that writes it: a second copy
+ * of the shape here would drift the day a field is added and nothing would say so.
+ */
+export type {
+  Fixture,
+  FixtureSettlement,
+} from "../../../scripts/offline-fixtures/types";
 
 const FIXTURE_DIR =
   process.env.OFFLINE_FIXTURES_DIR ??
@@ -269,7 +108,7 @@ async function seedShared(fixture: Fixture): Promise<void> {
       split,
     } as never);
   }
-  for (const one of fixture.settlements ?? []) {
+  const settleUp = async (one: FixtureSettlement): Promise<void> => {
     await settlements.createSettlement(
       {
         id: one.id,
@@ -286,8 +125,12 @@ async function seedShared(fixture: Fixture): Promise<void> {
       } as never,
       fixture.user.timezone,
     );
+  };
+
+  for (const one of fixture.settlements ?? []) {
+    if (!one.afterWriteOffs) await settleUp(one);
   }
-  // Last, so each one gives up on what was still open by then.
+  // Then the write-offs, so each one gives up on what was still open by then.
   for (const group of fixture.sharedGroups ?? []) {
     for (const writeOff of group.writeOffs) {
       await sharedGroups.writeOff(
@@ -299,6 +142,10 @@ async function seedShared(fixture: Fixture): Promise<void> {
         userId,
       );
     }
+  }
+  // And last what was paid afterwards, which is what makes a ceiling visible.
+  for (const one of fixture.settlements ?? []) {
+    if (one.afterWriteOffs) await settleUp(one);
   }
 }
 

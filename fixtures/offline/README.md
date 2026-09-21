@@ -168,5 +168,10 @@ a balance it cannot explain.
 - Cash outside the app moves no account and lowers what counts as yours all the same.
 - A write-off gives up on what was open and moves no figure.
 - What Stats and the budgets measure is what is left as yours, never the amount.
+- The oldest line is the oldest by DATE: one written last but dated first is covered first.
+- Two lines on the same instant are covered in id order, so two devices agree.
+- A fixed share plus the rest divided: the pinned figure never moves.
+- More than they owed stays on the counter as surplus; nothing is over-collected.
+- A write-off keeps the ceiling it was decided against: what is paid later lowers what it gives up.
 
 4 transactions · 1 accounts · 1 categories · 1 budgets · 2 spending queries · 1 ordered list · reference `2026-08-20T12:00:00-05:00`

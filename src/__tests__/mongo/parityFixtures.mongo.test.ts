@@ -115,6 +115,52 @@ describe("offline parity fixtures", () => {
       }
     });
 
+    // What a write-off gave up on is not what was open when it was decided, once anything is paid after.
+    it("keeps every write-off at the ceiling it was decided against", async () => {
+      const { sharedGroups } = shared();
+      for (const expected of fixture.sharedGroups ?? []) {
+        const view = await sharedGroups.getGroupById(expected.id, userId);
+        expect([expected.key, view.writeOffs.map((one) => one.amount)]).toEqual(
+          [expected.key, expected.writeOffs.map((one) => one.amount)],
+        );
+      }
+    });
+
+    it("leaves on the counter what covered no line of theirs", async () => {
+      const expenses = repositoryFactory.getSharedExpenseRepository();
+      const people = (fixture.expected.shared ?? []).flatMap((g) => g.people);
+      for (const person of people) {
+        const party = person.expenseId
+          ? { expenseId: person.expenseId, contactId: null }
+          : { expenseId: null, contactId: person.contactId };
+        const pool = (fixture.settlements ?? [])
+          .filter(
+            (one) =>
+              one.counterparty.contactId === party.contactId &&
+              one.counterparty.expenseId === party.expenseId,
+          )
+          .reduce((sum, one) => sum + one.collected, 0);
+
+        let covered = 0;
+        for (const row of fixture.sharedExpenses ?? []) {
+          const stored = await expenses.getById(row.id);
+          if (!stored || stored.paidByContactId !== null) continue;
+          for (const share of stored.split.shares) {
+            const matches = person.expenseId
+              ? share.party === "GUESTS" && stored.id === person.expenseId
+              : share.party === "CONTACT" &&
+                share.contactId === person.contactId;
+            if (matches) covered += share.collected;
+          }
+        }
+
+        expect([person.key, pool - covered]).toEqual([
+          person.key,
+          person.surplus,
+        ]);
+      }
+    });
+
     it("counts and totals the same rows awaiting review", async () => {
       const { transactions } = services();
       const page = (await transactions.getAllTransactions(userId, PAGE, {

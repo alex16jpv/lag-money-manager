@@ -7,7 +7,12 @@
     "A payment covers the oldest line first, across the whole group.",
     "Cash outside the app moves no account and lowers what counts as yours all the same.",
     "A write-off gives up on what was open and moves no figure.",
-    "What Stats and the budgets measure is what is left as yours, never the amount."
+    "What Stats and the budgets measure is what is left as yours, never the amount.",
+    "The oldest line is the oldest by DATE: one written last but dated first is covered first.",
+    "Two lines on the same instant are covered in id order, so two devices agree.",
+    "A fixed share plus the rest divided: the pinned figure never moves.",
+    "More than they owed stays on the counter as surplus; nothing is over-collected.",
+    "A write-off keeps the ceiling it was decided against: what is paid later lowers what it gives up."
   ],
   "generatedBy": "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline",
   "user": {
@@ -144,6 +149,30 @@
       "id": "01930005-0000-7000-8000-0000000k0002",
       "name": "Beto",
       "archivedAt": null
+    },
+    {
+      "key": "carla",
+      "id": "01930005-0000-7000-8000-0000000k0003",
+      "name": "Carla",
+      "archivedAt": null
+    },
+    {
+      "key": "dani",
+      "id": "01930005-0000-7000-8000-0000000k0004",
+      "name": "Dani",
+      "archivedAt": null
+    },
+    {
+      "key": "elena",
+      "id": "01930005-0000-7000-8000-0000000k0005",
+      "name": "Elena",
+      "archivedAt": null
+    },
+    {
+      "key": "fabio",
+      "id": "01930005-0000-7000-8000-0000000k0006",
+      "name": "Fabio",
+      "archivedAt": null
     }
   ],
   "sharedGroups": [
@@ -168,6 +197,30 @@
       ],
       "archivedAt": null,
       "note": "Beto is written off after every payment below, which is the order they are written in."
+    },
+    {
+      "key": "lunches",
+      "id": "01930005-0000-7000-8000-0000000g0002",
+      "name": "Almuerzos de oficina",
+      "participantContactIds": [
+        "01930005-0000-7000-8000-0000000k0003",
+        "01930005-0000-7000-8000-0000000k0004",
+        "01930005-0000-7000-8000-0000000k0005",
+        "01930005-0000-7000-8000-0000000k0006"
+      ],
+      "defaultSplit": {
+        "mode": "EQUAL",
+        "shares": []
+      },
+      "writeOffs": [
+        {
+          "contactId": "01930005-0000-7000-8000-0000000k0004",
+          "expenseId": null,
+          "amount": 35000
+        }
+      ],
+      "archivedAt": null,
+      "note": "No movement of yours is linked here on purpose: this group is about the order a payment is imputed in, the rest of a fixed share, and what a write-off gives up on."
     }
   ],
   "sharedExpenses": [
@@ -392,6 +445,241 @@
       },
       "deletedAt": null,
       "note": "Ana fronted this one, so no movement of yours exists for it and you owe her a third."
+    },
+    {
+      "key": "l-tie-a",
+      "id": "01930005-0000-7000-8000-0000000s0006",
+      "groupId": "01930005-0000-7000-8000-0000000g0002",
+      "transactionId": null,
+      "description": "Empanadas",
+      "date": "2026-08-06T12:00:00-05:00",
+      "amount": 25000,
+      "paidByContactId": null,
+      "customSplit": false,
+      "split": {
+        "mode": "EQUAL",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 5000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0003",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 5000,
+            "collected": 5000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0004",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 5000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0005",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 5000,
+            "collected": 5000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0006",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 5000,
+            "collected": 0
+          }
+        ]
+      },
+      "deletedAt": null,
+      "note": "Same instant as l-tie-b and a lower id, so a payment reaches it first."
+    },
+    {
+      "key": "l-tie-b",
+      "id": "01930005-0000-7000-8000-0000000s0007",
+      "groupId": "01930005-0000-7000-8000-0000000g0002",
+      "transactionId": null,
+      "description": "Bandejas",
+      "date": "2026-08-06T12:00:00-05:00",
+      "amount": 50000,
+      "paidByContactId": null,
+      "customSplit": false,
+      "split": {
+        "mode": "EQUAL",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0003",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 7000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0004",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0005",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 10000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0006",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          }
+        ]
+      },
+      "deletedAt": null
+    },
+    {
+      "key": "l-fixed",
+      "id": "01930005-0000-7000-8000-0000000s0008",
+      "groupId": "01930005-0000-7000-8000-0000000g0002",
+      "transactionId": null,
+      "description": "Domicilio",
+      "date": "2026-08-07T12:00:00-05:00",
+      "amount": 60000,
+      "paidByContactId": null,
+      "customSplit": true,
+      "split": {
+        "mode": "FIXED_REST",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": 20000,
+            "amount": 20000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0003",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0004",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0005",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 10000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0006",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          }
+        ]
+      },
+      "deletedAt": null,
+      "note": "You take a fixed 20.000 and the other 40.000 is split four ways: the pinned figure never moves."
+    },
+    {
+      "key": "l-back",
+      "id": "01930005-0000-7000-8000-0000000s0009",
+      "groupId": "01930005-0000-7000-8000-0000000g0002",
+      "transactionId": null,
+      "description": "Almuerzo de la semana pasada",
+      "date": "2026-08-01T12:00:00-05:00",
+      "amount": 50000,
+      "paidByContactId": null,
+      "customSplit": false,
+      "split": {
+        "mode": "EQUAL",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0003",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 10000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0004",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 5000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0005",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 10000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0006",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          }
+        ]
+      },
+      "deletedAt": null,
+      "note": "Written last and dated first: a payment covers THIS one before any of the ones above."
     }
   ],
   "settlements": [
@@ -407,6 +695,7 @@
       "collected": 40000,
       "paid": 0,
       "outsideApp": false,
+      "afterWriteOffs": false,
       "deletedAt": null,
       "note": "Covers the dinner, then the party, then part of the taxi: oldest line first."
     },
@@ -422,8 +711,57 @@
       "collected": 50000,
       "paid": 0,
       "outsideApp": true,
+      "afterWriteOffs": false,
       "deletedAt": null,
       "note": "Cash the app never saw: no movement, and what counts as yours falls all the same."
+    },
+    {
+      "key": "carla-pays",
+      "id": "01930005-0000-7000-8000-0000000p0003",
+      "counterparty": {
+        "kind": "CONTACT",
+        "contactId": "01930005-0000-7000-8000-0000000k0003",
+        "expenseId": null
+      },
+      "date": "2026-08-16T10:00:00-05:00",
+      "collected": 22000,
+      "paid": 0,
+      "outsideApp": false,
+      "afterWriteOffs": false,
+      "deletedAt": null,
+      "note": "22.000 of the 35.000 she owes: the back-dated line first, then the older id of the two on the same instant, and 7.000 of the next."
+    },
+    {
+      "key": "elena-pays",
+      "id": "01930005-0000-7000-8000-0000000p0004",
+      "counterparty": {
+        "kind": "CONTACT",
+        "contactId": "01930005-0000-7000-8000-0000000k0005",
+        "expenseId": null
+      },
+      "date": "2026-08-18T10:00:00-05:00",
+      "collected": 40000,
+      "paid": 0,
+      "outsideApp": false,
+      "afterWriteOffs": false,
+      "deletedAt": null,
+      "note": "5.000 more than she owed: every line of hers is settled and the rest stays on the counter."
+    },
+    {
+      "key": "dani-pays",
+      "id": "01930005-0000-7000-8000-0000000p0005",
+      "counterparty": {
+        "kind": "CONTACT",
+        "contactId": "01930005-0000-7000-8000-0000000k0004",
+        "expenseId": null
+      },
+      "date": "2026-08-21T10:00:00-05:00",
+      "collected": 5000,
+      "paid": 0,
+      "outsideApp": false,
+      "afterWriteOffs": true,
+      "deletedAt": null,
+      "note": "Paid after you had already given up on him: the write-off keeps its 35.000 ceiling and gives up 30.000."
     }
   ],
   "expected": {
@@ -431,7 +769,7 @@
       {
         "key": "bank",
         "accountId": "01930005-0000-7000-8000-0000000a0001",
-        "balance": 1735000
+        "balance": 1802000
       }
     ],
     "pending": {
@@ -564,6 +902,7 @@
             "expenseId": null,
             "owesYou": 25680,
             "youOwe": 30000,
+            "surplus": 0,
             "state": "PARTIALLY_PAID"
           },
           {
@@ -572,6 +911,7 @@
             "expenseId": null,
             "owesYou": 0,
             "youOwe": 0,
+            "surplus": 0,
             "state": "WRITTEN_OFF"
           },
           {
@@ -580,7 +920,57 @@
             "expenseId": "01930005-0000-7000-8000-0000000s0002",
             "owesYou": 36956,
             "youOwe": 0,
+            "surplus": 0,
             "state": "PARTIALLY_PAID"
+          }
+        ]
+      },
+      {
+        "key": "lunches",
+        "id": "01930005-0000-7000-8000-0000000g0002",
+        "amount": 185000,
+        "yourShare": 45000,
+        "owedToYou": 48000,
+        "youOwe": 0,
+        "collected": 62000,
+        "writtenOff": 30000,
+        "status": "OPEN",
+        "people": [
+          {
+            "key": "contact:01930005-0000-7000-8000-0000000k0003",
+            "contactId": "01930005-0000-7000-8000-0000000k0003",
+            "expenseId": null,
+            "owesYou": 13000,
+            "youOwe": 0,
+            "surplus": 0,
+            "state": "PARTIALLY_PAID"
+          },
+          {
+            "key": "contact:01930005-0000-7000-8000-0000000k0004",
+            "contactId": "01930005-0000-7000-8000-0000000k0004",
+            "expenseId": null,
+            "owesYou": 0,
+            "youOwe": 0,
+            "surplus": 0,
+            "state": "WRITTEN_OFF"
+          },
+          {
+            "key": "contact:01930005-0000-7000-8000-0000000k0005",
+            "contactId": "01930005-0000-7000-8000-0000000k0005",
+            "expenseId": null,
+            "owesYou": 0,
+            "youOwe": 0,
+            "surplus": 5000,
+            "state": "PAID"
+          },
+          {
+            "key": "contact:01930005-0000-7000-8000-0000000k0006",
+            "contactId": "01930005-0000-7000-8000-0000000k0006",
+            "expenseId": null,
+            "owesYou": 35000,
+            "youOwe": 0,
+            "surplus": 0,
+            "state": "NOT_PAID"
           }
         ]
       }

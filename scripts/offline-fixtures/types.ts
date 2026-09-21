@@ -17,7 +17,13 @@ export type TransactionType =
   "EXPENSE" | "INCOME" | "TRANSFER" | "ADJUSTMENT" | "SETTLEMENT";
 export type SplitMode = "EQUAL" | "PERCENT" | "EXACT" | "FIXED_REST";
 export type PartyKind = "USER" | "CONTACT" | "GUESTS";
-/** Derived from the money, except the last one, which is a decision. */
+/**
+ * Where one party stands, derived from the money except the last one, which is
+ * a decision: `NOT_PAID` nothing of theirs has come back, `PARTIALLY_PAID`
+ * some has and something is still open, `PAID` nothing is left open (paying
+ * ahead reads the same, with the excess in `surplus`), and `WRITTEN_OFF` you
+ * gave up on what was open — the only one no figure can produce on its own.
+ */
 export type PersonState =
   "NOT_PAID" | "PARTIALLY_PAID" | "PAID" | "WRITTEN_OFF";
 export type MoneyType = "EXPENSE" | "INCOME";
@@ -88,6 +94,12 @@ export interface ScenarioSharedExpense {
   guests?: { count: number; name?: string };
   /** Absent inherits the group's default, as the API does. */
   shares?: ScenarioShare[];
+  /**
+   * What each share has to come to, by party key ("you", a contact key or
+   * "guests"), written by hand. The generator refuses to write a fixture whose
+   * resolver disagrees: a split nobody worked out on paper pins nothing.
+   */
+  expect?: Record<string, number>;
   note?: string;
 }
 
@@ -99,8 +111,8 @@ export interface ScenarioSettlement {
   collected?: number;
   paid?: number;
   outsideApp?: boolean;
-  /** The category of the expenses that paying somebody back writes. */
-  category?: string;
+  /** Paid after the write-offs were decided, which is what makes their ceiling visible. */
+  afterWriteOffs?: boolean;
   note?: string;
 }
 
@@ -358,6 +370,8 @@ export interface FixtureSettlement {
   collected: number;
   paid: number;
   outsideApp: boolean;
+  /** Seeded after the write-offs: their ceiling was decided without this money. */
+  afterWriteOffs: boolean;
   deletedAt: string | null;
   note?: string;
 }
@@ -387,6 +401,8 @@ export interface ExpectedPerson {
   expenseId: string | null;
   owesYou: number;
   youOwe: number;
+  /** Handed over beyond every line of theirs: it stays on the counter for the next one. */
+  surplus: number;
   state: PersonState;
 }
 

@@ -13,6 +13,8 @@ import {
 import {
   deriveList,
   deriveSpending,
+  imputeMinor,
+  splitInputProblem,
 } from "../../../scripts/offline-fixtures/derive";
 import { FixtureTransaction } from "../../../scripts/offline-fixtures/types";
 
@@ -108,6 +110,121 @@ describe("offline parity fixtures", () => {
 
       expect(list("asc")).toEqual([rows[0].id, rows[1].id]);
       expect(list("desc")).toEqual([rows[1].id, rows[0].id]);
+    });
+  });
+
+  // The generator would hand the difference to whoever paid and write a fixture the API refuses.
+  describe("the figures a split is refused for", () => {
+    const share = (
+      over: Partial<{ percent: number; fixedAmount: number }> = {},
+    ): {
+      party: "USER";
+      contactId: null;
+      units: number;
+      percent?: number;
+      fixedAmount?: number;
+    } => ({ party: "USER", contactId: null, units: 1, ...over });
+
+    it.each([
+      [
+        "PERCENT" as const,
+        [share({ percent: 60 }), share({ percent: 30 })],
+        "add up to 100, not 90",
+      ],
+      [
+        "PERCENT" as const,
+        [share({ percent: 100 }), share()],
+        "a percentage on every share",
+      ],
+      [
+        "EXACT" as const,
+        [share({ fixedAmount: 40 }), share({ fixedAmount: 40 })],
+        "add up to the expense: 8000 of 10000",
+      ],
+      [
+        "EXACT" as const,
+        [share({ fixedAmount: 100 }), share()],
+        "an amount on every share",
+      ],
+      [
+        "FIXED_REST" as const,
+        [share({ fixedAmount: 60 }), share({ fixedAmount: 40 })],
+        "needs somebody to take the rest",
+      ],
+      [
+        "FIXED_REST" as const,
+        [share({ fixedAmount: 120 }), share()],
+        "more than the expense",
+      ],
+      [
+        "EQUAL" as const,
+        [share({ fixedAmount: 50 }), share()],
+        "takes no amounts",
+      ],
+      [
+        "EXACT" as const,
+        [share({ fixedAmount: 100, percent: 100 }), share()],
+        "takes no percentages",
+      ],
+    ])("refuses a %s split that %s", (mode, rows, problem) => {
+      expect(splitInputProblem(10_000, mode, rows, 100)).toContain(problem);
+    });
+
+    it("says nothing about the splits that do add up", () => {
+      expect(
+        splitInputProblem(
+          10_000,
+          "PERCENT",
+          [share({ percent: 62.5 }), share({ percent: 37.5 })],
+          100,
+        ),
+      ).toBeNull();
+      expect(
+        splitInputProblem(
+          10_000,
+          "FIXED_REST",
+          [share({ fixedAmount: 60 }), share()],
+          100,
+        ),
+      ).toBeNull();
+    });
+  });
+
+  describe("what a payment covers", () => {
+    const line = (key: string, date: string, owed: number) => ({
+      key,
+      date,
+      owed,
+    });
+
+    it("covers the oldest line first, whatever order the lines come in", () => {
+      const { settled, surplus } = imputeMinor(
+        [
+          line("b", "2026-08-10T12:00:00-05:00", 1000),
+          line("a", "2026-08-01T12:00:00-05:00", 1000),
+        ],
+        1500,
+      );
+      expect([settled.get("a"), settled.get("b"), surplus]).toEqual([
+        1000, 500, 0,
+      ]);
+    });
+
+    it("breaks a tie of the same instant by key, so two devices agree", () => {
+      const same = "2026-08-06T12:00:00-05:00";
+      const { settled } = imputeMinor(
+        [line("s2", same, 1000), line("s1", same, 1000)],
+        1200,
+      );
+      expect([settled.get("s1"), settled.get("s2")]).toEqual([1000, 200]);
+    });
+
+    it("leaves what covered no line as surplus, and never overshoots one", () => {
+      const { settled, surplus } = imputeMinor(
+        [line("a", "2026-08-01T12:00:00-05:00", 1000)],
+        2500,
+      );
+      expect([settled.get("a"), surplus]).toEqual([1000, 1500]);
     });
   });
 });

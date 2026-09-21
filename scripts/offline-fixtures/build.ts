@@ -24,6 +24,7 @@ import {
   deriveSpending,
   resolvePeriod,
   resolveSharesMinor,
+  splitInputProblem,
 } from "./derive";
 import { fixtureId, SCENARIOS } from "./scenarios";
 import {
@@ -42,6 +43,7 @@ import {
   Scenario,
   ScenarioCategory,
   ScenarioShare,
+  ScenarioSharedExpense,
   ScenarioTransaction,
 } from "./types";
 
@@ -165,17 +167,22 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
         })),
       },
       // The ceiling of each one is worked out below, once the payments are imputed.
-      writeOffs: (group.writeOffs ?? []).map((key) => ({
-        contactId: group.contacts.includes(key) ? contactId(key) : null,
-        expenseId: group.contacts.includes(key)
-          ? null
-          : fixtureId(
-              index,
-              "s",
-              group.expenses.findIndex((e) => e.key === key) + 1 + expenseIndex,
-            ),
-        amount: 0,
-      })),
+      writeOffs: (group.writeOffs ?? []).map((key) => {
+        if (group.contacts.includes(key)) {
+          return { contactId: contactId(key), expenseId: null, amount: 0 };
+        }
+        const at = group.expenses.findIndex((e) => e.key === key);
+        if (at === -1) {
+          throw new Error(
+            `${scenario.id}/${group.key}: ${key} is neither in the group nor one of its expenses`,
+          );
+        }
+        return {
+          contactId: null,
+          expenseId: fixtureId(index, "s", at + 1 + expenseIndex),
+          amount: 0,
+        };
+      }),
       archivedAt: null,
       note: group.note,
     });
@@ -234,6 +241,15 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
           `${scenario.id}/${expense.key}: whoever paid has no share`,
         );
       }
+      const problem = splitInputProblem(
+        Math.round(amount * scale),
+        mode,
+        rows,
+        scale,
+      );
+      if (problem) {
+        throw new Error(`${scenario.id}/${expense.key}: ${problem}`);
+      }
       const amounts = resolveSharesMinor(
         Math.round(amount * scale),
         mode,
@@ -241,6 +257,7 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
         payerIndex,
         scale,
       );
+      assertSharesAsAuthored(scenario, expense, authored, amounts, scale);
       sharedExpenses.push({
         key: expense.key,
         id,
@@ -284,6 +301,14 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
         );
       }
       const block = sharedExpenses.find((e) => e.key === one.with);
+      if (block && block.split.guests === null) {
+        throw new Error(
+          `${scenario.id}/${one.key}: ${one.with} has no block of guests to settle with`,
+        );
+      }
+      if (!one.collected && !one.paid) {
+        throw new Error(`${scenario.id}/${one.key}: a settle-up moves money`);
+      }
       return {
         key: one.key,
         id: fixtureId(index, "p", i + 1),
@@ -298,6 +323,7 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
         collected: one.collected ?? 0,
         paid: one.paid ?? 0,
         outsideApp: one.outsideApp === true,
+        afterWriteOffs: one.afterWriteOffs === true,
         deletedAt: null,
         note: one.note,
       };
@@ -480,6 +506,43 @@ function assertTypedCategory(
       `${scenario.id}/${t.key}: a ${t.type} cannot carry ${t.category}, which is a ${category.type} category`,
     );
   }
+}
+
+/**
+ * A scenario may state what each share comes to. Nobody has to, but where the
+ * odd unit lands is the kind of figure that has to be worked out on paper
+ * first: a resolver that agrees with itself pins nothing.
+ */
+function assertSharesAsAuthored(
+  scenario: Scenario,
+  expense: ScenarioSharedExpense,
+  authored: ScenarioShare[],
+  amounts: number[],
+  scale: number,
+): void {
+  if (expense.expect === undefined) return;
+  const parties = authored.map((share) => share.party);
+  for (const party of Object.keys(expense.expect)) {
+    if (!parties.includes(party)) {
+      throw new Error(
+        `${scenario.id}/${expense.key}: ${party} has no share to expect`,
+      );
+    }
+  }
+  authored.forEach((share, i) => {
+    const wanted = expense.expect?.[share.party];
+    if (wanted === undefined) {
+      throw new Error(
+        `${scenario.id}/${expense.key}: ${share.party} is left without an expected share`,
+      );
+    }
+    const got = (amounts[i] as number) / scale;
+    if (got !== wanted) {
+      throw new Error(
+        `${scenario.id}/${expense.key}: ${share.party} works out to ${got}, not the ${wanted} the scenario expects`,
+      );
+    }
+  });
 }
 
 function assertNoTies(
