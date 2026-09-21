@@ -5,6 +5,8 @@ import { CategoryRepository } from "../../../infrastructure/repositories/categor
 import { ContactRepository } from "../../../infrastructure/repositories/contact/ContactRepository";
 import { IdempotencyRepository } from "../../../infrastructure/repositories/idempotency/IdempotencyRepository";
 import { RefreshSessionRepository } from "../../../infrastructure/repositories/refreshSession/RefreshSessionRepository";
+import { SharedExpenseRepository } from "../../../infrastructure/repositories/sharedExpense/SharedExpenseRepository";
+import { SharedGroupRepository } from "../../../infrastructure/repositories/sharedGroup/SharedGroupRepository";
 import { SyncOpRepository } from "../../../infrastructure/repositories/syncOp/SyncOpRepository";
 import { TransactionRepository } from "../../../infrastructure/repositories/transaction/TransactionRepository";
 import { UserRepository } from "../../../infrastructure/repositories/user/UserRepository";
@@ -34,4 +36,6 @@ export function registerRepositories(factory: RegistryTarget): void {
   factory.register("refreshSession", () => new RefreshSessionRepository());
   factory.register("syncOp", () => new SyncOpRepository());
   factory.register("contact", () => new ContactRepository());
+  factory.register("sharedGroup", () => new SharedGroupRepository());
+  factory.register("sharedExpense", () => new SharedExpenseRepository());
 }

@@ -4,11 +4,14 @@ import { Account } from "../../domain/entities/Account";
 import { Budget } from "../../domain/entities/Budget";
 import { Category } from "../../domain/entities/Category";
 import { Contact } from "../../domain/entities/Contact";
+import { SharedGroup } from "../../domain/entities/SharedGroup";
 import { Transaction } from "../../domain/entities/Transaction";
 import { User } from "../../domain/entities/User";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
+import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
+import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
@@ -73,11 +76,39 @@ const mockContactRepo: jest.Mocked<IContactRepository> = {
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
   getOwnById: jest.fn(),
+  listActiveIds: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   countByUserId: jest.fn().mockResolvedValue(0),
   update: jest.fn(),
   delete: jest.fn(),
   restore: jest.fn(),
+};
+
+const mockSharedGroupRepo: jest.Mocked<ISharedGroupRepository> = {
+  getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
+  getById: jest.fn(),
+  getByIdIncludingArchived: jest.fn(),
+  getOwnById: jest.fn(),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+  restore: jest.fn(),
+};
+
+const mockSharedExpenseRepo: jest.Mocked<ISharedExpenseRepository> = {
+  getAll: jest.fn(),
+  getAllByGroup: jest.fn(),
+  getById: jest.fn(),
+  getByIdIncludingDeleted: jest.fn(),
+  getOwnById: jest.fn(),
+  listByGroup: jest.fn().mockResolvedValue([]),
+  countSharesOfContact: jest.fn().mockResolvedValue(0),
+  totalsByGroup: jest.fn().mockResolvedValue([]),
+  replaceSplits: jest.fn().mockResolvedValue(undefined),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
 };
 
 const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
@@ -202,6 +233,16 @@ jest.mock("../../shared/constants", () => ({
   SPENDING_SPLIT_BY: { category: "category" },
   MAX_BUDGET_CATEGORIES: 20,
   MAX_CONTACTS_PER_USER: 200,
+  MAX_GROUP_PARTICIPANTS: 20,
+  MAX_EXPENSE_GUESTS: 999,
+  GROUP_SPLIT_MODES: { EQUAL: "EQUAL", PERCENT: "PERCENT" },
+  SPLIT_MODES: {
+    EQUAL: "EQUAL",
+    PERCENT: "PERCENT",
+    EXACT: "EXACT",
+    FIXED_REST: "FIXED_REST",
+  },
+  SHARE_PARTIES: { USER: "USER", CONTACT: "CONTACT", GUESTS: "GUESTS" },
   BUDGET_PERIOD_TYPES: {
     WEEKLY: "WEEKLY",
     BIWEEKLY: "BIWEEKLY",
@@ -221,6 +262,8 @@ jest.mock("../../shared/constants", () => ({
     BUDGET: "Budget",
     CATEGORY: "Category",
     CONTACT: "Contact",
+    SHARED_GROUP: "SharedGroup",
+    SHARED_EXPENSE: "SharedExpense",
   },
 }));
 
@@ -258,6 +301,8 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getAccountRepository: () => mockAccountRepo,
     getCategoryRepository: () => mockCategoryRepo,
     getContactRepository: () => mockContactRepo,
+    getSharedGroupRepository: () => mockSharedGroupRepo,
+    getSharedExpenseRepository: () => mockSharedExpenseRepo,
     getTransactionRepository: () => mockTransactionRepo,
     getIdempotencyRepository: () => mockIdempotencyRepo,
     getBudgetRepository: () => mockBudgetRepo,
@@ -1007,11 +1052,16 @@ describe("Integration Tests", () => {
       expect(res.status).toBe(400);
     });
 
-    it("answers 404 for a contact that is not the caller's", async () => {
-      mockContactRepo.getByIdIncludingArchived.mockResolvedValue(null);
+    it("answers 404 for a contact that belongs to somebody else", async () => {
+      mockContactRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Contact({
+          ...testContact,
+          userId: "019576a0-d7b6-7d6d-af6a-2b7545f5acff",
+        }),
+      );
 
       const res = await request(app)
-        .get("/contacts/019576a0-d7b6-7d6d-af6a-000000000000")
+        .get("/contacts/019576a0-d7b6-7d6d-af6a-2b7545f5acc1")
         .set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(404);
@@ -1055,6 +1105,9 @@ describe("Integration Tests", () => {
     });
 
     it("restores an archived contact", async () => {
+      mockContactRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Contact({ ...testContact, archivedAt: new Date() }),
+      );
       mockContactRepo.restore.mockResolvedValue(testContact);
 
       const res = await request(app)
@@ -1064,6 +1117,139 @@ describe("Integration Tests", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.archivedAt).toBeNull();
+    });
+  });
+
+  describe("Shared groups", () => {
+    const anaId = "019576a0-d7b6-7d6d-af6a-2b7545f5aca1";
+    const groupId = "019576a0-d7b6-7d6d-af6a-2b7545f5acd1";
+    const testGroup = new SharedGroup({
+      id: groupId,
+      name: "Night out",
+      userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      currency: "COP",
+      participants: [{ contactId: null }, { contactId: anaId }],
+      defaultSplit: { mode: "EQUAL", shares: [] },
+    });
+
+    beforeEach(() => {
+      mockContactRepo.listActiveIds.mockResolvedValue([anaId]);
+      mockSharedExpenseRepo.totalsByGroup.mockResolvedValue([]);
+      mockSharedGroupRepo.getByIdIncludingArchived.mockResolvedValue(testGroup);
+    });
+
+    it("creates a group with the owner in it and the owner's currency", async () => {
+      mockSharedGroupRepo.create.mockImplementation(
+        async (g) => new SharedGroup(g as SharedGroup),
+      );
+      mockUserRepo.getById.mockResolvedValue(testUser);
+
+      const res = await request(app)
+        .post("/shared-groups")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ name: "Night out", contactIds: [anaId] });
+
+      expect(res.status).toBe(201);
+      expect(res.body.participants).toHaveLength(2);
+      expect(res.body.participants[0].contactId).toBeNull();
+      expect(res.body.totals.expenseCount).toBe(0);
+    });
+
+    it("refuses a default split that cannot be a default", async () => {
+      const res = await request(app)
+        .post("/shared-groups")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ name: "Night out", defaultSplit: { mode: "EXACT" } });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("lists the groups with their derived totals", async () => {
+      mockSharedGroupRepo.getAllByUserId.mockResolvedValue({
+        data: [testGroup],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+      mockSharedExpenseRepo.totalsByGroup.mockResolvedValue([
+        {
+          groupId,
+          total: 90000,
+          yourShare: 45000,
+          expenseCount: 1,
+          dateFrom: new Date("2026-09-01T00:00:00.000Z"),
+          dateTo: new Date("2026-09-02T00:00:00.000Z"),
+        },
+      ]);
+
+      const res = await request(app)
+        .get("/shared-groups")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data[0].totals.amount).toBe(90000);
+    });
+
+    it("records an expense split by the group's default", async () => {
+      mockSharedExpenseRepo.create.mockImplementation(async (e) => e as never);
+
+      const res = await request(app)
+        .post(`/shared-groups/${groupId}/expenses`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          description: "Dinner",
+          date: "2026-09-15T18:00:00.000Z",
+          amount: 90000,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.customSplit).toBe(false);
+      expect(
+        res.body.split.shares.map((s: { amount: number }) => s.amount),
+      ).toEqual([45000, 45000]);
+    });
+
+    it("refuses a share for somebody who is not in the group", async () => {
+      const res = await request(app)
+        .post(`/shared-groups/${groupId}/expenses`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          description: "Dinner",
+          date: "2026-09-15T18:00:00.000Z",
+          amount: 90000,
+          split: {
+            mode: "EQUAL",
+            shares: [
+              { party: "USER" },
+              {
+                party: "CONTACT",
+                contactId: "019576a0-d7b6-7d6d-af6a-2b7545f5acee",
+              },
+            ],
+          },
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("PARTICIPANT_NOT_IN_GROUP");
+    });
+
+    it("answers 404 for a group that belongs to somebody else", async () => {
+      mockSharedGroupRepo.getByIdIncludingArchived.mockResolvedValue(
+        new SharedGroup({
+          ...testGroup,
+          userId: "019576a0-d7b6-7d6d-af6a-2b7545f5acff",
+        }),
+      );
+
+      const res = await request(app)
+        .get(`/shared-groups/${groupId}`)
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
     });
   });
 

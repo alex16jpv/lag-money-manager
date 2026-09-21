@@ -6,6 +6,8 @@ export { ContactModel } from "./ContactModel";
 export { IdempotencyKeyModel } from "./IdempotencyKeyModel";
 export { RateLimitModel } from "./RateLimitModel";
 export { RefreshSessionModel } from "./RefreshSessionModel";
+export { SharedExpenseModel } from "./SharedExpenseModel";
+export { SharedGroupModel } from "./SharedGroupModel";
 export { SyncOpModel } from "./SyncOpModel";
 export { TransactionModel } from "./TransactionModel";
 export { UserModel } from "./UserModel";

@@ -127,6 +127,18 @@ export class ContactRepository implements IContactRepository {
     return this.toEntity(doc.toObject());
   }
 
+  async listActiveIds(userId: string, ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const docs = await ContactModel.find({
+      userId,
+      _id: { $in: ids },
+      archivedAt: null,
+    })
+      .select("_id")
+      .lean();
+    return docs.map((doc) => doc._id);
+  }
+
   async countByUserId(userId: string): Promise<number> {
     return ContactModel.countDocuments({ userId, archivedAt: null });
   }

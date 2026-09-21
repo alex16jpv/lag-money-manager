@@ -7,6 +7,8 @@ jest.mock("../../shared/constants", () => ({
     CATEGORY: "Category",
     BUDGET: "Budget",
     CONTACT: "Contact",
+    SHARED_GROUP: "SharedGroup",
+    SHARED_EXPENSE: "SharedExpense",
   },
   ACCOUNT_TYPES: { CASH: "CASH", ACCOUNT: "ACCOUNT", OTHER: "OTHER" },
   COLORS: { RED: "RED", GREEN: "GREEN" },
@@ -24,6 +26,14 @@ jest.mock("../../shared/constants", () => ({
   },
   BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
   BUDGET_PERIOD_TYPES: { MONTHLY: "MONTHLY", CUSTOM: "CUSTOM" },
+  GROUP_SPLIT_MODES: { EQUAL: "EQUAL", PERCENT: "PERCENT" },
+  SPLIT_MODES: {
+    EQUAL: "EQUAL",
+    PERCENT: "PERCENT",
+    EXACT: "EXACT",
+    FIXED_REST: "FIXED_REST",
+  },
+  SHARE_PARTIES: { USER: "USER", CONTACT: "CONTACT", GUESTS: "GUESTS" },
 }));
 
 import { readdirSync } from "fs";

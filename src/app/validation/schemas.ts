@@ -6,11 +6,16 @@ import {
   BUDGET_TYPES,
   CATEGORY_TYPES,
   COLORS,
+  GROUP_SPLIT_MODES,
   MAX_BUDGET_CATEGORIES,
+  MAX_EXPENSE_GUESTS,
+  MAX_GROUP_PARTICIPANTS,
+  SHARE_PARTIES,
   SPENDING_GROUP_BY,
   SPENDING_SPLIT_BY,
   SpendingGroupBy,
   SpendingSplitBy,
+  SPLIT_MODES,
   TRANSACTION_SOURCES,
   TRANSACTION_TYPES,
   TransactionSource,
@@ -440,6 +445,229 @@ export const updateContactSchema = z.object({
         .optional()
         .nullable(),
       email: emailField.optional().nullable(),
+    })
+    .refine((data) => Object.values(data).some((v) => v !== undefined), {
+      message: "At least one field must be provided",
+    }),
+});
+
+const splitModeValues = Object.keys(SPLIT_MODES) as [string, ...string[]];
+const groupSplitModeValues = Object.keys(GROUP_SPLIT_MODES) as [
+  string,
+  ...string[],
+];
+const sharePartyValues = Object.keys(SHARE_PARTIES) as [string, ...string[]];
+
+// A percentage is not money: two decimals, so the split resolves in whole basis points.
+const percentField = z
+  .number()
+  .min(0, "A percentage cannot be negative")
+  .max(100, "A percentage cannot be over 100")
+  .multipleOf(0.01, "A percentage must have at most 2 decimal places");
+
+const shareAmount = z
+  .number()
+  .min(0, "A share cannot be negative")
+  .multipleOf(0.01, "Amount must have at most 2 decimal places")
+  .max(MAX_AMOUNT, `Amount must be at most ${MAX_AMOUNT}`);
+
+const defaultSplitSchema = z.object({
+  mode: z.enum(groupSplitModeValues, {
+    error: `A group's default split is one of: ${groupSplitModeValues.join(", ")}`,
+  }),
+  shares: z
+    .array(
+      z.object({
+        contactId: z.string().uuid("contactId must be a valid UUID").nullable(),
+        percent: percentField,
+      }),
+    )
+    .max(MAX_GROUP_PARTICIPANTS)
+    .optional(),
+});
+
+const splitSchema = z.object({
+  mode: z.enum(splitModeValues, {
+    error: `Invalid split mode. Available: ${splitModeValues.join(", ")}`,
+  }),
+  guests: z
+    .object({
+      count: z.coerce
+        .number()
+        .int("The head count must be a whole number")
+        .min(1, "A block of guests starts at one")
+        .max(MAX_EXPENSE_GUESTS),
+      name: z.string().trim().max(255).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+  shares: z
+    .array(
+      z.object({
+        party: z.enum(sharePartyValues, {
+          error: `Invalid share. Available: ${sharePartyValues.join(", ")}`,
+        }),
+        contactId: z
+          .string()
+          .uuid("contactId must be a valid UUID")
+          .optional()
+          .nullable(),
+        percent: percentField.optional().nullable(),
+        fixedAmount: shareAmount.optional().nullable(),
+      }),
+    )
+    .min(1, "A split needs at least one share")
+    // The people in the group, and at most one block of guests on top of them.
+    .max(MAX_GROUP_PARTICIPANTS + 1),
+});
+
+const contactIdList = z
+  .array(z.string().uuid("Each contactId must be a valid UUID"))
+  .max(MAX_GROUP_PARTICIPANTS - 1);
+
+export const getSharedGroupsSchema = z.object({
+  query: z.object({
+    limit: z.coerce
+      .number()
+      .int("Limit must be an integer")
+      .min(1, "Limit must be at least 1")
+      .max(MAX_LIMIT, `Limit must be at most ${MAX_LIMIT}`)
+      .optional(),
+    offset: z.coerce
+      .number()
+      .int("Offset must be an integer")
+      .min(0, "Offset must be non-negative")
+      .optional(),
+    cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
+    ids: z
+      .string()
+      .transform(splitIdList)
+      .pipe(
+        z
+          .array(z.string().uuid("Each ID must be a valid UUID"))
+          .min(1)
+          .max(100),
+      )
+      .optional(),
+    contactId: z.string().uuid("contactId must be a valid UUID").optional(),
+    includeArchived: z.enum(["true", "false"]).optional(),
+  }),
+});
+
+export const createSharedGroupSchema = z.object({
+  body: z.object({
+    id: clientMintedId,
+    name: accountName,
+    color: z
+      .enum(colorValues, {
+        error: `Invalid color. Available: ${colorValues.join(", ")}`,
+      })
+      .optional(),
+    contactIds: contactIdList.optional(),
+    defaultSplit: defaultSplitSchema.optional(),
+  }),
+});
+
+export const updateSharedGroupSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  body: z
+    .object({
+      name: accountName.optional(),
+      color: z
+        .enum(colorValues, {
+          error: `Invalid color. Available: ${colorValues.join(", ")}`,
+        })
+        .optional()
+        .nullable(),
+      defaultSplit: defaultSplitSchema.optional(),
+    })
+    .refine((data) => Object.values(data).some((v) => v !== undefined), {
+      message: "At least one field must be provided",
+    }),
+});
+
+export const addParticipantsSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  body: z.object({
+    contactIds: contactIdList.min(1, "Name at least one person to add"),
+    applyToExistingExpenses: z.boolean().optional(),
+    defaultSplit: defaultSplitSchema.optional(),
+  }),
+});
+
+export const removeParticipantSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+    contactId: z.string().uuid("contactId must be a valid UUID"),
+  }),
+});
+
+export const getSharedExpensesSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  query: z.object({
+    limit: z.coerce
+      .number()
+      .int("Limit must be an integer")
+      .min(1, "Limit must be at least 1")
+      .max(MAX_LIMIT, `Limit must be at most ${MAX_LIMIT}`)
+      .optional(),
+    offset: z.coerce
+      .number()
+      .int("Offset must be an integer")
+      .min(0, "Offset must be non-negative")
+      .optional(),
+    cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
+  }),
+});
+
+export const createSharedExpenseSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  body: z.object({
+    id: clientMintedId,
+    description: z.string().trim().max(255).optional().nullable(),
+    date: isoDate,
+    amount: moneyAmount,
+    paidByContactId: z
+      .string()
+      .uuid("paidByContactId must be a valid UUID")
+      .optional()
+      .nullable(),
+    split: splitSchema.optional(),
+  }),
+});
+
+export const sharedExpenseParamsSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+    expenseId: z.string().uuid("expenseId must be a valid UUID"),
+  }),
+});
+
+export const updateSharedExpenseSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+    expenseId: z.string().uuid("expenseId must be a valid UUID"),
+  }),
+  body: z
+    .object({
+      description: z.string().trim().max(255).optional().nullable(),
+      date: isoDate.optional(),
+      amount: moneyAmount.optional(),
+      paidByContactId: z
+        .string()
+        .uuid("paidByContactId must be a valid UUID")
+        .optional()
+        .nullable(),
+      split: splitSchema.optional(),
+      useGroupSplit: z.literal(true).optional(),
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {
       message: "At least one field must be provided",

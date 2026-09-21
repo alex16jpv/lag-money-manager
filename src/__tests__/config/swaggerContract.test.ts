@@ -7,8 +7,11 @@ import { swaggerSpec } from "../../config/swagger";
 import {
   DEBT_ACCOUNT_FIELD_NAMES,
   MAX_CONTACTS_PER_USER,
+  MAX_EXPENSE_GUESTS,
+  MAX_GROUP_PARTICIPANTS,
   SPENDING_GROUP_BY,
   SPENDING_SPLIT_BY,
+  SPLIT_MODES,
 } from "../../shared/constants";
 import { ZERO_DECIMAL_CURRENCIES } from "../../shared/currency";
 import { ERROR_CODES } from "../../shared/errorCodes";
@@ -44,6 +47,12 @@ describe("OpenAPI response views", () => {
     "Account",
     "Category",
     "Contact",
+    "SharedGroup",
+    "SharedGroupTotals",
+    "SharedExpense",
+    "SharedSplit",
+    "SharedShare",
+    "AddParticipantsPreview",
     "Transaction",
     "Budget",
     "StatsBucket",
@@ -68,6 +77,8 @@ describe("OpenAPI response views", () => {
     ["Account", "creditLimit"],
     ["Account", "borrowedAmount"],
     ["Contact", "email"],
+    ["Contact", "color"],
+    ["SharedGroup", "color"],
   ])(
     "%s leaves %s optional, because it may genuinely be absent",
     (name, field) => {
@@ -97,6 +108,8 @@ describe("OpenAPI response views", () => {
     ["AccountList", ["data", "pagination"]],
     ["CategoryList", ["data", "pagination"]],
     ["ContactList", ["data", "pagination"]],
+    ["SharedGroupList", ["data", "pagination"]],
+    ["SharedExpenseList", ["data", "pagination"]],
     ["TransactionList", ["data", "pagination"]],
     ["BudgetList", ["data", "pagination"]],
     ["SessionList", ["data"]],
@@ -229,13 +242,33 @@ describe("OpenAPI response views", () => {
   // The sheet that adds a contact names the limit before a save can fail on it, so it has to read it.
   it("publishes the shared-section limits as numbers a client can generate", () => {
     const limits = spec.components.schemas.SharedLimits as {
-      properties: { maxContactsPerUser: { enum?: number[] } };
+      properties: {
+        maxContactsPerUser: { enum?: number[] };
+        maxParticipantsPerGroup: { enum?: number[] };
+        maxGuestsPerExpense: { enum?: number[] };
+      };
       required: string[];
     };
     expect(limits.properties.maxContactsPerUser.enum).toEqual([
       MAX_CONTACTS_PER_USER,
     ]);
+    expect(limits.properties.maxParticipantsPerGroup.enum).toEqual([
+      MAX_GROUP_PARTICIPANTS,
+    ]);
+    expect(limits.properties.maxGuestsPerExpense.enum).toEqual([
+      MAX_EXPENSE_GUESTS,
+    ]);
     expect(limits.required).toContain("maxContactsPerUser");
+  });
+
+  // The split sheet paints one control per mode, so the list has to be the server's own.
+  it("publishes the split modes on the response view and on the request body", () => {
+    const mode = view("SharedSplit").properties.mode as { enum?: string[] };
+    expect(mode.enum).toEqual(Object.keys(SPLIT_MODES));
+    const input = spec.components.schemas.CreateSharedExpenseInput as {
+      properties: { split: { properties: { mode: { enum?: string[] } } } };
+    };
+    expect(input.properties.split.properties.mode.enum).toEqual(mode.enum);
   });
 
   it("publishes the icon enum on the response view, not just the request body", () => {

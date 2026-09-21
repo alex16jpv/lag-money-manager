@@ -1,0 +1,273 @@
+### ==========================================================
+### SHARED GROUPS — la salida, su gente, sus gastos y el reparto.
+### Aquí NO se mueve plata del usuario: no hay cuenta, ni categoría,
+### ni presupuesto. Un grupo no tiene mes: el rango sale de sus gastos.
+### El sobrante del redondeo es SIEMPRE de quien pagó.
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+
+@token = {{login.response.body.accessToken}}
+
+### Contactos para el grupo (éxito)
+# @name createAna
+POST {{baseUrl}}/contacts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Ana {{$randomInt 100 999}}", "color": "TEAL" }
+
+###
+
+@anaId = {{createAna.response.body.id}}
+
+# @name createBeto
+POST {{baseUrl}}/contacts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Beto {{$randomInt 100 999}}", "color": "INDIGO" }
+
+###
+
+@betoId = {{createBeto.response.body.id}}
+
+# @name createCarla
+POST {{baseUrl}}/contacts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Carla {{$randomInt 100 999}}", "color": "ROSE" }
+
+###
+
+@carlaId = {{createCarla.response.body.id}}
+
+### Crear el grupo (éxito) — tú entras solo, no te nombras en contactIds
+# @name createGroup
+POST {{baseUrl}}/shared-groups
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Viaje Cartagena {{$randomInt 100 999}}", "color": "AMBER", "contactIds": ["{{anaId}}", "{{betoId}}"] }
+
+###
+
+@groupId = {{createGroup.response.body.id}}
+@groupVersion = {{createGroup.response.body.updatedAt}}
+
+### Un reparto por defecto no puede ser EXACT: no hay total que repartir — 400 VALIDATION
+POST {{baseUrl}}/shared-groups
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Mal defecto {{$randomInt 100 999}}", "defaultSplit": { "mode": "EXACT" } }
+
+### Porcentajes que no suman 100 — 400 SPLIT_INVALID
+POST {{baseUrl}}/shared-groups
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Mal porcentaje {{$randomInt 100 999}}", "contactIds": ["{{anaId}}"], "defaultSplit": { "mode": "PERCENT", "shares": [{ "contactId": null, "percent": 60 }, { "contactId": "{{anaId}}", "percent": 30 }] } }
+
+### Listar los grupos — cada fila trae sus totales derivados
+GET {{baseUrl}}/shared-groups
+Authorization: Bearer {{token}}
+
+### Solo los grupos en los que está una persona
+GET {{baseUrl}}/shared-groups?contactId={{anaId}}
+Authorization: Bearer {{token}}
+
+### Gasto que hereda el reparto del grupo (éxito) — 100.000 entre 3 en COP: el peso suelto es tuyo
+# @name createExpense
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Cena", "date": "2026-08-15T23:00:00.000Z", "amount": 100000 }
+
+###
+
+@expenseId = {{createExpense.response.body.id}}
+
+### Gasto de otro mes — el grupo dura lo que duran sus gastos
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Hotel", "date": "2026-09-02T15:00:00.000Z", "amount": 600000 }
+
+### Gasto que pagó otra persona — no es gasto tuyo; si hubiera sobrante sería de ella
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Tickets", "date": "2026-08-16T20:00:00.000Z", "amount": 90000, "paidByContactId": "{{anaId}}" }
+
+### Gasto con reparto propio por importes exactos — queda como Custom split
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Taxi", "date": "2026-08-16T02:00:00.000Z", "amount": 60000, "split": { "mode": "EXACT", "shares": [{ "party": "USER", "fixedAmount": 40000 }, { "party": "CONTACT", "contactId": "{{anaId}}", "fixedAmount": 20000 }] } }
+
+### Reparto «fijos y el resto» — «pepito solo paga 50»
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Almuerzo", "date": "2026-08-17T17:00:00.000Z", "amount": 150000, "split": { "mode": "FIXED_REST", "shares": [{ "party": "USER" }, { "party": "CONTACT", "contactId": "{{anaId}}", "fixedAmount": 50000 }, { "party": "CONTACT", "contactId": "{{betoId}}" }] } }
+
+### Invitados: 3 personas + 20 invitados = 23 partes, y el bloque es UN cobro
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Fiesta", "date": "2026-08-18T23:00:00.000Z", "amount": 230000, "split": { "mode": "EQUAL", "guests": { "count": 20, "name": "La oficina" }, "shares": [{ "party": "USER" }, { "party": "CONTACT", "contactId": "{{anaId}}" }, { "party": "CONTACT", "contactId": "{{betoId}}" }, { "party": "GUESTS" }] } }
+
+### Un bloque de invitados sin el número encima — 400 SPLIT_INVALID
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Sin cabezas", "date": "2026-08-18T23:00:00.000Z", "amount": 1000, "split": { "mode": "EQUAL", "shares": [{ "party": "USER" }, { "party": "GUESTS" }] } }
+
+### Alguien que no está en el grupo — 400 PARTICIPANT_NOT_IN_GROUP
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Ajeno", "date": "2026-08-18T23:00:00.000Z", "amount": 1000, "split": { "mode": "EQUAL", "shares": [{ "party": "USER" }, { "party": "CONTACT", "contactId": "{{carlaId}}" }] } }
+
+### COP no tiene decimales — 400 AMOUNT_PRECISION
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Con centavos", "date": "2026-08-18T23:00:00.000Z", "amount": 1000.5 }
+
+### Fecha a más de 24 h — 400 FUTURE_DATE
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Mañana no", "date": "2030-01-01T00:00:00.000Z", "amount": 1000 }
+
+### Los gastos del grupo — el más nuevo primero, keyset sobre (date, id)
+GET {{baseUrl}}/shared-groups/{{groupId}}/expenses?limit=2
+Authorization: Bearer {{token}}
+
+### El grupo con su rango y sus totales, derivados de los gastos
+GET {{baseUrl}}/shared-groups/{{groupId}}
+Authorization: Bearer {{token}}
+
+### Cambiar el importe vuelve a repartir sobre el mismo reparto
+PUT {{baseUrl}}/shared-groups/{{groupId}}/expenses/{{expenseId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "amount": 120000 }
+
+### Guardar un reparto propio en ese gasto — queda Custom split
+PUT {{baseUrl}}/shared-groups/{{groupId}}/expenses/{{expenseId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "split": { "mode": "PERCENT", "shares": [{ "party": "USER", "percent": 50 }, { "party": "CONTACT", "contactId": "{{anaId}}", "percent": 50 }] } }
+
+### Volver al reparto del grupo — limpia la marca
+PUT {{baseUrl}}/shared-groups/{{groupId}}/expenses/{{expenseId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "useGroupSplit": true }
+
+### Las dos cosas a la vez — 400 SPLIT_INVALID
+PUT {{baseUrl}}/shared-groups/{{groupId}}/expenses/{{expenseId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "useGroupSplit": true, "split": { "mode": "EQUAL", "shares": [{ "party": "USER" }] } }
+
+### Simular añadir a alguien: enseña el resultado entero SIN escribir nada
+POST {{baseUrl}}/shared-groups/{{groupId}}/participants/preview
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactIds": ["{{carlaId}}"], "applyToExistingExpenses": true }
+
+### Añadirla de verdad — el grupo y todos los gastos se mueven juntos
+POST {{baseUrl}}/shared-groups/{{groupId}}/participants
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactIds": ["{{carlaId}}"], "applyToExistingExpenses": true }
+
+### Añadir a alguien que ya está — 400 PARTICIPANT_ALREADY_IN_GROUP
+POST {{baseUrl}}/shared-groups/{{groupId}}/participants
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactIds": ["{{anaId}}"] }
+
+### Sacarla ahora que tiene parte en los gastos — 400 PARTICIPANT_IN_USE
+DELETE {{baseUrl}}/shared-groups/{{groupId}}/participants/{{carlaId}}
+Authorization: Bearer {{token}}
+
+### Cambiar el reparto por defecto — vale para lo que añadas desde ahora, nunca hacia atrás
+PUT {{baseUrl}}/shared-groups/{{groupId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "defaultSplit": { "mode": "PERCENT", "shares": [{ "contactId": null, "percent": 40 }, { "contactId": "{{anaId}}", "percent": 30 }, { "contactId": "{{betoId}}", "percent": 20 }, { "contactId": "{{carlaId}}", "percent": 10 }] } }
+
+### Update con If-Match viejo — 409 STALE_UPDATE
+PUT {{baseUrl}}/shared-groups/{{groupId}}
+Authorization: Bearer {{token}}
+If-Match: {{groupVersion}}
+Content-Type: application/json
+
+{ "name": "Viaje de ayer" }
+
+### Borrar un gasto (soft delete) — deja de contar en todos los totales
+DELETE {{baseUrl}}/shared-groups/{{groupId}}/expenses/{{expenseId}}
+Authorization: Bearer {{token}}
+
+### Borrarlo otra vez — IDEMPOTENTE (200)
+DELETE {{baseUrl}}/shared-groups/{{groupId}}/expenses/{{expenseId}}
+Authorization: Bearer {{token}}
+
+### Archivar el grupo — idempotente; sus gastos siguen leyéndose
+DELETE {{baseUrl}}/shared-groups/{{groupId}}
+Authorization: Bearer {{token}}
+
+### Añadir un gasto a un grupo archivado — 400 RESOURCE_ARCHIVED
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Tarde", "date": "2026-09-05T15:00:00.000Z", "amount": 1000 }
+
+### Restaurar el grupo
+POST {{baseUrl}}/shared-groups/{{groupId}}/restore
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Grupo ajeno o inexistente — 404 uniforme
+GET {{baseUrl}}/shared-groups/019576a0-d7b6-7d6d-af6a-000000000000
+Authorization: Bearer {{token}}
+
+### Cursor inventado en los gastos — 400 INVALID_CURSOR
+GET {{baseUrl}}/shared-groups/{{groupId}}/expenses?cursor=019576a0-d7b6-7d6d-af6a-000000000000
+Authorization: Bearer {{token}}

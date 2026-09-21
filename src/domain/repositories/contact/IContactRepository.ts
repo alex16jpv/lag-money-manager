@@ -38,6 +38,8 @@ export interface IContactRepository extends IRepository<Contact> {
   getOwnById(id: string, userId: string): Promise<Contact | null>;
   // Unlike getById, also resolves archived contacts (read paths only).
   getByIdIncludingArchived(id: string): Promise<Contact | null>;
+  // Which of the given ids are the user's ACTIVE contacts, in one query.
+  listActiveIds(userId: string, ids: string[]): Promise<string[]>;
   countByUserId(userId: string): Promise<number>;
   // `name` renames in the same write, so nobody can take the name in between.
   restore(

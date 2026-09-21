@@ -51,6 +51,12 @@ export const ERROR_CODES = [
   "BUDGET_PERIOD_OVERLAP",
   // Contacts
   "CONTACT_LIMIT_REACHED",
+  // Shared groups and their expenses
+  "PARTICIPANT_LIMIT_REACHED",
+  "PARTICIPANT_ALREADY_IN_GROUP",
+  "PARTICIPANT_NOT_IN_GROUP",
+  "PARTICIPANT_IN_USE",
+  "SPLIT_INVALID",
   // Client-minted ids
   "ID_TAKEN",
   // Optimistic concurrency

@@ -15,6 +15,7 @@ import authRoutes from "./app/routes/authRoutes";
 import budgetRoutes from "./app/routes/budgetRoutes";
 import categoryRoutes from "./app/routes/categoryRoutes";
 import contactRoutes from "./app/routes/contactRoutes";
+import sharedGroupRoutes from "./app/routes/sharedGroupRoutes";
 import statsRoutes from "./app/routes/statsRoutes";
 import syncRoutes from "./app/routes/syncRoutes";
 import transactionRoutes from "./app/routes/transactionRoutes";
@@ -98,6 +99,7 @@ app.use("/categories", apiLimiter, categoryRoutes);
 app.use("/contacts", apiLimiter, contactRoutes);
 app.use("/transactions", apiLimiter, transactionRoutes);
 app.use("/budgets", apiLimiter, budgetRoutes);
+app.use("/shared-groups", apiLimiter, sharedGroupRoutes);
 app.use("/stats", apiLimiter, statsRoutes);
 app.use("/sync", apiLimiter, syncRoutes);
 
