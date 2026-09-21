@@ -9,10 +9,15 @@ import {
   ISharedGroupRepository,
   SharedGroupFilters,
 } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { assertFresh, guardedWrite } from "../../shared/concurrency";
-import { MAX_GROUP_PARTICIPANTS, SPLIT_MODES } from "../../shared/constants";
+import {
+  MAX_GROUP_PARTICIPANTS,
+  SHARED_HISTORY_REASONS,
+  SPLIT_MODES,
+} from "../../shared/constants";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
@@ -23,6 +28,7 @@ import {
   DefaultSplitDTO,
   UpdateSharedGroupDTO,
 } from "../dtos/SharedGroupDTO";
+import { stampSharedChange } from "./sharedLedger";
 import {
   assertDefaultSplit,
   rescaleDefaultSplit,
@@ -66,6 +72,7 @@ export class SharedGroupService {
     private expenseRepo: ISharedExpenseRepository,
     private contactRepo: IContactRepository,
     private userRepo: IUserRepository,
+    private transactionRepo: ITransactionRepository,
   ) {}
 
   private async withTotals(
@@ -431,6 +438,11 @@ export class SharedGroupService {
             session,
           );
           await this.expenseRepo.replaceSplits(plan.updates, session);
+          await this.recordResplit(
+            userId,
+            plan.updates.map((update) => update.id),
+            session,
+          );
           return {
             updated: await this.repo.update(
               id,
@@ -449,6 +461,27 @@ export class SharedGroupService {
     );
     const [view] = await this.withTotals(userId, [updated]);
     return { group: view as SharedGroupView, applied: preview };
+  }
+
+  // A re-split changes what each person owes, so every movement it touches says so in its history.
+  private async recordResplit(
+    userId: string,
+    expenseIds: string[],
+    session: TxSession,
+  ): Promise<void> {
+    const movements = await this.transactionRepo.listBySharedExpenseIds(
+      userId,
+      expenseIds,
+      session,
+    );
+    for (const movement of movements) {
+      await stampSharedChange(
+        this.transactionRepo,
+        session,
+        movement,
+        SHARED_HISTORY_REASONS.SPLIT_EDITED,
+      );
+    }
   }
 
   async removeParticipant(

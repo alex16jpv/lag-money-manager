@@ -655,6 +655,17 @@ router.get(
  *       way whatever order the shares arrive in, because the offline projection
  *       has to reach the same figures to the peso.
  *
+ *       **`transactionId` makes the expense a movement of yours.** The amount,
+ *       the date and the description are then that transaction's, so sending
+ *       any of the three alongside it is 400 VALIDATION — two places stating
+ *       the same thing is how they end up disagreeing — and so is a
+ *       `paidByContactId` other than null: a movement of yours is a line you
+ *       paid. The transaction keeps the link, along with what counts as yours
+ *       and the history that explains it; from then on those three are
+ *       changed on the transaction, not here. Leave `transactionId` out and
+ *       the expense is a fact with no money of yours behind it, which is what
+ *       a line somebody else paid is.
+ *
  *       Accepts a client-minted `id`, with the usual replay.
  *     parameters:
  *       - in: path
@@ -682,7 +693,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/SharedExpense'
  *       400:
- *         description: Validation error (code VALIDATION), a split that cannot describe one (code SPLIT_INVALID), somebody in the split who is not in the group (code PARTICIPANT_NOT_IN_GROUP), a date more than 24h ahead (code FUTURE_DATE), decimals in a `ZeroDecimalCurrency` (code AMOUNT_PRECISION) or an archived group (code RESOURCE_ARCHIVED)
+ *         description: Validation error (code VALIDATION), a split that cannot describe one (code SPLIT_INVALID), somebody in the split who is not in the group (code PARTICIPANT_NOT_IN_GROUP), a date more than 24h ahead (code FUTURE_DATE), decimals in a `ZeroDecimalCurrency` (code AMOUNT_PRECISION), an archived group (code RESOURCE_ARCHIVED), a movement that is already in a group (code TRANSACTION_ALREADY_SHARED), one that is not an expense (code TRANSACTION_NOT_SPLITTABLE) or one in another currency (code CURRENCY_MISMATCH)
  *         content:
  *           application/json:
  *             schema:
@@ -694,7 +705,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
- *         description: Shared group not found (uniform for missing and not owned)
+ *         description: Shared group not found, or a `transactionId` that names no movement of the caller's (uniform for missing and not owned)
  *         content:
  *           application/json:
  *             schema:
@@ -782,6 +793,13 @@ router.get(
  *       send the split again with the new figures. Rescaling what somebody
  *       typed would be the server deciding what they meant.
  *
+ *       **An expense that is a movement of yours takes only the split here.**
+ *       Its amount, date, description and payer come from that transaction, so
+ *       restating one of them is 400 SHARED_EXPENSE_LINKED: two places stating
+ *       the same figure is how they end up disagreeing. Saving a split on it
+ *       leaves a line in the transaction's history saying the split changed
+ *       and what counts as yours did not.
+ *
  *       The expense has to belong to the group in the path: reaching one of
  *       your own expenses through another of your groups answers 404.
  *     parameters:
@@ -810,7 +828,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/SharedExpense'
  *       400:
- *         description: Validation error (code VALIDATION), a split that cannot describe one (code SPLIT_INVALID), somebody in the split who is not in the group (code PARTICIPANT_NOT_IN_GROUP), a date more than 24h ahead (code FUTURE_DATE), decimals in a `ZeroDecimalCurrency` (code AMOUNT_PRECISION), or the expense is deleted or its group archived (code RESOURCE_ARCHIVED)
+ *         description: Validation error (code VALIDATION), a split that cannot describe one (code SPLIT_INVALID), somebody in the split who is not in the group (code PARTICIPANT_NOT_IN_GROUP), a date more than 24h ahead (code FUTURE_DATE), decimals in a `ZeroDecimalCurrency` (code AMOUNT_PRECISION), restating what the linked movement states (code SHARED_EXPENSE_LINKED), or the expense is deleted or its group archived (code RESOURCE_ARCHIVED)
  *         content:
  *           application/json:
  *             schema:
@@ -850,6 +868,11 @@ router.put(
  *       Idempotent — deleting an already-deleted expense answers it unchanged.
  *       The row stays, marked, because a group has to keep reading as what
  *       happened.
+ *
+ *       When the expense was a movement of yours, **the movement is not
+ *       deleted**: it leaves the group, the whole of it counts as yours again
+ *       and its history says so. Deleting the movement instead is what takes
+ *       both away.
  *     parameters:
  *       - in: path
  *         name: id

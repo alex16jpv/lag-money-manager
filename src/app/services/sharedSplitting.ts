@@ -140,9 +140,19 @@ export function buildSplit(input: {
   currency: string;
   paidByContactId: string | null;
 }): SharedSplit {
-  const { split, participants, amount, currency, paidByContactId } = input;
+  assertShapeOfShares(input.split.shares, input.participants);
+  return resolveStated(input);
+}
+
+/** The same thing over a stated split whose people are already known to be in the group. */
+function resolveStated(input: {
+  split: SplitDTO;
+  amount: number;
+  currency: string;
+  paidByContactId: string | null;
+}): SharedSplit {
+  const { split, amount, currency, paidByContactId } = input;
   assertGuestsAgree(split);
-  assertShapeOfShares(split.shares, participants);
   assertInputsMatchMode(split.mode, split.shares);
 
   const guestCount = split.guests?.count ?? 0;
@@ -187,6 +197,36 @@ export function buildSplit(input: {
       amount: amounts[index] as number,
     })),
   };
+}
+
+/** A stored split restated as its input: what a request states, without the resolved amounts. */
+export function statedSplitOf(split: SharedSplit): SplitDTO {
+  return {
+    mode: split.mode,
+    guests: split.guests ?? null,
+    shares: split.shares.map((share) => ({
+      party: share.party,
+      contactId: share.contactId ?? null,
+      percent: split.mode === SPLIT_MODES.PERCENT ? share.percent : null,
+      fixedAmount:
+        split.mode === SPLIT_MODES.PERCENT ? null : share.fixedAmount,
+    })),
+  };
+}
+
+/** The same split over another total; EXACT states figures, so they stop adding up and it throws. */
+export function resplitForNewAmount(input: {
+  split: SharedSplit;
+  amount: number;
+  currency: string;
+  paidByContactId: string | null;
+}): SharedSplit {
+  return resolveStated({
+    split: statedSplitOf(input.split),
+    amount: input.amount,
+    currency: input.currency,
+    paidByContactId: input.paidByContactId,
+  });
 }
 
 const percentFor = (

@@ -525,7 +525,9 @@ export class SyncBatchService {
     } catch (err) {
       const failure = describeFailure(err as Error);
       // Not the client's fault: the whole request fails, and what landed replays as `duplicate`.
-      if (!failure) throw err;
+      // A 5xx is one of those even though it describes: filing a server fault under an operation
+      // would tell the device its write was refused, and it would stop retrying something that works.
+      if (!failure || failure.status >= 500) throw err;
       const { body } = failure;
       return {
         status: failure.status === 409 ? "conflict" : "rejected",

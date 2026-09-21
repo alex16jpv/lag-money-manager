@@ -28,6 +28,7 @@ const service = new TransactionService(
   {} as never,
   {} as never,
   {} as never,
+  {} as never,
 );
 
 const TZ = "America/Bogota";

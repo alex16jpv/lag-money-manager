@@ -630,18 +630,46 @@ export const createSharedExpenseSchema = z.object({
   params: z.object({
     id: z.string().uuid("ID must be a valid UUID"),
   }),
-  body: z.object({
-    id: clientMintedId,
-    description: z.string().trim().max(255).optional().nullable(),
-    date: isoDate,
-    amount: moneyAmount,
-    paidByContactId: z
-      .string()
-      .uuid("paidByContactId must be a valid UUID")
-      .optional()
-      .nullable(),
-    split: splitSchema.optional(),
-  }),
+  body: z
+    .object({
+      id: clientMintedId,
+      description: z.string().trim().max(255).optional().nullable(),
+      date: isoDate.optional(),
+      amount: moneyAmount.optional(),
+      transactionId: z
+        .string()
+        .uuid("transactionId must be a valid UUID")
+        .optional(),
+      paidByContactId: z
+        .string()
+        .uuid("paidByContactId must be a valid UUID")
+        .optional()
+        .nullable(),
+      split: splitSchema.optional(),
+    })
+    .superRefine((data, ctx) => {
+      const fromTransaction = data.transactionId !== undefined;
+      const issue = (path: string, message: string): void => {
+        ctx.addIssue({ code: "custom", path: [path], message });
+      };
+      for (const field of ["amount", "date"] as const) {
+        if (fromTransaction && data[field] !== undefined) {
+          issue(field, `${field} comes from the transaction`);
+        }
+        if (!fromTransaction && data[field] === undefined) {
+          issue(field, `${field} is required`);
+        }
+      }
+      if (fromTransaction && data.description !== undefined) {
+        issue("description", "description comes from the transaction");
+      }
+      if (fromTransaction && data.paidByContactId) {
+        issue(
+          "paidByContactId",
+          "A movement of yours is a line you paid; leave paidByContactId out",
+        );
+      }
+    }),
 });
 
 export const sharedExpenseParamsSchema = z.object({

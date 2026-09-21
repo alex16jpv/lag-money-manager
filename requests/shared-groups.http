@@ -162,6 +162,92 @@ Content-Type: application/json
 
 { "description": "Mañana no", "date": "2030-01-01T00:00:00.000Z", "amount": 1000 }
 
+### ----------------------------------------------------------
+### UN GASTO QUE ES UN MOVIMIENTO TUYO (T-115)
+### El movimiento manda: de él salen el importe, la fecha y la
+### descripción, y en él se guarda lo que cuenta como tuyo con su
+### historial. Repartir no baja esa cifra: la plata ya salió.
+### ----------------------------------------------------------
+
+### Una cuenta para pagar la salida (éxito)
+# @name createAccount
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Bancolombia {{$randomInt 100 999}}", "type": "ACCOUNT", "balance": 5000000 }
+
+###
+
+@accountId = {{createAccount.response.body.id}}
+
+### El gasto tal y como se registró esa noche (éxito)
+# @name createMovement
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 120000, "date": "2026-08-15T23:30:00.000Z", "description": "Cena", "fromAccountId": "{{accountId}}" }
+
+###
+
+@movementId = {{createMovement.response.body.id}}
+
+### Meterlo en el grupo — sin importe, fecha ni descripción: los pone el movimiento
+# @name splitMovement
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "transactionId": "{{movementId}}" }
+
+###
+
+@splitExpenseId = {{splitMovement.response.body.id}}
+
+### El movimiento ya trae el enlace, countsAsYours y su historial (SPLIT)
+GET {{baseUrl}}/transactions/{{movementId}}
+Authorization: Bearer {{token}}
+
+### Meter el mismo movimiento en otro grupo — 400 TRANSACTION_ALREADY_SHARED
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "transactionId": "{{movementId}}" }
+
+### Mandar el importe con el movimiento — 400 VALIDATION: lo dice él
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "transactionId": "{{movementId}}", "amount": 999 }
+
+### Mandar la descripción con el movimiento — 400 VALIDATION: también la dice él
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "transactionId": "{{movementId}}", "description": "Otra cosa" }
+
+### Cambiar en el gasto lo que dice el movimiento — 400 SHARED_EXPENSE_LINKED
+PUT {{baseUrl}}/shared-groups/{{groupId}}/expenses/{{splitExpenseId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "amount": 150000 }
+
+### Cambiar el importe en el movimiento — reparte otra vez y apunta AMOUNT_CHANGED
+PUT {{baseUrl}}/transactions/{{movementId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "amount": 150000 }
+
+### Sacarlo del grupo — el movimiento vuelve a ser entero tuyo (UNSPLIT)
+DELETE {{baseUrl}}/shared-groups/{{groupId}}/expenses/{{splitExpenseId}}
+Authorization: Bearer {{token}}
+
 ### Los gastos del grupo — el más nuevo primero, keyset sobre (date, id)
 GET {{baseUrl}}/shared-groups/{{groupId}}/expenses?limit=2
 Authorization: Bearer {{token}}

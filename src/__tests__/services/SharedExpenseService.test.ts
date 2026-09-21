@@ -1,8 +1,16 @@
+jest.mock("../../shared/unitOfWork", () => ({
+  withTransaction: jest.fn((fn: (session: unknown) => unknown) =>
+    fn("test-session"),
+  ),
+}));
+
 import { SharedExpenseService } from "../../app/services/SharedExpenseService";
 import { SharedExpense } from "../../domain/entities/SharedExpense";
 import { SharedGroup } from "../../domain/entities/SharedGroup";
+import { Transaction } from "../../domain/entities/Transaction";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 
 const userId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
 const otherUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5acff";
@@ -55,15 +63,37 @@ const expenseRepo = (): jest.Mocked<ISharedExpenseRepository> => ({
   delete: jest.fn(),
 });
 
+const transactionRepo = (): jest.Mocked<ITransactionRepository> => ({
+  getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
+  getById: jest.fn(),
+  getOwnById: jest.fn(),
+  isDeleted: jest.fn().mockResolvedValue(false),
+  getBySharedExpenseId: jest.fn().mockResolvedValue(null),
+  listBySharedExpenseIds: jest.fn().mockResolvedValue([]),
+  applySharedChange: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+  aggregateSpending: jest.fn(),
+  listTags: jest.fn().mockResolvedValue([]),
+  countByCategory: jest.fn().mockResolvedValue(0),
+  sumAmountsByCategory: jest.fn(),
+  sumAmounts: jest.fn().mockResolvedValue(0),
+});
+
 describe("SharedExpenseService", () => {
   let service: SharedExpenseService;
   let expenses: jest.Mocked<ISharedExpenseRepository>;
   let groups: jest.Mocked<ISharedGroupRepository>;
+  let transactions: jest.Mocked<ITransactionRepository>;
 
   beforeEach(() => {
     expenses = expenseRepo();
     groups = groupRepo();
-    service = new SharedExpenseService(expenses, groups);
+    transactions = transactionRepo();
+    service = new SharedExpenseService(expenses, groups, transactions);
   });
 
   const create = (body: Record<string, unknown> = {}) =>
@@ -220,6 +250,100 @@ describe("SharedExpenseService", () => {
       );
 
       await expect(create()).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  describe("an expense that is a movement of yours [T-115]", () => {
+    const txId = "019576a0-d7b6-7d6d-af6a-2b7545f5acb1";
+    const accountId = "019576a0-d7b6-7d6d-af6a-2b7545f5acb2";
+
+    const movement = (props: Partial<Transaction> = {}): Transaction =>
+      new Transaction({
+        id: txId,
+        type: "EXPENSE",
+        amount: 120000,
+        date: new Date("2026-08-12T18:00:00.000Z"),
+        description: "Corner store",
+        fromAccountId: accountId,
+        userId,
+        currency: "COP",
+        ...props,
+      });
+
+    const splitTheMovement = (): Promise<SharedExpense> =>
+      service.createExpense({ groupId, userId, transactionId: txId });
+
+    beforeEach(() => {
+      transactions.getById.mockResolvedValue(movement());
+    });
+
+    it("takes the figures from the movement and links it, moving no money", async () => {
+      const created = await splitTheMovement();
+
+      expect(created.amount).toBe(120000);
+      expect(created.date).toEqual(new Date("2026-08-12T18:00:00.000Z"));
+      expect(created.description).toBe("Corner store");
+      expect(transactions.applySharedChange).toHaveBeenCalledWith(
+        txId,
+        userId,
+        {
+          sharedExpenseId: created.id,
+          sharedGroupId: groupId,
+          countsAsYours: 120000,
+        },
+        expect.objectContaining({ reason: "SPLIT", countsAsYours: 120000 }),
+        "test-session",
+      );
+    });
+
+    it("refuses a movement that is already in a group", async () => {
+      transactions.getById.mockResolvedValue(
+        movement({
+          sharedExpenseId: "019576a0-d7b6-7d6d-af6a-2b7545f5acb3",
+          sharedGroupId: "019576a0-d7b6-7d6d-af6a-2b7545f5acb4",
+        }),
+      );
+
+      await expect(splitTheMovement()).rejects.toMatchObject({
+        code: "TRANSACTION_ALREADY_SHARED",
+      });
+      expect(expenses.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses anything that is not an expense", async () => {
+      transactions.getById.mockResolvedValue(
+        movement({
+          type: "INCOME",
+          fromAccountId: null,
+          toAccountId: accountId,
+        }),
+      );
+
+      await expect(splitTheMovement()).rejects.toMatchObject({
+        code: "TRANSACTION_NOT_SPLITTABLE",
+      });
+    });
+
+    it("refuses a movement in another currency than the group", async () => {
+      transactions.getById.mockResolvedValue(movement({ currency: "EUR" }));
+
+      await expect(splitTheMovement()).rejects.toMatchObject({
+        code: "CURRENCY_MISMATCH",
+      });
+    });
+
+    it("answers 404 for a movement of somebody else's", async () => {
+      transactions.getById.mockResolvedValue(movement({ userId: otherUserId }));
+
+      await expect(splitTheMovement()).rejects.toMatchObject({
+        statusCode: 404,
+      });
+    });
+
+    it("states amount and date itself when no movement is named", async () => {
+      await create();
+
+      expect(transactions.applySharedChange).not.toHaveBeenCalled();
     });
   });
 
@@ -495,6 +619,95 @@ describe("SharedExpenseService", () => {
       await service.deleteExpense(expenseId, userId);
 
       expect(expenses.delete).not.toHaveBeenCalled();
+    });
+
+    describe("when it is a movement of yours [T-115]", () => {
+      const linked = (): Transaction =>
+        new Transaction({
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5acb1",
+          type: "EXPENSE",
+          amount: 120000,
+          date,
+          fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5acb2",
+          userId,
+          currency: "COP",
+          sharedExpenseId: expenseId,
+          sharedGroupId: groupId,
+        });
+
+      beforeEach(() => {
+        expenses.getByIdIncludingDeleted.mockResolvedValue(stored());
+        transactions.getBySharedExpenseId.mockResolvedValue(linked());
+      });
+
+      it.each(["amount", "date", "description", "paidByContactId"])(
+        "refuses to restate its %s, which the movement states",
+        async (field) => {
+          const body = {
+            amount: 1000,
+            date,
+            description: "Something else",
+            paidByContactId: ana,
+          };
+
+          await expect(
+            service.updateExpense(
+              expenseId,
+              { [field]: body[field as keyof typeof body] },
+              userId,
+            ),
+          ).rejects.toMatchObject({ code: "SHARED_EXPENSE_LINKED" });
+        },
+      );
+
+      it("writes a split change in the movement's history, with the figure unmoved", async () => {
+        await service.updateExpense(
+          expenseId,
+          {
+            split: {
+              mode: "EQUAL",
+              shares: [{ party: "USER" }, { party: "CONTACT", contactId: ana }],
+            },
+          },
+          userId,
+        );
+
+        expect(transactions.applySharedChange).toHaveBeenCalledWith(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5acb1",
+          userId,
+          {
+            sharedExpenseId: expenseId,
+            sharedGroupId: groupId,
+            countsAsYours: 120000,
+          },
+          expect.objectContaining({
+            reason: "SPLIT_EDITED",
+            countsAsYours: 120000,
+          }),
+          "test-session",
+        );
+      });
+
+      it("hands the whole amount back when the expense leaves the group", async () => {
+        expenses.delete.mockResolvedValue(stored({ deletedAt: new Date() }));
+
+        await service.deleteExpense(expenseId, userId);
+
+        expect(transactions.applySharedChange).toHaveBeenCalledWith(
+          "019576a0-d7b6-7d6d-af6a-2b7545f5acb1",
+          userId,
+          {
+            sharedExpenseId: null,
+            sharedGroupId: null,
+            countsAsYours: 120000,
+          },
+          expect.objectContaining({
+            reason: "UNSPLIT",
+            countsAsYours: 120000,
+          }),
+          "test-session",
+        );
+      });
     });
   });
 });

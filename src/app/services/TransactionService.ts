@@ -1,14 +1,18 @@
+import { SharedExpense } from "../../domain/entities/SharedExpense";
 import { Transaction } from "../../domain/entities/Transaction";
 import { DomainValidationError } from "../../domain/errors";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
+import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import {
   ITransactionRepository,
   TransactionFilters,
 } from "../../domain/repositories/transaction/ITransactionRepository";
 import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { assertFresh } from "../../shared/concurrency";
+import { SHARED_HISTORY_REASONS } from "../../shared/constants";
+import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { dayKeyOf } from "../../shared/dayKey";
 import { ErrorCode } from "../../shared/errorCodes";
 import { ApiError } from "../../shared/errors";
@@ -24,6 +28,8 @@ import {
   QuickAddTransactionDTO,
   UpdateTransactionDTO,
 } from "../dtos/TransactionDTO";
+import { stampSharedChange } from "./sharedLedger";
+import { resplitForNewAmount } from "./sharedSplitting";
 
 function isDuplicateKeyError(err: unknown): boolean {
   return (
@@ -81,6 +87,7 @@ export class TransactionService {
     private accountRepo: IAccountRepository,
     private idempotencyRepo: IIdempotencyRepository,
     private categoryRepo: ICategoryRepository,
+    private sharedExpenseRepo: ISharedExpenseRepository,
   ) {}
 
   async getAllTransactions(
@@ -321,7 +328,17 @@ export class TransactionService {
       // Read and write share the session, so this and the update's filter are one atomic decision.
       assertFresh(existing, expectedUpdatedAt, (t) => t);
 
-      const updated = new Transaction({ ...existing, ...dto });
+      // A new amount carries whatever came back with it, so a payment is not undone by an edit.
+      const amountChanged =
+        dto.amount !== undefined && dto.amount !== existing.amount;
+      const cameBack = existing.amount - existing.countsAsYours;
+      const updated = new Transaction({
+        ...existing,
+        ...dto,
+        ...(amountChanged
+          ? { countsAsYours: (dto.amount as number) - cameBack }
+          : {}),
+      });
       updated.assertValid();
       if (dto.categoryId !== undefined || dto.type !== undefined) {
         await this.assertCategoryUsable(updated, existing.categoryId);
@@ -340,9 +357,12 @@ export class TransactionService {
 
       // R2-27: the day only moves when the date does, or an unrelated edit re-books a past expense.
       const dateChanged = updated.date.getTime() !== existing.date.getTime();
-      const patch = dateChanged
-        ? { ...dto, dayKey: dayKeyOf(updated.date, timezone) }
-        : dto;
+      const patch: UpdateTransactionDTO & {
+        dayKey?: string;
+        countsAsYours?: number;
+      } = { ...dto };
+      if (dateChanged) patch.dayKey = dayKeyOf(updated.date, timezone);
+      if (amountChanged) patch.countsAsYours = updated.countsAsYours;
 
       const auditableChange = monetaryChanged || dateChanged;
       const revision = auditableChange
@@ -356,14 +376,68 @@ export class TransactionService {
           }
         : undefined;
 
-      return await this.transactionRepo.update(
+      const saved = await this.transactionRepo.update(
         id,
         patch,
         session,
         revision,
         expectedUpdatedAt,
       );
+      if (!existing.sharedExpenseId) return saved;
+      return await this.restateSharedExpense(
+        existing,
+        saved,
+        existing.sharedExpenseId,
+        session,
+      );
     });
+  }
+
+  // The expense and the movement are one fact, so neither may be left stating what the other does not.
+  private async restateSharedExpense(
+    before: Transaction,
+    after: Transaction,
+    sharedExpenseId: string,
+    session: TxSession,
+  ): Promise<Transaction> {
+    const amountChanged = after.amount !== before.amount;
+    const restated =
+      amountChanged ||
+      after.date.getTime() !== before.date.getTime() ||
+      after.description !== before.description;
+    if (!restated) return after;
+
+    const expense = await this.sharedExpenseRepo.getById(
+      sharedExpenseId,
+      session,
+    );
+    if (!expense) {
+      throw new ApiError(
+        "InternalServerError",
+        "The shared expense this transaction belongs to is missing",
+      );
+    }
+    const write: Partial<SharedExpense> = {
+      amount: after.amount,
+      date: after.date,
+      description: after.description,
+    };
+    if (amountChanged) {
+      write.split = resplitForNewAmount({
+        split: expense.split,
+        amount: after.amount,
+        currency: expense.currency ?? DEFAULT_CURRENCY,
+        paidByContactId: expense.paidByContactId,
+      });
+    }
+    await this.sharedExpenseRepo.update(expense.id, write, session);
+    if (!amountChanged) return after;
+    return await stampSharedChange(
+      this.transactionRepo,
+      session,
+      after,
+      SHARED_HISTORY_REASONS.AMOUNT_CHANGED,
+    );
   }
 
   async deleteTransaction(
@@ -382,6 +456,13 @@ export class TransactionService {
       assertFresh(transaction, expectedUpdatedAt, (t) => t);
 
       await this.adjustBalances(transaction, -1, session);
+      // The group's expense is this movement seen from the other side: one cannot outlive the other.
+      if (transaction.sharedExpenseId) {
+        await this.sharedExpenseRepo.delete(
+          transaction.sharedExpenseId,
+          session,
+        );
+      }
       await this.transactionRepo.delete(id, session, expectedUpdatedAt);
     });
   }

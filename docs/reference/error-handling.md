@@ -296,6 +296,9 @@ Codes raised by the services and middleware. Anything not listed here has no `co
 | `PARTICIPANT_NOT_IN_GROUP`        | 400    | A split, or a payer, naming somebody who is not in the shared group      |
 | `PARTICIPANT_IN_USE`              | 400    | Taking somebody out of a shared group while they hold a share of an expense |
 | `SPLIT_INVALID`                   | 400    | Figures that cannot describe a split: they do not add up to the expense, the percentages are not 100, a mode is missing its figures, or a percentage group is missing its new percentages |
+| `SHARED_EXPENSE_LINKED`           | 400    | Restating the amount, the date, the description or the payer of a shared expense that is a movement of yours: those come from the transaction |
+| `TRANSACTION_ALREADY_SHARED`      | 400    | Splitting a movement that is already an expense of a shared group       |
+| `TRANSACTION_NOT_SPLITTABLE`      | 400    | Splitting a movement that is not an expense, or turning a split one into another type |
 | `BUDGET_PERIOD_OVERLAP`           | 400    | New budget period overlaps an existing one for the same scope            |
 | `IDEMPOTENCY_KEY_INVALID`         | 400    | `Idempotency-Key` outside `[A-Za-z0-9_-]{1,200}`                         |
 | `MALFORMED_JSON`                  | 400    | Body that is not valid JSON (body-parser `entity.parse.failed`)          |

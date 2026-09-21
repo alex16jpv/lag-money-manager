@@ -252,6 +252,7 @@ export async function seed(): Promise<Record<string, unknown>> {
     accounts,
     repositoryFactory.getIdempotencyRepository(),
     categories,
+    repositoryFactory.getSharedExpenseRepository(),
   );
   const budgetService = new BudgetService(
     repositoryFactory.getBudgetRepository(),

@@ -3,26 +3,52 @@ import {
   SharedSplit,
 } from "../../domain/entities/SharedExpense";
 import { SharedGroup } from "../../domain/entities/SharedGroup";
+import { Transaction } from "../../domain/entities/Transaction";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { assertFresh, guardedWrite } from "../../shared/concurrency";
-import { SPLIT_MODES } from "../../shared/constants";
+import {
+  SHARED_HISTORY_REASONS,
+  TRANSACTION_TYPES,
+} from "../../shared/constants";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { ApiError } from "../../shared/errors";
 import { assertAmountPrecision } from "../../shared/money";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
+import { TxSession, withTransaction } from "../../shared/unitOfWork";
 import {
   CreateSharedExpenseDTO,
   SplitDTO,
   UpdateSharedExpenseDTO,
 } from "../dtos/SharedExpenseDTO";
-import { buildSplit, inheritedSplit } from "./sharedSplitting";
+import { stampSharedChange } from "./sharedLedger";
+import { buildSplit, inheritedSplit, statedSplitOf } from "./sharedSplitting";
+
+/** What the expense is worth, wherever the figures came from. */
+interface ExpenseFigures {
+  amount: number;
+  date: Date;
+  description: string | null;
+}
+
+const required = <T>(value: T | undefined, field: string): T => {
+  if (value === undefined) {
+    throw new ApiError(
+      "BadRequest",
+      `${field} is required unless the expense is a movement of yours`,
+      "VALIDATION",
+    );
+  }
+  return value;
+};
 
 export class SharedExpenseService {
   constructor(
     private repo: ISharedExpenseRepository,
     private groupRepo: ISharedGroupRepository,
+    private transactionRepo: ITransactionRepository,
   ) {}
 
   private async groupOfTheirs(
@@ -152,23 +178,64 @@ export class SharedExpenseService {
   private async insertExpense(
     dto: CreateSharedExpenseDTO,
   ): Promise<SharedExpense> {
-    const group = await this.liveGroup(dto.groupId, dto.userId);
+    const transactionId = dto.transactionId;
+    if (transactionId === undefined) {
+      const group = await this.liveGroup(dto.groupId, dto.userId);
+      const expense = this.buildExpense(dto, group, {
+        amount: required(dto.amount, "amount"),
+        date: required(dto.date, "date"),
+        description: dto.description ?? null,
+      });
+      return new SharedExpense(await this.repo.create(expense));
+    }
+
+    // The movement states the figures, so linking it and writing them cannot leave two versions.
+    return withTransaction(async (session) => {
+      const group = await this.liveGroup(dto.groupId, dto.userId);
+      const transaction = await this.splittableTransaction(
+        transactionId,
+        dto.userId,
+        group.currency ?? DEFAULT_CURRENCY,
+        session,
+      );
+      const expense = this.buildExpense(dto, group, {
+        amount: transaction.amount,
+        date: transaction.date,
+        description: transaction.description,
+      });
+      const created = await this.repo.create(expense, session);
+      await stampSharedChange(
+        this.transactionRepo,
+        session,
+        transaction,
+        SHARED_HISTORY_REASONS.SPLIT,
+        { sharedExpenseId: created.id, sharedGroupId: group.id },
+      );
+      return new SharedExpense(created);
+    });
+  }
+
+  private buildExpense(
+    dto: CreateSharedExpenseDTO,
+    group: SharedGroup,
+    figures: ExpenseFigures,
+  ): SharedExpense {
     const currency = group.currency ?? DEFAULT_CURRENCY;
     const paidByContactId = dto.paidByContactId ?? null;
     this.assertPayerIsInTheGroup(group, paidByContactId);
-    this.assertPrecision(dto.amount, dto.split, currency);
+    this.assertPrecision(figures.amount, dto.split, currency);
 
     const expense = new SharedExpense({
       id: dto.id,
       groupId: dto.groupId,
-      description: dto.description ?? null,
-      date: dto.date,
-      amount: dto.amount,
+      description: figures.description,
+      date: figures.date,
+      amount: figures.amount,
       paidByContactId,
       split: this.splitFor({
         group,
         split: dto.split,
-        amount: dto.amount,
+        amount: figures.amount,
         currency,
         paidByContactId,
       }),
@@ -177,7 +244,45 @@ export class SharedExpenseService {
       currency,
     });
     expense.assertValid();
-    return new SharedExpense(await this.repo.create(expense));
+    return expense;
+  }
+
+  /** Read inside the write's own transaction: two requests cannot both take the same movement. */
+  private async splittableTransaction(
+    transactionId: string,
+    userId: string,
+    currency: string,
+    session: TxSession,
+  ): Promise<Transaction> {
+    const transaction = await this.transactionRepo.getById(
+      transactionId,
+      session,
+    );
+    if (!transaction || transaction.userId !== userId) {
+      throw new ApiError("NotFound", "Transaction not found");
+    }
+    if (transaction.type !== TRANSACTION_TYPES.EXPENSE) {
+      throw new ApiError(
+        "BadRequest",
+        "Only an expense can be split with other people",
+        "TRANSACTION_NOT_SPLITTABLE",
+      );
+    }
+    if (transaction.sharedExpenseId) {
+      throw new ApiError(
+        "BadRequest",
+        "That movement is already in a shared group",
+        "TRANSACTION_ALREADY_SHARED",
+      );
+    }
+    if (transaction.currency && transaction.currency !== currency) {
+      throw new ApiError(
+        "BadRequest",
+        "The movement and the shared group are in different currencies",
+        "CURRENCY_MISMATCH",
+      );
+    }
+    return transaction;
   }
 
   async updateExpense(
@@ -206,6 +311,8 @@ export class SharedExpenseService {
         "RESOURCE_ARCHIVED",
       );
     }
+    const linked = await this.transactionRepo.getBySharedExpenseId(userId, id);
+    if (linked) this.assertOnlyTheSplitChanges(dto);
 
     const group = await this.liveGroup(existing.groupId, userId);
     const currency = group.currency ?? DEFAULT_CURRENCY;
@@ -245,7 +352,7 @@ export class SharedExpenseService {
       const stated =
         dto.split ??
         (existing.customSplit && !dto.useGroupSplit
-          ? this.asSplitInput(existing.split)
+          ? statedSplitOf(existing.split)
           : undefined);
       write.split = this.splitFor({
         group,
@@ -260,27 +367,52 @@ export class SharedExpenseService {
     return guardedWrite(
       expectedUpdatedAt,
       async () =>
-        new SharedExpense(
-          await this.repo.update(id, write, undefined, expectedUpdatedAt),
-        ),
+        linked && resplit
+          ? withTransaction(async (session) => {
+              const saved = await this.repo.update(
+                id,
+                write,
+                session,
+                expectedUpdatedAt,
+              );
+              // Read again inside the write: a delete in between would otherwise be undone here.
+              const movement = await this.transactionRepo.getBySharedExpenseId(
+                userId,
+                id,
+                session,
+              );
+              if (movement) {
+                await stampSharedChange(
+                  this.transactionRepo,
+                  session,
+                  movement,
+                  SHARED_HISTORY_REASONS.SPLIT_EDITED,
+                );
+              }
+              return new SharedExpense(saved);
+            })
+          : new SharedExpense(
+              await this.repo.update(id, write, undefined, expectedUpdatedAt),
+            ),
       () => this.repo.getOwnById(id, userId),
       (e) => new SharedExpense(e),
     );
   }
 
-  // A stored split states the same thing a request does; only the resolved amounts are dropped.
-  private asSplitInput(split: SharedSplit): SplitDTO {
-    return {
-      mode: split.mode,
-      guests: split.guests ?? null,
-      shares: split.shares.map((share) => ({
-        party: share.party,
-        contactId: share.contactId ?? null,
-        percent: split.mode === SPLIT_MODES.PERCENT ? share.percent : null,
-        fixedAmount:
-          split.mode === SPLIT_MODES.PERCENT ? null : share.fixedAmount,
-      })),
-    };
+  /** The movement states the amount, the date and the description; the group states the split. */
+  private assertOnlyTheSplitChanges(dto: UpdateSharedExpenseDTO): void {
+    const restated =
+      dto.amount !== undefined ||
+      dto.date !== undefined ||
+      dto.description !== undefined ||
+      dto.paidByContactId !== undefined;
+    if (restated) {
+      throw new ApiError(
+        "BadRequest",
+        "This expense is a movement of yours: change its amount, date or description on the transaction",
+        "SHARED_EXPENSE_LINKED",
+      );
+    }
   }
 
   // Idempotent, and it answers the deleted row so a queued write can guard on its updatedAt.
@@ -295,8 +427,23 @@ export class SharedExpenseService {
     if (existing.deletedAt) {
       return new SharedExpense(existing);
     }
-    return new SharedExpense(
-      await this.repo.delete(id, undefined, expectedUpdatedAt),
-    );
+    return withTransaction(async (session) => {
+      const deleted = await this.repo.delete(id, session, expectedUpdatedAt);
+      const linked = await this.transactionRepo.getBySharedExpenseId(
+        userId,
+        id,
+        session,
+      );
+      if (linked) {
+        await stampSharedChange(
+          this.transactionRepo,
+          session,
+          linked,
+          SHARED_HISTORY_REASONS.UNSPLIT,
+          { sharedExpenseId: null, sharedGroupId: null },
+        );
+      }
+      return new SharedExpense(deleted);
+    });
   }
 }

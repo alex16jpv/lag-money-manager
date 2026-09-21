@@ -5,9 +5,11 @@ jest.mock("../../shared/unitOfWork", () => ({
 import { SharedGroupService } from "../../app/services/SharedGroupService";
 import { SharedExpense } from "../../domain/entities/SharedExpense";
 import { SharedGroup } from "../../domain/entities/SharedGroup";
+import { Transaction } from "../../domain/entities/Transaction";
 import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { MAX_GROUP_PARTICIPANTS } from "../../shared/constants";
 
@@ -99,17 +101,45 @@ const userRepo = (): jest.Mocked<IUserRepository> =>
     getById: jest.fn().mockResolvedValue({ id: userId, currency: "COP" }),
   }) as unknown as jest.Mocked<IUserRepository>;
 
+const transactionRepo = (): jest.Mocked<ITransactionRepository> => ({
+  getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
+  getById: jest.fn(),
+  getOwnById: jest.fn(),
+  isDeleted: jest.fn().mockResolvedValue(false),
+  getBySharedExpenseId: jest.fn().mockResolvedValue(null),
+  listBySharedExpenseIds: jest.fn().mockResolvedValue([]),
+  applySharedChange: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+  aggregateSpending: jest.fn(),
+  listTags: jest.fn().mockResolvedValue([]),
+  countByCategory: jest.fn().mockResolvedValue(0),
+  sumAmountsByCategory: jest.fn(),
+  sumAmounts: jest.fn().mockResolvedValue(0),
+});
+
 describe("SharedGroupService", () => {
   let service: SharedGroupService;
   let groups: jest.Mocked<ISharedGroupRepository>;
   let expenses: jest.Mocked<ISharedExpenseRepository>;
   let contacts: jest.Mocked<IContactRepository>;
+  let transactions: jest.Mocked<ITransactionRepository>;
 
   beforeEach(() => {
     groups = groupRepo();
     expenses = expenseRepo();
     contacts = contactRepo();
-    service = new SharedGroupService(groups, expenses, contacts, userRepo());
+    transactions = transactionRepo();
+    service = new SharedGroupService(
+      groups,
+      expenses,
+      contacts,
+      userRepo(),
+      transactions,
+    );
   });
 
   describe("creating one", () => {
@@ -225,6 +255,39 @@ describe("SharedGroupService", () => {
         { contactId: ana, shareBefore: 45000, shareAfter: 30000 },
         { contactId: beto, shareBefore: 0, shareAfter: 30000 },
       ]);
+    });
+
+    it("says in the movement's history that its split changed [T-115]", async () => {
+      const expense = equalExpense(90000, [null, ana]);
+      expenses.listByGroup.mockResolvedValue([expense]);
+      const movement = new Transaction({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5acd1",
+        type: "EXPENSE",
+        amount: 90000,
+        date: new Date("2026-08-12T18:00:00.000Z"),
+        fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5acd2",
+        userId,
+        currency: "COP",
+        sharedExpenseId: expense.id,
+        sharedGroupId: groupId,
+      });
+      transactions.listBySharedExpenseIds.mockResolvedValue([movement]);
+
+      await add({ applyToExistingExpenses: true });
+
+      expect(transactions.applySharedChange).toHaveBeenCalledWith(
+        movement.id,
+        userId,
+        expect.objectContaining({
+          sharedExpenseId: expense.id,
+          countsAsYours: 90000,
+        }),
+        expect.objectContaining({
+          reason: "SPLIT_EDITED",
+          countsAsYours: 90000,
+        }),
+        expect.anything(),
+      );
     });
 
     it("leaves an expense with its own exact split alone, because a figure would be invented", async () => {

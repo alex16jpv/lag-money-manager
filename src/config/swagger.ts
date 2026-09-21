@@ -16,6 +16,7 @@ import {
   MAX_EXPENSE_GUESTS,
   MAX_GROUP_PARTICIPANTS,
   SHARE_PARTIES,
+  SHARED_HISTORY_REASONS,
   SPENDING_GROUP_BY,
   SPENDING_SPLIT_BY,
   SPLIT_MODES,
@@ -491,8 +492,46 @@ const responseViews = {
         description: "Server-derived; quick-add stamps QUICK.",
       },
       currency: { type: "string", example: "COP" },
+      countsAsYours: {
+        ...money,
+        description:
+          "What the movement counts as yours: what left the account minus " +
+          "what has come back. **This is the figure Stats and the budgets " +
+          "measure**, and it is the amount itself unless the movement is an " +
+          "expense of a shared group. The list, its day totals and " +
+          "`summary.totalAmount` stay gross: they are what moved through the " +
+          "accounts.",
+      },
+      sharedExpenseId: {
+        ...uuid,
+        nullable: true,
+        description:
+          "The expense of a shared group this movement is, or null. The link " +
+          "lives here and not on the expense: a shared group is seen by " +
+          "everybody in it, and which movement of yours it is nobody else's.",
+      },
+      sharedGroupId: { ...uuid, nullable: true },
+      sharedHistory: {
+        type: "array",
+        items: { $ref: "#/components/schemas/SharedHistoryEntry" },
+        description:
+          "Why `countsAsYours` is what it is, oldest first. Empty on a " +
+          "movement that was never split.",
+      },
       createdAt: dateTime,
       updatedAt: dateTime,
+    },
+  }),
+  SharedHistoryEntry: withRequired({
+    type: "object",
+    description:
+      "One thing that happened to what counts as yours. Splitting an expense " +
+      "and editing its split move no money — it left the account when it was " +
+      "spent — so those entries repeat the figure rather than change it.",
+    properties: {
+      at: dateTime,
+      reason: enumOf(SHARED_HISTORY_REASONS),
+      countsAsYours: { ...money, description: "The figure it left behind." },
     },
   }),
   Budget: withRequired({

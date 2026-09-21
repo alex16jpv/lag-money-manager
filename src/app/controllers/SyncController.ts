@@ -39,6 +39,7 @@ const syncBatchService = new SyncBatchService(
     accountRepository,
     repositoryFactory.getIdempotencyRepository(),
     categoryRepository,
+    repositoryFactory.getSharedExpenseRepository(),
   ),
   new BudgetService(
     budgetRepository,

@@ -122,6 +122,16 @@ export const GROUP_SPLIT_MODES = {
 
 export type GroupSplitMode = keyof typeof GROUP_SPLIT_MODES;
 
+// Why "counts as yours" was written. Splitting one and editing its split move no money, and say so.
+export const SHARED_HISTORY_REASONS = {
+  SPLIT: "SPLIT",
+  SPLIT_EDITED: "SPLIT_EDITED",
+  AMOUNT_CHANGED: "AMOUNT_CHANGED",
+  UNSPLIT: "UNSPLIT",
+} as const;
+
+export type SharedHistoryReason = keyof typeof SHARED_HISTORY_REASONS;
+
 export const SHARE_PARTIES = {
   USER: "USER",
   CONTACT: "CONTACT",

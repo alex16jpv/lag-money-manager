@@ -34,6 +34,12 @@ jest.mock("../../shared/constants", () => ({
     FIXED_REST: "FIXED_REST",
   },
   SHARE_PARTIES: { USER: "USER", CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  SHARED_HISTORY_REASONS: {
+    SPLIT: "SPLIT",
+    SPLIT_EDITED: "SPLIT_EDITED",
+    AMOUNT_CHANGED: "AMOUNT_CHANGED",
+    UNSPLIT: "UNSPLIT",
+  },
 }));
 
 import { readdirSync } from "fs";

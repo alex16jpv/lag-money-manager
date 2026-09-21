@@ -165,6 +165,7 @@ export function services(): {
       accountRepo,
       repositoryFactory.getIdempotencyRepository(),
       categoryRepo,
+      repositoryFactory.getSharedExpenseRepository(),
     ),
     budgets: new BudgetService(
       repositoryFactory.getBudgetRepository(),

@@ -57,6 +57,9 @@ export const ERROR_CODES = [
   "PARTICIPANT_NOT_IN_GROUP",
   "PARTICIPANT_IN_USE",
   "SPLIT_INVALID",
+  "SHARED_EXPENSE_LINKED",
+  "TRANSACTION_ALREADY_SHARED",
+  "TRANSACTION_NOT_SPLITTABLE",
   // Client-minted ids
   "ID_TAKEN",
   // Optimistic concurrency

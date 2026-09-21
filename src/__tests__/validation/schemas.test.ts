@@ -91,6 +91,7 @@ import {
   createBudgetSchema,
   createCategorySchema,
   createContactSchema,
+  createSharedExpenseSchema,
   createTransactionSchema,
   getCategoriesSchema,
   getTransactionsSchema,
@@ -1481,6 +1482,55 @@ describe("Validation Schemas", () => {
         expect(result.success).toBe(false);
       },
     );
+  });
+
+  describe("createSharedExpenseSchema (T-115)", () => {
+    const body = (
+      over: Record<string, unknown> = {},
+    ): { params: { id: string }; body: Record<string, unknown> } => ({
+      params: { id: validUUID },
+      body: { amount: 90000, date: "2026-08-15T23:00:00.000Z", ...over },
+    });
+
+    it("takes an amount and a date when no movement is named", () => {
+      expect(createSharedExpenseSchema.safeParse(body()).success).toBe(true);
+    });
+
+    it.each(["amount", "date"] as const)("requires %s without one", (field) => {
+      const without = body();
+      delete (without.body as Record<string, unknown>)[field];
+      expect(createSharedExpenseSchema.safeParse(without).success).toBe(false);
+    });
+
+    it("takes a movement on its own", () => {
+      const result = createSharedExpenseSchema.safeParse({
+        params: { id: validUUID },
+        body: { transactionId: validUUID2 },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    // The movement states all three; a second statement is how the two end up disagreeing.
+    it.each([
+      ["amount", 90000],
+      ["date", "2026-08-15T23:00:00.000Z"],
+      ["description", "Something else"],
+      ["paidByContactId", validUUID],
+    ])("refuses %s beside a movement", (field, value) => {
+      const result = createSharedExpenseSchema.safeParse({
+        params: { id: validUUID },
+        body: { transactionId: validUUID2, [field]: value },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("takes a null paidByContactId beside a movement, which is you", () => {
+      const result = createSharedExpenseSchema.safeParse({
+        params: { id: validUUID },
+        body: { transactionId: validUUID2, paidByContactId: null },
+      });
+      expect(result.success).toBe(true);
+    });
   });
 
   describe("syncBatchSchema (O-B4)", () => {

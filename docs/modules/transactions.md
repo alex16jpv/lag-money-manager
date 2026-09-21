@@ -43,6 +43,42 @@ between months and budget periods retroactively. An expense logged at 11pm on Se
 Oct 1 in UTC and Oct 1 in Madrid — reading it in another zone would take it out of September's total
 and out of the budget period that already counted it.
 
+## What counts as yours (`countsAsYours`)
+
+**The amount is what left the account. What counts as yours is what left it minus what has come back.** They are the same figure on every movement except an expense split with other people, and the difference is the whole point of the shared feature: you paid $120,000 for dinner, half of it is Ana's, and until she pays you the whole $120,000 is still money you spent.
+
+- It is **stored, not derived on read**. The alternative is every aggregation joining the shared collections to work out a figure it needs per row, and an offline mirror that cannot reproduce them.
+- **Stats and the budgets measure it** — `aggregateSpending`, `sumAmountsByCategory` and `sumAmounts` all sum `countsAsYours`. **The listing does not**: a row's amount, a day's total and `summary.totalAmount` stay gross, because a list of movements is what moved through the accounts. The two figures are different on purpose and the transaction's detail is where the difference is explained.
+- Rows written before the field existed have no `countsAsYours`, and **their whole amount is theirs** — every aggregation reads `$ifNull: ["$countsAsYours", "$amount"]`. That is the meaning of an absent field, not a migration waiting to happen: the field arrived with splitting, so a row without it was never split.
+- A new amount on a movement carries the figure with it. Nothing can lower it yet: **only a payment does, and payments are the next task**.
+
+### The link to a shared expense
+
+A split movement carries `sharedExpenseId` and `sharedGroupId`; the shared expense carries nothing of the user's. **`sharedGroupId` is for the client** — it opens the group without first fetching the expense — and no query here reads it; it cannot go stale because an expense never changes group, and an endpoint that moved one would have to write it. The link lives on this side because **a shared group is seen by everybody in it** and which movement of yours it is nobody else's business — the boundary in the second delivery is that a user's feed never carries another user's private rows, and a `transactionId` on a travelling object would be exactly that. `{ userId, sharedExpenseId }`, partial over the rows that have one, is what answers the other direction.
+
+The two are **one fact seen from two sides**, so nothing may leave them saying different things:
+
+| What happens | What it does |
+| --- | --- |
+| `POST /shared-groups/{id}/expenses` with `transactionId` | The expense takes the movement's amount, date and description; the movement takes the link and a `SPLIT` entry. One database transaction |
+| The movement's amount, date or description changes | Written on the expense too, in the same database transaction; a new amount **resolves the split again** |
+| The movement's amount changes and the split is `EXACT` | **400 `SPLIT_INVALID`**: it states amounts, so they stop adding up. Restate the split on the expense first, rather than have the server rescale what somebody typed |
+| The movement's type changes | **400 `TRANSACTION_NOT_SPLITTABLE`**: only an expense can be split |
+| Editing the expense's amount, date, description or payer | **400 `SHARED_EXPENSE_LINKED`**: those come from the movement. The expense takes only its split |
+| `DELETE /transactions/{id}` | **The expense goes with it**, soft-deleted in the same database transaction: the group now costs that much less and every share falls |
+| `DELETE …/expenses/{expenseId}` | The movement stays, leaves the group, counts as yours in full again and records `UNSPLIT` |
+| People are added to the group with `applyToExistingExpenses` | Every movement whose expense was re-split records `SPLIT_EDITED`, in the same database transaction as the re-split |
+
+Two of those are deliberately one-sided. **An archived group does not freeze your movements**: editing one still writes its expense, because an archived group is a read-only view of what happened and refusing to fix your own amount over it would block the wrong half. And **a new amount carries what has come back with it** — the figure is re-derived as `amount − what came back`, never reset — so a later edit cannot undo a payment. Only one thing still waits for payments to exist: taking an expense out of a group hands the movement its whole amount back, which is right **because a payment is re-imputed over the expenses that are left** (T-116) rather than belonging to the one that went.
+
+**Adding a movement to a group changes no figure today**, which is what the screen has to say before it saves: the money left the account, so the expense keeps counting in full until somebody pays. No endpoint is needed for that warning — the client already holds the movement, its category and its month.
+
+### Its history (`sharedHistory`)
+
+One entry per thing that could have moved the figure, oldest first: `{ at, reason, countsAsYours }`, where `countsAsYours` is what it left behind. The reasons are `SPLIT`, `SPLIT_EDITED` (the expense's own split saved or cleared, or the group re-split by adding people), `AMOUNT_CHANGED` and `UNSPLIT`; payments and write-offs add theirs. A new date is not one of them: it moves which month the figure counts in, not the figure, and `revisions[]` already holds it. **An event that moved nothing repeats the figure and says so** — splitting an expense and writing one off never move it, and only a payment does, in the month the expense happened. Without this list, a figure that falls two weeks later in a month already closed is inexplicable, which is why the owner asked for it rather than it being an extra.
+
+Unlike `revisions[]` it is **public**: it is the answer to a question the user asks. It is also uncapped, and deliberately: capping the explanation of a figure loses the oldest events, which are the ones nobody remembers. It grows by one entry per split edit and per payment — tens over a group's life. A group large enough to make that a document-size problem is a group whose payments belong in a collection of their own.
+
 ## Files and Responsibilities
 
 | File                                                                   | Role                                                                          |
@@ -191,11 +227,11 @@ Get a single transaction by ID. Ownership enforced.
 
 ### `PUT /transactions/:id`
 
-Partial update; the merged result must still be a valid transaction of its type. Balance changes are reversed and re-applied **only when the money movement changes** — see [Balance Adjustment Logic](#balance-adjustment-logic).
+Partial update; the merged result must still be a valid transaction of its type. Balance changes are reversed and re-applied **only when the money movement changes** — see [Balance Adjustment Logic](#balance-adjustment-logic). A movement in a shared group carries its expense with it, and its type can no longer change.
 
 ### `DELETE /transactions/:id`
 
-Soft-deletes the transaction (sets `deletedAt`) and reverses its balance adjustments on the affected accounts.
+Soft-deletes the transaction (sets `deletedAt`) and reverses its balance adjustments on the affected accounts. A movement in a shared group **takes its expense with it**, in the same database transaction ([What counts as yours](#what-counts-as-yours-countsasyours)).
 
 ## Internal Flow
 
@@ -502,7 +538,7 @@ Payload equality is decided by `hashPayload()` over the request body. Records ar
 
 Monetary edits keep a pre-update snapshot in the document's `revisions[]` array: `{ at, amount, type, fromAccountId, toAccountId, date }`. A revision is written when the money movement changed **or** when only the `date` moved — moving money between periods reshapes budgets and stats even though balances stay put.
 
-`revisions[]` is an **internal audit trail**: it answers "why doesn't this balance?" and is not exposed through the API.
+`revisions[]` is an **internal audit trail**: it answers "why doesn't this balance?" and is not exposed through the API. It is not `sharedHistory`, which is public and answers a different question: why what counts as yours is not the amount.
 
 ## Money Representation
 

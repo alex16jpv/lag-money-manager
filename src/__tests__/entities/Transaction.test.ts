@@ -171,6 +171,50 @@ describe("Transaction Entity", () => {
     });
   });
 
+  describe("what counts as yours [T-115]", () => {
+    it("is the whole amount until something says otherwise", () => {
+      const tx = new Transaction(validExpenseProps);
+      expect(tx.countsAsYours).toBe(tx.amount);
+      expect(tx.sharedExpenseId).toBeNull();
+      expect(tx.sharedGroupId).toBeNull();
+      expect(tx.sharedHistory).toEqual([]);
+    });
+
+    it("rejects a figure above the amount, which would count money that never left", () => {
+      const tx = new Transaction({
+        ...validExpenseProps,
+        countsAsYours: validExpenseProps.amount + 1,
+      });
+      expect(() => tx.assertValid()).toThrow("between zero and the amount");
+    });
+
+    it("rejects a negative figure", () => {
+      const tx = new Transaction({ ...validExpenseProps, countsAsYours: -1 });
+      expect(() => tx.assertValid()).toThrow("between zero and the amount");
+    });
+
+    it("rejects a link that names only one of the group and the expense", () => {
+      const tx = new Transaction({
+        ...validExpenseProps,
+        sharedExpenseId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91",
+      });
+      expect(() => tx.assertValid()).toThrow("names both its group");
+    });
+
+    it("rejects a split movement that is not an expense", () => {
+      const tx = new Transaction({
+        ...validExpenseProps,
+        type: "INCOME",
+        fromAccountId: null,
+        toAccountId: validExpenseProps.fromAccountId,
+        categoryId: null,
+        sharedExpenseId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91",
+        sharedGroupId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac92",
+      });
+      expect(() => tx.assertValid()).toThrow("Only an expense can be split");
+    });
+  });
+
   describe("assertValid — future dates [R2-30]", () => {
     it("rejects a date more than 24h in the future", () => {
       const tx = new Transaction({

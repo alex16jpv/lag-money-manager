@@ -4,7 +4,7 @@
 
 Holds **shared groups** — an outing, a dinner, a two-month trip — with the people in them, the expenses they cost and how each expense is split. It is the shared layer of the expense-splitting feature: the fact of what was spent, who fronted it and whose part it is.
 
-**It contains no money of the user's.** No account, no category, no budget, no balance is touched from here. A shared expense is not a movement: it is the fact a movement is the private consequence of. Linking one to the user's own transaction, the figure that counts as theirs, and Stats and Budgets reading it are the next task's, deliberately: half of that link would either duplicate an amount that can silently diverge from its transaction or drag the other module's guards in here.
+**It contains no money of the user's.** No account, no category, no budget, no balance is touched from here. A shared expense is not a movement: it is the fact a movement is the private consequence of. An expense **can name one**, and then the movement is where the link, what counts as yours and its history are stored — never here, because a shared group is seen by everybody in it and which movement of yours it is nobody else's. What that link means on the other side is in [transactions.md](transactions.md#what-counts-as-yours-countsasyours).
 
 Three things shape the whole module:
 
@@ -88,7 +88,7 @@ The same body, once written and once only worked out. `applyToExistingExpenses` 
 
 The answer counts those under `expenses.untouched`, so the screen can say it rather than leave it to be discovered. The alternative — giving the newcomer a zero share there — would put a row that owes nothing in the group's people list; the exact answer for an expense somebody was not at is that expense's own split.
 
-A group whose default is `PERCENT` must send `defaultSplit` with the new percentages: the old ones no longer cover everybody. The group and every expense it re-splits move **in one transaction**.
+A group whose default is `PERCENT` must send `defaultSplit` with the new percentages: the old ones no longer cover everybody. The group and every expense it re-splits move **in one transaction**, and every expense that is a movement of the user's records `SPLIT_EDITED` in that movement's history in the same write: what each person owes changed, even though what counts as yours did not ([transactions.md](transactions.md#its-history-sharedhistory)).
 
 **What the preview does not carry yet:** what each person has already paid, who ends up ahead of what they owe, and what a written-off amount becomes. None of it exists on the server until payments and write-offs do; the shape is the one those tasks extend.
 
@@ -100,13 +100,15 @@ Offered only while they have **no share in any live expense of the group**. Once
 
 The listing is **newest first, keyset over `(date, _id)`**: ids are minted when an expense is recorded, not on the day it was spent, so they cannot order this list on their own.
 
-A create takes `description`, `date`, `amount`, an optional `paidByContactId` (null is you) and an optional `split`. No `split` inherits the group's default and leaves `customSplit` false; a `split` sets it true. `PUT` either saves a split (`split`) or goes back to the group's (`useGroupSplit: true`) — never both — and changing the amount or the payer resolves the shares again rather than leaving figures that no longer add up.
+A create takes `description`, `date`, `amount`, an optional `paidByContactId` (null is you) and an optional `split`.
+
+**Or it takes `transactionId`, and then the expense is a movement of yours.** The amount, the date and the description come from that transaction, so none of the three may be sent with it, and neither may a `paidByContactId` other than null: a movement of yours is a line you paid. The transaction has to be a live `EXPENSE` of the caller's, in the group's currency, and not already in a group (`400 TRANSACTION_ALREADY_SHARED`, `400 TRANSACTION_NOT_SPLITTABLE`, `400 CURRENCY_MISMATCH`, `404` for anything else). The expense and the link are written in **one database transaction**, and the transaction is read inside it, so two requests cannot both take the same movement. From then on its amount, date and description are edited on the transaction: restating one here is `400 SHARED_EXPENSE_LINKED`, and `DELETE` on the expense leaves the movement in place, whole and free. No `split` inherits the group's default and leaves `customSplit` false; a `split` sets it true. `PUT` either saves a split (`split`) or goes back to the group's (`useGroupSplit: true`) — never both — and changing the amount or the payer resolves the shares again rather than leaving figures that no longer add up.
 
 **One case a caller has to know about:** an expense carrying its own `EXACT` split states amounts, so a new `amount` on its own makes them stop adding up and the write is `400 SPLIT_INVALID`. The request has to restate the split alongside the new amount. Rescaling what somebody typed by hand would be the server quietly deciding what they meant, which is worse than an error that says the shares no longer add up.
 
 Every route under `/shared-groups/{id}/expenses/{expenseId}` checks that the expense really belongs to that group: reaching one of your own expenses through another of your groups is a URL that lies, and it answers 404 like any other resource that is not there.
 
-`DELETE` is a **soft delete** (`deletedAt`) and is idempotent. A deleted expense counts in no total and appears in no listing.
+`DELETE` is a **soft delete** (`deletedAt`) and is idempotent. A deleted expense counts in no total and appears in no listing. When it was a movement of yours, the movement is **not** deleted: it leaves the group and counts as yours in full again. Deleting the movement is what takes both.
 
 ## Storage
 
@@ -128,7 +130,7 @@ Money is stored as integer cents, shares included; `percent` is not money and is
 
 ## What This Module Does Not Do
 
-- **It does not touch the user's money.** No transaction is created, read or linked from here.
+- **It does not touch the user's money.** No balance, category or budget is read or written from here, and the only thing it knows about a transaction is whether one can be split into it.
 - **It knows nothing about categories.** The shared layer carries none, on purpose: categories are private and never travel.
 - **It has no payments, no write-offs and no `Settled` state.** All three are about money that came back, and a group is `Open` until something says otherwise — which is why the state is not stored as a field that could only ever hold one value today.
 - **It does not sync.** Contacts, groups and expenses reach the offline mirror in the task that adds them to the change feed; the indexes they will need are already declared.

@@ -6,6 +6,8 @@ Read-only aggregation over the user's transactions. A single endpoint, `GET /sta
 
 The module owns no data of its own: it is a thin service over one MongoDB aggregation pipeline in `TransactionRepository.aggregateSpending()`. Buckets are computed in the **user's timezone**, so a "day" is their local day, not UTC's.
 
+**What it measures is `countsAsYours`, not `amount`** — what left the account minus what has come back, which is the same figure on everything except an expense split with other people ([transactions.md](transactions.md#what-counts-as-yours-countsasyours)). Rows written before that field existed count their whole amount. `GET /transactions` is deliberately the other way: its rows and its summary are gross, because a list of movements is what moved through the accounts.
+
 ## Files and Responsibilities
 
 | File                                                              | Role                                                                     |
@@ -77,7 +79,7 @@ With `groupBy=month&splitBy=category`, each bucket also carries its composition:
 | `key`    | Category id, `YYYY-MM-DD` day, `YYYY-MM` month, account id, or tag — depending on `groupBy` |
 | `splits` | Only when `splitBy` was asked for: the same shape, one per category. Splits never overlap, so they add up to the bucket's own `total` |
 | `splitBy` (top level) | The second dimension asked for, or `null`                        |
-| `total`  | Sum of the bucket's amounts, as a decimal                                      |
+| `total`  | Sum of what counts as yours in the bucket, as a decimal                        |
 | `count`  | Number of transactions in the bucket                                           |
 | `avg`    | `total / count`, rounded to the cent                                           |
 | `total` (top level) | Grand total, computed **without** the tag unwind (never double-counted) |
@@ -189,7 +191,7 @@ The endpoint never 404s: an empty result set is a `200` with `buckets: []` and `
 
 ## Money Representation
 
-The pipeline sums the stored **integer cents**. `avg` is rounded to the nearest cent before conversion, and the grand total is converted in `StatsService`, so every number in the response is a decimal — consistent with the rest of the API.
+The pipeline sums the stored **integer cents** of `countsAsYours`, falling back to `amount` on rows written before it existed. `avg` is rounded to the nearest cent before conversion, and the grand total is converted in `StatsService`, so every number in the response is a decimal — consistent with the rest of the API.
 
 ## How to Extend
 

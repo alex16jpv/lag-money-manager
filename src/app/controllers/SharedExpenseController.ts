@@ -8,6 +8,7 @@ import { ifMatch } from "./ifMatch";
 const sharedExpenseService = new SharedExpenseService(
   repositoryFactory.getSharedExpenseRepository(),
   repositoryFactory.getSharedGroupRepository(),
+  repositoryFactory.getTransactionRepository(),
 );
 
 export class SharedExpenseController {
