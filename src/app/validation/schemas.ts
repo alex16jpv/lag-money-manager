@@ -985,6 +985,13 @@ const syncOperationSchema = z.object({
             .optional(),
         })
         .optional(),
+      // What the matching route reads from its path besides the row's own id.
+      params: z
+        .object({
+          groupId: z.string().uuid("groupId must be a valid UUID").optional(),
+          partyId: z.string().uuid("partyId must be a valid UUID").optional(),
+        })
+        .optional(),
     })
     .optional()
     .default({}),

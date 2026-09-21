@@ -1,9 +1,17 @@
 import { Account } from "../../domain/entities/Account";
 import { Budget } from "../../domain/entities/Budget";
 import { Category } from "../../domain/entities/Category";
+import { Contact } from "../../domain/entities/Contact";
+import { SharedExpense } from "../../domain/entities/SharedExpense";
+import { SharedGroup } from "../../domain/entities/SharedGroup";
+import { SharedSettlement } from "../../domain/entities/SharedSettlement";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { IBudgetRepository } from "../../domain/repositories/budget/IBudgetRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
+import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
+import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import {
   ChangedTransaction,
   ITransactionRepository,
@@ -26,6 +34,11 @@ export interface SyncChanges {
   categories: Category[];
   transactions: ChangedTransaction[];
   budgets: Budget[];
+  // The shared layer: what everybody in a group would see, and never anybody's private figures.
+  contacts: Contact[];
+  sharedGroups: SharedGroup[];
+  sharedExpenses: SharedExpense[];
+  settlements: SharedSettlement[];
 }
 
 export interface SyncChangesResult {
@@ -46,6 +59,10 @@ export class SyncService {
     private categories: ICategoryRepository,
     private transactions: ITransactionRepository,
     private budgets: IBudgetRepository,
+    private contacts: IContactRepository,
+    private sharedGroups: ISharedGroupRepository,
+    private sharedExpenses: ISharedExpenseRepository,
+    private settlements: ISharedSettlementRepository,
   ) {}
 
   /**
@@ -63,14 +80,27 @@ export class SyncService {
 
     // limit+1 from every source separates "there is more" from the end, and makes the merge exact.
     const fetch = limit + 1;
-    const [user, accounts, categories, transactions, budgets] =
-      await Promise.all([
-        this.users.getById(userId),
-        this.accounts.changesSince(userId, cursor, fetch),
-        this.categories.changesSince(userId, cursor, fetch),
-        this.transactions.changesSince(userId, cursor, fetch),
-        this.budgets.changesSince(userId, cursor, fetch),
-      ]);
+    const [
+      user,
+      accounts,
+      categories,
+      transactions,
+      budgets,
+      contacts,
+      sharedGroups,
+      sharedExpenses,
+      settlements,
+    ] = await Promise.all([
+      this.users.getById(userId),
+      this.accounts.changesSince(userId, cursor, fetch),
+      this.categories.changesSince(userId, cursor, fetch),
+      this.transactions.changesSince(userId, cursor, fetch),
+      this.budgets.changesSince(userId, cursor, fetch),
+      this.contacts.changesSince(userId, cursor, fetch),
+      this.sharedGroups.changesSince(userId, cursor, fetch),
+      this.sharedExpenses.changesSince(userId, cursor, fetch),
+      this.settlements.changesSince(userId, cursor, fetch),
+    ]);
 
     // Filtering the user here costs one comparison and keeps it inside the same ordering.
     const users =
@@ -82,6 +112,10 @@ export class SyncService {
       ...categories,
       ...transactions,
       ...budgets,
+      ...contacts,
+      ...sharedGroups,
+      ...sharedExpenses,
+      ...settlements,
     ]
       .map(changeKeyOf)
       .sort(compareChanges);
@@ -97,6 +131,10 @@ export class SyncService {
       categories: upTo(categories),
       transactions: upTo(transactions),
       budgets: upTo(budgets),
+      contacts: upTo(contacts),
+      sharedGroups: upTo(sharedGroups),
+      sharedExpenses: upTo(sharedExpenses),
+      settlements: upTo(settlements),
     };
 
     return {

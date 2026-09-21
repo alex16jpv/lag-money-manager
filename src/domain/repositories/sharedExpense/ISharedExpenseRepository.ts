@@ -1,4 +1,5 @@
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
 import { SharedExpense } from "../../entities/SharedExpense";
 import { SettlementCounterparty } from "../../entities/SharedSettlement";
@@ -25,6 +26,13 @@ export interface GroupTotals {
 }
 
 export interface ISharedExpenseRepository extends IRepository<SharedExpense> {
+  // Change feed after `cursor` in (updatedAt, _id) order, deleted rows included.
+  changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<SharedExpense[]>;
+
   // `expectedUpdatedAt` goes in the write's own filter: a guard checked before would race.
   update(
     id: string,

@@ -1,4 +1,5 @@
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
 import { SharedGroup } from "../../entities/SharedGroup";
 import { IRepository } from "../IRepository";
@@ -11,6 +12,13 @@ export interface SharedGroupFilters {
 }
 
 export interface ISharedGroupRepository extends IRepository<SharedGroup> {
+  // Change feed after `cursor` in (updatedAt, _id) order, archived rows included.
+  changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<SharedGroup[]>;
+
   // `expectedUpdatedAt` goes in the write's own filter: a guard checked before would race.
   update(
     id: string,

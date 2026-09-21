@@ -23,6 +23,7 @@ const createMockRepo = (): jest.Mocked<IContactRepository> => ({
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   getOwnById: jest.fn(),
   listActiveIds: jest.fn().mockResolvedValue([]),
   create: jest.fn(),

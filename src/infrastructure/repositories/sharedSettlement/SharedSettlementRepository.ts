@@ -17,11 +17,13 @@ import {
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
 import {
   ISharedSettlementDocument,
   SharedSettlementModel,
 } from "../../models/SharedSettlementModel";
+import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
 import { invalidCursor } from "../keysetCursor";
 
 // Newest first: what somebody asks about a person is what happened last.
@@ -114,6 +116,20 @@ export class SharedSettlementRepository implements ISharedSettlementRepository {
       throw new ApiError("NotFound", "Payment not found");
     }
     return this.toEntity(doc);
+  }
+
+  async changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<SharedSettlement[]> {
+    const docs = await SharedSettlementModel.find(
+      changesSinceFilter(userId, cursor),
+    )
+      .sort(CHANGE_FEED_SORT)
+      .limit(limit)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
   }
 
   async getById(

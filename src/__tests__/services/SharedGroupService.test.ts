@@ -67,6 +67,7 @@ const groupRepo = (): jest.Mocked<ISharedGroupRepository> => ({
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn().mockResolvedValue(makeGroup()),
+  changesSince: jest.fn().mockResolvedValue([]),
   getOwnById: jest.fn(),
   create: jest.fn().mockImplementation(async (g) => g as SharedGroup),
   update: jest
@@ -87,6 +88,7 @@ const expenseRepo = (): jest.Mocked<ISharedExpenseRepository> => ({
   getOwnById: jest.fn(),
   listByGroup: jest.fn().mockResolvedValue([]),
   listByCounterparty: jest.fn().mockResolvedValue([]),
+  changesSince: jest.fn().mockResolvedValue([]),
   countSharesOfContact: jest.fn().mockResolvedValue(0),
   totalsByGroup: jest.fn().mockResolvedValue([]),
   replaceSplits: jest.fn().mockResolvedValue(undefined),
@@ -111,6 +113,7 @@ const settlementRepo = (): jest.Mocked<ISharedSettlementRepository> => ({
   getById: jest.fn(),
   getOwnById: jest.fn(),
   listByCounterparty: jest.fn().mockResolvedValue([]),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),

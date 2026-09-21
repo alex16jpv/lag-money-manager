@@ -62,6 +62,8 @@ describe("OpenAPI response views", () => {
     "ErrorResponse",
     "SyncTransaction",
     "SyncBudget",
+    "SyncSharedExpense",
+    "SyncSettlement",
     "SyncChangesResponse",
     "SyncOpResult",
     "SyncBatchResponse",
@@ -129,6 +131,10 @@ describe("OpenAPI response views", () => {
   it("keeps the sync feed's tombstones mandatory", () => {
     expect(view("SyncTransaction").required).toContain("deletedAt");
     expect(view("SyncBudget").required).toContain("archivedAt");
+    expect(view("SyncSharedExpense").required).toContain("deletedAt");
+    expect(view("SyncSettlement").required).toContain("deletedAt");
+    expect(view("Contact").required).toContain("archivedAt");
+    expect(view("SharedGroup").required).toContain("archivedAt");
   });
 
   it("derives SyncTransaction from the Transaction view instead of copying it", () => {

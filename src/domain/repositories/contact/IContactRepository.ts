@@ -1,4 +1,5 @@
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
 import { Contact } from "../../entities/Contact";
 import { IRepository } from "../IRepository";
@@ -15,6 +16,13 @@ export interface ContactFilters {
 }
 
 export interface IContactRepository extends IRepository<Contact> {
+  // Change feed after `cursor` in (updatedAt, _id) order, archived rows included.
+  changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<Contact[]>;
+
   // `expectedUpdatedAt` goes in the write's own filter: a guard checked before would race.
   update(
     id: string,

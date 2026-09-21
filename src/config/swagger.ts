@@ -792,6 +792,32 @@ const syncViews = {
       },
     },
   }),
+  SyncSharedExpense: withRequired({
+    type: "object",
+    description:
+      "An expense of a shared group in the change feed: the usual shape plus the tombstone.",
+    properties: {
+      ...responseViews.SharedExpense.properties,
+      deletedAt: {
+        ...nullableDateTime,
+        description:
+          "Set when the expense was deleted. Only the sync feed reports it.",
+      },
+    },
+  }),
+  SyncSettlement: withRequired({
+    type: "object",
+    description:
+      "A payment in the change feed: the usual shape plus the tombstone.",
+    properties: {
+      ...responseViews.Settlement.properties,
+      deletedAt: {
+        ...nullableDateTime,
+        description:
+          "Set when the payment was undone. Only the sync feed reports it.",
+      },
+    },
+  }),
   SyncBudget: withRequired({
     type: "object",
     description:
@@ -879,6 +905,22 @@ const syncChangesResponse = withRequired({
         budgets: {
           type: "array",
           items: { $ref: "#/components/schemas/SyncBudget" },
+        },
+        contacts: {
+          type: "array",
+          items: { $ref: "#/components/schemas/Contact" },
+        },
+        sharedGroups: {
+          type: "array",
+          items: { $ref: "#/components/schemas/SharedGroup" },
+        },
+        sharedExpenses: {
+          type: "array",
+          items: { $ref: "#/components/schemas/SyncSharedExpense" },
+        },
+        settlements: {
+          type: "array",
+          items: { $ref: "#/components/schemas/SyncSettlement" },
         },
       },
     }),

@@ -6,6 +6,10 @@ process.env.MONGO_URI ??= "mongodb://localhost:27017/unused";
 import { AccountService } from "../../app/services/AccountService";
 import { BudgetService } from "../../app/services/BudgetService";
 import { CategoryService } from "../../app/services/CategoryService";
+import { ContactService } from "../../app/services/ContactService";
+import { SharedExpenseService } from "../../app/services/SharedExpenseService";
+import { SharedGroupService } from "../../app/services/SharedGroupService";
+import { SharedSettlementService } from "../../app/services/SharedSettlementService";
 import { SyncBatchService } from "../../app/services/SyncBatchService";
 import { TransactionService } from "../../app/services/TransactionService";
 import { SyncOperationInput } from "../../app/validation/schemas";
@@ -56,6 +60,31 @@ const budgets = mockService<BudgetService>(
   "setAmountOverride",
   "clearAmountOverride",
 );
+const contacts = mockService<ContactService>(
+  "createContact",
+  "updateContact",
+  "deleteContact",
+  "restoreContact",
+);
+const sharedGroups = mockService<SharedGroupService>(
+  "createGroup",
+  "updateGroup",
+  "deleteGroup",
+  "restoreGroup",
+  "addParticipants",
+  "removeParticipant",
+  "writeOff",
+  "undoWriteOff",
+);
+const sharedExpenses = mockService<SharedExpenseService>(
+  "createExpense",
+  "updateExpense",
+  "deleteExpense",
+);
+const settlements = mockService<SharedSettlementService>(
+  "createSettlement",
+  "deleteSettlement",
+);
 const syncOps: jest.Mocked<ISyncOpRepository> = {
   find: jest.fn(),
   record: jest.fn(),
@@ -67,6 +96,10 @@ const service = new SyncBatchService(
   transactions as unknown as TransactionService,
   budgets as unknown as BudgetService,
   syncOps,
+  contacts as unknown as ContactService,
+  sharedGroups as unknown as SharedGroupService,
+  sharedExpenses as unknown as SharedExpenseService,
+  settlements as unknown as SharedSettlementService,
 );
 
 const ctx = { userId: USER, timezone: TZ };

@@ -19,11 +19,13 @@ import {
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
 import {
   ISharedExpenseDocument,
   SharedExpenseModel,
 } from "../../models/SharedExpenseModel";
+import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
 import { invalidCursor } from "../keysetCursor";
 
 // Newest first: a group is read from the last thing that happened backwards.
@@ -139,6 +141,20 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
       total,
       pagination,
     );
+  }
+
+  async changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<SharedExpense[]> {
+    const docs = await SharedExpenseModel.find(
+      changesSinceFilter(userId, cursor),
+    )
+      .sort(CHANGE_FEED_SORT)
+      .limit(limit)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
   }
 
   async getById(

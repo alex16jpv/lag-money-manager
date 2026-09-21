@@ -76,6 +76,7 @@ const mockContactRepo: jest.Mocked<IContactRepository> = {
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   getOwnById: jest.fn(),
   listActiveIds: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
@@ -90,6 +91,7 @@ const mockSharedGroupRepo: jest.Mocked<ISharedGroupRepository> = {
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   getOwnById: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
@@ -105,6 +107,7 @@ const mockSharedExpenseRepo: jest.Mocked<ISharedExpenseRepository> = {
   getOwnById: jest.fn(),
   listByGroup: jest.fn().mockResolvedValue([]),
   listByCounterparty: jest.fn().mockResolvedValue([]),
+  changesSince: jest.fn().mockResolvedValue([]),
   countSharesOfContact: jest.fn().mockResolvedValue(0),
   totalsByGroup: jest.fn().mockResolvedValue([]),
   replaceSplits: jest.fn().mockResolvedValue(undefined),
@@ -119,6 +122,7 @@ const mockSharedSettlementRepo: jest.Mocked<ISharedSettlementRepository> = {
   getById: jest.fn(),
   getOwnById: jest.fn(),
   listByCounterparty: jest.fn().mockResolvedValue([]),
+  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -2184,6 +2188,10 @@ describe("Integration Tests", () => {
         "categories",
         "transactions",
         "budgets",
+        "contacts",
+        "sharedGroups",
+        "sharedExpenses",
+        "settlements",
       ]);
       expect(res.body.changes.user.id).toBe(testUser.id);
       expect(res.body.changes.user.password).toBeUndefined();

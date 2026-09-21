@@ -12,6 +12,10 @@ import { AuthPayload } from "../middlewares/authMiddleware";
 import { AccountService } from "../services/AccountService";
 import { BudgetService } from "../services/BudgetService";
 import { CategoryService } from "../services/CategoryService";
+import { ContactService } from "../services/ContactService";
+import { SharedExpenseService } from "../services/SharedExpenseService";
+import { SharedGroupService } from "../services/SharedGroupService";
+import { SharedSettlementService } from "../services/SharedSettlementService";
 import { SyncBatchService } from "../services/SyncBatchService";
 import { SyncService } from "../services/SyncService";
 import { TransactionService } from "../services/TransactionService";
@@ -22,6 +26,9 @@ const accountRepository = repositoryFactory.getAccountRepository();
 const categoryRepository = repositoryFactory.getCategoryRepository();
 const transactionRepository = repositoryFactory.getTransactionRepository();
 const budgetRepository = repositoryFactory.getBudgetRepository();
+const contactRepository = repositoryFactory.getContactRepository();
+const sharedGroupRepository = repositoryFactory.getSharedGroupRepository();
+const sharedExpenseRepository = repositoryFactory.getSharedExpenseRepository();
 
 const syncService = new SyncService(
   userRepository,
@@ -29,6 +36,10 @@ const syncService = new SyncService(
   categoryRepository,
   transactionRepository,
   budgetRepository,
+  contactRepository,
+  sharedGroupRepository,
+  sharedExpenseRepository,
+  repositoryFactory.getSharedSettlementRepository(),
 );
 
 // The same service wiring the HTTP controllers use: the batch must answer what the routes would.
@@ -49,6 +60,35 @@ const syncBatchService = new SyncBatchService(
     userRepository,
   ),
   repositoryFactory.getSyncOpRepository(),
+  new ContactService(contactRepository),
+  new SharedGroupService(
+    sharedGroupRepository,
+    sharedExpenseRepository,
+    contactRepository,
+    userRepository,
+    transactionRepository,
+    sharedLedgerService,
+  ),
+  new SharedExpenseService(
+    sharedExpenseRepository,
+    sharedGroupRepository,
+    transactionRepository,
+    sharedLedgerService,
+  ),
+  new SharedSettlementService(
+    repositoryFactory.getSharedSettlementRepository(),
+    sharedExpenseRepository,
+    contactRepository,
+    userRepository,
+    sharedLedgerService,
+    new TransactionService(
+      transactionRepository,
+      accountRepository,
+      repositoryFactory.getIdempotencyRepository(),
+      categoryRepository,
+      sharedLedgerService,
+    ),
+  ),
 );
 
 /** No position at all is a full snapshot, which is the point of the endpoint. */

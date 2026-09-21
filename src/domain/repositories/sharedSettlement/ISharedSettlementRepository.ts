@@ -1,4 +1,5 @@
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
+import { ChangeCursor } from "../../../shared/syncCursor";
 import { TxSession } from "../../../shared/unitOfWork";
 import {
   SettlementCounterparty,
@@ -12,6 +13,13 @@ export interface SettlementFilters {
 }
 
 export interface ISharedSettlementRepository extends IRepository<SharedSettlement> {
+  // Change feed after `cursor` in (updatedAt, _id) order, deleted rows included.
+  changesSince(
+    userId: string,
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<SharedSettlement[]>;
+
   // Soft-deletes and answers the deleted row, so a queued write can guard on its updatedAt.
   delete(
     id: string,

@@ -5,6 +5,7 @@ import { Category } from "../../domain/entities/Category";
 import { ISyncOpRepository } from "../../domain/repositories/syncOp/ISyncOpRepository";
 import { ErrorCode } from "../../shared/errorCodes";
 import { describeFailure } from "../../shared/errorResponse";
+import { ApiError } from "../../shared/errors";
 import {
   SYNC_ACTIONS,
   SYNC_LANDED_STATUSES,
@@ -18,6 +19,10 @@ import { SyncOperationInput } from "../validation/schemas";
 import { AccountService } from "./AccountService";
 import { BudgetService } from "./BudgetService";
 import { CategoryService } from "./CategoryService";
+import { ContactService } from "./ContactService";
+import { SharedExpenseService } from "./SharedExpenseService";
+import { SharedGroupService } from "./SharedGroupService";
+import { SharedSettlementService } from "./SharedSettlementService";
 import { TransactionService } from "./TransactionService";
 
 export interface SyncOpResult {
@@ -90,6 +95,22 @@ interface Handler {
 }
 
 const ACCOUNT_SIDES = ["fromAccountId", "toAccountId"] as const;
+
+/** What the matching route reads from its path; missing is the client's mistake, not a fault. */
+function pathParam(
+  op: SyncOperationInput,
+  name: "groupId" | "partyId",
+): string {
+  const value = op.payload.params?.[name];
+  if (!value) {
+    throw new ApiError(
+      "BadRequest",
+      `payload.params.${name} is required for ${op.entity}:${op.action}`,
+      "VALIDATION",
+    );
+  }
+  return value;
+}
 
 function sameValue(stored: unknown, sent: unknown): boolean {
   if (sent === null || sent === undefined) {
@@ -180,6 +201,10 @@ export class SyncBatchService {
     private transactions: TransactionService,
     private budgets: BudgetService,
     private syncOps: ISyncOpRepository,
+    private contacts: ContactService,
+    private sharedGroups: SharedGroupService,
+    private sharedExpenses: SharedExpenseService,
+    private settlements: SharedSettlementService,
   ) {
     const budgetCtx = (
       op: SyncOperationInput,
@@ -377,6 +402,152 @@ export class SyncBatchService {
             budgetCtx(op, ctx),
             guard,
           ),
+      },
+
+      "contact:create": {
+        body: bodyOf(v.createContactSchema),
+        create: true,
+        run: ({ body, ctx, outcome }) =>
+          this.contacts.createContact(
+            { ...body, userId: ctx.userId } as never,
+            outcome,
+          ),
+      },
+      "contact:update": {
+        body: bodyOf(v.updateContactSchema),
+        holds: fieldsHold(),
+        run: ({ id, body, ctx, guard }) =>
+          this.contacts.updateContact(id, body as never, ctx.userId, guard),
+      },
+      "contact:archive": {
+        holds: isArchived,
+        run: ({ id, ctx, guard }) =>
+          this.contacts.deleteContact(id, ctx.userId, guard),
+      },
+      "contact:restore": {
+        body: bodyOf(v.restoreSchema),
+        holds: isRestored,
+        run: ({ id, body, ctx, guard }) =>
+          this.contacts.restoreContact(
+            id,
+            ctx.userId,
+            (body as { name?: string }).name,
+            guard,
+          ),
+      },
+      "sharedGroup:create": {
+        body: bodyOf(v.createSharedGroupSchema),
+        create: true,
+        run: ({ body, ctx, outcome }) =>
+          this.sharedGroups.createGroup(
+            { ...body, userId: ctx.userId } as never,
+            outcome,
+          ),
+      },
+      "sharedGroup:update": {
+        body: bodyOf(v.updateSharedGroupSchema),
+        holds: fieldsHold(),
+        run: ({ id, body, ctx, guard }) =>
+          this.sharedGroups.updateGroup(id, body as never, ctx.userId, guard),
+      },
+      "sharedGroup:archive": {
+        holds: isArchived,
+        run: ({ id, ctx, guard }) =>
+          this.sharedGroups.deleteGroup(id, ctx.userId, guard),
+      },
+      "sharedGroup:restore": {
+        body: bodyOf(v.restoreSchema),
+        holds: isRestored,
+        run: ({ id, body, ctx, guard }) =>
+          this.sharedGroups.restoreGroup(
+            id,
+            ctx.userId,
+            (body as { name?: string }).name,
+            guard,
+          ),
+      },
+      "sharedGroup:addParticipants": {
+        body: bodyOf(v.addParticipantsSchema),
+        run: ({ id, body, ctx, guard }) =>
+          this.sharedGroups.addParticipants(
+            id,
+            body as never,
+            ctx.userId,
+            guard,
+          ),
+      },
+      "sharedGroup:removeParticipant": {
+        run: ({ op, id, ctx, guard }) =>
+          this.sharedGroups.removeParticipant(
+            id,
+            pathParam(op, "partyId"),
+            ctx.userId,
+            guard,
+          ),
+      },
+      "sharedGroup:writeOff": {
+        body: bodyOf(v.writeOffSchema),
+        run: ({ id, body, ctx, guard }) =>
+          this.sharedGroups.writeOff(id, body as never, ctx.userId, guard),
+      },
+      "sharedGroup:undoWriteOff": {
+        run: ({ op, id, ctx, guard }) =>
+          this.sharedGroups.undoWriteOff(
+            id,
+            pathParam(op, "partyId"),
+            ctx.userId,
+            guard,
+          ),
+      },
+      "sharedExpense:create": {
+        body: bodyOf(v.createSharedExpenseSchema),
+        create: true,
+        run: ({ op, body, ctx, outcome }) =>
+          this.sharedExpenses.createExpense(
+            {
+              ...body,
+              groupId: pathParam(op, "groupId"),
+              userId: ctx.userId,
+            } as never,
+            outcome,
+          ),
+      },
+      "sharedExpense:update": {
+        body: bodyOf(v.updateSharedExpenseSchema),
+        holds: fieldsHold(),
+        run: ({ op, id, body, ctx, guard }) =>
+          this.sharedExpenses.updateExpense(
+            id,
+            body as never,
+            ctx.userId,
+            guard,
+            pathParam(op, "groupId"),
+          ),
+      },
+      "sharedExpense:delete": {
+        removesRow: true,
+        run: ({ op, id, ctx, guard }) =>
+          this.sharedExpenses.deleteExpense(
+            id,
+            ctx.userId,
+            guard,
+            pathParam(op, "groupId"),
+          ),
+      },
+      "settlement:create": {
+        body: bodyOf(v.createSettlementSchema),
+        create: true,
+        run: ({ body, ctx, outcome }) =>
+          this.settlements.createSettlement(
+            { ...body, userId: ctx.userId } as never,
+            ctx.timezone,
+            outcome,
+          ),
+      },
+      "settlement:delete": {
+        removesRow: true,
+        run: ({ id, ctx, guard }) =>
+          this.settlements.deleteSettlement(id, ctx.userId, guard),
       },
     };
   }

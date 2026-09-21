@@ -430,6 +430,63 @@ Content-Type: application/json
   ]
 }
 
+### ---------- Lo compartido, por la misma puerta (T-118) ----------
+
+### Una salida entera desde la bandeja de salida: contacto, grupo, gasto y cobro
+# @name sharedBatch
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}", "seq": 20, "occurredAt": "2026-09-05T10:00:00.000Z",
+      "entity": "contact", "action": "create", "id": "0195a000-0000-7000-8000-0000000000d1",
+      "payload": { "body": { "name": "Ana offline {{$randomInt 100 999}}" } },
+      "opVersion": 1
+    },
+    {
+      "opId": "{{$guid}}", "seq": 21, "occurredAt": "2026-09-05T10:01:00.000Z",
+      "entity": "sharedGroup", "action": "create", "id": "0195a000-0000-7000-8000-0000000000d2",
+      "payload": { "body": { "name": "Salida offline {{$randomInt 100 999}}", "contactIds": ["0195a000-0000-7000-8000-0000000000d1"] } },
+      "dependsOn": ["0195a000-0000-7000-8000-0000000000d1"], "opVersion": 1
+    },
+    {
+      "opId": "{{$guid}}", "seq": 22, "occurredAt": "2026-09-05T10:02:00.000Z",
+      "entity": "sharedExpense", "action": "create", "id": "0195a000-0000-7000-8000-0000000000d3",
+      "payload": { "params": { "groupId": "0195a000-0000-7000-8000-0000000000d2" }, "body": { "description": "Cena", "date": "2026-09-05T02:00:00.000Z", "amount": 90000 } },
+      "dependsOn": ["0195a000-0000-7000-8000-0000000000d2"], "opVersion": 1
+    },
+    {
+      "opId": "{{$guid}}", "seq": 23, "occurredAt": "2026-09-05T10:03:00.000Z",
+      "entity": "settlement", "action": "create", "id": "0195a000-0000-7000-8000-0000000000d4",
+      "payload": { "body": { "contactId": "0195a000-0000-7000-8000-0000000000d1", "date": "2026-09-05T15:00:00.000Z", "collected": 20000, "accountId": "{{batchAccId}}" } },
+      "dependsOn": ["0195a000-0000-7000-8000-0000000000d1"], "opVersion": 1
+    }
+  ]
+}
+
+### Un gasto de grupo sin su `params.groupId` — rechaza ESA operación, no el lote
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}", "seq": 24, "occurredAt": "2026-09-05T10:04:00.000Z",
+      "entity": "sharedExpense", "action": "create", "id": "{{$guid}}",
+      "payload": { "body": { "description": "Sin grupo", "date": "2026-09-05T02:00:00.000Z", "amount": 1000 } },
+      "opVersion": 1
+    }
+  ]
+}
+
+### Y el feed ya lo trae todo, con sus desapariciones
+GET {{baseUrl}}/sync/changes?limit=100
+Authorization: Bearer {{token}}
+
 ### ---------- Errores del sobre (400, nada se aplica) ----------
 
 ### opId repetido (400 VALIDATION)
