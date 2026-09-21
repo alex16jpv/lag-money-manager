@@ -1,0 +1,135 @@
+### ==========================================================
+### CONTACTS — las personas con las que se comparten gastos.
+### Un contacto NO es una cuenta: no tiene saldo, no sale en
+### /accounts, y su email es solo el identificador para invitar
+### más adelante (de aquí no se envía nada).
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+
+@token = {{login.response.body.accessToken}}
+
+### Listar (éxito) — pagina de verdad desde el primer día
+GET {{baseUrl}}/contacts
+Authorization: Bearer {{token}}
+
+### Listar incluyendo archivados
+GET {{baseUrl}}/contacts?includeArchived=true
+Authorization: Bearer {{token}}
+
+### Crear contacto (éxito) — el email se normaliza a minúsculas
+# @name createContact
+POST {{baseUrl}}/contacts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Ana {{$randomInt 100 999}}", "color": "TEAL", "email": "Ana@Example.com" }
+
+###
+
+@contactId = {{createContact.response.body.id}}
+@contactVersion = {{createContact.response.body.updatedAt}}
+
+### Get por id (éxito) — linkedUserId llega null: lo llenará la invitación
+GET {{baseUrl}}/contacts/{{contactId}}
+Authorization: Bearer {{token}}
+
+### Crear con nombre repetido — 409 DUPLICATE (el nombre del de arriba, tal cual: la colación pliega mayúsculas)
+POST {{baseUrl}}/contacts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "{{createContact.response.body.name}}" }
+
+### linkedUserId lo pone el servidor: enviado por el cliente se descarta (201, y llega null)
+POST {{baseUrl}}/contacts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Beto {{$randomInt 100 999}}", "linkedUserId": "019576a0-d7b6-7d6d-af6a-2b7545f5acff" }
+
+### Email inválido — 400 VALIDATION
+POST {{baseUrl}}/contacts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Carla {{$randomInt 100 999}}", "email": "carla@" }
+
+### Update (éxito) — parcial
+PUT {{baseUrl}}/contacts/{{contactId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Ana María {{$randomInt 100 999}}", "color": "PURPLE" }
+
+### Borrar el email — null lo quita del documento
+PUT {{baseUrl}}/contacts/{{contactId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "email": null }
+
+### Update con If-Match viejo — 409 STALE_UPDATE, con la copia del servidor en `current`
+PUT {{baseUrl}}/contacts/{{contactId}}
+Authorization: Bearer {{token}}
+If-Match: {{contactVersion}}
+Content-Type: application/json
+
+{ "name": "Ana la de ayer" }
+
+### Update sin ningún campo — 400 VALIDATION
+PUT {{baseUrl}}/contacts/{{contactId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Archivar (soft delete) — responde el contacto archivado, no un mensaje
+DELETE {{baseUrl}}/contacts/{{contactId}}
+Authorization: Bearer {{token}}
+
+### Archivar de nuevo — IDEMPOTENTE (200)
+DELETE {{baseUrl}}/contacts/{{contactId}}
+Authorization: Bearer {{token}}
+
+### Get del archivado — SÍ responde (archivedAt lo distingue)
+GET {{baseUrl}}/contacts/{{contactId}}
+Authorization: Bearer {{token}}
+
+### Update de un archivado — 400 RESOURCE_ARCHIVED
+PUT {{baseUrl}}/contacts/{{contactId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Ana otra vez" }
+
+### Restaurar (éxito) — opcionalmente con nombre nuevo, en la misma escritura
+POST {{baseUrl}}/contacts/{{contactId}}/restore
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Restaurar de nuevo — IDEMPOTENTE (200)
+POST {{baseUrl}}/contacts/{{contactId}}/restore
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Id ajeno o inexistente — 404 uniforme
+GET {{baseUrl}}/contacts/019576a0-d7b6-7d6d-af6a-000000000000
+Authorization: Bearer {{token}}
+
+### Cursor inventado — 400 INVALID_CURSOR, nunca la primera página en silencio
+GET {{baseUrl}}/contacts?cursor=019576a0-d7b6-7d6d-af6a-000000000000
+Authorization: Bearer {{token}}

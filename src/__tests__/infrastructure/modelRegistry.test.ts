@@ -6,6 +6,7 @@ jest.mock("../../shared/constants", () => ({
     TRANSACTION: "Transaction",
     CATEGORY: "Category",
     BUDGET: "Budget",
+    CONTACT: "Contact",
   },
   ACCOUNT_TYPES: { CASH: "CASH", ACCOUNT: "ACCOUNT", OTHER: "OTHER" },
   COLORS: { RED: "RED", GREEN: "GREEN" },

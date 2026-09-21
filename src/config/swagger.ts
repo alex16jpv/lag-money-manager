@@ -11,6 +11,7 @@ import {
   DEBT_ACCOUNT_FIELD_NAMES,
   DEBT_ACCOUNT_FIELDS,
   DebtAccountField,
+  MAX_CONTACTS_PER_USER,
   SPENDING_GROUP_BY,
   SPENDING_SPLIT_BY,
   TRANSACTION_SOURCES,
@@ -51,6 +52,8 @@ const requestBodies = {
   CreateAccountInput: bodyOf(v.createAccountSchema),
   UpdateAccountInput: bodyOf(v.updateAccountSchema),
   CreateCategoryInput: bodyOf(v.createCategorySchema),
+  CreateContactInput: bodyOf(v.createContactSchema),
+  UpdateContactInput: bodyOf(v.updateContactSchema),
   UpdateCategoryInput: bodyOf(v.updateCategorySchema),
   CreateTransactionInput: bodyOf(v.createTransactionSchema),
   UpdateTransactionInput: bodyOf(v.updateTransactionSchema),
@@ -241,6 +244,35 @@ const responseViews = {
       },
     },
     ["seedKey"],
+  ),
+  Contact: withRequired(
+    {
+      type: "object",
+      description:
+        "A person you split expenses with. Not an account: no balance, no type, no limit, and never part of what you have or what you owe.",
+      properties: {
+        id: uuid,
+        name: { type: "string" },
+        color: { ...enumOf(COLORS), nullable: true },
+        email: {
+          type: "string",
+          format: "email",
+          description:
+            "Identifier for inviting them later; nothing is sent from this API, and two contacts may carry the same address.",
+        },
+        linkedUserId: {
+          ...uuid,
+          nullable: true,
+          description:
+            "The user this contact turned out to be, once an invitation is accepted. Always null today.",
+        },
+        userId: uuid,
+        archivedAt: nullableDateTime,
+        createdAt: dateTime,
+        updatedAt: dateTime,
+      },
+    },
+    ["email"],
   ),
   Transaction: withRequired({
     type: "object",
@@ -632,6 +664,21 @@ const zeroDecimalCurrency = {
     "The currencies this API stores with no minor unit. An amount carrying decimals in one of them is rejected with 400 AMOUNT_PRECISION wherever one is written: a transaction, an account balance, a credit limit or a borrowed amount, a budget amount and a budget period override, through the /sync batch as well as through these routes. It is judged on the amount a request carries, never on one already stored, so a row written before a currency joined this list stays editable in everything but its amount. Read this list instead of copying it; a client that keeps its own can refuse what the server takes, or offer what the server refuses. The ISO three-decimal currencies are absent on purpose: storage is integer cents, so they are capped at two.",
 };
 
+const sharedLimits = {
+  type: "object",
+  description:
+    "The explicit ceilings of the shared-expenses section. Read them instead of copying the numbers: the sheet that adds a contact is meant to name the limit before a save can fail on it, and a client that keeps its own copy will eventually say a different one from the server.",
+  properties: {
+    maxContactsPerUser: {
+      type: "integer",
+      enum: [MAX_CONTACTS_PER_USER],
+      description:
+        "Active contacts one user may have. Creating past it is 400 CONTACT_LIMIT_REACHED.",
+    },
+  },
+  required: ["maxContactsPerUser"],
+};
+
 const conflictOf = (view: string): Record<string, unknown> => ({
   allOf: [
     { $ref: "#/components/schemas/ErrorResponse" },
@@ -683,11 +730,13 @@ const options: swaggerJsdoc.Options = {
         ...syncViews,
         IncomeRefusedAccountType: incomeRefusedAccountType,
         ZeroDecimalCurrency: zeroDecimalCurrency,
+        SharedLimits: sharedLimits,
         SyncChangesResponse: syncChangesResponse,
         SyncOpResult: syncOpResult,
         SyncBatchResponse: syncBatchResponse,
         AccountList: listOf("Account"),
         CategoryList: listOf("Category"),
+        ContactList: listOf("Contact"),
         TransactionList: {
           ...(listOf("Transaction") as Record<string, unknown>),
           properties: {
@@ -713,6 +762,7 @@ const options: swaggerJsdoc.Options = {
         }),
         AccountConflict: conflictOf("Account"),
         CategoryConflict: conflictOf("Category"),
+        ContactConflict: conflictOf("Contact"),
         TransactionConflict: conflictOf("Transaction"),
         BudgetConflict: conflictOf("Budget"),
       },

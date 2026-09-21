@@ -2,6 +2,7 @@
 export { AccountModel } from "./AccountModel";
 export { BudgetModel } from "./BudgetModel";
 export { CategoryModel } from "./CategoryModel";
+export { ContactModel } from "./ContactModel";
 export { IdempotencyKeyModel } from "./IdempotencyKeyModel";
 export { RateLimitModel } from "./RateLimitModel";
 export { RefreshSessionModel } from "./RefreshSessionModel";

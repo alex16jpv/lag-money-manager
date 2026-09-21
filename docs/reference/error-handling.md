@@ -290,6 +290,7 @@ Codes raised by the services and middleware. Anything not listed here has no `co
 | `LOAN_OVERPAID`                   | 400    | A movement, or an account write, that would leave a LOAN above zero: a loan cannot be paid more than it owes |
 | `AMOUNT_PRECISION`                | 400    | An amount with more decimals than the owner's currency has — none at all when it is one of the `ZeroDecimalCurrency` codes the contract publishes |
 | `CATEGORY_LIMIT_REACHED`          | 400    | Per-user category cap                                                    |
+| `CONTACT_LIMIT_REACHED`           | 400    | Per-user contact cap (`SharedLimits.maxContactsPerUser`)                 |
 | `BUDGET_PERIOD_OVERLAP`           | 400    | New budget period overlaps an existing one for the same scope            |
 | `IDEMPOTENCY_KEY_INVALID`         | 400    | `Idempotency-Key` outside `[A-Za-z0-9_-]{1,200}`                         |
 | `MALFORMED_JSON`                  | 400    | Body that is not valid JSON (body-parser `entity.parse.failed`)          |

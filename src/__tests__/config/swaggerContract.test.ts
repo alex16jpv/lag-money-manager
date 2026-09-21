@@ -6,6 +6,7 @@ process.env.MONGO_URI ??= "mongodb://localhost:27017/unused";
 import { swaggerSpec } from "../../config/swagger";
 import {
   DEBT_ACCOUNT_FIELD_NAMES,
+  MAX_CONTACTS_PER_USER,
   SPENDING_GROUP_BY,
   SPENDING_SPLIT_BY,
 } from "../../shared/constants";
@@ -42,6 +43,7 @@ describe("OpenAPI response views", () => {
     "Session",
     "Account",
     "Category",
+    "Contact",
     "Transaction",
     "Budget",
     "StatsBucket",
@@ -65,6 +67,7 @@ describe("OpenAPI response views", () => {
     ["Session", "userAgent"],
     ["Account", "creditLimit"],
     ["Account", "borrowedAmount"],
+    ["Contact", "email"],
   ])(
     "%s leaves %s optional, because it may genuinely be absent",
     (name, field) => {
@@ -93,6 +96,7 @@ describe("OpenAPI response views", () => {
   it.each([
     ["AccountList", ["data", "pagination"]],
     ["CategoryList", ["data", "pagination"]],
+    ["ContactList", ["data", "pagination"]],
     ["TransactionList", ["data", "pagination"]],
     ["BudgetList", ["data", "pagination"]],
     ["SessionList", ["data"]],
@@ -220,6 +224,18 @@ describe("OpenAPI response views", () => {
     expect(zero.description).toContain("AMOUNT_PRECISION");
     // Sorted, because it is read as a list by a human as often as by a generator.
     expect(zero.enum).toEqual([...zero.enum].sort());
+  });
+
+  // The sheet that adds a contact names the limit before a save can fail on it, so it has to read it.
+  it("publishes the shared-section limits as numbers a client can generate", () => {
+    const limits = spec.components.schemas.SharedLimits as {
+      properties: { maxContactsPerUser: { enum?: number[] } };
+      required: string[];
+    };
+    expect(limits.properties.maxContactsPerUser.enum).toEqual([
+      MAX_CONTACTS_PER_USER,
+    ]);
+    expect(limits.required).toContain("maxContactsPerUser");
   });
 
   it("publishes the icon enum on the response view, not just the request body", () => {

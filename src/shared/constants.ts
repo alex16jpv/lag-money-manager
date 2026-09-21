@@ -10,6 +10,7 @@ export const MODEL_NAMES = {
   TRANSACTION: "Transaction",
   CATEGORY: "Category",
   BUDGET: "Budget",
+  CONTACT: "Contact",
 } as const;
 
 export const BUDGET_PERIOD_TYPES = {
@@ -94,6 +95,9 @@ export type SpendingSplitBy = keyof typeof SPENDING_SPLIT_BY;
 
 // A budget's own ceiling, and so the ceiling of every filter that exists to serve one.
 export const MAX_BUDGET_CATEGORIES = 20;
+
+// Published in the contract as SharedLimits: the sheet that adds a contact says it before a save fails.
+export const MAX_CONTACTS_PER_USER = 200;
 
 export const CATEGORY_TYPES = {
   INCOME: "INCOME",

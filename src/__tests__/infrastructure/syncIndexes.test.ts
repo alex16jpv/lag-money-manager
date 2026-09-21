@@ -8,6 +8,7 @@ import { Schema } from "mongoose";
 import { AccountModel } from "../../infrastructure/models/AccountModel";
 import { BudgetModel } from "../../infrastructure/models/BudgetModel";
 import { CategoryModel } from "../../infrastructure/models/CategoryModel";
+import { ContactModel } from "../../infrastructure/models/ContactModel";
 import { TransactionModel } from "../../infrastructure/models/TransactionModel";
 
 type IndexSpec = [Record<string, number>, Record<string, unknown>?];
@@ -19,6 +20,7 @@ describe("change feed indexes", () => {
     ["category", CategoryModel.schema],
     ["transaction", TransactionModel.schema],
     ["budget", BudgetModel.schema],
+    ["contact", ContactModel.schema],
   ])("%s is keyset-scannable by (userId, updatedAt, _id)", (_name, schema) => {
     const declared = (schema as Schema).indexes() as IndexSpec[];
     const found = declared.find(

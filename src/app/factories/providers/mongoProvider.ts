@@ -2,6 +2,7 @@ import { connectMongo } from "../../../config/mongoConnection";
 import { AccountRepository } from "../../../infrastructure/repositories/account/AccountRepository";
 import { BudgetRepository } from "../../../infrastructure/repositories/budget/BudgetRepository";
 import { CategoryRepository } from "../../../infrastructure/repositories/category/CategoryRepository";
+import { ContactRepository } from "../../../infrastructure/repositories/contact/ContactRepository";
 import { IdempotencyRepository } from "../../../infrastructure/repositories/idempotency/IdempotencyRepository";
 import { RefreshSessionRepository } from "../../../infrastructure/repositories/refreshSession/RefreshSessionRepository";
 import { SyncOpRepository } from "../../../infrastructure/repositories/syncOp/SyncOpRepository";
@@ -32,4 +33,5 @@ export function registerRepositories(factory: RegistryTarget): void {
   factory.register("budget", () => new BudgetRepository());
   factory.register("refreshSession", () => new RefreshSessionRepository());
   factory.register("syncOp", () => new SyncOpRepository());
+  factory.register("contact", () => new ContactRepository());
 }

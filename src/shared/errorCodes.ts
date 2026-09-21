@@ -49,6 +49,8 @@ export const ERROR_CODES = [
   "CATEGORY_TYPE_MISMATCH",
   // Budgets
   "BUDGET_PERIOD_OVERLAP",
+  // Contacts
+  "CONTACT_LIMIT_REACHED",
   // Client-minted ids
   "ID_TAKEN",
   // Optimistic concurrency

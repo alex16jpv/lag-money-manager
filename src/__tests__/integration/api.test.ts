@@ -3,10 +3,12 @@ import bcryptjs from "bcryptjs";
 import { Account } from "../../domain/entities/Account";
 import { Budget } from "../../domain/entities/Budget";
 import { Category } from "../../domain/entities/Category";
+import { Contact } from "../../domain/entities/Contact";
 import { Transaction } from "../../domain/entities/Transaction";
 import { User } from "../../domain/entities/User";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
@@ -59,6 +61,19 @@ const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
   createMany: jest.fn(),
   listSeedKeys: jest.fn().mockResolvedValue([]),
   listArchivedIds: jest.fn().mockResolvedValue([]),
+  countByUserId: jest.fn().mockResolvedValue(0),
+  update: jest.fn(),
+  delete: jest.fn(),
+  restore: jest.fn(),
+};
+
+const mockContactRepo: jest.Mocked<IContactRepository> = {
+  getAll: jest.fn(),
+  getAllByUserId: jest.fn(),
+  getById: jest.fn(),
+  getByIdIncludingArchived: jest.fn(),
+  getOwnById: jest.fn(),
+  create: jest.fn(),
   countByUserId: jest.fn().mockResolvedValue(0),
   update: jest.fn(),
   delete: jest.fn(),
@@ -186,6 +201,7 @@ jest.mock("../../shared/constants", () => ({
   },
   SPENDING_SPLIT_BY: { category: "category" },
   MAX_BUDGET_CATEGORIES: 20,
+  MAX_CONTACTS_PER_USER: 200,
   BUDGET_PERIOD_TYPES: {
     WEEKLY: "WEEKLY",
     BIWEEKLY: "BIWEEKLY",
@@ -204,6 +220,7 @@ jest.mock("../../shared/constants", () => ({
     TRANSACTION: "Transaction",
     BUDGET: "Budget",
     CATEGORY: "Category",
+    CONTACT: "Contact",
   },
 }));
 
@@ -240,6 +257,7 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getUserRepository: () => mockUserRepo,
     getAccountRepository: () => mockAccountRepo,
     getCategoryRepository: () => mockCategoryRepo,
+    getContactRepository: () => mockContactRepo,
     getTransactionRepository: () => mockTransactionRepo,
     getIdempotencyRepository: () => mockIdempotencyRepo,
     getBudgetRepository: () => mockBudgetRepo,
@@ -918,6 +936,134 @@ describe("Integration Tests", () => {
         undefined,
         undefined,
       );
+    });
+  });
+
+  describe("Contacts", () => {
+    const testContact = new Contact({
+      id: "019576a0-d7b6-7d6d-af6a-2b7545f5acc1",
+      name: "Ana",
+      color: "TEAL",
+      email: "ana@example.com",
+      userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+    });
+
+    it("lists the user's contacts", async () => {
+      mockContactRepo.getAllByUserId.mockResolvedValue({
+        data: [testContact],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+
+      const res = await request(app)
+        .get("/contacts")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.pagination).toBeDefined();
+    });
+
+    it("creates a contact", async () => {
+      mockContactRepo.create.mockResolvedValue(testContact);
+
+      const res = await request(app)
+        .post("/contacts")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ name: "Ana", color: "TEAL", email: "Ana@Example.com" });
+
+      expect(res.status).toBe(201);
+      expect(res.body.linkedUserId).toBeNull();
+    });
+
+    it("drops linkedUserId sent by a client instead of storing it", async () => {
+      mockContactRepo.create.mockImplementation(
+        async (c) => new Contact(c as Contact),
+      );
+
+      const res = await request(app)
+        .post("/contacts")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          name: "Ana",
+          linkedUserId: "019576a0-d7b6-7d6d-af6a-2b7545f5acff",
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.linkedUserId).toBeNull();
+    });
+
+    it("refuses a create without a name", async () => {
+      const res = await request(app)
+        .post("/contacts")
+        .set("Authorization", `Bearer ${token}`)
+        .send({});
+
+      expect(res.status).toBe(400);
+    });
+
+    it("answers 404 for a contact that is not the caller's", async () => {
+      mockContactRepo.getByIdIncludingArchived.mockResolvedValue(null);
+
+      const res = await request(app)
+        .get("/contacts/019576a0-d7b6-7d6d-af6a-000000000000")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+    });
+
+    it("clears the email when the update sends null", async () => {
+      mockContactRepo.getByIdIncludingArchived.mockResolvedValue(testContact);
+      mockContactRepo.update.mockResolvedValue(
+        new Contact({ ...testContact, email: undefined }),
+      );
+
+      const res = await request(app)
+        .put("/contacts/019576a0-d7b6-7d6d-af6a-2b7545f5acc1")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ email: null });
+
+      expect(res.status).toBe(200);
+      expect(mockContactRepo.update).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5acc1",
+        { email: null },
+        undefined,
+        undefined,
+      );
+    });
+
+    it("archives a contact and answers the archived row", async () => {
+      mockContactRepo.getByIdIncludingArchived.mockResolvedValue(testContact);
+      mockContactRepo.delete.mockResolvedValue(
+        new Contact({
+          ...testContact,
+          archivedAt: new Date("2026-09-20T10:00:00.000Z"),
+        }),
+      );
+
+      const res = await request(app)
+        .delete("/contacts/019576a0-d7b6-7d6d-af6a-2b7545f5acc1")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.archivedAt).toBe("2026-09-20T10:00:00.000Z");
+    });
+
+    it("restores an archived contact", async () => {
+      mockContactRepo.restore.mockResolvedValue(testContact);
+
+      const res = await request(app)
+        .post("/contacts/019576a0-d7b6-7d6d-af6a-2b7545f5acc1/restore")
+        .set("Authorization", `Bearer ${token}`)
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(res.body.archivedAt).toBeNull();
     });
   });
 

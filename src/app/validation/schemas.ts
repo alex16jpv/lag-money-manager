@@ -413,6 +413,39 @@ export const updateCategorySchema = z.object({
     }),
 });
 
+export const createContactSchema = z.object({
+  body: z.object({
+    id: clientMintedId,
+    name: accountName,
+    color: z
+      .enum(colorValues, {
+        error: `Invalid color. Available: ${colorValues.join(", ")}`,
+      })
+      .optional(),
+    email: emailField.optional(),
+  }),
+});
+
+export const updateContactSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  body: z
+    .object({
+      name: accountName.optional(),
+      color: z
+        .enum(colorValues, {
+          error: `Invalid color. Available: ${colorValues.join(", ")}`,
+        })
+        .optional()
+        .nullable(),
+      email: emailField.optional().nullable(),
+    })
+    .refine((data) => Object.values(data).some((v) => v !== undefined), {
+      message: "At least one field must be provided",
+    }),
+});
+
 export const spendingStatsSchema = z.object({
   query: z
     .object({
