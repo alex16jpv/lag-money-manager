@@ -67,6 +67,8 @@ interface RunArgs {
   op: SyncOperationInput;
   // `op.id`, or the server row a merge earlier in this batch redirected it to.
   id: string;
+  // What the route reads from its path, checked present before `run` is called.
+  params: Record<PathParam, string>;
   body: Body;
   ctx: Context;
   guard: Date | undefined;
@@ -98,10 +100,6 @@ interface Handler {
 const ACCOUNT_SIDES = ["fromAccountId", "toAccountId"] as const;
 
 type PathParam = "groupId" | "partyId";
-
-/** What the matching route reads from its path; `execute` refuses the operation without it. */
-const pathParam = (op: SyncOperationInput, name: PathParam): string =>
-  op.payload.params?.[name] as string;
 
 function sameValue(stored: unknown, sent: unknown): boolean {
   if (sent === null || sent === undefined) {
@@ -482,10 +480,10 @@ export class SyncBatchService {
       },
       "sharedGroup:removeParticipant": {
         params: ["partyId"],
-        run: ({ op, id, ctx, guard }) =>
+        run: ({ id, params, ctx, guard }) =>
           this.sharedGroups.removeParticipant(
             id,
-            pathParam(op, "partyId"),
+            params.partyId,
             ctx.userId,
             guard,
           ),
@@ -497,23 +495,18 @@ export class SyncBatchService {
       },
       "sharedGroup:undoWriteOff": {
         params: ["partyId"],
-        run: ({ op, id, ctx, guard }) =>
-          this.sharedGroups.undoWriteOff(
-            id,
-            pathParam(op, "partyId"),
-            ctx.userId,
-            guard,
-          ),
+        run: ({ id, params, ctx, guard }) =>
+          this.sharedGroups.undoWriteOff(id, params.partyId, ctx.userId, guard),
       },
       "sharedExpense:create": {
         body: bodyOf(v.createSharedExpenseSchema),
         create: true,
         params: ["groupId"],
-        run: ({ op, body, ctx, outcome }) =>
+        run: ({ body, params, ctx, outcome }) =>
           this.sharedExpenses.createExpense(
             {
               ...body,
-              groupId: pathParam(op, "groupId"),
+              groupId: params.groupId,
               userId: ctx.userId,
             } as never,
             outcome,
@@ -523,31 +516,33 @@ export class SyncBatchService {
         body: bodyOf(v.updateSharedExpenseSchema),
         holds: fieldsHold(),
         params: ["groupId"],
-        run: ({ op, id, body, ctx, guard }) =>
+        run: ({ id, body, params, ctx, guard }) =>
           this.sharedExpenses.updateExpense(
             id,
             body as never,
             ctx.userId,
             guard,
-            pathParam(op, "groupId"),
+            params.groupId,
           ),
       },
       "sharedExpense:delete": {
         // No `removesRow`: deleting one twice is idempotent in its own service.
         params: ["groupId"],
-        run: ({ op, id, ctx, guard }) =>
+        run: ({ id, params, ctx, guard }) =>
           this.sharedExpenses.deleteExpense(
             id,
             ctx.userId,
             guard,
-            pathParam(op, "groupId"),
+            params.groupId,
           ),
       },
       "settlement:create": {
         body: bodyOf(v.createSettlementSchema),
         create: true,
         categoryFields: ["categoryId", "categories[].categoryId"],
-        accountFields: ["accountId"],
+        // No `accountFields`: a 404 here can also be the contact or the expense, and naming the
+        // account as the cause would be a true-sounding message the batch cannot stand behind.
+
         run: ({ body, ctx, outcome }) =>
           this.settlements.createSettlement(
             { ...body, userId: ctx.userId } as never,
@@ -571,15 +566,27 @@ export class SyncBatchService {
     const ordered = [...operations].sort((a, b) => a.seq - b.seq);
     // Entity id → opId of the operation in this batch that failed on it.
     const failed = new Map<string, string>();
+    // The subset whose CREATE failed: those rows do not exist, so a path naming one cannot work.
+    const uncreated = new Map<string, string>();
     // Id the device minted → the server row a merge landed it on (§5.1).
     const merged = new Map<string, string>();
     const results: SyncOpResult[] = [];
 
     for (const op of ordered) {
       const id = merged.get(op.id) ?? op.id;
-      const outcome = await this.applyOne(ctx, op, id, failed, merged);
+      const outcome = await this.applyOne(
+        ctx,
+        op,
+        id,
+        failed,
+        uncreated,
+        merged,
+      );
       if (!SYNC_LANDED_STATUSES.includes(outcome.status)) {
         failed.set(id, op.opId);
+        if (this.handlers[`${op.entity}:${op.action}`]?.create) {
+          uncreated.set(id, op.opId);
+        }
       }
       if (outcome.mergedInto) {
         merged.set(op.id, outcome.mergedInto);
@@ -602,18 +609,25 @@ export class SyncBatchService {
     op: SyncOperationInput,
     id: string,
     failed: Map<string, string>,
+    uncreated: Map<string, string>,
     merged: Map<string, string>,
   ): Promise<Outcome> {
+    const resolve = (row: string): string => merged.get(row) ?? row;
     // The row is its own dependency: a second write on a failed row repeats the same failure.
-    // The group in the path is one too: the client does not have to name what the path already says.
-    const rows = [
-      id,
-      ...op.dependsOn,
-      ...(op.payload.params?.groupId ? [op.payload.params.groupId] : []),
-    ].map((row) => merged.get(row) ?? row);
-    const blockedBy = rows
-      .map((row) => failed.get(row))
-      .find((opId) => opId !== undefined);
+    const named = [id, ...op.dependsOn].map(resolve);
+    // What the path names is one the client never had to declare, but only a create that
+    // failed leaves it absent: a rename that lost a conflict changes nothing for the rest.
+    const inPath = (
+      this.handlers[`${op.entity}:${op.action}`]?.params ?? []
+    ).flatMap((name) => {
+      const row = op.payload.params?.[name];
+      return row ? [resolve(row)] : [];
+    });
+    const blockedBy =
+      named.map((row) => failed.get(row)).find((opId) => opId !== undefined) ??
+      inPath
+        .map((row) => uncreated.get(row))
+        .find((opId) => opId !== undefined);
     if (blockedBy) {
       return { status: "blocked", blockedBy };
     }
@@ -697,6 +711,8 @@ export class SyncBatchService {
     const args: RunArgs = {
       op,
       id,
+      // Every name the handler declared was just checked; nothing else is readable.
+      params: (op.payload.params ?? {}) as Record<PathParam, string>,
       body,
       ctx,
       guard: op.baseUpdatedAt ? new Date(op.baseUpdatedAt) : undefined,

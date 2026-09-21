@@ -768,6 +768,67 @@ describe("SyncBatchService", () => {
       expect(sharedExpenses.createExpense).not.toHaveBeenCalled();
     });
 
+    it("blocks on the party in the path too, when its create failed", async () => {
+      const contactId = uuid(62);
+      const failing = op({
+        entity: "contact",
+        action: "create",
+        id: contactId,
+        payload: { body: { name: "Ana" } },
+      });
+      contacts.createContact.mockRejectedValueOnce(
+        new ApiError("BadRequest", "no", "VALIDATION"),
+      );
+
+      const { results } = await service.apply(ctx, [
+        failing,
+        op({
+          entity: "sharedGroup",
+          action: "removeParticipant",
+          id: uuid(63),
+          payload: { params: { partyId: contactId } },
+        }),
+      ]);
+
+      expect(results.map((r) => r.status)).toEqual(["rejected", "blocked"]);
+      expect(results[1].blockedBy).toBe(failing.opId);
+      expect(sharedGroups.removeParticipant).not.toHaveBeenCalled();
+    });
+
+    // A rename that lost a conflict leaves the group exactly where it was: its expenses can still land.
+    it("does not block on a path whose row failed at something other than being created", async () => {
+      const groupId = uuid(64);
+      sharedGroups.updateGroup.mockRejectedValueOnce(
+        new ApiError("Conflict", "taken", "DUPLICATE"),
+      );
+      sharedExpenses.createExpense.mockResolvedValue({ id: uuid(65) });
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "sharedGroup",
+          action: "update",
+          id: groupId,
+          payload: { body: { name: "Trip" } },
+        }),
+        op({
+          entity: "sharedExpense",
+          action: "create",
+          id: uuid(65),
+          payload: {
+            params: { groupId },
+            body: {
+              description: "Dinner",
+              date: "2026-08-10T18:00:00.000Z",
+              amount: 90000,
+            },
+          },
+        }),
+      ]);
+
+      expect(results.map((r) => r.status)).toEqual(["conflict", "applied"]);
+      expect(sharedExpenses.createExpense).toHaveBeenCalled();
+    });
+
     it("does not block on a dependency that has no operation in this batch", async () => {
       transactions.createTransaction.mockResolvedValue({ id: uuid(30) });
 

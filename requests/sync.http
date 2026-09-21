@@ -271,7 +271,7 @@ POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "id": "{{sharedContactId}}", "name": "Sync merge cat", "type": "EXPENSE" }
+{ "id": "0195a000-0000-7000-8000-0000000000d1", "name": "Sync merge cat", "type": "EXPENSE" }
 
 ### ...y ahora el lote la crea con OTRO id, el nombre en minúsculas y el mismo
 ### tipo: sale `merged`, `mergedInto` = el id del servidor, y el gasto del mismo
@@ -288,7 +288,7 @@ Content-Type: application/json
       "occurredAt": "2026-09-05T11:00:00.000Z",
       "entity": "category",
       "action": "create",
-      "id": "{{sharedGroupId}}",
+      "id": "0195a000-0000-7000-8000-0000000000d2",
       "payload": { "body": { "name": "sync merge cat", "type": "EXPENSE" } },
       "opVersion": 1
     },
@@ -299,8 +299,8 @@ Content-Type: application/json
       "entity": "transaction",
       "action": "create",
       "id": "{{$guid}}",
-      "payload": { "body": { "type": "EXPENSE", "amount": 3500, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}", "categoryId": "{{sharedGroupId}}" } },
-      "dependsOn": ["{{sharedGroupId}}"],
+      "payload": { "body": { "type": "EXPENSE", "amount": 3500, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}", "categoryId": "0195a000-0000-7000-8000-0000000000d2" } },
+      "dependsOn": ["0195a000-0000-7000-8000-0000000000d2"],
       "opVersion": 1
     }
   ]
@@ -353,7 +353,7 @@ POST {{baseUrl}}/accounts
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "id": "{{sharedExpenseId}}", "name": "Sync taken name", "type": "CASH", "balance": 10 }
+{ "id": "0195a000-0000-7000-8000-0000000000d3", "name": "Sync taken name", "type": "CASH", "balance": 10 }
 
 ### Categoría archivada online: el movimiento se guarda SIN categoría, con
 ### pendingDetails y warnings ["CATEGORY_ARCHIVED_DROPPED"]. Primero, archivarla.
@@ -361,10 +361,10 @@ POST {{baseUrl}}/categories
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "id": "{{sharedSettlementId}}", "name": "Sync archived cat", "type": "EXPENSE" }
+{ "id": "0195a000-0000-7000-8000-0000000000d4", "name": "Sync archived cat", "type": "EXPENSE" }
 
 ### Archivarla
-DELETE {{baseUrl}}/categories/{{sharedSettlementId}}
+DELETE {{baseUrl}}/categories/0195a000-0000-7000-8000-0000000000d4
 Authorization: Bearer {{token}}
 
 ### El movimiento offline que la nombra: applied, sin categoría, para revisar
@@ -381,7 +381,7 @@ Content-Type: application/json
       "entity": "transaction",
       "action": "create",
       "id": "{{$guid}}",
-      "payload": { "body": { "type": "EXPENSE", "amount": 2, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}", "categoryId": "{{sharedSettlementId}}" } },
+      "payload": { "body": { "type": "EXPENSE", "amount": 2, "date": "2026-09-01T12:00:00.000Z", "fromAccountId": "{{batchAccId}}", "categoryId": "0195a000-0000-7000-8000-0000000000d4" } },
       "opVersion": 1
     }
   ]
@@ -435,7 +435,10 @@ Content-Type: application/json
 ### Una salida entera desde la bandeja de salida: contacto, grupo, gasto y cobro
 ### Los ids se generan por envío: un `@var = {{$guid}}` se resuelve una vez por
 ### petición, así que las cuatro operaciones hablan de las mismas filas y el
-### archivo se puede volver a ejecutar sin que todo conteste "ya estaba".
+### archivo se puede volver a ejecutar sin que todo conteste "ya estaba". Sirve
+### aquí porque el lote entero es UNA petición: una variable así vuelve a
+### resolverse en la siguiente, y por eso los ids que se nombran desde dos
+### peticiones (los de arriba) siguen fijos.
 @sharedContactId = {{$guid}}
 @sharedGroupId = {{$guid}}
 @sharedExpenseId = {{$guid}}

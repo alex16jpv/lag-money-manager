@@ -63,7 +63,6 @@ describe("OpenAPI response views", () => {
     "SyncTransaction",
     "SyncBudget",
     "SyncSharedGroup",
-    "SyncSettlement",
     "SyncChangesResponse",
     "SyncOpResult",
     "SyncBatchResponse",
@@ -133,20 +132,19 @@ describe("OpenAPI response views", () => {
     expect(view("SyncTransaction").required).toContain("deletedAt");
     expect(view("SyncBudget").required).toContain("archivedAt");
     expect(view("SharedExpense").required).toContain("deletedAt");
-    expect(view("SyncSettlement").required).toContain("deletedAt");
+    expect(view("Settlement").required).toContain("deletedAt");
     expect(view("Contact").required).toContain("archivedAt");
     expect(view("SyncSharedGroup").required).toContain("archivedAt");
   });
 
   // The feed answers with the stored row: totals and status are read-time work nobody did there.
   it("derives SyncSharedGroup from SharedGroup without what a read computes", () => {
-    const stored = Object.keys(view("SyncSharedGroup").properties);
-    expect(Object.keys(view("SharedGroup").properties)).toEqual([
-      ...stored.slice(0, stored.indexOf("currency") + 1),
-      "totals",
-      "status",
-      ...stored.slice(stored.indexOf("currency") + 1),
-    ]);
+    const computed = ["totals", "status"];
+    expect(Object.keys(view("SyncSharedGroup").properties)).toEqual(
+      Object.keys(view("SharedGroup").properties).filter(
+        (field) => !computed.includes(field),
+      ),
+    );
   });
 
   it("derives SyncTransaction from the Transaction view instead of copying it", () => {

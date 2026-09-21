@@ -129,10 +129,10 @@ Every route under `/shared-groups/{id}/expenses/{expenseId}` checks that the exp
 | `SharedGroup`   | `{ userId, _id }`                                       | Every read is user-scoped; the listing's keyset runs over `_id`    |
 | `SharedGroup`   | `{ userId, name }` unique, active only, name collation  | One active group name per user, case folded                        |
 | `SharedGroup`   | `{ userId, "participants.contactId" }`                  | "Which groups is this contact in", without scanning the user's     |
-| `SharedGroup`   | `{ userId, updatedAt, _id }`                            | The keyset the offline change feed will scan                       |
+| `SharedGroup`   | `{ userId, updatedAt, _id }`                            | The keyset the offline change feed scans                           |
 | `SharedExpense` | `{ userId, groupId, deletedAt, date, _id }`             | The group's list in date order, its cursor, and the totals aggregation |
 | `SharedExpense` | `{ userId, "split.shares.contactId" }`                  | Whether a contact holds a share, without scanning the group        |
-| `SharedExpense` | `{ userId, updatedAt, _id }`                            | The keyset the offline change feed will scan                       |
+| `SharedExpense` | `{ userId, updatedAt, _id }`                            | The keyset the offline change feed scans                           |
 
 Money is stored as integer cents, shares included; `percent` is not money and is stored as given, with the arithmetic rounding it to whole basis points.
 

@@ -105,14 +105,6 @@ const debtFieldDescription = (field: DebtAccountField): string =>
  * Derived from the properties rather than listed by hand: a new field is
  * required by default, which is the safe direction to forget.
  */
-const without = (
-  properties: Record<string, unknown>,
-  drop: readonly string[],
-): Record<string, unknown> =>
-  Object.fromEntries(
-    Object.entries(properties).filter(([key]) => !drop.includes(key)),
-  );
-
 const withRequired = <T extends { properties: Record<string, unknown> }>(
   view: T,
   optional: readonly string[] = [],
@@ -120,6 +112,14 @@ const withRequired = <T extends { properties: Record<string, unknown> }>(
   ...view,
   required: Object.keys(view.properties).filter((k) => !optional.includes(k)),
 });
+
+const without = (
+  properties: Record<string, unknown>,
+  drop: readonly string[],
+): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(properties).filter(([key]) => !drop.includes(key)),
+  );
 
 const responseViews = {
   ErrorResponse: {
@@ -556,6 +556,12 @@ const responseViews = {
           "Cash the app never saw: no movement was written and no balance moved.",
       },
       currency: { type: "string", example: "COP" },
+      deletedAt: {
+        ...nullableDateTime,
+        description:
+          "Set when the payment was undone. A read never answers one, but the " +
+          "change feed does: it is how a device learns the payment is gone.",
+      },
       createdAt: dateTime,
       updatedAt: dateTime,
     },
@@ -810,19 +816,6 @@ const syncViews = {
       },
     },
   }),
-  SyncSettlement: withRequired({
-    type: "object",
-    description:
-      "A payment in the change feed: the usual shape plus the tombstone.",
-    properties: {
-      ...responseViews.Settlement.properties,
-      deletedAt: {
-        ...nullableDateTime,
-        description:
-          "Set when the payment was undone. Only the sync feed reports it.",
-      },
-    },
-  }),
   SyncSharedGroup: withRequired(
     {
       type: "object",
@@ -940,7 +933,8 @@ const syncChangesResponse = withRequired({
         },
         settlements: {
           type: "array",
-          items: { $ref: "#/components/schemas/SyncSettlement" },
+          // The payment's own view already carries its tombstone, like the expense's.
+          items: { $ref: "#/components/schemas/Settlement" },
         },
       },
     }),

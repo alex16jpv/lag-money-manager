@@ -36,20 +36,25 @@ const RESPLIT_CONTACTS = [
   "019576a0-d7b6-7d6d-af6a-2b7545700021",
   "019576a0-d7b6-7d6d-af6a-2b7545700022",
 ];
+const WHOLE_CONTACT_ID = "019576a0-d7b6-7d6d-af6a-2b7545700030";
+const WHOLE_GROUP_ID = "019576a0-d7b6-7d6d-af6a-2b7545700031";
+const WHOLE_EXPENSE_ID = "019576a0-d7b6-7d6d-af6a-2b7545700032";
 const RESPLIT_EXPENSES = [
   "019576a0-d7b6-7d6d-af6a-2b7545700023",
   "019576a0-d7b6-7d6d-af6a-2b7545700024",
   "019576a0-d7b6-7d6d-af6a-2b7545700025",
 ];
 
-interface View {
-  properties: Record<string, unknown>;
+interface Schema {
+  $ref?: string;
+  properties?: Record<string, Schema>;
+  items?: Schema;
   required?: string[];
 }
 
-const view = (name: string): View =>
-  (swaggerSpec as { components: { schemas: Record<string, View> } }).components
-    .schemas[name];
+const view = (name: string): Schema =>
+  (swaggerSpec as { components: { schemas: Record<string, Schema> } })
+    .components.schemas[name];
 
 let opCounter = 0;
 const op = (
@@ -220,44 +225,110 @@ describe("the shared layer through sync, against mongod", () => {
     }
   });
 
-  // The list above only catches what somebody thought of: this one catches everything else.
+  // The list above only catches what somebody thought of: this one walks the document itself.
   it("carries in every shared row exactly the fields the OpenAPI declares", async () => {
+    await push([
+      op({
+        entity: "contact",
+        action: "create",
+        id: WHOLE_CONTACT_ID,
+        payload: { body: { name: "Cami" } },
+      }),
+      op({
+        entity: "sharedGroup",
+        action: "create",
+        id: WHOLE_GROUP_ID,
+        payload: {
+          body: { name: "Asado", contactIds: [WHOLE_CONTACT_ID] },
+        },
+      }),
+      // A block of guests and a write-off, so those two branches of the document carry rows.
+      op({
+        entity: "sharedExpense",
+        action: "create",
+        id: WHOLE_EXPENSE_ID,
+        payload: {
+          params: { groupId: WHOLE_GROUP_ID },
+          body: {
+            description: "Carne",
+            date: "2026-08-12T18:00:00.000Z",
+            amount: 120_000,
+            split: {
+              mode: "EQUAL",
+              guests: { count: 4, name: "Los vecinos" },
+              shares: [
+                { party: "USER" },
+                { party: "CONTACT", contactId: WHOLE_CONTACT_ID },
+                { party: "GUESTS" },
+              ],
+            },
+          },
+        },
+      }),
+      op({
+        entity: "sharedGroup",
+        action: "writeOff",
+        id: WHOLE_GROUP_ID,
+        payload: { body: { contactId: WHOLE_CONTACT_ID } },
+      }),
+    ]);
+
     const changes = await feed();
     const rowsOf = (key: string): Record<string, unknown>[] =>
       changes[key] as unknown as Record<string, unknown>[];
 
-    const check = (row: Record<string, unknown>, name: string): void => {
-      const declared = Object.keys(view(name).properties);
+    // Every branch the document declares, followed down: an undeclared key anywhere fails.
+    const walk = (value: unknown, schema: Schema, where: string): void => {
+      const node = schema.$ref
+        ? view(schema.$ref.slice(schema.$ref.lastIndexOf("/") + 1))
+        : schema;
+      if (value === null || value === undefined) return;
+      if (node.items) {
+        for (const [i, one] of (value as unknown[]).entries()) {
+          walk(one, node.items, `${where}[${i}]`);
+        }
+        return;
+      }
+      if (!node.properties) return;
       expect({
-        [name]: Object.keys(row).filter((key) => !declared.includes(key)),
-      }).toEqual({ [name]: [] });
+        [where]: Object.keys(value as object).filter(
+          (key) => !(key in (node.properties as object)),
+        ),
+      }).toEqual({ [where]: [] });
       expect({
-        [name]: (view(name).required ?? []).filter((key) => !(key in row)),
-      }).toEqual({ [name]: [] });
+        [where]: (node.required ?? []).filter(
+          (key) => !(key in (value as object)),
+        ),
+      }).toEqual({ [where]: [] });
+      for (const [key, child] of Object.entries(node.properties)) {
+        walk((value as Record<string, unknown>)[key], child, `${where}.${key}`);
+      }
     };
 
     for (const [key, name] of [
       ["contacts", "Contact"],
       ["sharedGroups", "SyncSharedGroup"],
       ["sharedExpenses", "SharedExpense"],
-      ["settlements", "SyncSettlement"],
+      ["settlements", "Settlement"],
     ] as const) {
       expect(rowsOf(key).length).toBeGreaterThan(0);
-      for (const row of rowsOf(key)) check(row, name);
+      for (const row of rowsOf(key)) walk(row, { $ref: name }, name);
     }
 
-    for (const group of rowsOf("sharedGroups")) {
-      for (const one of group.participants as Record<string, unknown>[]) {
-        check(one, "SharedGroupParticipant");
-      }
-    }
-    for (const expense of rowsOf("sharedExpenses")) {
-      const split = expense.split as Record<string, unknown>;
-      check(split, "SharedSplit");
-      for (const share of split.shares as Record<string, unknown>[]) {
-        check(share, "SharedShare");
-      }
-    }
+    // The walk only reaches what the rows carry, so the rows have to carry the awkward branches.
+    const groups = rowsOf("sharedGroups");
+    const expenses = rowsOf("sharedExpenses");
+    expect({
+      writeOffs: groups.some(
+        (group) => (group.writeOffs as unknown[]).length > 0,
+      ),
+      guests: expenses.some(
+        (expense) =>
+          (expense.split as { guests: unknown }).guests !== null &&
+          (expense.split as { guests: unknown }).guests !== undefined,
+      ),
+      counterparties: rowsOf("settlements").length > 0,
+    }).toEqual({ writeOffs: true, guests: true, counterparties: true });
   });
 
   it("rejects the operation, not the batch, when the path it needs is missing", async () => {

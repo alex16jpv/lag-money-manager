@@ -75,7 +75,7 @@ Deleting a payment reverses **every movement it recorded** and imputes what is l
 | `SharedSettlement` | `{ userId, "counterparty.contactId", deletedAt }`  | Everything settled with one person, which is what an imputation reads |
 | `SharedSettlement` | `{ userId, "counterparty.expenseId", deletedAt }`  | The same for a block of guests                                  |
 | `SharedSettlement` | `{ userId, deletedAt, date, _id }`                 | The listing and its keyset                                      |
-| `SharedSettlement` | `{ userId, updatedAt, _id }`                       | The keyset the offline change feed will scan                    |
+| `SharedSettlement` | `{ userId, updatedAt, _id }`                       | The keyset the offline change feed scans                        |
 | `Transaction`      | `{ userId, sharedSettlementId }`, partial          | The movements one settle-up recorded, so undoing it reverses exactly those |
 
 Money is integer cents here too. **The payment carries no account and no category**: those are yours, and a shared group is seen by everybody in it. What travels is that it was paid.
