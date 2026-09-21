@@ -18,11 +18,10 @@ export type TransactionType =
 export type SplitMode = "EQUAL" | "PERCENT" | "EXACT" | "FIXED_REST";
 export type PartyKind = "USER" | "CONTACT" | "GUESTS";
 /**
- * Where one party stands, derived from the money except the last one, which is
- * a decision: `NOT_PAID` nothing of theirs has come back, `PARTIALLY_PAID`
- * some has and something is still open, `PAID` nothing is left open (paying
- * ahead reads the same, with the excess in `surplus`), and `WRITTEN_OFF` you
- * gave up on what was open — the only one no figure can produce on its own.
+ * Where one party stands: `NOT_PAID` nothing of theirs has come back,
+ * `PARTIALLY_PAID` some has and something is still open, `PAID` nothing is left
+ * open (paying ahead reads the same, with the excess in `surplus`) and
+ * `WRITTEN_OFF` you gave up — the only one no figure produces on its own.
  */
 export type PersonState =
   "NOT_PAID" | "PARTIALLY_PAID" | "PAID" | "WRITTEN_OFF";
@@ -116,6 +115,15 @@ export interface ScenarioSettlement {
   note?: string;
 }
 
+/** Where one party has to end up, by hand. `ceiling` is what a write-off gave up on. */
+export interface ScenarioExpectedPerson {
+  owesYou: number;
+  youOwe?: number;
+  surplus?: number;
+  state: PersonState;
+  ceiling?: number;
+}
+
 export interface ScenarioSharedGroup {
   key: string;
   name: string;
@@ -126,6 +134,20 @@ export interface ScenarioSharedGroup {
   expenses: ScenarioSharedExpense[];
   /** Contact keys, or expense keys for a block of guests. */
   writeOffs?: string[];
+  /**
+   * Where the group and each party have to end up, worked out on paper: the
+   * imputation and the write-off's ceiling come out of the same file that
+   * checks them otherwise, and agree with themselves by construction. Keys are
+   * contact keys, or an expense key for its block of guests.
+   */
+  expect?: {
+    owedToYou: number;
+    youOwe: number;
+    collected: number;
+    writtenOff: number;
+    status: "OPEN" | "SETTLED";
+    people: Record<string, ScenarioExpectedPerson>;
+  };
   note?: string;
 }
 
@@ -157,7 +179,7 @@ export interface ScenarioSpendingQuery {
   splitBy?: SplitBy;
   /** Category keys; written out as ids. What a budget of several categories sends. */
   categories?: string[];
-  /** Omitted on purpose in some queries: the server then means "all but ADJUSTMENT". */
+  /** Omitted on purpose: the server then means all but ADJUSTMENT and SETTLEMENT. */
   type?: TransactionType;
   from: string;
   to: string;
@@ -401,7 +423,12 @@ export interface ExpectedPerson {
   expenseId: string | null;
   owesYou: number;
   youOwe: number;
-  /** Handed over beyond every line of theirs: it stays on the counter for the next one. */
+  /**
+   * What THEY handed over beyond every line of theirs; it stays on the counter
+   * and the next line eats it. Per counterparty, not per group: the server
+   * imputes across every group you share with them, so the same figure appears
+   * on that person's row in each of them and must not be added up.
+   */
   surplus: number;
   state: PersonState;
 }

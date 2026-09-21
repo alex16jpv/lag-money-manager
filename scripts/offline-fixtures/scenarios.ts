@@ -28,7 +28,7 @@ const bogota: Scenario = {
     "An archived category keeps its totals; archiving is not deleting.",
     "Quick-adds count as spending under `uncategorized`, and are the pending summary.",
     "Tag buckets double-count a transaction with two tags: their sum exceeds the total.",
-    "With no `type`, the server means EXPENSE + INCOME + TRANSFER, everything but ADJUSTMENT.",
+    "With no `type`, the server means EXPENSE + INCOME + TRANSFER: everything but ADJUSTMENT and SETTLEMENT.",
     "`type: TRANSFER` is a spending query like any other: it groups transfers by their category.",
     "A transfer with no category lands in `uncategorized`, beside the ones that have one.",
     "An account bucket is the account the money left; a quick-add leaves the default one, and a transfer is keyed by its origin, never by both ends.",
@@ -1267,6 +1267,19 @@ const shared: Scenario = {
       contacts: ["carla", "dani", "elena", "fabio"],
       defaultMode: "EQUAL",
       writeOffs: ["dani"],
+      expect: {
+        owedToYou: 48000,
+        youOwe: 0,
+        collected: 62000,
+        writtenOff: 30000,
+        status: "OPEN",
+        people: {
+          carla: { owesYou: 13000, state: "PARTIALLY_PAID" },
+          dani: { owesYou: 0, state: "WRITTEN_OFF", ceiling: 35000 },
+          elena: { owesYou: 0, surplus: 5000, state: "PAID" },
+          fabio: { owesYou: 35000, state: "NOT_PAID" },
+        },
+      },
       note: "No movement of yours is linked here on purpose: this group is about the order a payment is imputed in, the rest of a fixed share, and what a write-off gives up on.",
       expenses: [
         {
@@ -1281,7 +1294,7 @@ const shared: Scenario = {
             elena: 5000,
             fabio: 5000,
           },
-          note: "Same instant as l-tie-b and a lower id, so a payment reaches it first.",
+          note: "Same instant as l-tie-b and a lower id, so a payment reaches it first. Written in that order too, so the file alone does not tell the tiebreak from the order of writing: what does is the unit test that hands the two lines over reversed.",
         },
         {
           key: "l-tie-b",

@@ -488,6 +488,20 @@ export function splitInputProblem(
 ): string | null {
   const pinned = (row: ShareInput): number | null =>
     row.fixedAmount === undefined ? null : Math.round(row.fixedAmount * scale);
+  if (rows.length === 0) return "a split needs at least one share";
+  if (totalMinor <= 0) return "an expense to split must be greater than zero";
+  if (rows.some((row) => !Number.isInteger(row.units) || row.units < 1)) {
+    return "every share weighs at least one part";
+  }
+  if (rows.filter((row) => row.party === "GUESTS").length > 1) {
+    return "an expense carries a single block of guests";
+  }
+  const named = rows
+    .filter((row) => row.party !== "GUESTS")
+    .map((row) => `${row.party}:${row.contactId ?? ""}`);
+  if (new Set(named).size !== named.length) {
+    return "somebody appears twice in the same split";
+  }
   if (mode === "EQUAL" || mode === "PERCENT") {
     if (rows.some((row) => row.fixedAmount !== undefined)) {
       return `a ${mode} split takes no amounts`;

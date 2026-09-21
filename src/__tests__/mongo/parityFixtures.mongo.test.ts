@@ -133,13 +133,15 @@ describe("offline parity fixtures", () => {
         const party = person.expenseId
           ? { expenseId: person.expenseId, contactId: null }
           : { expenseId: null, contactId: person.contactId };
-        const pool = (fixture.settlements ?? [])
-          .filter(
-            (one) =>
-              one.counterparty.contactId === party.contactId &&
-              one.counterparty.expenseId === party.expenseId,
-          )
-          .reduce((sum, one) => sum + one.collected, 0);
+        const withThem = (fixture.settlements ?? []).filter(
+          (one) =>
+            one.counterparty.contactId === party.contactId &&
+            one.counterparty.expenseId === party.expenseId,
+        );
+        // What you hand over comes off what they gave you before any of it is imputed
+        // (settlements.md), and no fixture can state one yet: this sum would be wrong.
+        expect(withThem.map((one) => one.paid)).toEqual(withThem.map(() => 0));
+        const pool = withThem.reduce((sum, one) => sum + one.collected, 0);
 
         let covered = 0;
         for (const row of fixture.sharedExpenses ?? []) {

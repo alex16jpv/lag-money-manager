@@ -503,7 +503,7 @@
         ]
       },
       "deletedAt": null,
-      "note": "Same instant as l-tie-b and a lower id, so a payment reaches it first."
+      "note": "Same instant as l-tie-b and a lower id, so a payment reaches it first. Written in that order too, so the file alone does not tell the tiebreak from the order of writing: what does is the unit test that hands the two lines over reversed."
     },
     {
       "key": "l-tie-b",

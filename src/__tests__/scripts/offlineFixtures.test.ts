@@ -6,6 +6,7 @@
  * for the command line; here it runs inside `npm test`, with no database.
  */
 import {
+  buildFixture,
   buildFixtureFiles,
   driftAgainst,
   OUT_DIR,
@@ -16,6 +17,10 @@ import {
   imputeMinor,
   splitInputProblem,
 } from "../../../scripts/offline-fixtures/derive";
+import {
+  Scenario,
+  ScenarioSharedGroup,
+} from "../../../scripts/offline-fixtures/types";
 import { FixtureTransaction } from "../../../scripts/offline-fixtures/types";
 
 describe("offline parity fixtures", () => {
@@ -115,15 +120,22 @@ describe("offline parity fixtures", () => {
 
   // The generator would hand the difference to whoever paid and write a fixture the API refuses.
   describe("the figures a split is refused for", () => {
+    let party = 0;
+    // Each one is somebody else: a repeated party is a different refusal.
     const share = (
       over: Partial<{ percent: number; fixedAmount: number }> = {},
     ): {
-      party: "USER";
-      contactId: null;
+      party: "CONTACT";
+      contactId: string;
       units: number;
       percent?: number;
       fixedAmount?: number;
-    } => ({ party: "USER", contactId: null, units: 1, ...over });
+    } => ({
+      party: "CONTACT",
+      contactId: `contact-${++party}`,
+      units: 1,
+      ...over,
+    });
 
     it.each([
       [
@@ -190,12 +202,125 @@ describe("offline parity fixtures", () => {
     });
   });
 
-  describe("what a payment covers", () => {
-    const line = (key: string, date: string, owed: number) => ({
-      key,
-      date,
-      owed,
+  // Written by hand and compared: the guard that does the comparing needs one of its own.
+  describe("a scenario the generator refuses to write", () => {
+    const totals = {
+      owedToYou: 15000,
+      youOwe: 0,
+      collected: 0,
+      writtenOff: 0,
+      status: "OPEN" as const,
+      people: { ana: { owesYou: 15000, state: "NOT_PAID" as const } },
+    };
+    const group: ScenarioSharedGroup = {
+      key: "outing",
+      name: "Outing",
+      contacts: ["ana"],
+      expenses: [
+        {
+          key: "dinner",
+          description: "Dinner",
+          date: "2026-08-10T18:00:00-05:00",
+          amount: 30000,
+          expect: { you: 15000, ana: 15000 },
+        },
+      ],
+      expect: totals,
+    };
+    const scenario = (over: ScenarioSharedGroup): Scenario => ({
+      id: "test-only",
+      title: "A scenario built in the test, never written out",
+      pins: [],
+      user: {
+        id: "01930009-0000-7000-8000-00000000u009",
+        timezone: "America/Bogota",
+        currency: "COP",
+        minorUnits: 0,
+      },
+      reference: "2026-08-20T12:00:00-05:00",
+      accounts: [
+        {
+          key: "bank",
+          name: "Bank",
+          type: "ACCOUNT",
+          openingBalance: 100000,
+          isDefault: true,
+        },
+      ],
+      categories: [],
+      transactions: [],
+      budgets: [],
+      spending: [],
+      lists: [],
+      contacts: [{ key: "ana", name: "Ana" }],
+      sharedGroups: [over],
+      settlements: [],
     });
+
+    it("builds the scenario it agrees with", () => {
+      expect(() => buildFixture(scenario(group), 9)).not.toThrow();
+    });
+
+    it("refuses a share the scenario says comes to something else", () => {
+      const wrong = {
+        ...group,
+        expenses: [
+          { ...group.expenses[0], expect: { you: 20000, ana: 10000 } },
+        ],
+      };
+      expect(() => buildFixture(scenario(wrong), 9)).toThrow(
+        /you works out to 15000, not the 20000/,
+      );
+    });
+
+    it("refuses a group whose figures the scenario says differently", () => {
+      const wrong = {
+        ...group,
+        expect: { ...totals, owedToYou: 1 },
+      };
+      expect(() => buildFixture(scenario(wrong), 9)).toThrow(
+        /owedToYou works out to 15000, not 1/,
+      );
+    });
+
+    it("refuses a person the scenario puts in another state", () => {
+      const wrong = {
+        ...group,
+        expect: {
+          ...totals,
+          people: { ana: { owesYou: 15000, state: "PAID" as const } },
+        },
+      };
+      expect(() => buildFixture(scenario(wrong), 9)).toThrow(
+        /ana state works out to NOT_PAID, not PAID/,
+      );
+    });
+
+    it("refuses a share for somebody who is not in the group", () => {
+      const wrong: ScenarioSharedGroup = {
+        ...group,
+        contacts: [],
+        expenses: [
+          {
+            ...group.expenses[0],
+            shares: [{ party: "you" }, { party: "ana" }],
+            expect: undefined,
+          },
+        ],
+        expect: undefined,
+      };
+      expect(() => buildFixture(scenario(wrong), 9)).toThrow(
+        /ana is not in outing/,
+      );
+    });
+  });
+
+  describe("what a payment covers", () => {
+    const line = (
+      key: string,
+      date: string,
+      owed: number,
+    ): { key: string; date: string; owed: number } => ({ key, date, owed });
 
     it("covers the oldest line first, whatever order the lines come in", () => {
       const { settled, surplus } = imputeMinor(

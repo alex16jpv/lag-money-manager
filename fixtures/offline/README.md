@@ -39,11 +39,12 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
   bounded, a day grouping is not.
 - **Deleted rows (`deletedAt`) are invisible** to every figure, balances included.
   Archived rows (`archivedAt`) still count: archiving is not deleting.
-- **`ADJUSTMENT` never counts as spending** unless the query names that type; it
-  does move balances. A `TRANSFER` moves two balances and is never spending either,
-  but it can carry a category, and `type: TRANSFER` is a spending query like any
-  other: it buckets those rows and the ones with no category under `uncategorized`.
-- **A query with `type: null` means everything but `ADJUSTMENT`** — income and
+- **`ADJUSTMENT` and `SETTLEMENT` never count as spending** unless the query names
+  that type; both move balances. A `TRANSFER` moves two balances and is never
+  spending either, but it can carry a category, and `type: TRANSFER` is a spending
+  query like any other: it buckets those rows and the ones with no category under
+  `uncategorized`.
+- **A query with `type: null` means everything but those two** — income and
   transfers included. It is the API's default, and it surprises people.
 - **Tag buckets unwind**: a row with two tags is counted in both, so the buckets
   can add up to more than `total`. `total` is over the rows, never over the buckets.
@@ -104,7 +105,24 @@ endpoint, so the mongod suite checks the figures it does expose and that block
 is the app's to meet. And **paying somebody back is not in any fixture**: it
 writes one movement per line with ids the server mints, which a file of fixed
 ids cannot name — the generator refuses a `paid` settlement rather than write
-a balance it cannot explain.
+a balance it cannot explain, and for the same reason no row is of type
+`SETTLEMENT`. What a settle-up moves is in `expected.balances` all the same.
+
+Three fields of the shared layer are worth spelling out:
+
+- **`expected.shared[].people[].surplus`** is what THEY handed over beyond
+  every line of theirs. It stays on the counter and the next line eats it, so
+  it is never part of `collected`. It is **per counterparty, not per group**:
+  the same figure shows on that person's row in every group you share with
+  them, and adding them up counts it twice.
+- **`sharedGroups[].writeOffs[].amount` is the ceiling**, what was open the
+  day you gave up on somebody. What the group actually gives up is
+  `expected.shared[].writtenOff`, which is that ceiling capped by what is
+  still open: pay something afterwards and the two stop being equal.
+- **`settlements[].afterWriteOffs` is not an API field.** It is an
+  instruction to whoever seeds the fixture: record this payment after the
+  write-offs, which is the only order in which a ceiling is visible. The
+  change feed has nothing like it.
 
 ## The fixtures
 
@@ -118,7 +136,7 @@ a balance it cannot explain.
 - An archived category keeps its totals; archiving is not deleting.
 - Quick-adds count as spending under `uncategorized`, and are the pending summary.
 - Tag buckets double-count a transaction with two tags: their sum exceeds the total.
-- With no `type`, the server means EXPENSE + INCOME + TRANSFER, everything but ADJUSTMENT.
+- With no `type`, the server means EXPENSE + INCOME + TRANSFER: everything but ADJUSTMENT and SETTLEMENT.
 - `type: TRANSFER` is a spending query like any other: it groups transfers by their category.
 - A transfer with no category lands in `uncategorized`, beside the ones that have one.
 - An account bucket is the account the money left; a quick-add leaves the default one, and a transfer is keyed by its origin, never by both ends.

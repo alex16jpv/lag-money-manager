@@ -13,6 +13,11 @@ import { readFileSync } from "fs";
 import mongoose from "mongoose";
 import { join } from "path";
 
+// Typed by the generator that writes it: a copy of the shape here would drift in silence.
+import type {
+  Fixture,
+  FixtureSettlement,
+} from "../../../scripts/offline-fixtures/types";
 import repositoryFactory from "../../app/factories/RepositoryFactory";
 import { sharedLedgerService } from "../../app/factories/sharedLedger";
 import { AccountService } from "../../app/services/AccountService";
@@ -26,20 +31,9 @@ import { SharedSettlementService } from "../../app/services/SharedSettlementServ
 import { StatsService } from "../../app/services/StatsService";
 import { TransactionService } from "../../app/services/TransactionService";
 import { connectMongo } from "../../config/mongoConnection";
-import type {
-  Fixture,
-  FixtureSettlement,
-} from "../../../scripts/offline-fixtures/types";
 import { UserModel } from "../../infrastructure/models/UserModel";
 
-/**
- * The committed fixture, typed by the generator that writes it: a second copy
- * of the shape here would drift the day a field is added and nothing would say so.
- */
-export type {
-  Fixture,
-  FixtureSettlement,
-} from "../../../scripts/offline-fixtures/types";
+export type { Fixture, FixtureSettlement };
 
 const FIXTURE_DIR =
   process.env.OFFLINE_FIXTURES_DIR ??
