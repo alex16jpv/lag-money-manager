@@ -477,6 +477,63 @@ describe("SharedGroupService", () => {
     });
   });
 
+  describe("giving up on what somebody owes [T-117]", () => {
+    const owing = (owed: number): void => {
+      expenses.totalsByGroup.mockResolvedValue([
+        {
+          groupId,
+          total: 90000,
+          yourShare: 45000,
+          owedToYou: owed,
+          youOwe: 0,
+          collected: 0,
+          owedByParty: [{ contactId: ana, expenseId: null, owed }],
+          expenseCount: 1,
+          dateFrom: new Date("2026-08-10T00:00:00.000Z"),
+          dateTo: new Date("2026-08-10T00:00:00.000Z"),
+        },
+      ]);
+      groups.update.mockImplementation(async (_id, write) =>
+        makeGroup(write as Partial<SharedGroup>),
+      );
+    };
+
+    it("takes it out of what is owed without moving any figure", async () => {
+      owing(45000);
+
+      const view = await service.writeOff(groupId, { contactId: ana }, userId);
+
+      expect(view.totals.writtenOff).toBe(45000);
+      expect(view.totals.owedToYou).toBe(0);
+      expect(view.status).toBe("SETTLED");
+      // The figure on the movement is not touched: only its history says this happened.
+      expect(transactions.applySharedChange).not.toHaveBeenCalled();
+    });
+
+    it("refuses somebody who is not in the group", async () => {
+      owing(45000);
+
+      await expect(
+        service.writeOff(
+          groupId,
+          { contactId: "019576a0-d7b6-7d6d-af6a-2b7545f5acff" },
+          userId,
+        ),
+      ).rejects.toMatchObject({ code: "PARTICIPANT_NOT_IN_GROUP" });
+    });
+
+    it("refuses one on an archived group, which is where it stops being undoable", async () => {
+      owing(45000);
+      groups.getByIdIncludingArchived.mockResolvedValue(
+        makeGroup({ archivedAt: new Date() }),
+      );
+
+      await expect(
+        service.writeOff(groupId, { contactId: ana }, userId),
+      ).rejects.toMatchObject({ code: "RESOURCE_ARCHIVED" });
+    });
+  });
+
   describe("reading one", () => {
     it("derives the range and the totals from the expenses", async () => {
       expenses.totalsByGroup.mockResolvedValue([
@@ -487,6 +544,7 @@ describe("SharedGroupService", () => {
           owedToYou: 0,
           youOwe: 0,
           collected: 0,
+          owedByParty: [],
           expenseCount: 2,
           dateFrom: new Date("2026-08-01T00:00:00.000Z"),
           dateTo: new Date("2026-09-30T00:00:00.000Z"),
@@ -509,6 +567,7 @@ describe("SharedGroupService", () => {
         owedToYou: 0,
         youOwe: 0,
         collected: 0,
+        writtenOff: 0,
         expenseCount: 0,
         dateFrom: null,
         dateTo: null,

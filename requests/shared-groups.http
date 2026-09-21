@@ -357,3 +357,52 @@ Authorization: Bearer {{token}}
 ### Cursor inventado en los gastos — 400 INVALID_CURSOR
 GET {{baseUrl}}/shared-groups/{{groupId}}/expenses?cursor=019576a0-d7b6-7d6d-af6a-000000000000
 Authorization: Bearer {{token}}
+
+### ----------------------------------------------------------
+### DAR POR PERDIDO (T-117)
+### No mueve ninguna cifra: esa plata ya estaba contada como tuya
+### desde el día que salió. Deja de estar debida, y punto.
+### ----------------------------------------------------------
+
+### Perdonar lo que Ana todavía debe aquí (éxito)
+POST {{baseUrl}}/shared-groups/{{groupId}}/write-offs
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{anaId}}" }
+
+### Otra vez — IDEMPOTENTE, y sigue sin mover ninguna cifra
+POST {{baseUrl}}/shared-groups/{{groupId}}/write-offs
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{anaId}}" }
+
+### Echarse atrás, que se puede mientras la salida esté abierta
+DELETE {{baseUrl}}/shared-groups/{{groupId}}/write-offs/{{anaId}}
+Authorization: Bearer {{token}}
+
+### Perdonar a alguien que no está en el grupo — 400 PARTICIPANT_NOT_IN_GROUP
+POST {{baseUrl}}/shared-groups/{{groupId}}/write-offs
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{carlaId}}" }
+
+### Perdonar a un bloque de invitados: se nombra por su gasto
+POST {{baseUrl}}/shared-groups/{{groupId}}/write-offs
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "expenseId": "{{expenseId}}" }
+
+### Archivar con gente debiendo — lo perdona por ti y lo dice en totals.writtenOff
+DELETE {{baseUrl}}/shared-groups/{{groupId}}
+Authorization: Bearer {{token}}
+
+### Y ya archivada, no se puede perdonar más — 400 RESOURCE_ARCHIVED
+POST {{baseUrl}}/shared-groups/{{groupId}}/write-offs
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{anaId}}" }

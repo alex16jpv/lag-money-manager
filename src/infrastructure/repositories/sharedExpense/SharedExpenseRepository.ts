@@ -276,7 +276,7 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
     groupIds: string[],
   ): Promise<GroupTotals[]> {
     if (groupIds.length === 0) return [];
-    const rows = await SharedExpenseModel.aggregate<{
+    interface TotalsRow {
       _id: string;
       total: number;
       yourShare: number;
@@ -286,30 +286,88 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
       expenseCount: number;
       dateFrom: Date;
       dateTo: Date;
+    }
+    interface PartyRow {
+      _id: {
+        groupId: string;
+        contactId: string | null;
+        expenseId: string | null;
+      };
+      owed: number;
+    }
+    const [faceted] = await SharedExpenseModel.aggregate<{
+      totals: TotalsRow[];
+      parties: PartyRow[];
     }>([
       { $match: { userId, groupId: { $in: groupIds }, deletedAt: null } },
       {
+        // Who still owes what, so a write-off can take its own share out of the total.
         // The accumulators are built above, which the driver's types cannot follow.
-        $group: {
-          _id: "$groupId",
-          total: { $sum: "$amount" },
-          yourShare: { $sum: this.shareSum(true, "amount") },
-          owedToYou: this.whenYouPaid(true, this.shareSum(false, "open")),
-          collected: this.whenYouPaid(true, this.shareSum(false, "collected")),
-          youOwe: this.whenYouPaid(false, this.shareSum(true, "open")),
-          expenseCount: { $sum: 1 },
-          dateFrom: { $min: "$date" },
-          dateTo: { $max: "$date" },
+        $facet: {
+          parties: [
+            { $match: { paidByContactId: null } },
+            { $unwind: "$split.shares" },
+            { $match: { "split.shares.party": { $ne: SHARE_PARTIES.USER } } },
+            {
+              $group: {
+                _id: {
+                  groupId: "$groupId",
+                  contactId: "$split.shares.contactId",
+                  expenseId: {
+                    $cond: [
+                      { $eq: ["$split.shares.party", SHARE_PARTIES.GUESTS] },
+                      "$_id",
+                      null,
+                    ],
+                  },
+                },
+                owed: {
+                  $sum: {
+                    $subtract: [
+                      "$split.shares.amount",
+                      { $ifNull: ["$split.shares.collected", 0] },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+          totals: [
+            {
+              $group: {
+                _id: "$groupId",
+                total: { $sum: "$amount" },
+                yourShare: { $sum: this.shareSum(true, "amount") },
+                owedToYou: this.whenYouPaid(true, this.shareSum(false, "open")),
+                collected: this.whenYouPaid(
+                  true,
+                  this.shareSum(false, "collected"),
+                ),
+                youOwe: this.whenYouPaid(false, this.shareSum(true, "open")),
+                expenseCount: { $sum: 1 },
+                dateFrom: { $min: "$date" },
+                dateTo: { $max: "$date" },
+              },
+            },
+          ],
         },
-      } as PipelineStage,
+      } as unknown as PipelineStage,
     ]);
-    return rows.map((row) => ({
+    const parties = faceted?.parties ?? [];
+    return (faceted?.totals ?? []).map((row) => ({
       groupId: row._id,
       total: fromCents(row.total),
       yourShare: fromCents(row.yourShare),
       owedToYou: fromCents(row.owedToYou),
       youOwe: fromCents(row.youOwe),
       collected: fromCents(row.collected),
+      owedByParty: parties
+        .filter((party) => party._id.groupId === row._id)
+        .map((party) => ({
+          contactId: party._id.contactId,
+          expenseId: party._id.expenseId,
+          owed: fromCents(party.owed),
+        })),
       expenseCount: row.expenseCount,
       dateFrom: row.dateFrom ?? null,
       dateTo: row.dateTo ?? null,

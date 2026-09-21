@@ -120,4 +120,26 @@ export class SharedGroupController {
     );
     res.status(200).json(group);
   };
+
+  static writeOff = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const group = await sharedGroupService.writeOff(
+      req.params.id as string,
+      req.body,
+      userId,
+      ifMatch(req),
+    );
+    res.status(200).json(group);
+  };
+
+  static undoWriteOff = async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const group = await sharedGroupService.undoWriteOff(
+      req.params.id as string,
+      req.params.partyId as string,
+      userId,
+      ifMatch(req),
+    );
+    res.status(200).json(group);
+  };
 }

@@ -12,8 +12,10 @@ import {
   removeParticipantSchema,
   restoreSchema,
   sharedExpenseParamsSchema,
+  undoWriteOffSchema,
   updateSharedExpenseSchema,
   updateSharedGroupSchema,
+  writeOffSchema,
 } from "../validation/schemas";
 import { validate } from "../validation/validate";
 
@@ -267,9 +269,13 @@ router.put(
  *     summary: Archive a shared group (soft delete)
  *     description: >
  *       Idempotent — archiving an already-archived group answers it unchanged.
- *       Its expenses are not touched and stay readable. Writing off what people
- *       still owe when a group is archived is a separate behaviour and is not
- *       in this endpoint yet.
+ *       Its expenses are not touched and stay readable.
+ *
+ *       **What people still owe here is written off on your behalf**, which
+ *       moves no figure: it was counted as yours the day it left. The answer
+ *       carries it in `totals.writtenOff`, and every movement it touches says
+ *       so in its history. A write-off can be taken back while the group is
+ *       open, so archiving is where that stops.
  *     parameters:
  *       - in: path
  *         name: id
@@ -568,6 +574,138 @@ router.delete(
   "/:id/participants/:contactId",
   validate(removeParticipantSchema),
   SharedGroupController.removeParticipant,
+);
+
+/**
+ * @openapi
+ * /shared-groups/{id}/write-offs:
+ *   post:
+ *     tags: [Shared groups]
+ *     summary: Give up on what somebody still owes you here
+ *     description: >
+ *       **It moves no figure.** That money was counted as yours the day it
+ *       left your account, which is the whole answer to "and if nobody ever
+ *       pays me?" — nothing has to happen. What it writes is the decision and
+ *       a line in the history of every movement it touches, and what is still
+ *       open stops being owed: `totals.owedToYou` drops by it,
+ *       `totals.writtenOff` carries it, and the group reads `SETTLED` once
+ *       nobody is left owing.
+ *
+ *       It names **one person** (`contactId`) or **one block of guests**
+ *       (`expenseId`, the expense it lives in). Somebody who had paid part of
+ *       it keeps that part. It follows the share down if a re-split ever
+ *       lowers it, because what is written off is what is open, not a figure.
+ *
+ *       Idempotent, and undone with `DELETE` while the group is open.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *         description: Shared group ID
+ *       - $ref: '#/components/parameters/IfMatch'
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/WriteOffInput'
+ *     responses:
+ *       200:
+ *         description: The group, with what it now counts as owed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SharedGroup'
+ *       400:
+ *         description: Validation error (code VALIDATION), somebody who is not in the group (code PARTICIPANT_NOT_IN_GROUP) or an archived group (code RESOURCE_ARCHIVED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Shared group or expense not found (uniform for missing and not owned)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SharedGroupConflict'
+ */
+router.post(
+  "/:id/write-offs",
+  validate(writeOffSchema),
+  SharedGroupController.writeOff,
+);
+
+/**
+ * @openapi
+ * /shared-groups/{id}/write-offs/{partyId}:
+ *   delete:
+ *     tags: [Shared groups]
+ *     summary: Take back a write-off
+ *     description: >
+ *       What they owe is owed again, and the history says so. Idempotent, and
+ *       only while the group is open: archiving one writes off what is left on
+ *       your behalf, and that is where it stops being undoable.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *         description: Shared group ID
+ *       - in: path
+ *         name: partyId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *         description: The contact, or the expense whose block of guests it was
+ *       - $ref: '#/components/parameters/IfMatch'
+ *     responses:
+ *       200:
+ *         description: The group, with what it now counts as owed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SharedGroup'
+ *       400:
+ *         description: Invalid ID format (code VALIDATION) or an archived group (code RESOURCE_ARCHIVED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Shared group not found (uniform for missing and not owned)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: The resource changed since the `If-Match` version (code STALE_UPDATE)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SharedGroupConflict'
+ */
+router.delete(
+  "/:id/write-offs/:partyId",
+  validate(undoWriteOffSchema),
+  SharedGroupController.undoWriteOff,
 );
 
 /**

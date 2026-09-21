@@ -7,6 +7,8 @@ import {
   GROUP_SPLIT_MODES,
   GroupSplitMode,
   MODEL_NAMES,
+  SETTLEMENT_PARTIES,
+  SettlementPartyKind,
 } from "../../shared/constants";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 
@@ -19,6 +21,12 @@ export interface ISharedGroupDocument {
     mode: GroupSplitMode;
     shares: { contactId: string | null; percent: number }[];
   };
+  writeOffs: {
+    kind: SettlementPartyKind;
+    contactId: string | null;
+    expenseId: string | null;
+    at: Date;
+  }[];
   userId: string;
   currency: string;
   archivedAt: Date | null;
@@ -46,6 +54,20 @@ const DefaultSplitShareSchema = new Schema<
   { _id: false },
 );
 
+const WriteOffSchema = new Schema<ISharedGroupDocument["writeOffs"][number]>(
+  {
+    kind: {
+      type: String,
+      required: true,
+      enum: Object.keys(SETTLEMENT_PARTIES),
+    },
+    contactId: { type: String, default: null },
+    expenseId: { type: String, default: null },
+    at: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
 const SharedGroupSchema = new Schema<ISharedGroupDocument>(
   {
     _id: { type: String, required: true },
@@ -60,6 +82,7 @@ const SharedGroupSchema = new Schema<ISharedGroupDocument>(
       },
       shares: { type: [DefaultSplitShareSchema], required: true, default: [] },
     },
+    writeOffs: { type: [WriteOffSchema], required: true, default: [] },
     userId: { type: String, required: true },
     currency: {
       type: String,

@@ -38,6 +38,12 @@ export class SharedGroupRepository implements ISharedGroupRepository {
           percent: s.percent,
         })),
       },
+      writeOffs: (doc.writeOffs ?? []).map((one) => ({
+        kind: one.kind,
+        contactId: one.contactId,
+        expenseId: one.expenseId,
+        at: one.at,
+      })),
       userId: doc.userId,
       currency: doc.currency,
       archivedAt: doc.archivedAt,

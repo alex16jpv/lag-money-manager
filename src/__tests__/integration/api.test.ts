@@ -1215,6 +1215,7 @@ describe("Integration Tests", () => {
           owedToYou: 0,
           youOwe: 0,
           collected: 0,
+          owedByParty: [],
           expenseCount: 1,
           dateFrom: new Date("2026-09-01T00:00:00.000Z"),
           dateTo: new Date("2026-09-02T00:00:00.000Z"),

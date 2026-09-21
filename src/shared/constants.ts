@@ -144,6 +144,8 @@ export const SHARED_HISTORY_REASONS = {
   UNSPLIT: "UNSPLIT",
   PAYMENT: "PAYMENT",
   REIMPUTED: "REIMPUTED",
+  WRITE_OFF: "WRITE_OFF",
+  WRITE_OFF_UNDONE: "WRITE_OFF_UNDONE",
 } as const;
 
 export type SharedHistoryReason = keyof typeof SHARED_HISTORY_REASONS;

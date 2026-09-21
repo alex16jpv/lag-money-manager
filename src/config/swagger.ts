@@ -67,6 +67,7 @@ const requestBodies = {
   AddParticipantsInput: bodyOf(v.addParticipantsSchema),
   CreateSharedExpenseInput: bodyOf(v.createSharedExpenseSchema),
   CreateSettlementInput: bodyOf(v.createSettlementSchema),
+  WriteOffInput: bodyOf(v.writeOffSchema),
   UpdateSharedExpenseInput: bodyOf(v.updateSharedExpenseSchema),
   UpdateCategoryInput: bodyOf(v.updateCategorySchema),
   CreateTransactionInput: bodyOf(v.createTransactionSchema),
@@ -374,7 +375,13 @@ const responseViews = {
       yourShare: money,
       owedToYou: {
         ...money,
-        description: "What people still owe you for the lines you fronted.",
+        description:
+          "What people still owe you for the lines you fronted, written-off amounts aside.",
+      },
+      writtenOff: {
+        ...money,
+        description:
+          "What you have given up on here. It stopped being owed and was always counted as yours.",
       },
       youOwe: {
         ...money,
@@ -404,6 +411,24 @@ const responseViews = {
           items: { $ref: "#/components/schemas/SharedGroupParticipant" },
         },
         defaultSplit: { $ref: "#/components/schemas/DefaultSplit" },
+        writeOffs: {
+          type: "array",
+          description:
+            "Who you have given up on here, and when. It moves no figure: that money was counted as yours the day it left.",
+          items: withRequired({
+            type: "object",
+            properties: {
+              kind: enumOf(SETTLEMENT_PARTIES),
+              contactId: { ...uuid, nullable: true },
+              expenseId: {
+                ...uuid,
+                nullable: true,
+                description: "GUESTS only: the expense the block lives in.",
+              },
+              at: dateTime,
+            },
+          }),
+        },
         userId: uuid,
         currency: { type: "string", example: "COP" },
         totals: { $ref: "#/components/schemas/SharedGroupTotals" },

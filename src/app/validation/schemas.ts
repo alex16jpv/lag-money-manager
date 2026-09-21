@@ -707,6 +707,32 @@ export const updateSharedExpenseSchema = z.object({
     }),
 });
 
+export const writeOffSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  body: z
+    .object({
+      contactId: z.string().uuid("contactId must be a valid UUID").optional(),
+      expenseId: z.string().uuid("expenseId must be a valid UUID").optional(),
+    })
+    .refine(
+      (data) => [data.contactId, data.expenseId].filter(Boolean).length === 1,
+      {
+        message:
+          "A write-off names exactly one of them: contactId, or expenseId for its block of guests",
+        path: ["contactId"],
+      },
+    ),
+});
+
+export const undoWriteOffSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+    partyId: z.string().uuid("partyId must be a valid UUID"),
+  }),
+});
+
 export const getSettlementsSchema = z.object({
   query: z.object({
     limit: z.coerce

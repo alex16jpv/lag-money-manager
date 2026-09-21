@@ -70,9 +70,17 @@ Paginated (offset + cursor, keyset over `_id`), with `ids`, `contactId` and `inc
 
 A group holds at most **20 people, the owner included** (`400 PARTICIPANT_LIMIT_REACHED`), published as `SharedLimits.maxParticipantsPerGroup`. There is deliberately **no cap on groups or on expenses per group**: the owner asked for two limits, both lists page properly, and an invisible ceiling is the defect the accounts list already has.
 
+### `POST /shared-groups/{id}/write-offs`, `DELETE …/write-offs/{partyId}`
+
+**Giving up on what somebody still owes you here moves no figure.** That money was counted as yours the day it left your account, which is the whole answer to "and if nobody ever pays me?": nothing has to happen. What is stored is the decision — the person, or the block of guests of one expense — and every movement it touches records `WRITE_OFF` in its history saying precisely that the figure did not move.
+
+What changes is what is **owed**: `totals.owedToYou` drops by it, `totals.writtenOff` carries it, and the group reads `SETTLED` once nobody is left owing, by paying or by being written off. Somebody who had paid part of it keeps that part, because what is written off is **what is still open**, not a figure: a later re-split that lowers their share takes the write-off down with it, and nothing needs rewriting.
+
+It is idempotent, and it is taken back with `DELETE` — `partyId` is the contact, or the expense whose block it was, and the stored entry already knows which. Both are refused on an archived group (`400 RESOURCE_ARCHIVED`), which is what makes archiving the moment a write-off stops being undoable.
+
 ### `GET|PUT|DELETE /shared-groups/{id}`, `POST /shared-groups/{id}/restore`
 
-The usual shape: reads resolve archived groups, `DELETE` archives and is idempotent, `restore` can rename in the same write. `PUT` changes `name`, `color` and `defaultSplit` — and **changing the default touches nothing already recorded**.
+The usual shape: reads resolve archived groups, `DELETE` archives and is idempotent, `restore` can rename in the same write. **Archiving a group where people still owe writes those amounts off on your behalf** — the owner's decision, in his words — so the answer carries them in `totals.writtenOff` and in `writeOffs`, and the movements say so. `PUT` changes `name`, `color` and `defaultSplit` — and **changing the default touches nothing already recorded**.
 
 ### `POST /shared-groups/{id}/participants` and `…/participants/preview`
 
@@ -133,5 +141,5 @@ Money is stored as integer cents, shares included; `percent` is not money and is
 - **It does not touch the user's money.** No balance, category or budget is read or written from here, and the only thing it knows about a transaction is whether one can be split into it.
 - **It knows nothing about categories.** The shared layer carries none, on purpose: categories are private and never travel.
 - **It records no payments.** What has been settled reaches a share through `SharedLedgerService`, and the payments themselves are [settlements.md](settlements.md).
-- **It has no write-offs.** Giving up on what somebody owes is the next task, and it moves no figure.
+- **It moves no money, ever.** Not even a write-off: what that changes is what is owed.
 - **It does not sync.** Contacts, groups and expenses reach the offline mirror in the task that adds them to the change feed; the indexes they will need are already declared.

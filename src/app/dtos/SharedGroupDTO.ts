@@ -30,3 +30,9 @@ export interface AddParticipantsDTO {
   // Required when the group's default is PERCENT: the old percentages no longer cover everybody.
   defaultSplit?: DefaultSplitDTO;
 }
+
+export interface WriteOffDTO {
+  // One of the two: a person of the group, or the block of guests of that expense.
+  contactId?: string;
+  expenseId?: string;
+}

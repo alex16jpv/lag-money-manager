@@ -79,5 +79,5 @@ Money is integer cents here too. **The payment carries no account and no categor
 ## What This Module Does Not Do
 
 - **It does not write `countsAsYours` by itself.** `SharedLedgerService` does, and it is the only thing that does.
-- **It has no write-offs yet.** Giving up on what somebody owes is the next task; it moves no figure, because that money was already counted as yours the day it left.
+- **It does not write off anything.** Giving up on what somebody owes is a decision about a group, and it lives there ([shared-groups.md](shared-groups.md)); it moves no figure either way.
 - **It does not sync.** The index the change feed will need is declared; `SyncService` does not carry it yet.

@@ -13,6 +13,12 @@ export interface GroupTotals {
   owedToYou: number;
   youOwe: number;
   collected: number;
+  // The same, one row per person or block of guests: a write-off takes its own out of the total.
+  owedByParty: {
+    contactId: string | null;
+    expenseId: string | null;
+    owed: number;
+  }[];
   expenseCount: number;
   dateFrom: Date | null;
   dateTo: Date | null;
