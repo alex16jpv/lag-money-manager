@@ -94,6 +94,10 @@ interface Harness {
   categories: Feed;
   transactions: Feed;
   budgets: Feed;
+  contacts: Feed;
+  sharedGroups: Feed;
+  sharedExpenses: Feed;
+  settlements: Feed;
 }
 
 // The profile is absent by default: always sending it would hide the boundary the merge is about.
@@ -104,23 +108,61 @@ const build = (): Harness => {
   const categories = feed();
   const transactions = feed();
   const budgets = feed();
+  const contacts = feed();
+  const sharedGroups = feed();
+  const sharedExpenses = feed();
+  const settlements = feed();
   const service = new SyncService(
     users as unknown as IUserRepository,
     accounts as unknown as IAccountRepository,
     categories as unknown as ICategoryRepository,
     transactions as unknown as ITransactionRepository,
     budgets as unknown as IBudgetRepository,
+    contacts as never,
+    sharedGroups as never,
+    sharedExpenses as never,
+    settlements as never,
   );
-  return { service, users, accounts, categories, transactions, budgets };
+  return {
+    service,
+    users,
+    accounts,
+    categories,
+    transactions,
+    budgets,
+    contacts,
+    sharedGroups,
+    sharedExpenses,
+    settlements,
+  };
 };
 
 describe("SyncService.getChanges", () => {
   it("asks every source for one row past the page, so hasMore needs no second query", async () => {
-    const { service, accounts, categories, transactions, budgets } = build();
+    const {
+      service,
+      accounts,
+      categories,
+      transactions,
+      budgets,
+      contacts,
+      sharedGroups,
+      sharedExpenses,
+      settlements,
+    } = build();
 
     await service.getChanges(USER_ID, undefined, 50);
 
-    for (const repo of [accounts, categories, transactions, budgets]) {
+    for (const repo of [
+      accounts,
+      categories,
+      transactions,
+      budgets,
+      contacts,
+      sharedGroups,
+      sharedExpenses,
+      settlements,
+    ]) {
       expect(repo.changesSince).toHaveBeenCalledWith(USER_ID, undefined, 51);
     }
   });
@@ -215,6 +257,10 @@ describe("SyncService.getChanges", () => {
       categories: [],
       transactions: [],
       budgets: [],
+      contacts: [],
+      sharedGroups: [],
+      sharedExpenses: [],
+      settlements: [],
     });
     expect(decodeCursor(page.pagination.nextCursor).id).toBeNull();
   });

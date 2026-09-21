@@ -2,6 +2,8 @@ import mongoose, { Schema } from "mongoose";
 
 import {
   MODEL_NAMES,
+  SHARED_HISTORY_REASONS,
+  SharedHistoryReason,
   TRANSACTION_SOURCES,
   TRANSACTION_TYPES,
   TransactionType,
@@ -24,6 +26,17 @@ export interface ITransactionDocument {
   pendingDetails: boolean;
   source?: string;
   currency: string;
+  // Integer cents. Null on rows written before the field existed: their whole amount was theirs.
+  countsAsYours: number | null;
+  // Absent unless the movement is in a shared group, which is what makes the index over it partial.
+  sharedExpenseId?: string;
+  sharedGroupId?: string;
+  sharedSettlementId?: string;
+  sharedHistory: {
+    at: Date;
+    reason: SharedHistoryReason;
+    countsAsYours: number;
+  }[];
   revisions?: {
     at: Date;
     amount: number;
@@ -69,6 +82,27 @@ const TransactionSchema = new Schema<ITransactionDocument>(
       default: DEFAULT_CURRENCY,
       uppercase: true,
       trim: true,
+    },
+    countsAsYours: { type: Number, default: null },
+    sharedExpenseId: { type: String },
+    sharedGroupId: { type: String },
+    sharedSettlementId: { type: String },
+    sharedHistory: {
+      type: [
+        new Schema(
+          {
+            at: { type: Date, required: true },
+            reason: {
+              type: String,
+              required: true,
+              enum: Object.keys(SHARED_HISTORY_REASONS),
+            },
+            countsAsYours: { type: Number, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
     },
     // Audit trail of monetary edits (amount in cents); capped, internal-only.
     revisions: {
@@ -118,6 +152,22 @@ TransactionSchema.index({ userId: 1, deletedAt: 1, amount: -1, _id: -1 });
 
 // Change feed: keyset over (updatedAt, _id), archived and deleted rows included.
 TransactionSchema.index({ userId: 1, updatedAt: 1, _id: 1 });
+
+// The movements one settle-up recorded, so undoing it reverses exactly those. Several per settlement.
+TransactionSchema.index(
+  { userId: 1, sharedSettlementId: 1 },
+  { partialFilterExpression: { sharedSettlementId: { $exists: true } } },
+);
+
+// Which movement a shared expense is, and no more than one. The planner only uses a partial index
+// whose filter its own predicate implies, and an equality does not imply `$type`: hence `$exists`.
+TransactionSchema.index(
+  { userId: 1, sharedExpenseId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { sharedExpenseId: { $exists: true } },
+  },
+);
 
 export const TransactionModel = mongoose.model<ITransactionDocument>(
   MODEL_NAMES.TRANSACTION,

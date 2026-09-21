@@ -48,6 +48,19 @@ export const SYNC_ACTIONS = {
     "setOverride",
     "clearOverride",
   ],
+  contact: ["create", "update", "archive", "restore"],
+  sharedGroup: [
+    "create",
+    "update",
+    "archive",
+    "restore",
+    "addParticipants",
+    "removeParticipant",
+    "writeOff",
+    "undoWriteOff",
+  ],
+  sharedExpense: ["create", "update", "delete"],
+  settlement: ["create", "delete"],
 } as const;
 
 export type SyncEntity = keyof typeof SYNC_ACTIONS;

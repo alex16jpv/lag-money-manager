@@ -11,7 +11,7 @@ import { Scenario } from "./types";
 /** `01930001-…-00000000a001`: scenario 1, kind `a` (account), number 1. */
 export const fixtureId = (
   scenario: number,
-  kind: "u" | "a" | "c" | "t" | "b",
+  kind: "u" | "a" | "c" | "t" | "b" | "k" | "g" | "s" | "p",
   n: number,
 ): string =>
   `0193000${scenario}-0000-7000-8000-0000000${kind}${String(n).padStart(4, "0")}`;
@@ -28,7 +28,7 @@ const bogota: Scenario = {
     "An archived category keeps its totals; archiving is not deleting.",
     "Quick-adds count as spending under `uncategorized`, and are the pending summary.",
     "Tag buckets double-count a transaction with two tags: their sum exceeds the total.",
-    "With no `type`, the server means EXPENSE + INCOME + TRANSFER, everything but ADJUSTMENT.",
+    "With no `type`, the server means EXPENSE + INCOME + TRANSFER: everything but ADJUSTMENT and SETTLEMENT.",
     "`type: TRANSFER` is a spending query like any other: it groups transfers by their category.",
     "A transfer with no category lands in `uncategorized`, beside the ones that have one.",
     "An account bucket is the account the money left; a quick-add leaves the default one, and a transfer is keyed by its origin, never by both ends.",
@@ -1112,4 +1112,321 @@ const newYork: Scenario = {
   ],
 };
 
-export const SCENARIOS: Scenario[] = [bogota, madrid, tokyo, newYork];
+/**
+ * COP again, and on purpose: the currency with no minor unit is where a split
+ * leaves a remainder and where two implementations drift. Everything shared
+ * lives here — the four modes, a block of guests, several payers, a payment
+ * imputed oldest line first, one in cash the app never saw, and a write-off
+ * that moves no figure at all.
+ */
+const shared: Scenario = {
+  id: "cop-shared",
+  title:
+    "COP · America/Bogota · the split, the imputation and what counts as yours",
+  pins: [
+    "100.000 between three does not divide: the odd peso is whoever fronted it.",
+    "A block of twenty guests weighs twenty parts and is one party to collect from.",
+    "A payment covers the oldest line first, across the whole group.",
+    "Cash outside the app moves no account and lowers what counts as yours all the same.",
+    "A write-off gives up on what was open and moves no figure.",
+    "What Stats and the budgets measure is what is left as yours, never the amount.",
+    "The oldest line is the oldest by DATE: one written last but dated first is covered first.",
+    "Two lines on the same instant are covered in id order, so two devices agree.",
+    "A fixed share plus the rest divided: the pinned figure never moves.",
+    "More than they owed stays on the counter as surplus; nothing is over-collected.",
+    "A write-off keeps the ceiling it was decided against: what is paid later lowers what it gives up.",
+  ],
+  user: {
+    id: "01930005-0000-7000-8000-00000000u005",
+    timezone: "America/Bogota",
+    currency: "COP",
+    minorUnits: 0,
+  },
+  reference: "2026-08-20T12:00:00-05:00",
+  accounts: [
+    {
+      key: "bank",
+      name: "Bancolombia",
+      type: "ACCOUNT",
+      openingBalance: 2000000,
+      isDefault: true,
+    },
+  ],
+  categories: [{ key: "outings", name: "Salidas", type: "EXPENSE" }],
+  transactions: [
+    {
+      key: "dinner",
+      type: "EXPENSE",
+      amount: 100000,
+      date: "2026-08-10T20:00:00-05:00",
+      description: "Cena",
+      category: "outings",
+      from: "bank",
+      note: "Split three ways in a currency with no cents: 33.333 each and the odd peso to you.",
+    },
+    {
+      key: "party",
+      type: "EXPENSE",
+      amount: 100000,
+      date: "2026-08-12T21:00:00-05:00",
+      description: "Fiesta",
+      category: "outings",
+      from: "bank",
+      note: "Three people and twenty guests: 23 parts, and the three left over are yours.",
+    },
+    {
+      key: "taxi",
+      type: "EXPENSE",
+      amount: 60000,
+      date: "2026-08-14T23:00:00-05:00",
+      description: "Taxi",
+      category: "outings",
+      from: "bank",
+    },
+    {
+      key: "lunch",
+      type: "EXPENSE",
+      amount: 45000,
+      date: "2026-08-16T13:00:00-05:00",
+      description: "Almuerzo",
+      category: "outings",
+      from: "bank",
+    },
+  ],
+  contacts: [
+    { key: "ana", name: "Ana" },
+    { key: "beto", name: "Beto" },
+    { key: "carla", name: "Carla" },
+    { key: "dani", name: "Dani" },
+    { key: "elena", name: "Elena" },
+    { key: "fabio", name: "Fabio" },
+  ],
+  sharedGroups: [
+    {
+      key: "trip",
+      name: "Cartagena",
+      contacts: ["ana", "beto"],
+      defaultMode: "EQUAL",
+      writeOffs: ["beto"],
+      note: "Beto is written off after every payment below, which is the order they are written in.",
+      expenses: [
+        {
+          key: "e-dinner",
+          transaction: "dinner",
+          expect: { you: 33334, ana: 33333, beto: 33333 },
+        },
+        {
+          key: "e-party",
+          transaction: "party",
+          mode: "EQUAL",
+          guests: { count: 20, name: "La oficina" },
+          shares: [
+            { party: "you" },
+            { party: "ana" },
+            { party: "beto" },
+            { party: "guests" },
+          ],
+          expect: { you: 4350, ana: 4347, beto: 4347, guests: 86956 },
+        },
+        {
+          key: "e-taxi",
+          transaction: "taxi",
+          mode: "PERCENT",
+          shares: [
+            { party: "you", percent: 50 },
+            { party: "ana", percent: 30 },
+            { party: "beto", percent: 20 },
+          ],
+          expect: { you: 30000, ana: 18000, beto: 12000 },
+        },
+        {
+          key: "e-lunch",
+          transaction: "lunch",
+          mode: "EXACT",
+          shares: [
+            { party: "you", fixedAmount: 25000 },
+            { party: "ana", fixedAmount: 10000 },
+            { party: "beto", fixedAmount: 10000 },
+          ],
+          expect: { you: 25000, ana: 10000, beto: 10000 },
+        },
+        {
+          key: "e-tickets",
+          paidBy: "ana",
+          description: "Tickets",
+          date: "2026-08-11T18:00:00-05:00",
+          amount: 90000,
+          expect: { you: 30000, ana: 30000, beto: 30000 },
+          note: "Ana fronted this one, so no movement of yours exists for it and you owe her a third.",
+        },
+      ],
+    },
+    {
+      key: "lunches",
+      name: "Almuerzos de oficina",
+      contacts: ["carla", "dani", "elena", "fabio"],
+      defaultMode: "EQUAL",
+      writeOffs: ["dani"],
+      expect: {
+        owedToYou: 48000,
+        youOwe: 0,
+        collected: 62000,
+        writtenOff: 30000,
+        status: "OPEN",
+        people: {
+          carla: { owesYou: 13000, state: "PARTIALLY_PAID" },
+          dani: { owesYou: 0, state: "WRITTEN_OFF", ceiling: 35000 },
+          elena: { owesYou: 0, surplus: 5000, state: "PAID" },
+          fabio: { owesYou: 35000, state: "NOT_PAID" },
+        },
+      },
+      note: "No movement of yours is linked here on purpose: this group is about the order a payment is imputed in, the rest of a fixed share, and what a write-off gives up on.",
+      expenses: [
+        {
+          key: "l-tie-a",
+          description: "Empanadas",
+          date: "2026-08-06T12:00:00-05:00",
+          amount: 25000,
+          expect: {
+            you: 5000,
+            carla: 5000,
+            dani: 5000,
+            elena: 5000,
+            fabio: 5000,
+          },
+          note: "Same instant as l-tie-b and a lower id, so a payment reaches it first. Written in that order too, so the file alone does not tell the tiebreak from the order of writing: what does is the unit test that hands the two lines over reversed.",
+        },
+        {
+          key: "l-tie-b",
+          description: "Bandejas",
+          date: "2026-08-06T12:00:00-05:00",
+          amount: 50000,
+          expect: {
+            you: 10000,
+            carla: 10000,
+            dani: 10000,
+            elena: 10000,
+            fabio: 10000,
+          },
+        },
+        {
+          key: "l-fixed",
+          description: "Domicilio",
+          date: "2026-08-07T12:00:00-05:00",
+          amount: 60000,
+          mode: "FIXED_REST",
+          shares: [
+            { party: "you", fixedAmount: 20000 },
+            { party: "carla" },
+            { party: "dani" },
+            { party: "elena" },
+            { party: "fabio" },
+          ],
+          expect: {
+            you: 20000,
+            carla: 10000,
+            dani: 10000,
+            elena: 10000,
+            fabio: 10000,
+          },
+          note: "You take a fixed 20.000 and the other 40.000 is split four ways: the pinned figure never moves.",
+        },
+        {
+          key: "l-back",
+          description: "Almuerzo de la semana pasada",
+          date: "2026-08-01T12:00:00-05:00",
+          amount: 50000,
+          expect: {
+            you: 10000,
+            carla: 10000,
+            dani: 10000,
+            elena: 10000,
+            fabio: 10000,
+          },
+          note: "Written last and dated first: a payment covers THIS one before any of the ones above.",
+        },
+      ],
+    },
+  ],
+  settlements: [
+    {
+      key: "ana-pays",
+      with: "ana",
+      date: "2026-08-18T10:00:00-05:00",
+      collected: 40000,
+      note: "Covers the dinner, then the party, then part of the taxi: oldest line first.",
+    },
+    {
+      key: "guests-pay",
+      with: "e-party",
+      date: "2026-08-19T10:00:00-05:00",
+      collected: 50000,
+      outsideApp: true,
+      note: "Cash the app never saw: no movement, and what counts as yours falls all the same.",
+    },
+    {
+      key: "carla-pays",
+      with: "carla",
+      date: "2026-08-16T10:00:00-05:00",
+      collected: 22000,
+      note: "22.000 of the 35.000 she owes: the back-dated line first, then the older id of the two on the same instant, and 7.000 of the next.",
+    },
+    {
+      key: "elena-pays",
+      with: "elena",
+      date: "2026-08-18T10:00:00-05:00",
+      collected: 40000,
+      note: "5.000 more than she owed: every line of hers is settled and the rest stays on the counter.",
+    },
+    {
+      key: "dani-pays",
+      with: "dani",
+      date: "2026-08-21T10:00:00-05:00",
+      collected: 5000,
+      afterWriteOffs: true,
+      note: "Paid after you had already given up on him: the write-off keeps its 35.000 ceiling and gives up 30.000.",
+    },
+  ],
+  spending: [
+    {
+      name: "august-by-category",
+      groupBy: "category",
+      type: "EXPENSE",
+      from: "2026-08-01T00:00:00-05:00",
+      to: "2026-09-01T00:00:00-05:00",
+      note: "What is left as yours after everything that came back, never the amounts.",
+    },
+    {
+      name: "august-by-day",
+      groupBy: "day",
+      type: "EXPENSE",
+      from: "2026-08-01T00:00:00-05:00",
+      to: "2026-09-01T00:00:00-05:00",
+    },
+  ],
+  lists: [
+    {
+      name: "august-newest-first",
+      sort: "date",
+      order: "desc",
+      type: "EXPENSE",
+      from: "2026-08-01T00:00:00-05:00",
+      to: "2026-09-01T00:00:00-05:00",
+      limit: 10,
+      note: "The list is gross: a row's amount is what left the account. Asked by type, because the movements a settle-up writes carry ids the server mints and a fixture cannot name.",
+    },
+  ],
+  budgets: [
+    {
+      key: "august",
+      name: "Salidas de agosto",
+      categories: ["outings"],
+      amount: 400000,
+      periodType: "MONTHLY",
+      effectiveFrom: "2026-01-01T00:00:00-05:00",
+      note: "Its spend is what counts as yours, so every payment lowers it in the month it happened.",
+    },
+  ],
+};
+
+export const SCENARIOS: Scenario[] = [bogota, madrid, tokyo, newYork, shared];

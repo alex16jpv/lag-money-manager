@@ -1,0 +1,997 @@
+{
+  "id": "cop-shared",
+  "title": "COP · America/Bogota · the split, the imputation and what counts as yours",
+  "pins": [
+    "100.000 between three does not divide: the odd peso is whoever fronted it.",
+    "A block of twenty guests weighs twenty parts and is one party to collect from.",
+    "A payment covers the oldest line first, across the whole group.",
+    "Cash outside the app moves no account and lowers what counts as yours all the same.",
+    "A write-off gives up on what was open and moves no figure.",
+    "What Stats and the budgets measure is what is left as yours, never the amount.",
+    "The oldest line is the oldest by DATE: one written last but dated first is covered first.",
+    "Two lines on the same instant are covered in id order, so two devices agree.",
+    "A fixed share plus the rest divided: the pinned figure never moves.",
+    "More than they owed stays on the counter as surplus; nothing is over-collected.",
+    "A write-off keeps the ceiling it was decided against: what is paid later lowers what it gives up."
+  ],
+  "generatedBy": "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline",
+  "user": {
+    "id": "01930005-0000-7000-8000-00000000u005",
+    "timezone": "America/Bogota",
+    "currency": "COP",
+    "minorUnits": 0
+  },
+  "accounts": [
+    {
+      "key": "bank",
+      "id": "01930005-0000-7000-8000-0000000a0001",
+      "name": "Bancolombia",
+      "type": "ACCOUNT",
+      "currency": "COP",
+      "openingBalance": 2000000,
+      "isDefault": true,
+      "archivedAt": null
+    }
+  ],
+  "categories": [
+    {
+      "key": "outings",
+      "id": "01930005-0000-7000-8000-0000000c0001",
+      "name": "Salidas",
+      "type": "EXPENSE",
+      "archivedAt": null
+    }
+  ],
+  "transactions": [
+    {
+      "key": "dinner",
+      "id": "01930005-0000-7000-8000-0000000t0001",
+      "type": "EXPENSE",
+      "amount": 100000,
+      "date": "2026-08-10T20:00:00-05:00",
+      "dayKey": "2026-08-10",
+      "description": "Cena",
+      "categoryId": "01930005-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930005-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "Split three ways in a currency with no cents: 33.333 each and the odd peso to you.",
+      "countsAsYours": 66667
+    },
+    {
+      "key": "party",
+      "id": "01930005-0000-7000-8000-0000000t0002",
+      "type": "EXPENSE",
+      "amount": 100000,
+      "date": "2026-08-12T21:00:00-05:00",
+      "dayKey": "2026-08-12",
+      "description": "Fiesta",
+      "categoryId": "01930005-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930005-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "Three people and twenty guests: 23 parts, and the three left over are yours.",
+      "countsAsYours": 45653
+    },
+    {
+      "key": "taxi",
+      "id": "01930005-0000-7000-8000-0000000t0003",
+      "type": "EXPENSE",
+      "amount": 60000,
+      "date": "2026-08-14T23:00:00-05:00",
+      "dayKey": "2026-08-14",
+      "description": "Taxi",
+      "categoryId": "01930005-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930005-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "countsAsYours": 57680
+    },
+    {
+      "key": "lunch",
+      "id": "01930005-0000-7000-8000-0000000t0004",
+      "type": "EXPENSE",
+      "amount": 45000,
+      "date": "2026-08-16T13:00:00-05:00",
+      "dayKey": "2026-08-16",
+      "description": "Almuerzo",
+      "categoryId": "01930005-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930005-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "COP",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    }
+  ],
+  "budgets": [
+    {
+      "key": "august",
+      "id": "01930005-0000-7000-8000-0000000b0001",
+      "name": "Salidas de agosto",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930005-0000-7000-8000-0000000c0001"
+      ],
+      "amount": 400000,
+      "amountOverrides": {},
+      "currency": "COP",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2026-01-01T00:00:00-05:00",
+      "archivedAt": null,
+      "note": "Its spend is what counts as yours, so every payment lowers it in the month it happened."
+    }
+  ],
+  "contacts": [
+    {
+      "key": "ana",
+      "id": "01930005-0000-7000-8000-0000000k0001",
+      "name": "Ana",
+      "archivedAt": null
+    },
+    {
+      "key": "beto",
+      "id": "01930005-0000-7000-8000-0000000k0002",
+      "name": "Beto",
+      "archivedAt": null
+    },
+    {
+      "key": "carla",
+      "id": "01930005-0000-7000-8000-0000000k0003",
+      "name": "Carla",
+      "archivedAt": null
+    },
+    {
+      "key": "dani",
+      "id": "01930005-0000-7000-8000-0000000k0004",
+      "name": "Dani",
+      "archivedAt": null
+    },
+    {
+      "key": "elena",
+      "id": "01930005-0000-7000-8000-0000000k0005",
+      "name": "Elena",
+      "archivedAt": null
+    },
+    {
+      "key": "fabio",
+      "id": "01930005-0000-7000-8000-0000000k0006",
+      "name": "Fabio",
+      "archivedAt": null
+    }
+  ],
+  "sharedGroups": [
+    {
+      "key": "trip",
+      "id": "01930005-0000-7000-8000-0000000g0001",
+      "name": "Cartagena",
+      "participantContactIds": [
+        "01930005-0000-7000-8000-0000000k0001",
+        "01930005-0000-7000-8000-0000000k0002"
+      ],
+      "defaultSplit": {
+        "mode": "EQUAL",
+        "shares": []
+      },
+      "writeOffs": [
+        {
+          "contactId": "01930005-0000-7000-8000-0000000k0002",
+          "expenseId": null,
+          "amount": 59680
+        }
+      ],
+      "archivedAt": null,
+      "note": "Beto is written off after every payment below, which is the order they are written in."
+    },
+    {
+      "key": "lunches",
+      "id": "01930005-0000-7000-8000-0000000g0002",
+      "name": "Almuerzos de oficina",
+      "participantContactIds": [
+        "01930005-0000-7000-8000-0000000k0003",
+        "01930005-0000-7000-8000-0000000k0004",
+        "01930005-0000-7000-8000-0000000k0005",
+        "01930005-0000-7000-8000-0000000k0006"
+      ],
+      "defaultSplit": {
+        "mode": "EQUAL",
+        "shares": []
+      },
+      "writeOffs": [
+        {
+          "contactId": "01930005-0000-7000-8000-0000000k0004",
+          "expenseId": null,
+          "amount": 35000
+        }
+      ],
+      "archivedAt": null,
+      "note": "No movement of yours is linked here on purpose: this group is about the order a payment is imputed in, the rest of a fixed share, and what a write-off gives up on."
+    }
+  ],
+  "sharedExpenses": [
+    {
+      "key": "e-dinner",
+      "id": "01930005-0000-7000-8000-0000000s0001",
+      "groupId": "01930005-0000-7000-8000-0000000g0001",
+      "transactionId": "01930005-0000-7000-8000-0000000t0001",
+      "description": "Cena",
+      "date": "2026-08-10T20:00:00-05:00",
+      "amount": 100000,
+      "paidByContactId": null,
+      "customSplit": false,
+      "split": {
+        "mode": "EQUAL",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 33334,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0001",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 33333,
+            "collected": 33333
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0002",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 33333,
+            "collected": 0
+          }
+        ]
+      },
+      "deletedAt": null
+    },
+    {
+      "key": "e-party",
+      "id": "01930005-0000-7000-8000-0000000s0002",
+      "groupId": "01930005-0000-7000-8000-0000000g0001",
+      "transactionId": "01930005-0000-7000-8000-0000000t0002",
+      "description": "Fiesta",
+      "date": "2026-08-12T21:00:00-05:00",
+      "amount": 100000,
+      "paidByContactId": null,
+      "customSplit": true,
+      "split": {
+        "mode": "EQUAL",
+        "guests": {
+          "count": 20,
+          "name": "La oficina"
+        },
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 4350,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0001",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 4347,
+            "collected": 4347
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0002",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 4347,
+            "collected": 0
+          },
+          {
+            "party": "GUESTS",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 86956,
+            "collected": 50000
+          }
+        ]
+      },
+      "deletedAt": null
+    },
+    {
+      "key": "e-taxi",
+      "id": "01930005-0000-7000-8000-0000000s0003",
+      "groupId": "01930005-0000-7000-8000-0000000g0001",
+      "transactionId": "01930005-0000-7000-8000-0000000t0003",
+      "description": "Taxi",
+      "date": "2026-08-14T23:00:00-05:00",
+      "amount": 60000,
+      "paidByContactId": null,
+      "customSplit": true,
+      "split": {
+        "mode": "PERCENT",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": 50,
+            "fixedAmount": null,
+            "amount": 30000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0001",
+            "percent": 30,
+            "fixedAmount": null,
+            "amount": 18000,
+            "collected": 2320
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0002",
+            "percent": 20,
+            "fixedAmount": null,
+            "amount": 12000,
+            "collected": 0
+          }
+        ]
+      },
+      "deletedAt": null
+    },
+    {
+      "key": "e-lunch",
+      "id": "01930005-0000-7000-8000-0000000s0004",
+      "groupId": "01930005-0000-7000-8000-0000000g0001",
+      "transactionId": "01930005-0000-7000-8000-0000000t0004",
+      "description": "Almuerzo",
+      "date": "2026-08-16T13:00:00-05:00",
+      "amount": 45000,
+      "paidByContactId": null,
+      "customSplit": true,
+      "split": {
+        "mode": "EXACT",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": 25000,
+            "amount": 25000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0001",
+            "percent": null,
+            "fixedAmount": 10000,
+            "amount": 10000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0002",
+            "percent": null,
+            "fixedAmount": 10000,
+            "amount": 10000,
+            "collected": 0
+          }
+        ]
+      },
+      "deletedAt": null
+    },
+    {
+      "key": "e-tickets",
+      "id": "01930005-0000-7000-8000-0000000s0005",
+      "groupId": "01930005-0000-7000-8000-0000000g0001",
+      "transactionId": null,
+      "description": "Tickets",
+      "date": "2026-08-11T18:00:00-05:00",
+      "amount": 90000,
+      "paidByContactId": "01930005-0000-7000-8000-0000000k0001",
+      "customSplit": false,
+      "split": {
+        "mode": "EQUAL",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 30000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0001",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 30000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0002",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 30000,
+            "collected": 0
+          }
+        ]
+      },
+      "deletedAt": null,
+      "note": "Ana fronted this one, so no movement of yours exists for it and you owe her a third."
+    },
+    {
+      "key": "l-tie-a",
+      "id": "01930005-0000-7000-8000-0000000s0006",
+      "groupId": "01930005-0000-7000-8000-0000000g0002",
+      "transactionId": null,
+      "description": "Empanadas",
+      "date": "2026-08-06T12:00:00-05:00",
+      "amount": 25000,
+      "paidByContactId": null,
+      "customSplit": false,
+      "split": {
+        "mode": "EQUAL",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 5000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0003",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 5000,
+            "collected": 5000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0004",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 5000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0005",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 5000,
+            "collected": 5000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0006",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 5000,
+            "collected": 0
+          }
+        ]
+      },
+      "deletedAt": null,
+      "note": "Same instant as l-tie-b and a lower id, so a payment reaches it first. Written in that order too, so the file alone does not tell the tiebreak from the order of writing: what does is the unit test that hands the two lines over reversed."
+    },
+    {
+      "key": "l-tie-b",
+      "id": "01930005-0000-7000-8000-0000000s0007",
+      "groupId": "01930005-0000-7000-8000-0000000g0002",
+      "transactionId": null,
+      "description": "Bandejas",
+      "date": "2026-08-06T12:00:00-05:00",
+      "amount": 50000,
+      "paidByContactId": null,
+      "customSplit": false,
+      "split": {
+        "mode": "EQUAL",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0003",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 7000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0004",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0005",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 10000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0006",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          }
+        ]
+      },
+      "deletedAt": null
+    },
+    {
+      "key": "l-fixed",
+      "id": "01930005-0000-7000-8000-0000000s0008",
+      "groupId": "01930005-0000-7000-8000-0000000g0002",
+      "transactionId": null,
+      "description": "Domicilio",
+      "date": "2026-08-07T12:00:00-05:00",
+      "amount": 60000,
+      "paidByContactId": null,
+      "customSplit": true,
+      "split": {
+        "mode": "FIXED_REST",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": 20000,
+            "amount": 20000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0003",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0004",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0005",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 10000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0006",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          }
+        ]
+      },
+      "deletedAt": null,
+      "note": "You take a fixed 20.000 and the other 40.000 is split four ways: the pinned figure never moves."
+    },
+    {
+      "key": "l-back",
+      "id": "01930005-0000-7000-8000-0000000s0009",
+      "groupId": "01930005-0000-7000-8000-0000000g0002",
+      "transactionId": null,
+      "description": "Almuerzo de la semana pasada",
+      "date": "2026-08-01T12:00:00-05:00",
+      "amount": 50000,
+      "paidByContactId": null,
+      "customSplit": false,
+      "split": {
+        "mode": "EQUAL",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0003",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 10000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0004",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 5000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0005",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 10000
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0006",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          }
+        ]
+      },
+      "deletedAt": null,
+      "note": "Written last and dated first: a payment covers THIS one before any of the ones above."
+    }
+  ],
+  "settlements": [
+    {
+      "key": "ana-pays",
+      "id": "01930005-0000-7000-8000-0000000p0001",
+      "counterparty": {
+        "kind": "CONTACT",
+        "contactId": "01930005-0000-7000-8000-0000000k0001",
+        "expenseId": null
+      },
+      "date": "2026-08-18T10:00:00-05:00",
+      "collected": 40000,
+      "paid": 0,
+      "outsideApp": false,
+      "afterWriteOffs": false,
+      "deletedAt": null,
+      "note": "Covers the dinner, then the party, then part of the taxi: oldest line first."
+    },
+    {
+      "key": "guests-pay",
+      "id": "01930005-0000-7000-8000-0000000p0002",
+      "counterparty": {
+        "kind": "GUESTS",
+        "contactId": null,
+        "expenseId": "01930005-0000-7000-8000-0000000s0002"
+      },
+      "date": "2026-08-19T10:00:00-05:00",
+      "collected": 50000,
+      "paid": 0,
+      "outsideApp": true,
+      "afterWriteOffs": false,
+      "deletedAt": null,
+      "note": "Cash the app never saw: no movement, and what counts as yours falls all the same."
+    },
+    {
+      "key": "carla-pays",
+      "id": "01930005-0000-7000-8000-0000000p0003",
+      "counterparty": {
+        "kind": "CONTACT",
+        "contactId": "01930005-0000-7000-8000-0000000k0003",
+        "expenseId": null
+      },
+      "date": "2026-08-16T10:00:00-05:00",
+      "collected": 22000,
+      "paid": 0,
+      "outsideApp": false,
+      "afterWriteOffs": false,
+      "deletedAt": null,
+      "note": "22.000 of the 35.000 she owes: the back-dated line first, then the older id of the two on the same instant, and 7.000 of the next."
+    },
+    {
+      "key": "elena-pays",
+      "id": "01930005-0000-7000-8000-0000000p0004",
+      "counterparty": {
+        "kind": "CONTACT",
+        "contactId": "01930005-0000-7000-8000-0000000k0005",
+        "expenseId": null
+      },
+      "date": "2026-08-18T10:00:00-05:00",
+      "collected": 40000,
+      "paid": 0,
+      "outsideApp": false,
+      "afterWriteOffs": false,
+      "deletedAt": null,
+      "note": "5.000 more than she owed: every line of hers is settled and the rest stays on the counter."
+    },
+    {
+      "key": "dani-pays",
+      "id": "01930005-0000-7000-8000-0000000p0005",
+      "counterparty": {
+        "kind": "CONTACT",
+        "contactId": "01930005-0000-7000-8000-0000000k0004",
+        "expenseId": null
+      },
+      "date": "2026-08-21T10:00:00-05:00",
+      "collected": 5000,
+      "paid": 0,
+      "outsideApp": false,
+      "afterWriteOffs": true,
+      "deletedAt": null,
+      "note": "Paid after you had already given up on him: the write-off keeps its 35.000 ceiling and gives up 30.000."
+    }
+  ],
+  "expected": {
+    "balances": [
+      {
+        "key": "bank",
+        "accountId": "01930005-0000-7000-8000-0000000a0001",
+        "balance": 1802000
+      }
+    ],
+    "pending": {
+      "count": 0,
+      "total": 0,
+      "transactionIds": []
+    },
+    "spending": [
+      {
+        "name": "august-by-category",
+        "query": {
+          "groupBy": "category",
+          "splitBy": null,
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota"
+        },
+        "total": 215000,
+        "buckets": [
+          {
+            "key": "01930005-0000-7000-8000-0000000c0001",
+            "total": 215000,
+            "count": 4,
+            "avg": 53750
+          }
+        ],
+        "note": "What is left as yours after everything that came back, never the amounts."
+      },
+      {
+        "name": "august-by-day",
+        "query": {
+          "groupBy": "day",
+          "splitBy": null,
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota"
+        },
+        "total": 215000,
+        "buckets": [
+          {
+            "key": "2026-08-10",
+            "total": 66667,
+            "count": 1,
+            "avg": 66667
+          },
+          {
+            "key": "2026-08-12",
+            "total": 45653,
+            "count": 1,
+            "avg": 45653
+          },
+          {
+            "key": "2026-08-14",
+            "total": 57680,
+            "count": 1,
+            "avg": 57680
+          },
+          {
+            "key": "2026-08-16",
+            "total": 45000,
+            "count": 1,
+            "avg": 45000
+          }
+        ]
+      }
+    ],
+    "lists": [
+      {
+        "name": "august-newest-first",
+        "query": {
+          "sort": "date",
+          "order": "desc",
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2026-08-01T00:00:00-05:00",
+          "to": "2026-09-01T00:00:00-05:00",
+          "timezone": "America/Bogota",
+          "limit": 10
+        },
+        "transactionIds": [
+          "01930005-0000-7000-8000-0000000t0004",
+          "01930005-0000-7000-8000-0000000t0003",
+          "01930005-0000-7000-8000-0000000t0002",
+          "01930005-0000-7000-8000-0000000t0001"
+        ],
+        "note": "The list is gross: a row's amount is what left the account. Asked by type, because the movements a settle-up writes carry ids the server mints and a fixture cannot name."
+      }
+    ],
+    "countsAsYours": [
+      {
+        "key": "dinner",
+        "transactionId": "01930005-0000-7000-8000-0000000t0001",
+        "amount": 66667
+      },
+      {
+        "key": "party",
+        "transactionId": "01930005-0000-7000-8000-0000000t0002",
+        "amount": 45653
+      },
+      {
+        "key": "taxi",
+        "transactionId": "01930005-0000-7000-8000-0000000t0003",
+        "amount": 57680
+      },
+      {
+        "key": "lunch",
+        "transactionId": "01930005-0000-7000-8000-0000000t0004",
+        "amount": 45000
+      }
+    ],
+    "shared": [
+      {
+        "key": "trip",
+        "id": "01930005-0000-7000-8000-0000000g0001",
+        "amount": 395000,
+        "yourShare": 122684,
+        "owedToYou": 62636,
+        "youOwe": 30000,
+        "collected": 90000,
+        "writtenOff": 59680,
+        "status": "OPEN",
+        "people": [
+          {
+            "key": "contact:01930005-0000-7000-8000-0000000k0001",
+            "contactId": "01930005-0000-7000-8000-0000000k0001",
+            "expenseId": null,
+            "owesYou": 25680,
+            "youOwe": 30000,
+            "surplus": 0,
+            "state": "PARTIALLY_PAID"
+          },
+          {
+            "key": "contact:01930005-0000-7000-8000-0000000k0002",
+            "contactId": "01930005-0000-7000-8000-0000000k0002",
+            "expenseId": null,
+            "owesYou": 0,
+            "youOwe": 0,
+            "surplus": 0,
+            "state": "WRITTEN_OFF"
+          },
+          {
+            "key": "guests:01930005-0000-7000-8000-0000000s0002",
+            "contactId": null,
+            "expenseId": "01930005-0000-7000-8000-0000000s0002",
+            "owesYou": 36956,
+            "youOwe": 0,
+            "surplus": 0,
+            "state": "PARTIALLY_PAID"
+          }
+        ]
+      },
+      {
+        "key": "lunches",
+        "id": "01930005-0000-7000-8000-0000000g0002",
+        "amount": 185000,
+        "yourShare": 45000,
+        "owedToYou": 48000,
+        "youOwe": 0,
+        "collected": 62000,
+        "writtenOff": 30000,
+        "status": "OPEN",
+        "people": [
+          {
+            "key": "contact:01930005-0000-7000-8000-0000000k0003",
+            "contactId": "01930005-0000-7000-8000-0000000k0003",
+            "expenseId": null,
+            "owesYou": 13000,
+            "youOwe": 0,
+            "surplus": 0,
+            "state": "PARTIALLY_PAID"
+          },
+          {
+            "key": "contact:01930005-0000-7000-8000-0000000k0004",
+            "contactId": "01930005-0000-7000-8000-0000000k0004",
+            "expenseId": null,
+            "owesYou": 0,
+            "youOwe": 0,
+            "surplus": 0,
+            "state": "WRITTEN_OFF"
+          },
+          {
+            "key": "contact:01930005-0000-7000-8000-0000000k0005",
+            "contactId": "01930005-0000-7000-8000-0000000k0005",
+            "expenseId": null,
+            "owesYou": 0,
+            "youOwe": 0,
+            "surplus": 5000,
+            "state": "PAID"
+          },
+          {
+            "key": "contact:01930005-0000-7000-8000-0000000k0006",
+            "contactId": "01930005-0000-7000-8000-0000000k0006",
+            "expenseId": null,
+            "owesYou": 35000,
+            "youOwe": 0,
+            "surplus": 0,
+            "state": "NOT_PAID"
+          }
+        ]
+      }
+    ],
+    "budgets": {
+      "reference": "2026-08-20T12:00:00-05:00",
+      "views": [
+        {
+          "key": "august",
+          "id": "01930005-0000-7000-8000-0000000b0001",
+          "periodKey": "2026-08",
+          "periodFrom": "2026-08-01T05:00:00.000Z",
+          "periodTo": "2026-09-01T05:00:00.000Z",
+          "baseAmount": 400000,
+          "amount": 400000,
+          "hasOverride": false,
+          "spent": 215000,
+          "expired": false,
+          "archivedCategoryIds": []
+        }
+      ]
+    }
+  }
+}

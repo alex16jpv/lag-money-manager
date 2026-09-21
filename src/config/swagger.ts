@@ -11,8 +11,17 @@ import {
   DEBT_ACCOUNT_FIELD_NAMES,
   DEBT_ACCOUNT_FIELDS,
   DebtAccountField,
+  GROUP_SPLIT_MODES,
+  GROUP_STATUSES,
+  MAX_CONTACTS_PER_USER,
+  MAX_EXPENSE_GUESTS,
+  MAX_GROUP_PARTICIPANTS,
+  SETTLEMENT_PARTIES,
+  SHARE_PARTIES,
+  SHARED_HISTORY_REASONS,
   SPENDING_GROUP_BY,
   SPENDING_SPLIT_BY,
+  SPLIT_MODES,
   TRANSACTION_SOURCES,
   TRANSACTION_TYPES,
 } from "../shared/constants";
@@ -51,6 +60,15 @@ const requestBodies = {
   CreateAccountInput: bodyOf(v.createAccountSchema),
   UpdateAccountInput: bodyOf(v.updateAccountSchema),
   CreateCategoryInput: bodyOf(v.createCategorySchema),
+  CreateContactInput: bodyOf(v.createContactSchema),
+  UpdateContactInput: bodyOf(v.updateContactSchema),
+  CreateSharedGroupInput: bodyOf(v.createSharedGroupSchema),
+  UpdateSharedGroupInput: bodyOf(v.updateSharedGroupSchema),
+  AddParticipantsInput: bodyOf(v.addParticipantsSchema),
+  CreateSharedExpenseInput: bodyOf(v.createSharedExpenseSchema),
+  CreateSettlementInput: bodyOf(v.createSettlementSchema),
+  WriteOffInput: bodyOf(v.writeOffSchema),
+  UpdateSharedExpenseInput: bodyOf(v.updateSharedExpenseSchema),
   UpdateCategoryInput: bodyOf(v.updateCategorySchema),
   CreateTransactionInput: bodyOf(v.createTransactionSchema),
   UpdateTransactionInput: bodyOf(v.updateTransactionSchema),
@@ -94,6 +112,14 @@ const withRequired = <T extends { properties: Record<string, unknown> }>(
   ...view,
   required: Object.keys(view.properties).filter((k) => !optional.includes(k)),
 });
+
+const without = (
+  properties: Record<string, unknown>,
+  drop: readonly string[],
+): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(properties).filter(([key]) => !drop.includes(key)),
+  );
 
 const responseViews = {
   ErrorResponse: {
@@ -242,6 +268,335 @@ const responseViews = {
     },
     ["seedKey"],
   ),
+  Contact: withRequired(
+    {
+      type: "object",
+      description:
+        "A person you split expenses with. Not an account: no balance, no type, no limit, and never part of what you have or what you owe.",
+      properties: {
+        id: uuid,
+        name: { type: "string" },
+        color: { ...enumOf(COLORS), nullable: true },
+        email: {
+          type: "string",
+          format: "email",
+          description:
+            "Identifier for inviting them later; nothing is sent from this API, and two contacts may carry the same address.",
+        },
+        linkedUserId: {
+          ...uuid,
+          nullable: true,
+          description:
+            "The user this contact turned out to be, once an invitation is accepted. Always null today.",
+        },
+        userId: uuid,
+        archivedAt: nullableDateTime,
+        createdAt: dateTime,
+        updatedAt: dateTime,
+      },
+    },
+    ["email", "color"],
+  ),
+  SharedGroupParticipant: withRequired({
+    type: "object",
+    properties: {
+      contactId: {
+        ...uuid,
+        nullable: true,
+        description:
+          "null is you: the owner is a row of the group like anybody else.",
+      },
+      addedAt: dateTime,
+    },
+  }),
+  DefaultSplit: withRequired({
+    type: "object",
+    description:
+      "The split a new expense inherits, not a rule. EQUAL or PERCENT only: a default has no total to divide. Changing it is never retroactive.",
+    properties: {
+      mode: enumOf(GROUP_SPLIT_MODES),
+      shares: {
+        type: "array",
+        description:
+          "PERCENT only, one entry per participant adding up to 100; empty under EQUAL.",
+        items: withRequired({
+          type: "object",
+          properties: {
+            contactId: { ...uuid, nullable: true },
+            percent: { type: "number" },
+          },
+        }),
+      },
+    },
+  }),
+  SharedShare: withRequired({
+    type: "object",
+    description:
+      "One party of a split. GUESTS is the block whose head count sits in `guests`; it weighs that many parts and is one party to collect from.",
+    properties: {
+      party: enumOf(SHARE_PARTIES),
+      contactId: { ...uuid, nullable: true },
+      percent: {
+        type: "number",
+        nullable: true,
+        description: "PERCENT only.",
+      },
+      fixedAmount: {
+        ...money,
+        nullable: true,
+        description: "EXACT always; FIXED_REST only on a pinned share.",
+      },
+      amount: {
+        ...money,
+        description:
+          "What the split resolved to. The shares always add up to the expense: the odd minor unit goes to whoever paid.",
+      },
+      collected: {
+        ...money,
+        description:
+          "How much of this share has been settled. Never typed: it is the imputation of the live payments, rewritten by every write that touches a split or a payment.",
+      },
+    },
+  }),
+  SharedSplit: withRequired({
+    type: "object",
+    properties: {
+      mode: enumOf(SPLIT_MODES),
+      guests: {
+        type: "object",
+        nullable: true,
+        description:
+          "Guests belong to this expense alone: they are not contacts, they are not in the group, and they go when the expense goes.",
+        properties: {
+          count: { type: "integer" },
+          name: { type: "string", nullable: true },
+        },
+        required: ["count", "name"],
+      },
+      shares: {
+        type: "array",
+        items: { $ref: "#/components/schemas/SharedShare" },
+      },
+    },
+  }),
+  SharedGroupTotals: withRequired({
+    type: "object",
+    description:
+      "Derived from the group's live expenses on every read, never stored. A group has no period: the range is its expenses'.",
+    properties: {
+      amount: money,
+      yourShare: money,
+      owedToYou: {
+        ...money,
+        description:
+          "What people still owe you for the lines you fronted, written-off amounts aside.",
+      },
+      writtenOff: {
+        ...money,
+        description:
+          "What you have given up on here. It stopped being owed and was always counted as yours.",
+      },
+      youOwe: {
+        ...money,
+        description:
+          "Your share of the lines somebody else fronted, still unpaid.",
+      },
+      collected: {
+        ...money,
+        description: "What has already come back to you here.",
+      },
+      expenseCount: { type: "integer" },
+      dateFrom: nullableDateTime,
+      dateTo: nullableDateTime,
+    },
+  }),
+  SharedGroup: withRequired(
+    {
+      type: "object",
+      description:
+        "An outing, a dinner or a two-month trip. It has no month of its own.",
+      properties: {
+        id: uuid,
+        name: { type: "string" },
+        color: { ...enumOf(COLORS), nullable: true },
+        participants: {
+          type: "array",
+          items: { $ref: "#/components/schemas/SharedGroupParticipant" },
+        },
+        defaultSplit: { $ref: "#/components/schemas/DefaultSplit" },
+        writeOffs: {
+          type: "array",
+          description:
+            "Who you have given up on here, and when. It moves no figure: that money was counted as yours the day it left.",
+          items: withRequired({
+            type: "object",
+            properties: {
+              kind: enumOf(SETTLEMENT_PARTIES),
+              contactId: { ...uuid, nullable: true },
+              expenseId: {
+                ...uuid,
+                nullable: true,
+                description: "GUESTS only: the expense the block lives in.",
+              },
+              amount: {
+                ...money,
+                description:
+                  "What was open when it was decided: the ceiling of what is given up, never a figure that moves.",
+              },
+              at: dateTime,
+            },
+          }),
+        },
+        userId: uuid,
+        currency: { type: "string", example: "COP" },
+        totals: { $ref: "#/components/schemas/SharedGroupTotals" },
+        status: {
+          ...enumOf(GROUP_STATUSES),
+          description:
+            "Derived: SETTLED once nobody owes anything here, by paying or by being written off.",
+        },
+        archivedAt: nullableDateTime,
+        createdAt: dateTime,
+        updatedAt: dateTime,
+      },
+    },
+    ["color"],
+  ),
+  SharedExpense: withRequired({
+    type: "object",
+    properties: {
+      id: uuid,
+      groupId: uuid,
+      description: { type: "string", nullable: true },
+      date: dateTime,
+      amount: { ...money, description: "What the expense cost, in full." },
+      paidByContactId: {
+        ...uuid,
+        nullable: true,
+        description:
+          "Who fronted the money; null is you. Somebody else's line is not your expense until you settle with them.",
+      },
+      split: { $ref: "#/components/schemas/SharedSplit" },
+      customSplit: {
+        type: "boolean",
+        description:
+          "True once a split is saved on this expense; cleared by going back to the group's default.",
+      },
+      userId: uuid,
+      currency: { type: "string", example: "COP" },
+      deletedAt: nullableDateTime,
+      createdAt: dateTime,
+      updatedAt: dateTime,
+    },
+  }),
+  AddParticipantsPreview: withRequired({
+    type: "object",
+    description:
+      "What adding people would do, worked out and thrown away. What each person has already paid, who ends up ahead of what they owe and what a written-off amount becomes are not here yet: none of it exists on the server until payments and write-offs do.",
+    properties: {
+      participants: {
+        type: "array",
+        items: withRequired({
+          type: "object",
+          properties: {
+            contactId: { ...uuid, nullable: true },
+            shareBefore: money,
+            shareAfter: money,
+          },
+        }),
+      },
+      expenses: withRequired({
+        type: "object",
+        properties: {
+          total: { type: "integer" },
+          resplit: { type: "integer" },
+          untouched: {
+            type: "integer",
+            description:
+              "Expenses carrying their own PERCENT or EXACT split: a figure for somebody who was not there would be invented, so they are left alone.",
+          },
+        },
+      }),
+    },
+  }),
+  AddParticipantsResult: withRequired({
+    type: "object",
+    properties: {
+      group: { $ref: "#/components/schemas/SharedGroup" },
+      applied: { $ref: "#/components/schemas/AddParticipantsPreview" },
+    },
+  }),
+  Settlement: withRequired({
+    type: "object",
+    description:
+      "Money that changed hands with one person, or with the block of guests " +
+      "of one expense. It carries no account and no category: those are " +
+      "yours, and what everybody in a group can see is that it was paid.",
+    properties: {
+      id: uuid,
+      userId: uuid,
+      counterparty: withRequired({
+        type: "object",
+        properties: {
+          kind: enumOf(SETTLEMENT_PARTIES),
+          contactId: { ...uuid, nullable: true },
+          expenseId: {
+            ...uuid,
+            nullable: true,
+            description: "GUESTS only: the expense the block lives in.",
+          },
+        },
+      }),
+      date: dateTime,
+      collected: { ...money, description: "What came back to you." },
+      paid: { ...money, description: "What you handed over." },
+      outsideApp: {
+        type: "boolean",
+        description:
+          "Cash the app never saw: no movement was written and no balance moved.",
+      },
+      currency: { type: "string", example: "COP" },
+      deletedAt: {
+        ...nullableDateTime,
+        description:
+          "Set when the payment was undone. A read never answers one, but the " +
+          "change feed does: it is how a device learns the payment is gone.",
+      },
+      createdAt: dateTime,
+      updatedAt: dateTime,
+    },
+  }),
+  SettlementCoverage: withRequired({
+    type: "object",
+    properties: {
+      expenseId: uuid,
+      description: { type: "string", nullable: true },
+      date: dateTime,
+      amount: money,
+      direction: {
+        type: "string",
+        enum: ["COLLECTED", "PAID"],
+        description:
+          "COLLECTED came off what that line still counts as yours; PAID is a line of theirs you covered.",
+      },
+    },
+  }),
+  SettlementResult: withRequired({
+    type: "object",
+    properties: {
+      settlement: { $ref: "#/components/schemas/Settlement" },
+      covered: {
+        type: "array",
+        items: { $ref: "#/components/schemas/SettlementCoverage" },
+        description: "Oldest line first, which is the order it was imputed in.",
+      },
+      refunded: {
+        ...money,
+        description:
+          "What you handed over that covered no line: their money going back to them.",
+      },
+    },
+  }),
   Transaction: withRequired({
     type: "object",
     properties: {
@@ -272,8 +627,54 @@ const responseViews = {
         description: "Server-derived; quick-add stamps QUICK.",
       },
       currency: { type: "string", example: "COP" },
+      countsAsYours: {
+        ...money,
+        description:
+          "What the movement counts as yours: what left the account minus " +
+          "what has come back. **This is the figure Stats and the budgets " +
+          "measure**, and it is the amount itself unless the movement is an " +
+          "expense of a shared group. The list, its day totals and " +
+          "`summary.totalAmount` stay gross: they are what moved through the " +
+          "accounts.",
+      },
+      sharedExpenseId: {
+        ...uuid,
+        nullable: true,
+        description:
+          "The expense of a shared group this movement is, or null. The link " +
+          "lives here and not on the expense: a shared group is seen by " +
+          "everybody in it, and which movement of yours it is nobody else's.",
+      },
+      sharedGroupId: { ...uuid, nullable: true },
+      sharedSettlementId: {
+        ...uuid,
+        nullable: true,
+        description:
+          "The settle-up that recorded this movement, or null. Its money belongs to that " +
+          "payment: editing the amount, the date, the type or the accounts is 400 " +
+          "SETTLEMENT_MOVEMENT_LOCKED, and so is deleting it — undo the payment instead.",
+      },
+      sharedHistory: {
+        type: "array",
+        items: { $ref: "#/components/schemas/SharedHistoryEntry" },
+        description:
+          "Why `countsAsYours` is what it is, oldest first. Empty on a " +
+          "movement that was never split.",
+      },
       createdAt: dateTime,
       updatedAt: dateTime,
+    },
+  }),
+  SharedHistoryEntry: withRequired({
+    type: "object",
+    description:
+      "One thing that happened to what counts as yours. Splitting an expense " +
+      "and editing its split move no money — it left the account when it was " +
+      "spent — so those entries repeat the figure rather than change it.",
+    properties: {
+      at: dateTime,
+      reason: enumOf(SHARED_HISTORY_REASONS),
+      countsAsYours: { ...money, description: "The figure it left behind." },
     },
   }),
   Budget: withRequired({
@@ -415,6 +816,20 @@ const syncViews = {
       },
     },
   }),
+  SyncSharedGroup: withRequired(
+    {
+      type: "object",
+      description:
+        "A group as STORED, not the view GET /shared-groups returns: no " +
+        "totals and no status. Both are worked out from the group's expenses " +
+        "on every read, and the client already holds the expenses.",
+      properties: without(responseViews.SharedGroup.properties, [
+        "totals",
+        "status",
+      ]),
+    },
+    ["color"],
+  ),
   SyncBudget: withRequired({
     type: "object",
     description:
@@ -502,6 +917,24 @@ const syncChangesResponse = withRequired({
         budgets: {
           type: "array",
           items: { $ref: "#/components/schemas/SyncBudget" },
+        },
+        contacts: {
+          type: "array",
+          items: { $ref: "#/components/schemas/Contact" },
+        },
+        sharedGroups: {
+          type: "array",
+          items: { $ref: "#/components/schemas/SyncSharedGroup" },
+        },
+        sharedExpenses: {
+          type: "array",
+          // The expense's own view already carries its tombstone, so there is nothing to add.
+          items: { $ref: "#/components/schemas/SharedExpense" },
+        },
+        settlements: {
+          type: "array",
+          // The payment's own view already carries its tombstone, like the expense's.
+          items: { $ref: "#/components/schemas/Settlement" },
         },
       },
     }),
@@ -632,6 +1065,37 @@ const zeroDecimalCurrency = {
     "The currencies this API stores with no minor unit. An amount carrying decimals in one of them is rejected with 400 AMOUNT_PRECISION wherever one is written: a transaction, an account balance, a credit limit or a borrowed amount, a budget amount and a budget period override, through the /sync batch as well as through these routes. It is judged on the amount a request carries, never on one already stored, so a row written before a currency joined this list stays editable in everything but its amount. Read this list instead of copying it; a client that keeps its own can refuse what the server takes, or offer what the server refuses. The ISO three-decimal currencies are absent on purpose: storage is integer cents, so they are capped at two.",
 };
 
+const sharedLimits = {
+  type: "object",
+  description:
+    "The explicit ceilings of the shared-expenses section. Read them instead of copying the numbers: the sheet that adds a contact is meant to name the limit before a save can fail on it, and a client that keeps its own copy will eventually say a different one from the server.",
+  properties: {
+    maxContactsPerUser: {
+      type: "integer",
+      enum: [MAX_CONTACTS_PER_USER],
+      description:
+        "Active contacts one user may have. Creating or restoring past it is 400 CONTACT_LIMIT_REACHED.",
+    },
+    maxParticipantsPerGroup: {
+      type: "integer",
+      enum: [MAX_GROUP_PARTICIPANTS],
+      description:
+        "People in one shared group, the owner included. Adding past it is 400 PARTICIPANT_LIMIT_REACHED.",
+    },
+    maxGuestsPerExpense: {
+      type: "integer",
+      enum: [MAX_EXPENSE_GUESTS],
+      description:
+        "Heads one guest block may carry. A sanity bound on an integer field, not a product rule: the block is one row whatever it counts.",
+    },
+  },
+  required: [
+    "maxContactsPerUser",
+    "maxParticipantsPerGroup",
+    "maxGuestsPerExpense",
+  ],
+};
+
 const conflictOf = (view: string): Record<string, unknown> => ({
   allOf: [
     { $ref: "#/components/schemas/ErrorResponse" },
@@ -683,11 +1147,15 @@ const options: swaggerJsdoc.Options = {
         ...syncViews,
         IncomeRefusedAccountType: incomeRefusedAccountType,
         ZeroDecimalCurrency: zeroDecimalCurrency,
+        SharedLimits: sharedLimits,
         SyncChangesResponse: syncChangesResponse,
         SyncOpResult: syncOpResult,
         SyncBatchResponse: syncBatchResponse,
         AccountList: listOf("Account"),
         CategoryList: listOf("Category"),
+        ContactList: listOf("Contact"),
+        SharedGroupList: listOf("SharedGroup"),
+        SharedExpenseList: listOf("SharedExpense"),
         TransactionList: {
           ...(listOf("Transaction") as Record<string, unknown>),
           properties: {
@@ -713,6 +1181,10 @@ const options: swaggerJsdoc.Options = {
         }),
         AccountConflict: conflictOf("Account"),
         CategoryConflict: conflictOf("Category"),
+        ContactConflict: conflictOf("Contact"),
+        SharedGroupConflict: conflictOf("SharedGroup"),
+        SharedExpenseConflict: conflictOf("SharedExpense"),
+        SettlementList: listOf("Settlement"),
         TransactionConflict: conflictOf("Transaction"),
         BudgetConflict: conflictOf("Budget"),
       },

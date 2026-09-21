@@ -38,6 +38,8 @@ Cada archivo define arriba: `@baseUrl`, `@email`, `@password` y `@apiSecret`.
 | `auth.http` | Registro (devuelve tokens, reactivación), login, refresh con rotación real y la reemisión del sucesor intacto, logout/logout-all, sesiones activas |
 | `users.http` | Perfil (currency, lastLoginAt), timezone, currency con bloqueo, credenciales con `currentPassword` |
 | `accounts.http` | Cuentas (currency estampada), default (bloqueo al archivarla), archivar/restaurar idempotentes, lectura de archivadas, `INVALID_CURSOR` |
+| `contacts.http` | Contactos: unicidad case-insensitive, email como identificador (normalizado), `linkedUserId` descartado si lo manda el cliente, archivar/restaurar idempotentes, `If-Match`, `INVALID_CURSOR` |
+| `shared-groups.http` | Grupos compartidos: reparto heredado y propio (los cuatro modos), invitados como un bloque, el sobrante para quien pagó, añadir gente con simulación previa, rango y totales derivados, `PARTICIPANT_*`, `SPLIT_INVALID` |
 | `categories.http` | Categorías, seedKey/restore-defaults, type bloqueado con historial, unicidad case-insensitive, archivar idempotente, `INVALID_CURSOR` |
 | `transactions.http` | Transacciones, ADJUSTMENT, quick-add con idempotencia, hash de payload (422), filtros nuevos (categoría/fechas/tag/uncategorized), `GET /transactions/tags`, FUTURE_DATE |
 | `budgets.http` | Budgets por categoría y GLOBAL, meta INCOME, effectiveFrom, overrides (set/0/DELETE), CUSTOM con expiración, sin restore, `INVALID_CURSOR` |

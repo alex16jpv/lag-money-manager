@@ -262,6 +262,10 @@
       "note": "May has no gift: the budget reports 0 spent."
     }
   ],
+  "contacts": [],
+  "sharedGroups": [],
+  "sharedExpenses": [],
+  "settlements": [],
   "expected": {
     "balances": [
       {
@@ -447,6 +451,44 @@
         ]
       }
     ],
+    "countsAsYours": [
+      {
+        "key": "march-rent",
+        "transactionId": "01930003-0000-7000-8000-0000000t0001",
+        "amount": 120000
+      },
+      {
+        "key": "first-ride",
+        "transactionId": "01930003-0000-7000-8000-0000000t0002",
+        "amount": 1200
+      },
+      {
+        "key": "gift",
+        "transactionId": "01930003-0000-7000-8000-0000000t0003",
+        "amount": 8800
+      },
+      {
+        "key": "quarter-end",
+        "transactionId": "01930003-0000-7000-8000-0000000t0004",
+        "amount": 780
+      },
+      {
+        "key": "next-quarter",
+        "transactionId": "01930003-0000-7000-8000-0000000t0005",
+        "amount": 15000
+      },
+      {
+        "key": "payday",
+        "transactionId": "01930003-0000-7000-8000-0000000t0006",
+        "amount": 350000
+      },
+      {
+        "key": "pending-lunch",
+        "transactionId": "01930003-0000-7000-8000-0000000t0007",
+        "amount": 500
+      }
+    ],
+    "shared": [],
     "budgets": {
       "reference": "2026-05-15T12:00:00+09:00",
       "views": [

@@ -20,8 +20,11 @@ import {
   deriveBudgetViews,
   deriveList,
   derivePending,
+  deriveShared,
   deriveSpending,
   resolvePeriod,
+  resolveSharesMinor,
+  splitInputProblem,
 } from "./derive";
 import { fixtureId, SCENARIOS } from "./scenarios";
 import {
@@ -31,9 +34,16 @@ import {
   FixtureAccount,
   FixtureBudget,
   FixtureCategory,
+  FixtureContact,
+  FixtureSettlement,
+  FixtureSharedExpense,
+  FixtureSharedGroup,
   FixtureTransaction,
+  PartyKind,
   Scenario,
   ScenarioCategory,
+  ScenarioShare,
+  ScenarioSharedExpense,
   ScenarioTransaction,
 } from "./types";
 
@@ -51,7 +61,7 @@ const shiftIso = (iso: string, days: number): string => {
   return out;
 };
 
-function buildFixture(scenario: Scenario, index: number): Fixture {
+export function buildFixture(scenario: Scenario, index: number): Fixture {
   const { user } = scenario;
   const decimals = user.minorUnits;
 
@@ -95,6 +105,11 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
       if (t.quick === true && !defaultAccount) {
         throw new Error(`${scenario.id}: a quick-add needs a default account`);
       }
+      if (t.type === "SETTLEMENT") {
+        throw new Error(
+          `${scenario.id}/${t.key}: a settle-up writes its own movements, with ids the server mints; stating one here would move the balance twice`,
+        );
+      }
       assertPrecision(scenario, t.key, t.amount, decimals);
       assertTypedCategory(scenario, t, categories);
       return {
@@ -121,6 +136,245 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
       };
     },
   );
+
+  /* ---------- the shared layer ---------- */
+
+  const contacts: FixtureContact[] = (scenario.contacts ?? []).map((c, i) => ({
+    key: c.key,
+    id: fixtureId(index, "k", i + 1),
+    name: c.name,
+    archivedAt: null,
+  }));
+  const contactId = (key: string): string => {
+    const found = contacts.find((c) => c.key === key);
+    if (!found) throw new Error(`${scenario.id}: unknown contact ${key}`);
+    return found.id;
+  };
+  const scale = 10 ** decimals;
+  const sharedGroups: FixtureSharedGroup[] = [];
+  const sharedExpenses: FixtureSharedExpense[] = [];
+  let expenseIndex = 0;
+
+  for (const [g, group] of (scenario.sharedGroups ?? []).entries()) {
+    const groupId = fixtureId(index, "g", g + 1);
+    const participants = group.contacts.map(contactId);
+    const defaultMode = group.defaultMode ?? "EQUAL";
+    sharedGroups.push({
+      key: group.key,
+      id: groupId,
+      name: group.name,
+      participantContactIds: participants,
+      defaultSplit: {
+        mode: defaultMode,
+        shares: (group.defaultShares ?? []).map((share) => ({
+          contactId: share.party === "you" ? null : contactId(share.party),
+          percent: share.percent ?? 0,
+        })),
+      },
+      // The ceiling of each one is worked out below, once the payments are imputed.
+      writeOffs: (group.writeOffs ?? []).map((key) => {
+        if (group.contacts.includes(key)) {
+          return { contactId: contactId(key), expenseId: null, amount: 0 };
+        }
+        const at = group.expenses.findIndex((e) => e.key === key);
+        if (at === -1) {
+          throw new Error(
+            `${scenario.id}/${group.key}: ${key} is neither in the group nor one of its expenses`,
+          );
+        }
+        return {
+          contactId: null,
+          expenseId: fixtureId(index, "s", at + 1 + expenseIndex),
+          amount: 0,
+        };
+      }),
+      archivedAt: null,
+      note: group.note,
+    });
+
+    for (const expense of group.expenses) {
+      expenseIndex += 1;
+      const id = fixtureId(index, "s", expenseIndex);
+      const movement = expense.transaction
+        ? transactions.find((t) => t.key === expense.transaction)
+        : undefined;
+      if (expense.transaction && !movement) {
+        throw new Error(
+          `${scenario.id}: unknown transaction ${expense.transaction}`,
+        );
+      }
+      const amount = movement ? movement.amount : (expense.amount ?? 0);
+      assertPrecision(scenario, expense.key, amount, decimals);
+      const mode = expense.mode ?? defaultMode;
+      const inherited: ScenarioShare[] = [
+        { party: "you" },
+        ...group.contacts.map((key) => ({ party: key })),
+      ].map((share) => ({
+        ...share,
+        percent:
+          defaultMode === "PERCENT"
+            ? (group.defaultShares ?? []).find(
+                (one) => one.party === share.party,
+              )?.percent
+            : undefined,
+      }));
+      const authored: ScenarioShare[] = expense.shares ?? inherited;
+      const guests = expense.guests
+        ? { count: expense.guests.count, name: expense.guests.name ?? null }
+        : null;
+      const rows = authored.map((share) => ({
+        party: (share.party === "you"
+          ? "USER"
+          : share.party === "guests"
+            ? "GUESTS"
+            : "CONTACT") as PartyKind,
+        contactId:
+          share.party === "you" || share.party === "guests"
+            ? null
+            : contactId(share.party),
+        percent: share.percent,
+        fixedAmount: share.fixedAmount,
+        units: share.party === "guests" ? (guests?.count ?? 1) : 1,
+      }));
+      const payerIndex = rows.findIndex((row) =>
+        expense.paidBy
+          ? row.contactId === contactId(expense.paidBy)
+          : row.party === "USER",
+      );
+      if (payerIndex === -1) {
+        throw new Error(
+          `${scenario.id}/${expense.key}: whoever paid has no share`,
+        );
+      }
+      const outsiders = authored
+        .map((share) => share.party)
+        .filter(
+          (party) =>
+            party !== "you" &&
+            party !== "guests" &&
+            !group.contacts.includes(party),
+        );
+      if (outsiders.length > 0) {
+        throw new Error(
+          `${scenario.id}/${expense.key}: ${outsiders.join(", ")} is not in ${group.key}`,
+        );
+      }
+      const guestRows = rows.filter((row) => row.party === "GUESTS").length;
+      if ((guests === null) !== (guestRows === 0)) {
+        throw new Error(
+          `${scenario.id}/${expense.key}: a block of guests and its share go together`,
+        );
+      }
+      const problem = splitInputProblem(
+        Math.round(amount * scale),
+        mode,
+        rows,
+        scale,
+      );
+      if (problem) {
+        throw new Error(`${scenario.id}/${expense.key}: ${problem}`);
+      }
+      const amounts = resolveSharesMinor(
+        Math.round(amount * scale),
+        mode,
+        rows,
+        payerIndex,
+        scale,
+      );
+      assertSharesAsAuthored(scenario, expense, authored, amounts, scale);
+      sharedExpenses.push({
+        key: expense.key,
+        id,
+        groupId,
+        transactionId: movement?.id ?? null,
+        description: movement
+          ? movement.description
+          : (expense.description ?? null),
+        date: movement ? movement.date : (expense.date as string),
+        amount,
+        paidByContactId: expense.paidBy ? contactId(expense.paidBy) : null,
+        customSplit: expense.shares !== undefined || expense.mode !== undefined,
+        split: {
+          mode,
+          guests,
+          shares: rows.map((row, i) => ({
+            party: row.party,
+            contactId: row.contactId,
+            percent: mode === "PERCENT" ? (row.percent ?? null) : null,
+            fixedAmount:
+              mode === "EXACT" || mode === "FIXED_REST"
+                ? (row.fixedAmount ?? null)
+                : null,
+            amount: (amounts[i] as number) / scale,
+            collected: 0,
+          })),
+        },
+        deletedAt: null,
+        note: expense.note,
+      });
+    }
+  }
+
+  const settlements: FixtureSettlement[] = (scenario.settlements ?? []).map(
+    (one, i) => {
+      // Paying somebody back writes one movement per line, with ids the server mints:
+      // a fixture cannot name them, so it cannot state the balance or the listing either.
+      if (one.paid) {
+        throw new Error(
+          `${scenario.id}/${one.key}: a fixture cannot pin what paying somebody back writes`,
+        );
+      }
+      const block = sharedExpenses.find((e) => e.key === one.with);
+      if (block && block.split.guests === null) {
+        throw new Error(
+          `${scenario.id}/${one.key}: ${one.with} has no block of guests to settle with`,
+        );
+      }
+      if (!one.collected) {
+        throw new Error(`${scenario.id}/${one.key}: a settle-up moves money`);
+      }
+      return {
+        key: one.key,
+        id: fixtureId(index, "p", i + 1),
+        counterparty: block
+          ? { kind: "GUESTS" as const, contactId: null, expenseId: block.id }
+          : {
+              kind: "CONTACT" as const,
+              contactId: contactId(one.with),
+              expenseId: null,
+            },
+        date: one.date,
+        collected: one.collected ?? 0,
+        paid: one.paid ?? 0,
+        outsideApp: one.outsideApp === true,
+        afterWriteOffs: one.afterWriteOffs === true,
+        deletedAt: null,
+        note: one.note,
+      };
+    },
+  );
+
+  const derivedShared = deriveShared({
+    transactions,
+    groups: sharedGroups,
+    expenses: sharedExpenses,
+    settlements,
+  });
+  // Everything downstream measures what is left as yours, so it is written before they run.
+  for (const row of derivedShared.countsAsYours) {
+    const movement = transactions.find((t) => t.id === row.transactionId);
+    if (movement && row.amount !== movement.amount) {
+      movement.countsAsYours = row.amount;
+    }
+  }
+
+  assertGroupsAsAuthored(scenario, derivedShared, (party) => {
+    const contact = contacts.find((one) => one.key === party);
+    if (contact) return `contact:${contact.id}`;
+    const expense = sharedExpenses.find((one) => one.key === party);
+    if (expense) return `guests:${expense.id}`;
+    throw new Error(`${scenario.id}: ${party} is nobody in this scenario`);
+  });
 
   const reference = new Date(scenario.reference);
   const budgets: FixtureBudget[] = scenario.budgets.map((b, i) => {
@@ -218,11 +472,17 @@ function buildFixture(scenario: Scenario, index: number): Fixture {
     categories,
     transactions,
     budgets,
+    contacts,
+    sharedGroups: derivedShared.groups,
+    sharedExpenses: derivedShared.expenses,
+    settlements,
     expected: {
-      balances: deriveBalances(accounts, transactions),
+      balances: deriveBalances(accounts, transactions, settlements),
       pending: derivePending(transactions),
       spending,
       lists,
+      countsAsYours: derivedShared.countsAsYours,
+      shared: derivedShared.shared,
       budgets: {
         reference: scenario.reference,
         views: deriveBudgetViews(
@@ -277,6 +537,88 @@ function assertTypedCategory(
     throw new Error(
       `${scenario.id}/${t.key}: a ${t.type} cannot carry ${t.category}, which is a ${category.type} category`,
     );
+  }
+}
+
+/** The shares a scenario states, or none: a resolver that agrees with itself pins nothing. */
+function assertSharesAsAuthored(
+  scenario: Scenario,
+  expense: ScenarioSharedExpense,
+  authored: ScenarioShare[],
+  amounts: number[],
+  scale: number,
+): void {
+  if (expense.expect === undefined) return;
+  const parties = authored.map((share) => share.party);
+  for (const party of Object.keys(expense.expect)) {
+    if (!parties.includes(party)) {
+      throw new Error(
+        `${scenario.id}/${expense.key}: ${party} has no share to expect`,
+      );
+    }
+  }
+  authored.forEach((share, i) => {
+    const wanted = expense.expect?.[share.party];
+    if (wanted === undefined) {
+      throw new Error(
+        `${scenario.id}/${expense.key}: ${share.party} is left without an expected share`,
+      );
+    }
+    const got = (amounts[i] as number) / scale;
+    if (got !== wanted) {
+      throw new Error(
+        `${scenario.id}/${expense.key}: ${share.party} works out to ${got}, not the ${wanted} the scenario expects`,
+      );
+    }
+  });
+}
+
+/** The figures of a group the scenario states: every one of them, or none. */
+function assertGroupsAsAuthored(
+  scenario: Scenario,
+  derived: ReturnType<typeof deriveShared>,
+  keyOf: (party: string) => string,
+): void {
+  for (const group of scenario.sharedGroups ?? []) {
+    if (group.expect === undefined) continue;
+    const at = `${scenario.id}/${group.key}`;
+    const totals = derived.shared.find((one) => one.key === group.key);
+    if (!totals) throw new Error(`${at}: nothing was derived for it`);
+    const said = (what: string, got: unknown, wanted: unknown): void => {
+      if (got !== wanted) {
+        throw new Error(`${at}: ${what} works out to ${got}, not ${wanted}`);
+      }
+    };
+    said("owedToYou", totals.owedToYou, group.expect.owedToYou);
+    said("youOwe", totals.youOwe, group.expect.youOwe);
+    said("collected", totals.collected, group.expect.collected);
+    said("writtenOff", totals.writtenOff, group.expect.writtenOff);
+    said("status", totals.status, group.expect.status);
+
+    const rows = new Map(totals.people.map((one) => [one.key, one]));
+    const stored = derived.groups.find((one) => one.key === group.key);
+    const expected = Object.entries(group.expect.people);
+    if (expected.length !== rows.size) {
+      throw new Error(
+        `${at}: ${rows.size} people were derived and ${expected.length} are expected`,
+      );
+    }
+    for (const [party, wanted] of expected) {
+      const key = keyOf(party);
+      const row = rows.get(key);
+      if (!row) throw new Error(`${at}: ${party} has no row of their own`);
+      said(`${party} owesYou`, row.owesYou, wanted.owesYou);
+      said(`${party} youOwe`, row.youOwe, wanted.youOwe ?? 0);
+      said(`${party} surplus`, row.surplus, wanted.surplus ?? 0);
+      said(`${party} state`, row.state, wanted.state);
+      const ceiling = stored?.writeOffs.find(
+        (one) =>
+          (one.expenseId
+            ? `guests:${one.expenseId}`
+            : `contact:${one.contactId}`) === key,
+      )?.amount;
+      said(`${party} write-off ceiling`, ceiling, wanted.ceiling);
+    }
   }
 }
 
@@ -340,11 +682,12 @@ function readme(fixtures: Fixture[]): string {
     "  bounded, a day grouping is not.",
     "- **Deleted rows (`deletedAt`) are invisible** to every figure, balances included.",
     "  Archived rows (`archivedAt`) still count: archiving is not deleting.",
-    "- **`ADJUSTMENT` never counts as spending** unless the query names that type; it",
-    "  does move balances. A `TRANSFER` moves two balances and is never spending either,",
-    "  but it can carry a category, and `type: TRANSFER` is a spending query like any",
-    "  other: it buckets those rows and the ones with no category under `uncategorized`.",
-    "- **A query with `type: null` means everything but `ADJUSTMENT`** — income and",
+    "- **`ADJUSTMENT` and `SETTLEMENT` never count as spending** unless the query names",
+    "  that type; both move balances. A `TRANSFER` moves two balances and is never",
+    "  spending either, but it can carry a category, and `type: TRANSFER` is a spending",
+    "  query like any other: it buckets those rows and the ones with no category under",
+    "  `uncategorized`.",
+    "- **A query with `type: null` means everything but those two** — income and",
     "  transfers included. It is the API's default, and it surprises people.",
     "- **Tag buckets unwind**: a row with two tags is counted in both, so the buckets",
     "  can add up to more than `total`. `total` is over the rows, never over the buckets.",
@@ -362,6 +705,24 @@ function readme(fixtures: Fixture[]): string {
     "  This is the rule, not the client's recipe: on the device the shown balance is",
     "  the server's `balance` from the mirror plus the effect of the unsent outbox,",
     "  and the two agree whenever the outbox is empty.",
+    "- **What a figure of spending measures is `countsAsYours`**, not the amount:",
+    "  what left the account minus what has come back for it. A row without the",
+    "  field counts its whole amount, and the **listing is the other way round** —",
+    "  a row's amount there is what moved through the account.",
+    "- **A split always adds up to its expense**, and each share is",
+    "  `floor(total × its parts ÷ all the parts)` — its parts, not one floored part",
+    "  repeated. Whatever is left over after flooring goes **whole to whoever",
+    "  fronted it**, in every mode, so two implementations reach the same figures",
+    "  without agreeing on an order. A block of guests weighs as many parts as it",
+    "  counts and is one party to collect from.",
+    "- **A payment belongs to the person, not to the line**: it covers the **oldest",
+    "  line first** across every group shared with them, ties broken by expense id.",
+    "  What you hand over covers your own lines first, and whatever is left of it is",
+    "  their money going back, so it comes off what they gave you **before** any of",
+    "  that is imputed. `collected` on a share is never typed: it is that answer.",
+    "- **A write-off gives up on what was open when it was decided** and never more",
+    "  than is open now. It moves no figure: what left the account was counted as",
+    "  yours the day it left.",
     "- **`pending.transactionIds` is a set.** No order is part of the contract.",
     "- **`lists` are the opposite: there the order IS the contract.** Each one is the",
     "  first page of `GET /transactions` under its `sort` and `order`, and two rows with",
@@ -371,13 +732,40 @@ function readme(fixtures: Fixture[]): string {
     "",
     "## Shape of a file",
     "",
-    "`user`, `accounts`, `categories`, `transactions` and `budgets` are the input, in",
+    "`user`, `accounts`, `categories`, `transactions`, `budgets`, `contacts`,",
+    "`sharedGroups`, `sharedExpenses` and `settlements` are the input, in",
     "the shape the mirror holds them — the same shape `GET /sync/changes` sends, so",
     "budgets are **as stored** (`amount`, `amountOverrides`, `periodType`, dates), with",
     "no `periodKey`, `spent` or `expired`. Every row also carries a `key`, which is a",
     "human handle, never an id. `expected` holds `balances`, `pending`, `spending`",
     "(one entry per query, with the query spelled out), `lists` (one ordered page per",
-    "query) and `budgets` (the views as of `expected.budgets.reference`).",
+    "query), `budgets` (the views as of `expected.budgets.reference`),",
+    "`countsAsYours` (what each movement is left counting as) and `shared` (where",
+    "every group stands, and every person in it).",
+    "",
+    "`expected.shared[].people` is for the device: the server has no per-person",
+    "endpoint, so the mongod suite checks the figures it does expose and that block",
+    "is the app's to meet. And **paying somebody back is not in any fixture**: it",
+    "writes one movement per line with ids the server mints, which a file of fixed",
+    "ids cannot name — the generator refuses a `paid` settlement rather than write",
+    "a balance it cannot explain, and for the same reason no row is of type",
+    "`SETTLEMENT`. What a settle-up moves is in `expected.balances` all the same.",
+    "",
+    "Three fields of the shared layer are worth spelling out:",
+    "",
+    "- **`expected.shared[].people[].surplus`** is what THEY handed over beyond",
+    "  every line of theirs. It stays on the counter and the next line eats it, so",
+    "  it is never part of `collected`. It is **per counterparty, not per group**:",
+    "  the same figure shows on that person's row in every group you share with",
+    "  them, and adding them up counts it twice.",
+    "- **`sharedGroups[].writeOffs[].amount` is the ceiling**, what was open the",
+    "  day you gave up on somebody. What the group actually gives up is",
+    "  `expected.shared[].writtenOff`, which is that ceiling capped by what is",
+    "  still open: pay something afterwards and the two stop being equal.",
+    "- **`settlements[].afterWriteOffs` is not an API field.** It is an",
+    "  instruction to whoever seeds the fixture: record this payment after the",
+    "  write-offs, which is the only order in which a ceiling is visible. The",
+    "  change feed has nothing like it.",
     "",
     "## The fixtures",
     "",

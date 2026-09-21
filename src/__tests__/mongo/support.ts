@@ -13,120 +13,27 @@ import { readFileSync } from "fs";
 import mongoose from "mongoose";
 import { join } from "path";
 
+// Typed by the generator that writes it: a copy of the shape here would drift in silence.
+import type {
+  Fixture,
+  FixtureSettlement,
+} from "../../../scripts/offline-fixtures/types";
 import repositoryFactory from "../../app/factories/RepositoryFactory";
+import { sharedLedgerService } from "../../app/factories/sharedLedger";
 import { AccountService } from "../../app/services/AccountService";
 import { BudgetService } from "../../app/services/BudgetService";
 import { CategoryService } from "../../app/services/CategoryService";
+import { ContactService } from "../../app/services/ContactService";
+import { SharedExpenseService } from "../../app/services/SharedExpenseService";
+import { SharedGroupService } from "../../app/services/SharedGroupService";
+import { SharedLedgerService } from "../../app/services/SharedLedgerService";
+import { SharedSettlementService } from "../../app/services/SharedSettlementService";
 import { StatsService } from "../../app/services/StatsService";
 import { TransactionService } from "../../app/services/TransactionService";
 import { connectMongo } from "../../config/mongoConnection";
 import { UserModel } from "../../infrastructure/models/UserModel";
 
-export interface Fixture {
-  id: string;
-  title: string;
-  user: { id: string; timezone: string; currency: string; minorUnits: number };
-  accounts: {
-    key: string;
-    id: string;
-    name: string;
-    type: string;
-    color?: string;
-    openingBalance: number;
-    isDefault: boolean;
-    archivedAt: string | null;
-  }[];
-  categories: {
-    key: string;
-    id: string;
-    name: string;
-    type: "EXPENSE" | "INCOME";
-    archivedAt: string | null;
-  }[];
-  transactions: {
-    key: string;
-    id: string;
-    type: "EXPENSE" | "INCOME" | "TRANSFER" | "ADJUSTMENT";
-    amount: number;
-    date: string;
-    description: string | null;
-    categoryId: string | null;
-    fromAccountId: string | null;
-    toAccountId: string | null;
-    tags: string[];
-    source: "MANUAL" | "QUICK";
-    pendingDetails: boolean;
-    deletedAt: string | null;
-  }[];
-  budgets: {
-    key: string;
-    id: string;
-    name: string;
-    type: "EXPENSE" | "INCOME";
-    categoryIds: string[];
-    amount: number;
-    amountOverrides: Record<string, number>;
-    periodType: string;
-    periodStartDate: string | null;
-    periodEndDate: string | null;
-    effectiveFrom: string | null;
-    archivedAt: string | null;
-  }[];
-  expected: {
-    balances: { key: string; accountId: string; balance: number }[];
-    pending: { count: number; total: number; transactionIds: string[] };
-    spending: {
-      name: string;
-      query: {
-        groupBy: "day" | "month" | "category" | "account" | "tag";
-        splitBy: "category" | null;
-        categoryIds: string[] | null;
-        type: string | null;
-        from: string;
-        to: string;
-        timezone: string;
-      };
-      total: number;
-      buckets: {
-        key: string;
-        total: number;
-        count: number;
-        avg: number;
-        splits?: { key: string; total: number; count: number; avg: number }[];
-      }[];
-    }[];
-    lists: {
-      name: string;
-      query: {
-        sort: "date" | "amount";
-        order: "asc" | "desc";
-        categoryIds: string[] | null;
-        type: string | null;
-        from: string;
-        to: string;
-        timezone: string;
-        limit: number;
-      };
-      transactionIds: string[];
-    }[];
-    budgets: {
-      reference: string;
-      views: {
-        key: string;
-        id: string;
-        periodKey: string;
-        periodFrom: string;
-        periodTo: string;
-        baseAmount: number;
-        amount: number;
-        hasOverride: boolean;
-        spent: number;
-        expired: boolean;
-        archivedCategoryIds: string[];
-      }[];
-    };
-  };
-}
+export type { Fixture, FixtureSettlement };
 
 const FIXTURE_DIR =
   process.env.OFFLINE_FIXTURES_DIR ??
@@ -145,6 +52,140 @@ export function loadFixtures(): Fixture[] {
 }
 
 export const fixtureDir = (): string => FIXTURE_DIR;
+
+/** The shared layer of a fixture, through the same services its routes call. */
+async function seedShared(fixture: Fixture): Promise<void> {
+  const userId = fixture.user.id;
+  const { contacts, sharedGroups, sharedExpenses, settlements } = shared();
+
+  for (const contact of fixture.contacts ?? []) {
+    await contacts.createContact({
+      id: contact.id,
+      name: contact.name,
+      userId,
+    } as never);
+  }
+  for (const group of fixture.sharedGroups ?? []) {
+    await sharedGroups.createGroup({
+      id: group.id,
+      name: group.name,
+      contactIds: group.participantContactIds,
+      defaultSplit: group.defaultSplit,
+      userId,
+    } as never);
+  }
+  for (const expense of fixture.sharedExpenses ?? []) {
+    const split = expense.customSplit
+      ? {
+          mode: expense.split.mode,
+          guests: expense.split.guests,
+          shares: expense.split.shares.map((share) => ({
+            party: share.party,
+            contactId: share.contactId,
+            percent: share.percent,
+            fixedAmount: share.fixedAmount,
+          })),
+        }
+      : undefined;
+    await sharedExpenses.createExpense({
+      id: expense.id,
+      groupId: expense.groupId,
+      userId,
+      ...(expense.transactionId
+        ? { transactionId: expense.transactionId }
+        : {
+            description: expense.description,
+            date: new Date(expense.date),
+            amount: expense.amount,
+            paidByContactId: expense.paidByContactId,
+          }),
+      split,
+    } as never);
+  }
+  const settleUp = async (one: FixtureSettlement): Promise<void> => {
+    await settlements.createSettlement(
+      {
+        id: one.id,
+        userId,
+        contactId: one.counterparty.contactId ?? undefined,
+        expenseId: one.counterparty.expenseId ?? undefined,
+        date: new Date(one.date),
+        collected: one.collected || undefined,
+        paid: one.paid || undefined,
+        outsideApp: one.outsideApp,
+        accountId: one.outsideApp
+          ? undefined
+          : (fixture.accounts.find((a) => a.isDefault)?.id ?? undefined),
+      } as never,
+      fixture.user.timezone,
+    );
+  };
+
+  for (const one of fixture.settlements ?? []) {
+    if (!one.afterWriteOffs) await settleUp(one);
+  }
+  // Then the write-offs, so each one gives up on what was still open by then.
+  for (const group of fixture.sharedGroups ?? []) {
+    for (const writeOff of group.writeOffs) {
+      await sharedGroups.writeOff(
+        group.id,
+        {
+          contactId: writeOff.contactId ?? undefined,
+          expenseId: writeOff.expenseId ?? undefined,
+        },
+        userId,
+      );
+    }
+  }
+  // And last what was paid afterwards, which is what makes a ceiling visible.
+  for (const one of fixture.settlements ?? []) {
+    if (one.afterWriteOffs) await settleUp(one);
+  }
+}
+
+export function shared(): {
+  contacts: ContactService;
+  sharedGroups: SharedGroupService;
+  sharedExpenses: SharedExpenseService;
+  settlements: SharedSettlementService;
+} {
+  const expenseRepo = repositoryFactory.getSharedExpenseRepository();
+  const settlementRepo = repositoryFactory.getSharedSettlementRepository();
+  const transactionRepo = repositoryFactory.getTransactionRepository();
+  const groupRepo = repositoryFactory.getSharedGroupRepository();
+  const contactRepo = repositoryFactory.getContactRepository();
+  const userRepo = repositoryFactory.getUserRepository();
+  const ledger = new SharedLedgerService(
+    expenseRepo,
+    settlementRepo,
+    transactionRepo,
+  );
+  return {
+    contacts: new ContactService(contactRepo),
+    sharedGroups: new SharedGroupService(
+      groupRepo,
+      expenseRepo,
+      contactRepo,
+      userRepo,
+      transactionRepo,
+      ledger,
+    ),
+    sharedExpenses: new SharedExpenseService(
+      expenseRepo,
+      groupRepo,
+      transactionRepo,
+      ledger,
+    ),
+    settlements: new SharedSettlementService(
+      settlementRepo,
+      expenseRepo,
+      contactRepo,
+      userRepo,
+      ledger,
+      services().transactions,
+    ),
+  };
+}
 
 export function services(): {
   accounts: AccountService;
@@ -165,6 +206,7 @@ export function services(): {
       accountRepo,
       repositoryFactory.getIdempotencyRepository(),
       categoryRepo,
+      sharedLedgerService,
     ),
     budgets: new BudgetService(
       repositoryFactory.getBudgetRepository(),
@@ -277,6 +319,8 @@ export async function seedFixture(fixture: Fixture): Promise<void> {
       await transactions.deleteTransaction(t.id, userId);
     }
   }
+
+  await seedShared(fixture);
 
   const ctx = {
     reference: new Date(fixture.expected.budgets.reference),

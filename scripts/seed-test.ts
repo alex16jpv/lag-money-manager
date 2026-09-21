@@ -19,6 +19,7 @@ import { DateTime } from "luxon";
 import mongoose from "mongoose";
 
 import repositoryFactory from "../src/app/factories/RepositoryFactory";
+import { sharedLedgerService } from "../src/app/factories/sharedLedger";
 import { AccountService } from "../src/app/services/AccountService";
 import { AuthService } from "../src/app/services/AuthService";
 import { BudgetService } from "../src/app/services/BudgetService";
@@ -252,6 +253,7 @@ export async function seed(): Promise<Record<string, unknown>> {
     accounts,
     repositoryFactory.getIdempotencyRepository(),
     categories,
+    sharedLedgerService,
   );
   const budgetService = new BudgetService(
     repositoryFactory.getBudgetRepository(),

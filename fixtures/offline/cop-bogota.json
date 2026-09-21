@@ -10,7 +10,7 @@
     "An archived category keeps its totals; archiving is not deleting.",
     "Quick-adds count as spending under `uncategorized`, and are the pending summary.",
     "Tag buckets double-count a transaction with two tags: their sum exceeds the total.",
-    "With no `type`, the server means EXPENSE + INCOME + TRANSFER, everything but ADJUSTMENT.",
+    "With no `type`, the server means EXPENSE + INCOME + TRANSFER: everything but ADJUSTMENT and SETTLEMENT.",
     "`type: TRANSFER` is a spending query like any other: it groups transfers by their category.",
     "A transfer with no category lands in `uncategorized`, beside the ones that have one.",
     "An account bucket is the account the money left; a quick-add leaves the default one, and a transfer is keyed by its origin, never by both ends.",
@@ -598,6 +598,10 @@
       "note": "Archived: out of the views, present in the sync feed with archivedAt."
     }
   ],
+  "contacts": [],
+  "sharedGroups": [],
+  "sharedExpenses": [],
+  "settlements": [],
   "expected": {
     "balances": [
       {
@@ -1271,6 +1275,94 @@
         "note": "What a budget of two categories asks for; the quick-adds have no category and stay out."
       }
     ],
+    "countsAsYours": [
+      {
+        "key": "late-july-groceries",
+        "transactionId": "01930001-0000-7000-8000-0000000t0001",
+        "amount": 30000
+      },
+      {
+        "key": "salary",
+        "transactionId": "01930001-0000-7000-8000-0000000t0002",
+        "amount": 4000000
+      },
+      {
+        "key": "market",
+        "transactionId": "01930001-0000-7000-8000-0000000t0003",
+        "amount": 85000
+      },
+      {
+        "key": "same-day-coffee",
+        "transactionId": "01930001-0000-7000-8000-0000000t0004",
+        "amount": 9800
+      },
+      {
+        "key": "bus",
+        "transactionId": "01930001-0000-7000-8000-0000000t0005",
+        "amount": 12000
+      },
+      {
+        "key": "to-savings",
+        "transactionId": "01930001-0000-7000-8000-0000000t0006",
+        "amount": 500000
+      },
+      {
+        "key": "pay-the-card",
+        "transactionId": "01930001-0000-7000-8000-0000000t0007",
+        "amount": 300000
+      },
+      {
+        "key": "flight",
+        "transactionId": "01930001-0000-7000-8000-0000000t0008",
+        "amount": 250000
+      },
+      {
+        "key": "cash-count",
+        "transactionId": "01930001-0000-7000-8000-0000000t0009",
+        "amount": 7500
+      },
+      {
+        "key": "dinner",
+        "transactionId": "01930001-0000-7000-8000-0000000t0010",
+        "amount": 42500
+      },
+      {
+        "key": "latte",
+        "transactionId": "01930001-0000-7000-8000-0000000t0011",
+        "amount": 11300
+      },
+      {
+        "key": "taxi",
+        "transactionId": "01930001-0000-7000-8000-0000000t0012",
+        "amount": 18400
+      },
+      {
+        "key": "quick-lunch",
+        "transactionId": "01930001-0000-7000-8000-0000000t0013",
+        "amount": 12500
+      },
+      {
+        "key": "quick-errand",
+        "transactionId": "01930001-0000-7000-8000-0000000t0014",
+        "amount": 20000
+      },
+      {
+        "key": "second-bus",
+        "transactionId": "01930001-0000-7000-8000-0000000t0016",
+        "amount": 12000
+      },
+      {
+        "key": "backdated-market",
+        "transactionId": "01930001-0000-7000-8000-0000000t0017",
+        "amount": 63000
+      },
+      {
+        "key": "last-minute-coffee",
+        "transactionId": "01930001-0000-7000-8000-0000000t0018",
+        "amount": 4700
+      }
+    ],
+    "shared": [],
     "budgets": {
       "reference": "2026-08-20T12:00:00-05:00",
       "views": [

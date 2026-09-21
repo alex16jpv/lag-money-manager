@@ -304,6 +304,10 @@
       "archivedAt": null
     }
   ],
+  "contacts": [],
+  "sharedGroups": [],
+  "sharedExpenses": [],
+  "settlements": [],
   "expected": {
     "balances": [
       {
@@ -521,6 +525,54 @@
         "note": "Ordered in minor units: 19.99 before 10.10 before 7.77."
       }
     ],
+    "countsAsYours": [
+      {
+        "key": "first-minutes",
+        "transactionId": "01930002-0000-7000-8000-0000000t0001",
+        "amount": 10.1
+      },
+      {
+        "key": "payday",
+        "transactionId": "01930002-0000-7000-8000-0000000t0002",
+        "amount": 1500
+      },
+      {
+        "key": "before-the-jump",
+        "transactionId": "01930002-0000-7000-8000-0000000t0003",
+        "amount": 0.1
+      },
+      {
+        "key": "after-the-jump",
+        "transactionId": "01930002-0000-7000-8000-0000000t0004",
+        "amount": 0.2
+      },
+      {
+        "key": "sunday-lunch",
+        "transactionId": "01930002-0000-7000-8000-0000000t0005",
+        "amount": 19.99
+      },
+      {
+        "key": "rounding",
+        "transactionId": "01930002-0000-7000-8000-0000000t0006",
+        "amount": 2.3
+      },
+      {
+        "key": "subscription",
+        "transactionId": "01930002-0000-7000-8000-0000000t0007",
+        "amount": 7.77
+      },
+      {
+        "key": "next-month",
+        "transactionId": "01930002-0000-7000-8000-0000000t0008",
+        "amount": 100
+      },
+      {
+        "key": "pending-coffee",
+        "transactionId": "01930002-0000-7000-8000-0000000t0010",
+        "amount": 3.45
+      }
+    ],
+    "shared": [],
     "budgets": {
       "reference": "2026-03-25T12:00:00+01:00",
       "views": [

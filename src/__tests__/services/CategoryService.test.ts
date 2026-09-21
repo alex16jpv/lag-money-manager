@@ -1,7 +1,7 @@
 import { CategoryService } from "../../app/services/CategoryService";
-import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { Category } from "../../domain/entities/Category";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
 import { ApiError } from "../../shared/errors";
 
@@ -18,9 +18,9 @@ const createMockRepo = (): jest.Mocked<ICategoryRepository> => ({
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   findActiveByName: jest.fn().mockResolvedValue(null),
   getOwnById: jest.fn(),
-  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   createMany: jest.fn(),
   listSeedKeys: jest.fn().mockResolvedValue([]),

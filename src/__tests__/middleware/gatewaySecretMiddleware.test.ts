@@ -6,6 +6,18 @@ import { ApiError } from "../../shared/errors";
 
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: { API_SECRET: "s3cret", NODE_ENV: "production" },
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
+  SHARED_HISTORY_REASONS: {
+    SPLIT: "SPLIT",
+    SPLIT_EDITED: "SPLIT_EDITED",
+    AMOUNT_CHANGED: "AMOUNT_CHANGED",
+    UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
+  },
 }));
 
 const environment = ENVIRONMENT as unknown as {

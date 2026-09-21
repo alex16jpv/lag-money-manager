@@ -9,6 +9,8 @@ Two shapes exist:
 - **Per-category budget** — `categoryIds` lists one or more categories; `spent` is the sum of those categories in the window.
 - **Global budget** — `categoryIds: []`; `spent` is the window's **total** flow of that type, uncategorized transactions and quick-adds included.
 
+**What `spent` adds up is `countsAsYours`, not `amount`** — what left the account minus what has come back, which is the same figure on everything except an expense split with other people ([transactions.md](transactions.md#what-counts-as-yours-countsasyours)). A shared expense therefore keeps counting in full until somebody pays it back, and the month it counted in is the one that falls when they do. Rows written before that field existed count their whole amount.
+
 Budgets are archived, never hard-deleted, and can be restored. All budgets are user-scoped.
 
 ## Files and Responsibilities
@@ -123,7 +125,7 @@ Drops the override for the period containing `reference`, so the period falls ba
 | `periodFrom` / `periodTo` | The half-open window `[from, to)` the spend was aggregated over          |
 | `baseAmount`          | The budget's base amount                                                    |
 | `amount`              | Resolved for this period: `override ?? baseAmount`                          |
-| `spent`               | Live aggregation of matching transactions inside the window                 |
+| `spent`               | Live aggregation of what counts as yours in the window                      |
 | `hasOverride`         | `true` when `amount` comes from a per-period override                       |
 | `expired`             | CUSTOM only: the fixed window already ended relative to `reference`         |
 | `effectiveFrom`       | The lifetime floor (`effectiveFrom ?? createdAt`, capped by a CUSTOM start) |
@@ -159,7 +161,7 @@ A budget does not exist before its floor. `Budget.lifetimeFloor()` returns `effe
 - Windows containing per-category budgets → `sumAmountsByCategory()` over the union of their category ids, then each budget sums its own slice.
 - Windows containing a global budget → `sumAmounts()`, the window's total for that flow type regardless of category.
 
-Both aggregations skip soft-deleted transactions (`deletedAt: null`) and match only the budget's `type` (`EXPENSE` or `INCOME`), so `ADJUSTMENT` and `TRANSFER` never move a budget.
+Both aggregations skip soft-deleted transactions (`deletedAt: null`), sum `countsAsYours` rather than `amount`, and match only the budget's `type` (`EXPENSE` or `INCOME`), so `ADJUSTMENT`, `TRANSFER` and `SETTLEMENT` never move a budget. Money coming back from somebody is not income and never was: what it does is lower what the expense it covers counts as.
 
 ## Internal Flow
 

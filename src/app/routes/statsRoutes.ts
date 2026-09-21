@@ -17,8 +17,8 @@ const router = Router();
  *       frozen when it was written, so a later change of the account's time
  *       zone cannot move past spending between buckets or months; the zone
  *       (from the token claim) resolves the days the range covers. Deleted
- *       transactions are excluded, and ADJUSTMENT ones only appear when asked
- *       for explicitly with `type=ADJUSTMENT` (they are balance
+ *       transactions are excluded, and ADJUSTMENT and SETTLEMENT ones only
+ *       appear when asked for explicitly with `type=` (they are balance
  *       reconciliations, not spending).
  *
  *       Bucket semantics: `groupBy=day` and `groupBy=month` come back ascending
@@ -62,7 +62,7 @@ const router = Router();
  *           Rows with no category never match it, quick-adds included.
  *       - in: query
  *         name: type
- *         schema: { type: string, enum: [INCOME, EXPENSE, TRANSFER, ADJUSTMENT], default: EXPENSE }
+ *         schema: { type: string, enum: [INCOME, EXPENSE, TRANSFER, ADJUSTMENT, SETTLEMENT], default: EXPENSE }
  *         description: Transaction type to aggregate
  *       - in: query
  *         name: from

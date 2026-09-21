@@ -36,6 +36,15 @@
       "currency": "USD",
       "minorUnits": 2,
       "transactions": 10
+    },
+    {
+      "id": "cop-shared",
+      "file": "cop-shared.json",
+      "title": "COP · America/Bogota · the split, the imputation and what counts as yours",
+      "timezone": "America/Bogota",
+      "currency": "COP",
+      "minorUnits": 0,
+      "transactions": 4
     }
   ]
 }

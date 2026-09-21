@@ -5,8 +5,21 @@ jest.mock("../../shared/constants", () => ({
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
     ADJUSTMENT: "ADJUSTMENT",
+    SETTLEMENT: "SETTLEMENT",
   },
   TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
+  SHARED_HISTORY_REASONS: {
+    SPLIT: "SPLIT",
+    SPLIT_EDITED: "SPLIT_EDITED",
+    AMOUNT_CHANGED: "AMOUNT_CHANGED",
+    UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
+  },
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
 }));
 
 import { TransactionModel } from "../../infrastructure/models/TransactionModel";
@@ -46,6 +59,17 @@ describe("TransactionModel indexes", () => {
   // Measured the same way: a whole history by amount, 73 ms without it, 0.7 ms with it.
   it("backs the keyset that orders a page by amount", () => {
     expect(has({ userId: 1, deletedAt: 1, amount: -1, _id: -1 })).toBeDefined();
+  });
+
+  // Measured over 2k rows: with `$type` the planner refuses it and reads every document, 2000 to 1.
+  it("backs the lookup from a shared expense to its movement", () => {
+    const found = has({ userId: 1, sharedExpenseId: 1 });
+    expect(found).toBeDefined();
+    expect(found?.[1]?.partialFilterExpression).toEqual({
+      sharedExpenseId: { $exists: true },
+    });
+    // A shared expense is one movement of yours: the database says so, not a retry.
+    expect(found?.[1]?.unique).toBe(true);
   });
 
   it("backs the review inbox with a partial index over pending rows only", () => {

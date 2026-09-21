@@ -12,6 +12,18 @@ jest.mock("../../shared/constants", () => ({
     CUSTOM: "CUSTOM",
   },
   MODEL_NAMES: { BUDGET: "Budget" },
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
+  SHARED_HISTORY_REASONS: {
+    SPLIT: "SPLIT",
+    SPLIT_EDITED: "SPLIT_EDITED",
+    AMOUNT_CHANGED: "AMOUNT_CHANGED",
+    UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
+  },
 }));
 
 import { BudgetService } from "../../app/services/BudgetService";
@@ -34,8 +46,8 @@ const createBudgetRepo = (): jest.Mocked<IBudgetRepository> =>
     getAllByUserId: jest.fn(),
     getById: jest.fn(),
     getByIdIncludingArchived: jest.fn(),
-    getOwnById: jest.fn(),
     changesSince: jest.fn().mockResolvedValue([]),
+    getOwnById: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),

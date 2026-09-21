@@ -8,14 +8,26 @@ jest.mock("../../shared/constants", () => ({
     LOG_LEVEL: "info",
     NODE_ENV: "test",
   },
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
+  SHARED_HISTORY_REASONS: {
+    SPLIT: "SPLIT",
+    SPLIT_EDITED: "SPLIT_EDITED",
+    AMOUNT_CHANGED: "AMOUNT_CHANGED",
+    UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
+  },
 }));
 
 import bcryptjs from "bcryptjs";
 
 import { UpdateUserDTO } from "../../app/dtos/UserDTO";
 import { UserService } from "../../app/services/UserService";
-import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { User } from "../../domain/entities/User";
+import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
 

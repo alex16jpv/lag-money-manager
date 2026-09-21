@@ -6,14 +6,20 @@ import {
   BUDGET_TYPES,
   CATEGORY_TYPES,
   COLORS,
+  GROUP_SPLIT_MODES,
   MAX_BUDGET_CATEGORIES,
+  MAX_EXPENSE_GUESTS,
+  MAX_GROUP_PARTICIPANTS,
+  SHARE_PARTIES,
   SPENDING_GROUP_BY,
   SPENDING_SPLIT_BY,
   SpendingGroupBy,
   SpendingSplitBy,
+  SPLIT_MODES,
   TRANSACTION_SOURCES,
   TRANSACTION_TYPES,
   TransactionSource,
+  TYPES_RECORDED_ELSEWHERE,
 } from "../../shared/constants";
 import { CATEGORY_ICONS } from "../../shared/icons";
 import { Locale, LOCALES } from "../../shared/locale";
@@ -58,6 +64,10 @@ const transactionTypeValues = Object.keys(TRANSACTION_TYPES) as [
   string,
   ...string[],
 ];
+// A payment between people is recorded by a settle-up, which writes the shared side with it.
+const writableTypeValues = Object.keys(TRANSACTION_TYPES).filter(
+  (t) => !TYPES_RECORDED_ELSEWHERE.includes(t),
+) as [string, ...string[]];
 const transactionSourceValues = Object.keys(TRANSACTION_SOURCES) as [
   TransactionSource,
   ...TransactionSource[],
@@ -413,6 +423,377 @@ export const updateCategorySchema = z.object({
     }),
 });
 
+export const createContactSchema = z.object({
+  body: z.object({
+    id: clientMintedId,
+    name: accountName,
+    color: z
+      .enum(colorValues, {
+        error: `Invalid color. Available: ${colorValues.join(", ")}`,
+      })
+      .optional(),
+    email: emailField.optional(),
+  }),
+});
+
+export const updateContactSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  body: z
+    .object({
+      name: accountName.optional(),
+      color: z
+        .enum(colorValues, {
+          error: `Invalid color. Available: ${colorValues.join(", ")}`,
+        })
+        .optional()
+        .nullable(),
+      email: emailField.optional().nullable(),
+    })
+    .refine((data) => Object.values(data).some((v) => v !== undefined), {
+      message: "At least one field must be provided",
+    }),
+});
+
+const splitModeValues = Object.keys(SPLIT_MODES) as [string, ...string[]];
+const groupSplitModeValues = Object.keys(GROUP_SPLIT_MODES) as [
+  string,
+  ...string[],
+];
+const sharePartyValues = Object.keys(SHARE_PARTIES) as [string, ...string[]];
+
+// A percentage is not money: two decimals, so the split resolves in whole basis points.
+const percentField = z
+  .number()
+  .min(0, "A percentage cannot be negative")
+  .max(100, "A percentage cannot be over 100")
+  .multipleOf(0.01, "A percentage must have at most 2 decimal places");
+
+const shareAmount = z
+  .number()
+  .min(0, "A share cannot be negative")
+  .multipleOf(0.01, "Amount must have at most 2 decimal places")
+  .max(MAX_AMOUNT, `Amount must be at most ${MAX_AMOUNT}`);
+
+const defaultSplitSchema = z.object({
+  mode: z.enum(groupSplitModeValues, {
+    error: `A group's default split is one of: ${groupSplitModeValues.join(", ")}`,
+  }),
+  shares: z
+    .array(
+      z.object({
+        contactId: z.string().uuid("contactId must be a valid UUID").nullable(),
+        percent: percentField,
+      }),
+    )
+    .max(MAX_GROUP_PARTICIPANTS)
+    .optional(),
+});
+
+const splitSchema = z.object({
+  mode: z.enum(splitModeValues, {
+    error: `Invalid split mode. Available: ${splitModeValues.join(", ")}`,
+  }),
+  guests: z
+    .object({
+      count: z.coerce
+        .number()
+        .int("The head count must be a whole number")
+        .min(1, "A block of guests starts at one")
+        .max(MAX_EXPENSE_GUESTS),
+      name: z.string().trim().max(255).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+  shares: z
+    .array(
+      z.object({
+        party: z.enum(sharePartyValues, {
+          error: `Invalid share. Available: ${sharePartyValues.join(", ")}`,
+        }),
+        contactId: z
+          .string()
+          .uuid("contactId must be a valid UUID")
+          .optional()
+          .nullable(),
+        percent: percentField.optional().nullable(),
+        fixedAmount: shareAmount.optional().nullable(),
+      }),
+    )
+    .min(1, "A split needs at least one share")
+    // The people in the group, and at most one block of guests on top of them.
+    .max(MAX_GROUP_PARTICIPANTS + 1),
+});
+
+const contactIdList = z
+  .array(z.string().uuid("Each contactId must be a valid UUID"))
+  .max(MAX_GROUP_PARTICIPANTS - 1);
+
+export const getSharedGroupsSchema = z.object({
+  query: z.object({
+    limit: z.coerce
+      .number()
+      .int("Limit must be an integer")
+      .min(1, "Limit must be at least 1")
+      .max(MAX_LIMIT, `Limit must be at most ${MAX_LIMIT}`)
+      .optional(),
+    offset: z.coerce
+      .number()
+      .int("Offset must be an integer")
+      .min(0, "Offset must be non-negative")
+      .optional(),
+    cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
+    ids: z
+      .string()
+      .transform(splitIdList)
+      .pipe(
+        z
+          .array(z.string().uuid("Each ID must be a valid UUID"))
+          .min(1)
+          .max(100),
+      )
+      .optional(),
+    contactId: z.string().uuid("contactId must be a valid UUID").optional(),
+    includeArchived: z.enum(["true", "false"]).optional(),
+  }),
+});
+
+export const createSharedGroupSchema = z.object({
+  body: z.object({
+    id: clientMintedId,
+    name: accountName,
+    color: z
+      .enum(colorValues, {
+        error: `Invalid color. Available: ${colorValues.join(", ")}`,
+      })
+      .optional(),
+    contactIds: contactIdList.optional(),
+    defaultSplit: defaultSplitSchema.optional(),
+  }),
+});
+
+export const updateSharedGroupSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  body: z
+    .object({
+      name: accountName.optional(),
+      color: z
+        .enum(colorValues, {
+          error: `Invalid color. Available: ${colorValues.join(", ")}`,
+        })
+        .optional()
+        .nullable(),
+      defaultSplit: defaultSplitSchema.optional(),
+    })
+    .refine((data) => Object.values(data).some((v) => v !== undefined), {
+      message: "At least one field must be provided",
+    }),
+});
+
+export const addParticipantsSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  body: z.object({
+    contactIds: contactIdList.min(1, "Name at least one person to add"),
+    applyToExistingExpenses: z.boolean().optional(),
+    defaultSplit: defaultSplitSchema.optional(),
+  }),
+});
+
+export const removeParticipantSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+    contactId: z.string().uuid("contactId must be a valid UUID"),
+  }),
+});
+
+export const getSharedExpensesSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  query: z.object({
+    limit: z.coerce
+      .number()
+      .int("Limit must be an integer")
+      .min(1, "Limit must be at least 1")
+      .max(MAX_LIMIT, `Limit must be at most ${MAX_LIMIT}`)
+      .optional(),
+    offset: z.coerce
+      .number()
+      .int("Offset must be an integer")
+      .min(0, "Offset must be non-negative")
+      .optional(),
+    cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
+  }),
+});
+
+export const createSharedExpenseSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  body: z
+    .object({
+      id: clientMintedId,
+      description: z.string().trim().max(255).optional().nullable(),
+      date: isoDate.optional(),
+      amount: moneyAmount.optional(),
+      transactionId: z
+        .string()
+        .uuid("transactionId must be a valid UUID")
+        .optional(),
+      paidByContactId: z
+        .string()
+        .uuid("paidByContactId must be a valid UUID")
+        .optional()
+        .nullable(),
+      split: splitSchema.optional(),
+    })
+    .superRefine((data, ctx) => {
+      const fromTransaction = data.transactionId !== undefined;
+      const issue = (path: string, message: string): void => {
+        ctx.addIssue({ code: "custom", path: [path], message });
+      };
+      for (const field of ["amount", "date"] as const) {
+        if (fromTransaction && data[field] !== undefined) {
+          issue(field, `${field} comes from the transaction`);
+        }
+        if (!fromTransaction && data[field] === undefined) {
+          issue(field, `${field} is required`);
+        }
+      }
+      if (fromTransaction && data.description !== undefined) {
+        issue("description", "description comes from the transaction");
+      }
+      if (fromTransaction && data.paidByContactId) {
+        issue(
+          "paidByContactId",
+          "A movement of yours is a line you paid; leave paidByContactId out",
+        );
+      }
+    }),
+});
+
+export const sharedExpenseParamsSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+    expenseId: z.string().uuid("expenseId must be a valid UUID"),
+  }),
+});
+
+export const updateSharedExpenseSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+    expenseId: z.string().uuid("expenseId must be a valid UUID"),
+  }),
+  body: z
+    .object({
+      description: z.string().trim().max(255).optional().nullable(),
+      date: isoDate.optional(),
+      amount: moneyAmount.optional(),
+      paidByContactId: z
+        .string()
+        .uuid("paidByContactId must be a valid UUID")
+        .optional()
+        .nullable(),
+      split: splitSchema.optional(),
+      useGroupSplit: z.literal(true).optional(),
+    })
+    .refine((data) => Object.values(data).some((v) => v !== undefined), {
+      message: "At least one field must be provided",
+    }),
+});
+
+export const writeOffSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  body: z
+    .object({
+      contactId: z.string().uuid("contactId must be a valid UUID").optional(),
+      expenseId: z.string().uuid("expenseId must be a valid UUID").optional(),
+    })
+    .refine(
+      (data) => [data.contactId, data.expenseId].filter(Boolean).length === 1,
+      {
+        message:
+          "A write-off names exactly one of them: contactId, or expenseId for its block of guests",
+        path: ["contactId"],
+      },
+    ),
+});
+
+export const undoWriteOffSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+    partyId: z.string().uuid("partyId must be a valid UUID"),
+  }),
+});
+
+export const getSettlementsSchema = z.object({
+  query: z.object({
+    limit: z.coerce
+      .number()
+      .int("Limit must be an integer")
+      .min(1, "Limit must be at least 1")
+      .max(MAX_LIMIT, `Limit must be at most ${MAX_LIMIT}`)
+      .optional(),
+    offset: z.coerce
+      .number()
+      .int("Offset must be an integer")
+      .min(0, "Offset must be non-negative")
+      .optional(),
+    cursor: z.string().uuid("Cursor must be a valid UUID").optional(),
+    contactId: z.string().uuid("contactId must be a valid UUID").optional(),
+    expenseId: z.string().uuid("expenseId must be a valid UUID").optional(),
+  }),
+});
+
+export const createSettlementSchema = z.object({
+  body: z
+    .object({
+      id: clientMintedId,
+      contactId: z.string().uuid("contactId must be a valid UUID").optional(),
+      expenseId: z.string().uuid("expenseId must be a valid UUID").optional(),
+      date: isoDate,
+      collected: moneyAmount.optional(),
+      paid: moneyAmount.optional(),
+      outsideApp: z.boolean().optional(),
+      accountId: z.string().uuid("accountId must be a valid UUID").optional(),
+      categoryId: z.string().uuid("categoryId must be a valid UUID").optional(),
+      categories: z
+        .array(
+          z.object({
+            expenseId: z.string().uuid("expenseId must be a valid UUID"),
+            categoryId: z.string().uuid("categoryId must be a valid UUID"),
+          }),
+        )
+        .max(MAX_LIMIT)
+        .optional(),
+    })
+    .superRefine((data, ctx) => {
+      const named = [data.contactId, data.expenseId].filter(Boolean).length;
+      if (named !== 1) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["contactId"],
+          message:
+            "A payment names exactly one counterparty: contactId, or expenseId for its block of guests",
+        });
+      }
+      if (!data.collected && !data.paid) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["collected"],
+          message: "A payment has to move something: collected, paid, or both",
+        });
+      }
+    }),
+});
+
 export const spendingStatsSchema = z.object({
   query: z
     .object({
@@ -604,6 +985,13 @@ const syncOperationSchema = z.object({
             .optional(),
         })
         .optional(),
+      // What the matching route reads from its path besides the row's own id.
+      params: z
+        .object({
+          groupId: z.string().uuid("groupId must be a valid UUID").optional(),
+          partyId: z.string().uuid("partyId must be a valid UUID").optional(),
+        })
+        .optional(),
     })
     .optional()
     .default({}),
@@ -685,8 +1073,8 @@ export const createTransactionSchema = z.object({
   body: z
     .object({
       id: clientMintedId,
-      type: z.enum(transactionTypeValues, {
-        error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
+      type: z.enum(writableTypeValues, {
+        error: `Invalid transaction type. Available: ${writableTypeValues.join(", ")}`,
       }),
       amount: moneyAmount,
       date: z.string().datetime({
@@ -782,8 +1170,8 @@ export const updateTransactionSchema = z.object({
   body: z
     .object({
       type: z
-        .enum(transactionTypeValues, {
-          error: `Invalid transaction type. Available: ${transactionTypeValues.join(", ")}`,
+        .enum(writableTypeValues, {
+          error: `Invalid transaction type. Available: ${writableTypeValues.join(", ")}`,
         })
         .optional(),
       amount: moneyAmount.optional(),
@@ -821,7 +1209,7 @@ export const updateTransactionSchema = z.object({
 
 // ADJUSTMENT would create an un-detailable pendingDetails entry: it cannot take a category.
 const quickAddTypeValues = Object.keys(TRANSACTION_TYPES).filter(
-  (t) => t !== "ADJUSTMENT",
+  (t) => t !== "ADJUSTMENT" && !TYPES_RECORDED_ELSEWHERE.includes(t),
 ) as [string, ...string[]];
 
 /**

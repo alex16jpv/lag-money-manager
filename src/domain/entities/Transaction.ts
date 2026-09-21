@@ -1,9 +1,20 @@
 import { v7 as uuidv7 } from "uuid";
 
-import { TransactionSource, TransactionType } from "../../shared/constants";
+import {
+  SharedHistoryReason,
+  TransactionSource,
+  TransactionType,
+} from "../../shared/constants";
 import { currencyDecimals } from "../../shared/currency";
 import { hasValidPrecision, MAX_AMOUNT } from "../../shared/money";
 import { DomainValidationError } from "../errors";
+
+/** One line of why what counts as yours is what it is; an event that moved it nowhere repeats the figure. */
+export interface SharedHistoryEntry {
+  at: Date;
+  reason: SharedHistoryReason;
+  countsAsYours: number;
+}
 
 export interface TransactionProps {
   id?: string;
@@ -23,6 +34,13 @@ export interface TransactionProps {
   source?: TransactionSource;
   // ISO 4217; stamped from the involved account when balances are applied.
   currency?: string;
+  // The figure Stats and the budgets measure: the amount minus whatever came back. Defaults to the amount.
+  countsAsYours?: number;
+  sharedExpenseId?: string | null;
+  sharedGroupId?: string | null;
+  // The settle-up that recorded this movement: a collection, a refund, or your side of a line.
+  sharedSettlementId?: string | null;
+  sharedHistory?: SharedHistoryEntry[];
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -43,6 +61,11 @@ export class Transaction {
   pendingDetails: boolean;
   source: TransactionSource;
   currency?: string;
+  countsAsYours: number;
+  sharedExpenseId: string | null;
+  sharedGroupId: string | null;
+  sharedSettlementId: string | null;
+  sharedHistory: SharedHistoryEntry[];
   createdAt: Date;
   updatedAt: Date;
 
@@ -62,6 +85,11 @@ export class Transaction {
     this.pendingDetails = props.pendingDetails ?? false;
     this.source = props.source ?? "MANUAL";
     this.currency = props.currency;
+    this.countsAsYours = props.countsAsYours ?? props.amount;
+    this.sharedExpenseId = props.sharedExpenseId ?? null;
+    this.sharedGroupId = props.sharedGroupId ?? null;
+    this.sharedSettlementId = props.sharedSettlementId ?? null;
+    this.sharedHistory = props.sharedHistory ?? [];
     this.createdAt = props.createdAt ?? new Date();
     this.updatedAt = props.updatedAt ?? new Date();
   }
@@ -109,6 +137,53 @@ export class Transaction {
         `Amount must be at most ${MAX_AMOUNT}`,
         "amount",
       );
+    }
+    if (this.countsAsYours < 0 || this.countsAsYours > this.amount) {
+      throw new DomainValidationError(
+        "What counts as yours is between zero and the amount",
+        "countsAsYours",
+      );
+    }
+    if ((this.sharedExpenseId === null) !== (this.sharedGroupId === null)) {
+      throw new DomainValidationError(
+        "A shared transaction names both its group and its expense",
+        "sharedExpenseId",
+      );
+    }
+    if (this.sharedExpenseId && this.type !== "EXPENSE") {
+      throw new DomainValidationError(
+        "Only an expense can be split with other people",
+        "type",
+        "TRANSACTION_NOT_SPLITTABLE",
+      );
+    }
+    if (this.sharedExpenseId && this.sharedSettlementId) {
+      throw new DomainValidationError(
+        "A movement is either an expense of a shared group or one a settle-up recorded",
+        "sharedSettlementId",
+      );
+    }
+    if (this.type === "SETTLEMENT") {
+      const sides = [this.fromAccountId, this.toAccountId].filter(Boolean);
+      if (sides.length !== 1) {
+        throw new DomainValidationError(
+          "A payment between people touches exactly one account: fromAccountId (you paid) or toAccountId (you were paid)",
+          "toAccountId",
+        );
+      }
+      if (this.categoryId) {
+        throw new DomainValidationError(
+          "categoryId is not allowed for a payment between people",
+          "categoryId",
+        );
+      }
+      // Recorded by Settle up and nowhere else, so one without its settlement cannot exist.
+      if (!this.sharedSettlementId) {
+        throw new DomainValidationError(
+          "A payment between people is recorded by a settle-up",
+          "sharedSettlementId",
+        );
+      }
     }
     if (this.type === "EXPENSE") {
       if (!this.fromAccountId) {

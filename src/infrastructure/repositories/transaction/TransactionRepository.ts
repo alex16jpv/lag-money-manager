@@ -1,10 +1,14 @@
 import { PipelineStage } from "mongoose";
 import { v7 as uuidv7 } from "uuid";
 
-import { Transaction } from "../../../domain/entities/Transaction";
+import {
+  SharedHistoryEntry,
+  Transaction,
+} from "../../../domain/entities/Transaction";
 import {
   ChangedTransaction,
   ITransactionRepository,
+  SharedLinkPatch,
   SpendingGroupBy,
   SpendingQuery,
   SpendingResult,
@@ -13,6 +17,7 @@ import {
   TransactionPage,
   TransactionRevision,
 } from "../../../domain/repositories/transaction/ITransactionRepository";
+import { TYPES_OUTSIDE_SPENDING } from "../../../shared/constants";
 import { dayKeyOf, lastDayKeyOf } from "../../../shared/dayKey";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
@@ -55,6 +60,22 @@ const pivotOf = (
   }
 };
 
+const storedEntry = (entry: SharedHistoryEntry): Record<string, unknown> => ({
+  at: entry.at,
+  reason: entry.reason,
+  countsAsYours: toCents(entry.countsAsYours),
+});
+
+/** Null on rows written before the field existed, and their whole amount was theirs. */
+const COUNTS_AS_YOURS = { $ifNull: ["$countsAsYours", "$amount"] };
+
+// Stored only while the movement is in a group: the index that finds it is partial over `$exists`.
+const SHARED_LINK_FIELDS = [
+  "sharedExpenseId",
+  "sharedGroupId",
+  "sharedSettlementId",
+] as const;
+
 export class TransactionRepository implements ITransactionRepository {
   private toEntity(doc: ITransactionDocument): Transaction {
     return new Transaction({
@@ -73,6 +94,15 @@ export class TransactionRepository implements ITransactionRepository {
       pendingDetails: doc.pendingDetails,
       source: doc.source as Transaction["source"],
       currency: doc.currency,
+      countsAsYours: fromCents(doc.countsAsYours ?? doc.amount),
+      sharedExpenseId: doc.sharedExpenseId ?? null,
+      sharedGroupId: doc.sharedGroupId ?? null,
+      sharedSettlementId: doc.sharedSettlementId ?? null,
+      sharedHistory: (doc.sharedHistory ?? []).map((entry) => ({
+        at: entry.at,
+        reason: entry.reason,
+        countsAsYours: fromCents(entry.countsAsYours),
+      })),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });
@@ -108,6 +138,15 @@ export class TransactionRepository implements ITransactionRepository {
     const doc: Record<string, unknown> = { ...transaction };
     if (transaction.amount !== undefined) {
       doc.amount = toCents(transaction.amount);
+    }
+    if (transaction.countsAsYours !== undefined) {
+      doc.countsAsYours = toCents(transaction.countsAsYours);
+    }
+    if (transaction.sharedHistory !== undefined) {
+      doc.sharedHistory = transaction.sharedHistory.map(storedEntry);
+    }
+    for (const field of SHARED_LINK_FIELDS) {
+      if (doc[field] === null) delete doc[field];
     }
     return doc;
   }
@@ -192,6 +231,85 @@ export class TransactionRepository implements ITransactionRepository {
   async getOwnById(id: string, userId: string): Promise<Transaction | null> {
     const doc = await TransactionModel.findOne({ _id: id, userId }).lean();
     return doc ? this.toEntity(doc) : null;
+  }
+
+  async getBySharedExpenseId(
+    userId: string,
+    sharedExpenseId: string,
+    session?: TxSession,
+  ): Promise<Transaction | null> {
+    const doc = await TransactionModel.findOne({
+      userId,
+      sharedExpenseId,
+      deletedAt: null,
+    })
+      .session(session ?? null)
+      .lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async listBySharedExpenseIds(
+    userId: string,
+    sharedExpenseIds: string[],
+    session?: TxSession,
+  ): Promise<Transaction[]> {
+    if (sharedExpenseIds.length === 0) return [];
+    const docs = await TransactionModel.find({
+      userId,
+      sharedExpenseId: { $in: sharedExpenseIds },
+      deletedAt: null,
+    })
+      .session(session ?? null)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
+  async listBySettlementId(
+    userId: string,
+    sharedSettlementId: string,
+    session?: TxSession,
+  ): Promise<Transaction[]> {
+    const docs = await TransactionModel.find({
+      userId,
+      sharedSettlementId,
+      deletedAt: null,
+    })
+      .session(session ?? null)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
+  async applySharedChange(
+    id: string,
+    userId: string,
+    patch: SharedLinkPatch,
+    entry: SharedHistoryEntry,
+    session: TxSession,
+  ): Promise<Transaction> {
+    const linked = patch.sharedExpenseId !== null;
+    const doc = await TransactionModel.findOneAndUpdate(
+      { _id: id, userId, deletedAt: null },
+      {
+        $set: {
+          countsAsYours: toCents(patch.countsAsYours),
+          ...(linked
+            ? {
+                sharedExpenseId: patch.sharedExpenseId,
+                sharedGroupId: patch.sharedGroupId,
+              }
+            : {}),
+        },
+        ...(linked
+          ? {}
+          : { $unset: { sharedExpenseId: "", sharedGroupId: "" } }),
+        $push: { sharedHistory: storedEntry(entry) },
+      },
+      { new: true, session: session ?? undefined },
+    ).lean();
+    if (!doc) {
+      throw new ApiError("NotFound", "Transaction not found");
+    }
+    return this.toEntity(doc);
   }
 
   async isDeleted(id: string, userId: string): Promise<boolean> {
@@ -398,8 +516,8 @@ export class TransactionRepository implements ITransactionRepository {
     query: SpendingQuery,
   ): Promise<SpendingResult> {
     const match: Record<string, unknown> = { userId, deletedAt: null };
-    // ADJUSTMENT is reconciliation, not real cash flow: hidden unless asked for.
-    match.type = query.type ?? { $ne: "ADJUSTMENT" };
+    // Reconciliation and money between people are not cash flow: hidden unless asked for.
+    match.type = query.type ?? { $nin: TYPES_OUTSIDE_SPENDING };
     if (query.categoryIds?.length) {
       match.categoryId = { $in: query.categoryIds };
     }
@@ -428,7 +546,7 @@ export class TransactionRepository implements ITransactionRepository {
               key: groupId,
               split: { $ifNull: ["$categoryId", "uncategorized"] },
             },
-            total: { $sum: "$amount" },
+            total: { $sum: COUNTS_AS_YOURS },
             count: { $sum: 1 },
           },
         },
@@ -459,7 +577,7 @@ export class TransactionRepository implements ITransactionRepository {
         {
           $group: {
             _id: groupId,
-            total: { $sum: "$amount" },
+            total: { $sum: COUNTS_AS_YOURS },
             count: { $sum: 1 },
           },
         },
@@ -473,7 +591,7 @@ export class TransactionRepository implements ITransactionRepository {
       pipeline.push({
         $facet: {
           buckets: bucketStages,
-          totals: [{ $group: { _id: null, total: { $sum: "$amount" } } }],
+          totals: [{ $group: { _id: null, total: { $sum: COUNTS_AS_YOURS } } }],
         },
       });
     } else {
@@ -539,7 +657,7 @@ export class TransactionRepository implements ITransactionRepository {
           $or: this.dayWindow(from, to, timezone),
         },
       },
-      { $group: { _id: "$categoryId", total: { $sum: "$amount" } } },
+      { $group: { _id: "$categoryId", total: { $sum: COUNTS_AS_YOURS } } },
     ]);
     const map: Record<string, number> = {};
     for (const r of rows) {
@@ -564,7 +682,7 @@ export class TransactionRepository implements ITransactionRepository {
           $or: this.dayWindow(from, to, timezone),
         },
       },
-      { $group: { _id: null, total: { $sum: "$amount" } } },
+      { $group: { _id: null, total: { $sum: COUNTS_AS_YOURS } } },
     ]);
     return rows[0]?.total ?? 0;
   }

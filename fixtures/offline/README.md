@@ -39,11 +39,12 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
   bounded, a day grouping is not.
 - **Deleted rows (`deletedAt`) are invisible** to every figure, balances included.
   Archived rows (`archivedAt`) still count: archiving is not deleting.
-- **`ADJUSTMENT` never counts as spending** unless the query names that type; it
-  does move balances. A `TRANSFER` moves two balances and is never spending either,
-  but it can carry a category, and `type: TRANSFER` is a spending query like any
-  other: it buckets those rows and the ones with no category under `uncategorized`.
-- **A query with `type: null` means everything but `ADJUSTMENT`** — income and
+- **`ADJUSTMENT` and `SETTLEMENT` never count as spending** unless the query names
+  that type; both move balances. A `TRANSFER` moves two balances and is never
+  spending either, but it can carry a category, and `type: TRANSFER` is a spending
+  query like any other: it buckets those rows and the ones with no category under
+  `uncategorized`.
+- **A query with `type: null` means everything but those two** — income and
   transfers included. It is the API's default, and it surprises people.
 - **Tag buckets unwind**: a row with two tags is counted in both, so the buckets
   can add up to more than `total`. `total` is over the rows, never over the buckets.
@@ -61,6 +62,24 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
   This is the rule, not the client's recipe: on the device the shown balance is
   the server's `balance` from the mirror plus the effect of the unsent outbox,
   and the two agree whenever the outbox is empty.
+- **What a figure of spending measures is `countsAsYours`**, not the amount:
+  what left the account minus what has come back for it. A row without the
+  field counts its whole amount, and the **listing is the other way round** —
+  a row's amount there is what moved through the account.
+- **A split always adds up to its expense**, and each share is
+  `floor(total × its parts ÷ all the parts)` — its parts, not one floored part
+  repeated. Whatever is left over after flooring goes **whole to whoever
+  fronted it**, in every mode, so two implementations reach the same figures
+  without agreeing on an order. A block of guests weighs as many parts as it
+  counts and is one party to collect from.
+- **A payment belongs to the person, not to the line**: it covers the **oldest
+  line first** across every group shared with them, ties broken by expense id.
+  What you hand over covers your own lines first, and whatever is left of it is
+  their money going back, so it comes off what they gave you **before** any of
+  that is imputed. `collected` on a share is never typed: it is that answer.
+- **A write-off gives up on what was open when it was decided** and never more
+  than is open now. It moves no figure: what left the account was counted as
+  yours the day it left.
 - **`pending.transactionIds` is a set.** No order is part of the contract.
 - **`lists` are the opposite: there the order IS the contract.** Each one is the
   first page of `GET /transactions` under its `sort` and `order`, and two rows with
@@ -70,13 +89,40 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
 
 ## Shape of a file
 
-`user`, `accounts`, `categories`, `transactions` and `budgets` are the input, in
+`user`, `accounts`, `categories`, `transactions`, `budgets`, `contacts`,
+`sharedGroups`, `sharedExpenses` and `settlements` are the input, in
 the shape the mirror holds them — the same shape `GET /sync/changes` sends, so
 budgets are **as stored** (`amount`, `amountOverrides`, `periodType`, dates), with
 no `periodKey`, `spent` or `expired`. Every row also carries a `key`, which is a
 human handle, never an id. `expected` holds `balances`, `pending`, `spending`
 (one entry per query, with the query spelled out), `lists` (one ordered page per
-query) and `budgets` (the views as of `expected.budgets.reference`).
+query), `budgets` (the views as of `expected.budgets.reference`),
+`countsAsYours` (what each movement is left counting as) and `shared` (where
+every group stands, and every person in it).
+
+`expected.shared[].people` is for the device: the server has no per-person
+endpoint, so the mongod suite checks the figures it does expose and that block
+is the app's to meet. And **paying somebody back is not in any fixture**: it
+writes one movement per line with ids the server mints, which a file of fixed
+ids cannot name — the generator refuses a `paid` settlement rather than write
+a balance it cannot explain, and for the same reason no row is of type
+`SETTLEMENT`. What a settle-up moves is in `expected.balances` all the same.
+
+Three fields of the shared layer are worth spelling out:
+
+- **`expected.shared[].people[].surplus`** is what THEY handed over beyond
+  every line of theirs. It stays on the counter and the next line eats it, so
+  it is never part of `collected`. It is **per counterparty, not per group**:
+  the same figure shows on that person's row in every group you share with
+  them, and adding them up counts it twice.
+- **`sharedGroups[].writeOffs[].amount` is the ceiling**, what was open the
+  day you gave up on somebody. What the group actually gives up is
+  `expected.shared[].writtenOff`, which is that ceiling capped by what is
+  still open: pay something afterwards and the two stop being equal.
+- **`settlements[].afterWriteOffs` is not an API field.** It is an
+  instruction to whoever seeds the fixture: record this payment after the
+  write-offs, which is the only order in which a ceiling is visible. The
+  change feed has nothing like it.
 
 ## The fixtures
 
@@ -90,7 +136,7 @@ query) and `budgets` (the views as of `expected.budgets.reference`).
 - An archived category keeps its totals; archiving is not deleting.
 - Quick-adds count as spending under `uncategorized`, and are the pending summary.
 - Tag buckets double-count a transaction with two tags: their sum exceeds the total.
-- With no `type`, the server means EXPENSE + INCOME + TRANSFER, everything but ADJUSTMENT.
+- With no `type`, the server means EXPENSE + INCOME + TRANSFER: everything but ADJUSTMENT and SETTLEMENT.
 - `type: TRANSFER` is a spending query like any other: it groups transfers by their category.
 - A transfer with no category lands in `uncategorized`, beside the ones that have one.
 - An account bucket is the account the money left; a quick-add leaves the default one, and a transfer is keyed by its origin, never by both ends.
@@ -131,3 +177,19 @@ query) and `budgets` (the views as of `expected.budgets.reference`).
 - An INCOME bucket is keyed by the account the money reached, not the one it left.
 
 10 transactions · 2 accounts · 4 categories · 3 budgets · 5 spending queries · 1 ordered list · reference `2025-11-15T12:00:00-05:00`
+
+### `cop-shared.json` — COP · America/Bogota · the split, the imputation and what counts as yours
+
+- 100.000 between three does not divide: the odd peso is whoever fronted it.
+- A block of twenty guests weighs twenty parts and is one party to collect from.
+- A payment covers the oldest line first, across the whole group.
+- Cash outside the app moves no account and lowers what counts as yours all the same.
+- A write-off gives up on what was open and moves no figure.
+- What Stats and the budgets measure is what is left as yours, never the amount.
+- The oldest line is the oldest by DATE: one written last but dated first is covered first.
+- Two lines on the same instant are covered in id order, so two devices agree.
+- A fixed share plus the rest divided: the pinned figure never moves.
+- More than they owed stays on the counter as surplus; nothing is over-collected.
+- A write-off keeps the ceiling it was decided against: what is paid later lowers what it gives up.
+
+4 transactions · 1 accounts · 1 categories · 1 budgets · 2 spending queries · 1 ordered list · reference `2026-08-20T12:00:00-05:00`

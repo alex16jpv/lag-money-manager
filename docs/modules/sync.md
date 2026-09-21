@@ -2,14 +2,14 @@
 
 ## What This Module Does
 
-Two endpoints for the offline client. `GET /sync/changes` feeds an **offline mirror**: every row of the user's data that changed after a given position, across the four entities and the user's own profile, ordered and paginated. `POST /sync` takes the client's **outbox as one batch** and answers one structured result per operation.
+Two endpoints for the offline client. `GET /sync/changes` feeds an **offline mirror**: every row of the user's data that changed after a given position, across the eight entities and the user's own profile, ordered and paginated. `POST /sync` takes the client's **outbox as one batch** and answers one structured result per operation.
 
 Two properties separate it from the listing endpoints, and both are the reason it exists:
 
-1. **It reports disappearances.** Archived accounts, categories and budgets come with their `archivedAt`; deleted transactions come with a `deletedAt` that no other response carries. A client holding a local copy has no other way to learn that a row is gone — the listings simply stop returning it, which is indistinguishable from "no change".
+1. **It reports disappearances.** Archived accounts, categories, budgets, contacts and shared groups come with their `archivedAt`; deleted transactions, shared expenses and payments come with a `deletedAt` that no other response carries. A client holding a local copy has no other way to learn that a row is gone — the listings simply stop returning it, which is indistinguishable from "no change".
 2. **It is ordered by `(updatedAt, _id)`, not by the business date.** A row that is edited moves to the end of that order and never backwards, which is what makes "everything after X" a complete answer.
 
-The feed owns no data and no writes: it is a merge over five repositories. The batch owns exactly one collection — the registry of landed operations (`syncops`) — and **no business rule**: every operation goes through the same service its HTTP route calls (offline plan, trap 7.8).
+The feed owns no data and no writes: it is a merge over nine repositories. The batch owns exactly one collection — the registry of landed operations (`syncops`) — and **no business rule**: every operation goes through the same service its HTTP route calls (offline plan, trap 7.8).
 
 ## Files and Responsibilities
 
@@ -17,8 +17,8 @@ The feed owns no data and no writes: it is a merge over five repositories. The b
 | --- | --- |
 | `src/app/routes/syncRoutes.ts` | Route definitions with OpenAPI docs (`GET /sync/changes`, `POST /sync`) |
 | `src/app/controllers/SyncController.ts` | Feed: resolves the request's position (`cursor`, else `since`, else a snapshot). Batch: resolves the user's timezone and hands the operations to the batch service |
-| `src/app/services/SyncService.ts` | Merges the five sources into one globally ordered page and mints the next cursor |
-| `src/app/services/SyncBatchService.ts` | Applies a batch in `seq` order through the account, category, transaction and budget services; blocks, remembers and classifies outcomes, and applies the reconciliation rules below |
+| `src/app/services/SyncService.ts` | Merges the nine sources into one globally ordered page and mints the next cursor |
+| `src/app/services/SyncBatchService.ts` | Applies a batch in `seq` order through the account, category, transaction, budget, contact, shared group, shared expense and settlement services; blocks, remembers and classifies outcomes, and applies the reconciliation rules below |
 | `src/shared/syncBatch.ts` | The batch contract: limits, statuses, warnings, actions per entity, TTL |
 | `src/shared/collation.ts` | The collation of the unique name indexes, shared by the indexes and by the name lookups the reconciliation uses |
 | `src/shared/errorResponse.ts` | Translates a client-fault error to `{status, body}` — used by the error middleware and by the batch, so both answer the same codes |
@@ -26,8 +26,8 @@ The feed owns no data and no writes: it is a merge over five repositories. The b
 | `src/app/validation/schemas.ts` | `syncChangesSchema`, `syncBatchSchema` |
 | `src/shared/syncCursor.ts` | Cursor encoding, the `(updatedAt, _id)` ordering, and the overlap window |
 | `src/infrastructure/repositories/changeFeed.ts` | The keyset `$or` predicate every repository shares |
-| `src/infrastructure/repositories/*/…Repository.ts` | `changesSince()` on account, category, transaction and budget |
-| `src/infrastructure/models/*.ts` | The `(userId, updatedAt, _id)` index that backs all four |
+| `src/infrastructure/repositories/*/…Repository.ts` | `changesSince()` on account, category, transaction, budget, contact, shared group, shared expense and settlement |
+| `src/infrastructure/models/*.ts` | The `(userId, updatedAt, _id)` index that backs all eight |
 
 ## Public API
 
@@ -69,6 +69,12 @@ The feed owns no data and no writes: it is a merge over five repositories. The b
 | `pagination.count` | Rows in this page, all entities together |
 | `pagination.nextCursor` | Never null — see below |
 
+### The shared layer travels whole, and carries nothing private
+
+`contacts`, `sharedGroups`, `sharedExpenses` and `settlements` come down the same feed as everything else. What they hold is the **fact** — the outing, its people, its lines, the split, who fronted each one and what has been settled — and nothing of anybody's ledger: no account, no category, no note, no `countsAsYours` and no link to a movement. Those live on the user's own transactions, which travel in `transactions` as they always did.
+
+That separation is not tidiness: it is what makes the second delivery possible. The day a group is shown to the person you split with, the group, its expenses and its payments are the rows that can be shown as they are, with nothing to strip out of them first ([settlements.md](settlements.md), [shared-groups.md](shared-groups.md)). **A contact is not one of them**: it is the owner's address book — it carries an email and the `linkedUserId` that an invitation will fill — and what the other side would ever see of it is a name and a colour.
+
 ### Paging, and why the cursor goes backwards at the end
 
 Send `nextCursor` back as `cursor` until `hasMore` is false. While `hasMore` is true it is the exact row the page stopped at.
@@ -76,6 +82,8 @@ Send `nextCursor` back as `cursor` until `hasMore` is false. While `hasMore` is 
 **When `hasMore` is false, the cursor is deliberately 60 seconds behind `serverTime`.** `updatedAt` is stamped by the application server (Mongoose timestamps), not by MongoDB, so two instances with drifted clocks can confirm writes out of order: a row stamped `12:00:00` can become visible *after* one stamped `12:00:01`. A watermark set to the last row read would skip it forever. Rows inside that window arrive again on the next pull; the client applies by `id` with an upsert, so reprocessing them costs nothing.
 
 The alternative — a `ChangeLog` collection with a monotonic `seq` per user — is exact and needs no window, at the price of an extra write per operation. It is not needed while data belongs to exactly one user.
+
+A group comes down as stored too: `totals` and `status` are not in it. Both are worked out from the group's live expenses on every read of `GET /shared-groups`, and the client already holds those expenses, so the feed would be paying for an aggregation per group to send a figure the mirror can add up itself.
 
 ### Budgets come as stored, not as the view
 
@@ -117,6 +125,12 @@ Pushes the offline outbox as one batch: 1–200 operations, body up to 1 MB. The
       "entity": "budget", "action": "setOverride", "id": "0195…b7",
       "payload": { "body": { "amount": 250 }, "query": { "reference": "2026-12-15T12:00:00.000Z" } },
       "baseUpdatedAt": "2026-09-01T08:00:00.000Z", "dependsOn": [], "opVersion": 1
+    },
+    {
+      "opId": "0195…a4", "seq": 15, "occurredAt": "2026-09-05T10:03:00-05:00",
+      "entity": "sharedExpense", "action": "create", "id": "0195…e1",
+      "payload": { "params": { "groupId": "0195…g1" }, "body": { "transactionId": "0195…c2" } },
+      "dependsOn": ["0195…g1", "0195…c2"], "opVersion": 1
     }
   ]
 }
@@ -127,6 +141,7 @@ Pushes the offline outbox as one batch: 1–200 operations, body up to 1 MB. The
 | `opId` | UUID minted by the device; the idempotency key of the operation |
 | `seq` | The device's monotonic counter. **The only ordering criterion** |
 | `occurredAt` | The device's clock. Data only; never used to order or to judge |
+| `payload.params` | What the matching route reads from its **path** besides the row's id: `groupId` for an expense of a group, `partyId` for taking somebody out or undoing a write-off |
 | `entity` · `action` | Which route: `account` create/update/archive/restore/setDefault · `category` create/update/archive/restore · `transaction` create/quickAdd/update/delete · `budget` create/update/archive/restore/setOverride/clearOverride |
 | `id` | The row the operation is about: the client-minted id of a create, the row's id otherwise. A create's `payload.body.id`, if sent, must equal it |
 | `payload.body` | The body the matching route takes, verbatim. Validated with **the same Zod schema the route uses**; a bad body rejects that one operation, not the batch. Ignored by actions that take none |
@@ -175,6 +190,10 @@ is lost and no balance moved. `syncBatch.mongo.test.ts` holds the case.
 
 **Failure of the request itself.** A database outage or a bug while applying an operation fails the whole request (`503` / `500`) rather than filing it under the operation; what landed before it is on record and replays as `duplicate` when the batch is resent. The operation itself and its record are **not** written atomically: a crash between the two leaves an applied operation unregistered, and the resend is then judged by the route's own rules. Measured against a real mongod (T-09), what that costs is bounded: a create replays by its client-minted id, an archive, a restore, a `setDefault`, an override and a delete are idempotent, and no balance moves twice. What it did cost was a **guarded** write meeting the 409 its own landing had earned — see *A guard on a state that already holds* below, which is what closes it.
 
+### What a batch may carry, beyond the body
+
+Most operations need the body the matching route takes and nothing else. Five of them need what that route reads from its **path**, and `payload.params` carries it: `groupId` for creating, editing or deleting an expense of a group, and `partyId` for taking somebody out of a group or undoing a write-off. `partyId` is the batch's one name for two segments — the route spells it `contactId` when it removes a participant and `partyId` when it undoes a write-off, and both are a contact or, for a block of guests, its expense. Missing it rejects **that operation** with `VALIDATION` and its `details`, like any other bad body: the envelope is still valid and the rest of the batch runs. A `groupId` also counts as a dependency, so an expense whose group failed earlier in the batch answers `blocked` rather than `rejected`.
+
 ### Reconciliation, per entity
 
 What a service refuses is not always the last word: an operation queued offline can be refused for something that happened online while the device was away. These rules apply **only inside `POST /sync`** — the HTTP routes are unchanged — and they never write anything themselves, they only decide what to answer and, for a merge, which row the rest of the batch writes to.
@@ -187,7 +206,7 @@ What a service refuses is not always the last word: an operation queued offline 
 
 **Budgets** keep the routes' own answer: an overlap is `rejected` `BUDGET_PERIOD_OVERLAP` (400 on the route, so `rejected` here).
 
-**A reference archived online.** A movement whose category was archived while the device was offline is **saved without the category**, flagged `pendingDetails: true` so it lands in the review inbox, and answered `applied` with `warnings: ["CATEGORY_ARCHIVED_DROPPED"]`. The movement is never lost. This is the one write the batch makes that the route would not take as sent: `POST /transactions` does not accept `pendingDetails`, so a `MANUAL` movement flagged for review can only be born here — deliberately, because the review inbox is where the user meets the missing category. A **budget's** category is never dropped: a budget with no categories is a *global* budget, so dropping one would silently change what it counts — that stays `rejected` `CATEGORY_ARCHIVED`. A movement whose **account** was archived online is a `conflict` `RESOURCE_ARCHIVED` with the archived account in `current`: the route answers a bare 404 there, which cannot tell "archived while I was away" from "never existed", and only the first is the user's to resolve (restore the account, or move the movement).
+**A reference archived online.** A movement whose category was archived while the device was offline is **saved without the category**, flagged `pendingDetails: true` so it lands in the review inbox, and answered `applied` with `warnings: ["CATEGORY_ARCHIVED_DROPPED"]`. The movement is never lost. This is the one write the batch makes that the route would not take as sent: `POST /transactions` does not accept `pendingDetails`, so a `MANUAL` movement flagged for review can only be born here — deliberately, because the review inbox is where the user meets the missing category. A **budget's** category is never dropped: a budget with no categories is a *global* budget, so dropping one would silently change what it counts — that stays `rejected` `CATEGORY_ARCHIVED`. A movement whose **account** was archived online is a `conflict` `RESOURCE_ARCHIVED` with the archived account in `current`: the route answers a bare 404 there, which cannot tell "archived while I was away" from "never existed", and only the first is the user's to resolve (restore the account, or move the movement). **A settle-up does not get that reading**: its 404 can just as well be the contact or the expense it names, and a message that picks the account would be one the server cannot stand behind.
 
 **Already gone.** Archiving a row that is already archived lands (`applied`): the state the operation wanted holds, and archives are idempotent on the routes too. Deleting a movement that another device already deleted answers `duplicate` rather than the route's 404 — same reasoning, and the queue drains instead of filling the tray with movements the user already removed.
 
@@ -211,7 +230,9 @@ Every entity in the feed carries `(userId, updatedAt, _id)`. The keyset predicat
 
 The index has **no partial filter**: a filter on `archivedAt`/`deletedAt` would exclude exactly the rows the feed exists to report.
 
-Adding a new entity to the sync feed means adding this index to it in the same change. It is invariant 5 of the offline contract, not an optimization.
+Adding a new entity to the sync feed means adding this index to it in the same change. It is invariant 5 of the offline contract, not an optimization. The four of the shared layer — contacts, groups, expenses and payments — declared theirs when they were written, before the feed carried them.
+
+**One page costs one read per source**: eight of `limit + 1` whole documents, plus the profile by id. They are all keyset scans over their own index, so they are cheap per row, but the page keeps only `limit` of what they bring: with one entity dominating a page the other seven are read for nothing. The lever, when it is worth pulling, is reading `{_id, updatedAt}` first — covered by the index — and fetching whole documents only for the rows that made the page. The feed caps rows, never bytes.
 
 `syncops` carries a TTL index on `createdAt` (`expireAfterSeconds` = 30 days) and is keyed by `${userId}:${opId}`, so two users' opIds can never collide and the lookup per operation is a primary-key read.
 

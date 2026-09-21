@@ -13,12 +13,18 @@ const router = Router();
  *     tags: [Sync]
  *     summary: Everything that changed for the user, for the offline mirror
  *     description: |
- *       One feed for the four entities and the user, ordered by
- *       `(updatedAt, _id)` and paginated with an opaque cursor. **Archived and
- *       deleted rows are included** — they are the only way a client that is
- *       holding a local copy learns that something disappeared. Deleted
- *       transactions arrive with `deletedAt` set; archived accounts,
- *       categories and budgets with `archivedAt`.
+ *       One feed for every entity and the user, ordered by `(updatedAt, _id)`
+ *       and paginated with an opaque cursor. **Archived and deleted rows are
+ *       included** — they are the only way a client that is holding a local
+ *       copy learns that something disappeared. Deleted transactions, shared
+ *       expenses and payments arrive with `deletedAt` set; archived accounts,
+ *       categories, budgets, contacts and shared groups with `archivedAt`.
+ *
+ *       **The shared layer travels whole and carries nothing private**: the
+ *       group, its people, its expenses, the split, who fronted each line and
+ *       what has been settled. Your account, your categories and what counts
+ *       as yours are on your own movements, which is what makes it possible to
+ *       show a group to somebody else later without showing them your ledger.
  *
  *       **No `since` and no `cursor` is a full snapshot**, down the same code
  *       path: there is no separate snapshot endpoint to drift from this one.
@@ -120,10 +126,17 @@ router.get("/changes", validate(syncChangesSchema), SyncController.getChanges);
  *       **Actions per entity:** account: create, update, archive, restore,
  *       setDefault · category: create, update, archive, restore · transaction:
  *       create, quickAdd, update, delete · budget: create, update, archive,
- *       restore, setOverride, clearOverride. `payload.body` is the body the
+ *       restore, setOverride, clearOverride · contact: create, update,
+ *       archive, restore · sharedGroup: create, update, archive, restore,
+ *       addParticipants, removeParticipant, writeOff, undoWriteOff ·
+ *       sharedExpense: create, update, delete · settlement: create, delete.
+ *       `payload.body` is the body the
  *       matching route takes, validated with the same rules (a bad body
  *       rejects that operation only); `payload.query.reference` is the budget
- *       routes' `reference`; `baseUpdatedAt` is the route's `If-Match`. A
+ *       routes' `reference`; **`payload.params`** is what a route reads from
+ *       its path besides the row's own id — `groupId` for an expense of a
+ *       group, `partyId` for taking somebody out or undoing a write-off;
+ *       `baseUpdatedAt` is the route's `If-Match`. A
  *       create's `payload.body.id`, if sent, must equal `id`.
  *
  *       **Idempotency:** every landed `opId` is remembered for 30 days; sending

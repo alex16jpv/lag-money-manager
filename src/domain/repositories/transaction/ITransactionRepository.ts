@@ -10,7 +10,7 @@ import {
   TransactionPagination,
 } from "../../../shared/pagination";
 import { ChangeCursor } from "../../../shared/syncCursor";
-import { Transaction } from "../../entities/Transaction";
+import { SharedHistoryEntry, Transaction } from "../../entities/Transaction";
 import { IRepository } from "../IRepository";
 
 /**
@@ -88,11 +88,48 @@ export interface SpendingResult {
   totalCents: number;
 }
 
+/** The link to a shared expense and the figure that goes with it, written as one. */
+export interface SharedLinkPatch {
+  sharedExpenseId: string | null;
+  sharedGroupId: string | null;
+  countsAsYours: number;
+}
+
 export interface ITransactionRepository extends IRepository<Transaction> {
   // Owner-scoped read for client-minted id replay; resolves archived/deleted too.
   getOwnById(id: string, userId: string): Promise<Transaction | null>;
   // §5.4: what tells a movement another device deleted from one that never existed.
   isDeleted(id: string, userId: string): Promise<boolean>;
+
+  // The movement a shared expense is; null when it was somebody else who paid that line.
+  getBySharedExpenseId(
+    userId: string,
+    sharedExpenseId: string,
+    session?: unknown,
+  ): Promise<Transaction | null>;
+
+  // The movements of several expenses at once: a whole re-split reads them in one query.
+  listBySharedExpenseIds(
+    userId: string,
+    sharedExpenseIds: string[],
+    session?: unknown,
+  ): Promise<Transaction[]>;
+
+  // Everything one settle-up recorded, so undoing it reverses exactly those movements.
+  listBySettlementId(
+    userId: string,
+    sharedSettlementId: string,
+    session?: unknown,
+  ): Promise<Transaction[]>;
+
+  // The link, the figure and the line of history that explains it, in one write.
+  applySharedChange(
+    id: string,
+    userId: string,
+    patch: SharedLinkPatch,
+    entry: SharedHistoryEntry,
+    session: unknown,
+  ): Promise<Transaction>;
 
   // Change feed after `cursor` in (updatedAt, _id) order, archived and deleted rows included.
   changesSince(

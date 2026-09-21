@@ -19,6 +19,7 @@ jest.mock("../../shared/constants", () => ({
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
     ADJUSTMENT: "ADJUSTMENT",
+    SETTLEMENT: "SETTLEMENT",
   },
   CATEGORY_TYPES: {
     INCOME: "INCOME",
@@ -31,6 +32,25 @@ jest.mock("../../shared/constants", () => ({
     TRANSACTION: "Transaction",
     CATEGORY: "Category",
   },
+  SHARED_HISTORY_REASONS: {
+    SPLIT: "SPLIT",
+    SPLIT_EDITED: "SPLIT_EDITED",
+    AMOUNT_CHANGED: "AMOUNT_CHANGED",
+    UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
+  },
+  SHARE_PARTIES: { USER: "USER", CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  SPLIT_MODES: {
+    EQUAL: "EQUAL",
+    PERCENT: "PERCENT",
+    EXACT: "EXACT",
+    FIXED_REST: "FIXED_REST",
+  },
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
 }));
 
 // The transactional callback runs inline with a dummy session: no real MongoDB session here.
@@ -41,13 +61,17 @@ jest.mock("../../shared/unitOfWork", () => ({
 }));
 
 import { CreateTransactionDTO } from "../../app/dtos/TransactionDTO";
+import { SharedLedgerService } from "../../app/services/SharedLedgerService";
 import { TransactionService } from "../../app/services/TransactionService";
 import { Account } from "../../domain/entities/Account";
 import { Category } from "../../domain/entities/Category";
+import { SharedExpense } from "../../domain/entities/SharedExpense";
 import { Transaction } from "../../domain/entities/Transaction";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
+import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
+import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 
 const USER = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
@@ -56,12 +80,47 @@ const ACC_A = "019576a0-d7b6-7d6d-af6a-2b7545f5ac71";
 const ACC_B = "019576a0-d7b6-7d6d-af6a-2b7545f5ac72";
 const TX_ID = "019576a0-d7b6-7d6d-af6a-2b7545f5ac80";
 
+const createMockSharedExpenseRepo =
+  (): jest.Mocked<ISharedExpenseRepository> => ({
+    getAll: jest.fn(),
+    getAllByGroup: jest.fn(),
+    getById: jest.fn(),
+    getByIdIncludingDeleted: jest.fn(),
+    getOwnById: jest.fn(),
+    listByGroup: jest.fn().mockResolvedValue([]),
+    listByCounterparty: jest.fn().mockResolvedValue([]),
+    changesSince: jest.fn().mockResolvedValue([]),
+    countSharesOfContact: jest.fn().mockResolvedValue(0),
+    totalsByGroup: jest.fn().mockResolvedValue([]),
+    replaceSplits: jest.fn().mockResolvedValue(undefined),
+    create: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+  });
+
+const createMockSettlementRepo =
+  (): jest.Mocked<ISharedSettlementRepository> => ({
+    getAll: jest.fn(),
+    getAllByUserId: jest.fn(),
+    getById: jest.fn(),
+    getOwnById: jest.fn(),
+    listByCounterparty: jest.fn().mockResolvedValue([]),
+    changesSince: jest.fn().mockResolvedValue([]),
+    create: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+  });
+
 const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getOwnById: jest.fn(),
   isDeleted: jest.fn().mockResolvedValue(false),
+  getBySharedExpenseId: jest.fn().mockResolvedValue(null),
+  listBySharedExpenseIds: jest.fn().mockResolvedValue([]),
+  listBySettlementId: jest.fn().mockResolvedValue([]),
+  applySharedChange: jest.fn(),
   changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
@@ -78,9 +137,9 @@ const createMockAccountRepo = (): jest.Mocked<IAccountRepository> => ({
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   findActiveByName: jest.fn().mockResolvedValue(null),
   getOwnById: jest.fn(),
-  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -103,9 +162,9 @@ const createMockCategoryRepo = (): jest.Mocked<ICategoryRepository> => ({
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
   getByIdIncludingArchived: jest.fn(),
+  changesSince: jest.fn().mockResolvedValue([]),
   findActiveByName: jest.fn().mockResolvedValue(null),
   getOwnById: jest.fn(),
-  changesSince: jest.fn().mockResolvedValue([]),
   create: jest.fn(),
   createMany: jest.fn(),
   listSeedKeys: jest.fn().mockResolvedValue([]),
@@ -132,17 +191,24 @@ describe("TransactionService", () => {
   let acctRepo: jest.Mocked<IAccountRepository>;
   let idempotencyRepo: jest.Mocked<IIdempotencyRepository>;
   let categoryRepo: jest.Mocked<ICategoryRepository>;
+  let sharedExpenseRepo: jest.Mocked<ISharedExpenseRepository>;
 
   beforeEach(() => {
     txRepo = createMockTransactionRepo();
     acctRepo = createMockAccountRepo();
     idempotencyRepo = createMockIdempotencyRepo();
     categoryRepo = createMockCategoryRepo();
+    sharedExpenseRepo = createMockSharedExpenseRepo();
     service = new TransactionService(
       txRepo,
       acctRepo,
       idempotencyRepo,
       categoryRepo,
+      new SharedLedgerService(
+        sharedExpenseRepo,
+        createMockSettlementRepo(),
+        txRepo,
+      ),
     );
     acctRepo.incrementBalance.mockResolvedValue(true);
   });
@@ -625,7 +691,7 @@ describe("TransactionService", () => {
       await service.updateTransaction(TX_ID, { amount: 175 }, USER, TZ);
       expect(txRepo.update).toHaveBeenCalledWith(
         TX_ID,
-        { amount: 175 },
+        { amount: 175, countsAsYours: 175 },
         "test-session",
         expect.objectContaining({ amount: 100, type: "EXPENSE" }),
         undefined,
@@ -758,6 +824,189 @@ describe("TransactionService", () => {
       await expect(
         service.updateTransaction(TX_ID, { amount: 50 }, USER, TZ),
       ).rejects.toThrow("Transaction not found");
+    });
+  });
+
+  describe("a movement in a shared group [T-115]", () => {
+    const EXPENSE_ID = "019576a0-d7b6-7d6d-af6a-2b7545f5acb1";
+    const GROUP_ID = "019576a0-d7b6-7d6d-af6a-2b7545f5acb2";
+    const ANA = "019576a0-d7b6-7d6d-af6a-2b7545f5acb3";
+
+    const split = new Transaction({
+      id: TX_ID,
+      type: "EXPENSE",
+      amount: 120000,
+      currency: "COP",
+      date: new Date("2026-08-12T18:00:00.000Z"),
+      description: "Corner store",
+      fromAccountId: ACC_A,
+      userId: USER,
+      sharedExpenseId: EXPENSE_ID,
+      sharedGroupId: GROUP_ID,
+    });
+
+    const expense = (mode = "EQUAL"): SharedExpense =>
+      new SharedExpense({
+        id: EXPENSE_ID,
+        groupId: GROUP_ID,
+        description: "Corner store",
+        date: new Date("2026-08-12T18:00:00.000Z"),
+        amount: 120000,
+        userId: USER,
+        currency: "COP",
+        customSplit: mode !== "EQUAL",
+        split: {
+          mode: mode as "EQUAL" | "EXACT",
+          guests: null,
+          shares: [
+            {
+              party: "USER",
+              contactId: null,
+              percent: null,
+              fixedAmount: mode === "EXACT" ? 100000 : null,
+              amount: mode === "EXACT" ? 100000 : 60000,
+              collected: 0,
+            },
+            {
+              party: "CONTACT",
+              contactId: ANA,
+              percent: null,
+              fixedAmount: mode === "EXACT" ? 20000 : null,
+              amount: mode === "EXACT" ? 20000 : 60000,
+              collected: 0,
+            },
+          ],
+        },
+      });
+
+    beforeEach(() => {
+      txRepo.getById.mockResolvedValue(split);
+      acctRepo.getById.mockResolvedValue(account());
+      txRepo.update.mockImplementation(
+        async (_id, patch) =>
+          new Transaction({ ...split, ...(patch as object) }),
+      );
+      txRepo.applySharedChange.mockImplementation(
+        async (_id, _userId, patch) => new Transaction({ ...split, ...patch }),
+      );
+      sharedExpenseRepo.getById.mockResolvedValue(expense());
+      sharedExpenseRepo.update.mockResolvedValue(expense());
+    });
+
+    it("resolves the split again on a new amount, and says so in the history", async () => {
+      const saved = await service.updateTransaction(
+        TX_ID,
+        { amount: 150000 },
+        USER,
+        TZ,
+      );
+
+      expect(sharedExpenseRepo.update).toHaveBeenCalledWith(
+        EXPENSE_ID,
+        expect.objectContaining({
+          amount: 150000,
+          split: expect.objectContaining({
+            shares: [
+              expect.objectContaining({ amount: 75000 }),
+              expect.objectContaining({ amount: 75000 }),
+            ],
+          }),
+        }),
+        "test-session",
+      );
+      expect(txRepo.applySharedChange).toHaveBeenCalledWith(
+        TX_ID,
+        USER,
+        expect.objectContaining({
+          sharedExpenseId: EXPENSE_ID,
+          countsAsYours: 150000,
+        }),
+        expect.objectContaining({
+          reason: "AMOUNT_CHANGED",
+          countsAsYours: 150000,
+        }),
+        "test-session",
+      );
+      expect(saved.countsAsYours).toBe(150000);
+    });
+
+    // What T-116 will write: half of it came back, so a new amount must not hand it back.
+    it("carries what came back across a new amount", async () => {
+      const halfPaid = new Transaction({ ...split, countsAsYours: 60000 });
+      txRepo.getById.mockResolvedValue(halfPaid);
+      txRepo.update.mockImplementation(
+        async (_id, patch) =>
+          new Transaction({ ...halfPaid, ...(patch as object) }),
+      );
+
+      const saved = await service.updateTransaction(
+        TX_ID,
+        { amount: 150000 },
+        USER,
+        TZ,
+      );
+
+      expect(saved.countsAsYours).toBe(90000);
+      expect(txRepo.update).toHaveBeenCalledWith(
+        TX_ID,
+        expect.objectContaining({ amount: 150000, countsAsYours: 90000 }),
+        "test-session",
+        expect.anything(),
+        undefined,
+      );
+    });
+
+    it("refuses a new amount when the split states exact figures", async () => {
+      sharedExpenseRepo.getById.mockResolvedValue(expense("EXACT"));
+
+      await expect(
+        service.updateTransaction(TX_ID, { amount: 150000 }, USER, TZ),
+      ).rejects.toMatchObject({ code: "SPLIT_INVALID" });
+    });
+
+    it("carries the date and the description over without moving the figure", async () => {
+      await service.updateTransaction(
+        TX_ID,
+        { description: "Dinner" },
+        USER,
+        TZ,
+      );
+
+      expect(sharedExpenseRepo.update).toHaveBeenCalledWith(
+        EXPENSE_ID,
+        expect.objectContaining({ description: "Dinner" }),
+        "test-session",
+      );
+      expect(txRepo.applySharedChange).not.toHaveBeenCalled();
+    });
+
+    it("leaves the expense alone when nothing it states changed", async () => {
+      await service.updateTransaction(TX_ID, { note: "with Ana" }, USER, TZ);
+
+      expect(sharedExpenseRepo.update).not.toHaveBeenCalled();
+    });
+
+    it("refuses to turn it into another type", async () => {
+      await expect(
+        service.updateTransaction(
+          TX_ID,
+          { type: "INCOME", fromAccountId: null, toAccountId: ACC_B },
+          USER,
+          TZ,
+        ),
+      ).rejects.toMatchObject({ code: "TRANSACTION_NOT_SPLITTABLE" });
+    });
+
+    it("takes the expense out of the group when the movement is deleted", async () => {
+      txRepo.delete.mockResolvedValue();
+      sharedExpenseRepo.delete.mockResolvedValue(expense());
+
+      await service.deleteTransaction(TX_ID, USER);
+
+      expect(sharedExpenseRepo.delete).toHaveBeenCalledWith(
+        EXPENSE_ID,
+        "test-session",
+      );
     });
   });
 

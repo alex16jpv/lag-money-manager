@@ -44,6 +44,7 @@ jest.mock("../../shared/constants", () => ({
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
     ADJUSTMENT: "ADJUSTMENT",
+    SETTLEMENT: "SETTLEMENT",
   },
   BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
   SPENDING_GROUP_BY: {
@@ -55,6 +56,16 @@ jest.mock("../../shared/constants", () => ({
   },
   SPENDING_SPLIT_BY: { category: "category" },
   MAX_BUDGET_CATEGORIES: 20,
+  MAX_GROUP_PARTICIPANTS: 20,
+  MAX_EXPENSE_GUESTS: 999,
+  GROUP_SPLIT_MODES: { EQUAL: "EQUAL", PERCENT: "PERCENT" },
+  SPLIT_MODES: {
+    EQUAL: "EQUAL",
+    PERCENT: "PERCENT",
+    EXACT: "EXACT",
+    FIXED_REST: "FIXED_REST",
+  },
+  SHARE_PARTIES: { USER: "USER", CONTACT: "CONTACT", GUESTS: "GUESTS" },
   BUDGET_PERIOD_TYPES: {
     WEEKLY: "WEEKLY",
     BIWEEKLY: "BIWEEKLY",
@@ -74,12 +85,26 @@ jest.mock("../../shared/constants", () => ({
     BUDGET: "Budget",
     CATEGORY: "Category",
   },
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
+  SHARED_HISTORY_REASONS: {
+    SPLIT: "SPLIT",
+    SPLIT_EDITED: "SPLIT_EDITED",
+    AMOUNT_CHANGED: "AMOUNT_CHANGED",
+    UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
+  },
 }));
 
 import {
   createAccountSchema,
   createBudgetSchema,
   createCategorySchema,
+  createContactSchema,
+  createSharedExpenseSchema,
   createTransactionSchema,
   getCategoriesSchema,
   getTransactionsSchema,
@@ -92,6 +117,7 @@ import {
   syncBatchSchema,
   updateAccountSchema,
   updateCategorySchema,
+  updateContactSchema,
   updateTransactionSchema,
   updateUserSchema,
 } from "../../app/validation/schemas";
@@ -604,6 +630,104 @@ describe("Validation Schemas", () => {
         query: { type: "EXPENSE", limit: "10", offset: "0" },
       });
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe("createContactSchema", () => {
+    it("accepts a name on its own", () => {
+      const result = createContactSchema.safeParse({ body: { name: "Ana" } });
+      expect(result.success).toBe(true);
+    });
+
+    it("trims the name, because the index collation does not fold whitespace", () => {
+      const result = createContactSchema.safeParse({
+        body: { name: "  Ana  " },
+      });
+      expect(result.success).toBe(true);
+      expect((result.data as { body: { name: string } }).body.name).toBe("Ana");
+    });
+
+    it("lowercases the email so two spellings resolve to one identifier", () => {
+      const result = createContactSchema.safeParse({
+        body: { name: "Ana", email: " Ana@Example.COM " },
+      });
+      expect(result.success).toBe(true);
+      expect((result.data as { body: { email: string } }).body.email).toBe(
+        "ana@example.com",
+      );
+    });
+
+    it("rejects an email that is not one", () => {
+      const result = createContactSchema.safeParse({
+        body: { name: "Ana", email: "ana@" },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects an empty name", () => {
+      const result = createContactSchema.safeParse({ body: { name: "" } });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects a colour outside the palette", () => {
+      const result = createContactSchema.safeParse({
+        body: { name: "Ana", color: "RAINBOW" },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("drops linkedUserId: it is the server's, never the client's", () => {
+      const result = createContactSchema.safeParse({
+        body: { name: "Ana", linkedUserId: validUUID },
+      });
+      expect(result.success).toBe(true);
+      const body = (result.data as { body: Record<string, unknown> }).body;
+      expect(body).not.toHaveProperty("linkedUserId");
+    });
+
+    it("accepts a client-minted id and rejects one that is not a UUID", () => {
+      expect(
+        createContactSchema.safeParse({ body: { id: validUUID, name: "Ana" } })
+          .success,
+      ).toBe(true);
+      expect(
+        createContactSchema.safeParse({ body: { id: "42", name: "Ana" } })
+          .success,
+      ).toBe(false);
+    });
+  });
+
+  describe("updateContactSchema", () => {
+    it("accepts a single field", () => {
+      const result = updateContactSchema.safeParse({
+        params: { id: validUUID },
+        body: { name: "Ana María" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts null to clear the colour and the email", () => {
+      const result = updateContactSchema.safeParse({
+        params: { id: validUUID },
+        body: { color: null, email: null },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects an empty body", () => {
+      const result = updateContactSchema.safeParse({
+        params: { id: validUUID },
+        body: {},
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects an id that is not a UUID", () => {
+      const result = updateContactSchema.safeParse({
+        params: { id: "42" },
+        body: { name: "Ana" },
+      });
+      expect(result.success).toBe(false);
     });
   });
 
@@ -1371,6 +1495,55 @@ describe("Validation Schemas", () => {
         expect(result.success).toBe(false);
       },
     );
+  });
+
+  describe("createSharedExpenseSchema (T-115)", () => {
+    const body = (
+      over: Record<string, unknown> = {},
+    ): { params: { id: string }; body: Record<string, unknown> } => ({
+      params: { id: validUUID },
+      body: { amount: 90000, date: "2026-08-15T23:00:00.000Z", ...over },
+    });
+
+    it("takes an amount and a date when no movement is named", () => {
+      expect(createSharedExpenseSchema.safeParse(body()).success).toBe(true);
+    });
+
+    it.each(["amount", "date"] as const)("requires %s without one", (field) => {
+      const without = body();
+      delete (without.body as Record<string, unknown>)[field];
+      expect(createSharedExpenseSchema.safeParse(without).success).toBe(false);
+    });
+
+    it("takes a movement on its own", () => {
+      const result = createSharedExpenseSchema.safeParse({
+        params: { id: validUUID },
+        body: { transactionId: validUUID2 },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    // The movement states all three; a second statement is how the two end up disagreeing.
+    it.each([
+      ["amount", 90000],
+      ["date", "2026-08-15T23:00:00.000Z"],
+      ["description", "Something else"],
+      ["paidByContactId", validUUID],
+    ])("refuses %s beside a movement", (field, value) => {
+      const result = createSharedExpenseSchema.safeParse({
+        params: { id: validUUID },
+        body: { transactionId: validUUID2, [field]: value },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("takes a null paidByContactId beside a movement, which is you", () => {
+      const result = createSharedExpenseSchema.safeParse({
+        params: { id: validUUID },
+        body: { transactionId: validUUID2, paidByContactId: null },
+      });
+      expect(result.success).toBe(true);
+    });
   });
 
   describe("syncBatchSchema (O-B4)", () => {

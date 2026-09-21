@@ -25,6 +25,7 @@ import {
   loadFixtures,
   seedFixture,
   services,
+  shared,
 } from "./support";
 
 const PAGE = { limit: 100, offset: 0 };
@@ -61,6 +62,103 @@ describe("offline parity fixtures", () => {
         expect([expected.key, account?.balance]).toEqual([
           expected.key,
           expected.balance,
+        ]);
+      }
+    });
+
+    it("leaves each movement counting as yours what the payments left", async () => {
+      const repo = repositoryFactory.getTransactionRepository();
+      for (const expected of fixture.expected.countsAsYours) {
+        const movement = await repo.getById(expected.transactionId);
+        expect([expected.key, movement?.countsAsYours]).toEqual([
+          expected.key,
+          expected.amount,
+        ]);
+      }
+    });
+
+    it("splits every shared expense the same way, down to the odd unit", async () => {
+      const repo = repositoryFactory.getSharedExpenseRepository();
+      for (const expected of fixture.sharedExpenses ?? []) {
+        const stored = await repo.getById(expected.id);
+        expect([expected.key, stored?.split.shares]).toEqual([
+          expected.key,
+          expected.split.shares,
+        ]);
+      }
+    });
+
+    it("stands where the fixture says every shared group stands", async () => {
+      const { sharedGroups } = shared();
+      for (const expected of fixture.expected.shared ?? []) {
+        const view = await sharedGroups.getGroupById(expected.id, userId);
+        expect([
+          expected.key,
+          view.totals.amount,
+          view.totals.yourShare,
+        ]).toEqual([expected.key, expected.amount, expected.yourShare]);
+        expect([
+          expected.key,
+          view.totals.owedToYou,
+          view.totals.youOwe,
+          view.totals.collected,
+          view.totals.writtenOff,
+          view.status,
+        ]).toEqual([
+          expected.key,
+          expected.owedToYou,
+          expected.youOwe,
+          expected.collected,
+          expected.writtenOff,
+          expected.status,
+        ]);
+      }
+    });
+
+    // What a write-off gave up on is not what was open when it was decided, once anything is paid after.
+    it("keeps every write-off at the ceiling it was decided against", async () => {
+      const { sharedGroups } = shared();
+      for (const expected of fixture.sharedGroups ?? []) {
+        const view = await sharedGroups.getGroupById(expected.id, userId);
+        expect([expected.key, view.writeOffs.map((one) => one.amount)]).toEqual(
+          [expected.key, expected.writeOffs.map((one) => one.amount)],
+        );
+      }
+    });
+
+    it("leaves on the counter what covered no line of theirs", async () => {
+      const expenses = repositoryFactory.getSharedExpenseRepository();
+      const people = (fixture.expected.shared ?? []).flatMap((g) => g.people);
+      for (const person of people) {
+        const party = person.expenseId
+          ? { expenseId: person.expenseId, contactId: null }
+          : { expenseId: null, contactId: person.contactId };
+        const withThem = (fixture.settlements ?? []).filter(
+          (one) =>
+            one.counterparty.contactId === party.contactId &&
+            one.counterparty.expenseId === party.expenseId,
+        );
+        // What you hand over comes off what they gave you before any of it is imputed
+        // (settlements.md), and no fixture can state one yet: this sum would be wrong.
+        expect(withThem.map((one) => one.paid)).toEqual(withThem.map(() => 0));
+        const pool = withThem.reduce((sum, one) => sum + one.collected, 0);
+
+        let covered = 0;
+        for (const row of fixture.sharedExpenses ?? []) {
+          const stored = await expenses.getById(row.id);
+          if (!stored || stored.paidByContactId !== null) continue;
+          for (const share of stored.split.shares) {
+            const matches = person.expenseId
+              ? share.party === "GUESTS" && stored.id === person.expenseId
+              : share.party === "CONTACT" &&
+                share.contactId === person.contactId;
+            if (matches) covered += share.collected;
+          }
+        }
+
+        expect([person.key, pool - covered]).toEqual([
+          person.key,
+          person.surplus,
         ]);
       }
     });

@@ -290,6 +290,18 @@ Codes raised by the services and middleware. Anything not listed here has no `co
 | `LOAN_OVERPAID`                   | 400    | A movement, or an account write, that would leave a LOAN above zero: a loan cannot be paid more than it owes |
 | `AMOUNT_PRECISION`                | 400    | An amount with more decimals than the owner's currency has — none at all when it is one of the `ZeroDecimalCurrency` codes the contract publishes |
 | `CATEGORY_LIMIT_REACHED`          | 400    | Per-user category cap                                                    |
+| `CONTACT_LIMIT_REACHED`           | 400    | Per-user contact cap (`SharedLimits.maxContactsPerUser`)                 |
+| `PARTICIPANT_LIMIT_REACHED`       | 400    | People in one shared group, the owner included (`SharedLimits.maxParticipantsPerGroup`) |
+| `PARTICIPANT_ALREADY_IN_GROUP`    | 400    | Adding somebody the shared group already has                             |
+| `PARTICIPANT_NOT_IN_GROUP`        | 400    | A split, or a payer, naming somebody who is not in the shared group      |
+| `PARTICIPANT_IN_USE`              | 400    | Taking somebody out of a shared group while they hold a share of an expense |
+| `SPLIT_INVALID`                   | 400    | Figures that cannot describe a split: they do not add up to the expense, the percentages are not 100, a mode is missing its figures, or a percentage group is missing its new percentages |
+| `SHARED_EXPENSE_LINKED`           | 400    | Restating the amount, the date, the description or the payer of a shared expense that is a movement of yours: those come from the transaction |
+| `TRANSACTION_ALREADY_SHARED`      | 400    | Splitting a movement that is already an expense of a shared group       |
+| `TRANSACTION_NOT_SPLITTABLE`      | 400    | Splitting a movement that is not an expense, or turning a split one into another type |
+| `SETTLEMENT_OVER_PAID`            | 400    | Paying somebody back more than you owe them and more than they have paid ahead |
+| `SETTLEMENT_MOVEMENT_LOCKED`      | 400    | Editing the money of a movement a settle-up recorded, or deleting it: undo the payment instead |
+| `GUEST_BLOCK_HAS_PAYMENTS`        | 400    | Deleting an expense whose block of guests has paid: the block lives in that expense and its money would have nowhere to go |
 | `BUDGET_PERIOD_OVERLAP`           | 400    | New budget period overlaps an existing one for the same scope            |
 | `IDEMPOTENCY_KEY_INVALID`         | 400    | `Idempotency-Key` outside `[A-Za-z0-9_-]{1,200}`                         |
 | `MALFORMED_JSON`                  | 400    | Body that is not valid JSON (body-parser `entity.parse.failed`)          |

@@ -15,6 +15,8 @@ export interface CreateTransactionDTO {
   pendingDetails?: boolean;
   // Server-derived (quick-add sets QUICK); the schema never accepts it.
   source?: TransactionSource;
+  // Server-derived: only a settle-up writes it, and the schema never accepts it either.
+  sharedSettlementId?: string | null;
 }
 
 export interface UpdateTransactionDTO {

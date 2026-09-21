@@ -1,8 +1,12 @@
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { IBudgetRepository } from "../../domain/repositories/budget/IBudgetRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
+import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
 import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
 import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
+import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
+import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ISyncOpRepository } from "../../domain/repositories/syncOp/ISyncOpRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
@@ -24,6 +28,10 @@ export const REPO_KEYS = {
   BUDGET: "budget",
   REFRESH_SESSION: "refreshSession",
   SYNC_OP: "syncOp",
+  CONTACT: "contact",
+  SHARED_GROUP: "sharedGroup",
+  SHARED_EXPENSE: "sharedExpense",
+  SHARED_SETTLEMENT: "sharedSettlement",
 } as const;
 
 type DbProvider = (factory: RepositoryFactory) => void;
@@ -92,6 +100,26 @@ export class RepositoryFactory {
   getRefreshSessionRepository(): IRefreshSessionRepository {
     return this.getRepository<IRefreshSessionRepository>(
       REPO_KEYS.REFRESH_SESSION,
+    );
+  }
+
+  getContactRepository(): IContactRepository {
+    return this.getRepository<IContactRepository>(REPO_KEYS.CONTACT);
+  }
+
+  getSharedGroupRepository(): ISharedGroupRepository {
+    return this.getRepository<ISharedGroupRepository>(REPO_KEYS.SHARED_GROUP);
+  }
+
+  getSharedSettlementRepository(): ISharedSettlementRepository {
+    return this.getRepository<ISharedSettlementRepository>(
+      REPO_KEYS.SHARED_SETTLEMENT,
+    );
+  }
+
+  getSharedExpenseRepository(): ISharedExpenseRepository {
+    return this.getRepository<ISharedExpenseRepository>(
+      REPO_KEYS.SHARED_EXPENSE,
     );
   }
 

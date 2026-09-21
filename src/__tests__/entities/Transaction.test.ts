@@ -42,6 +42,7 @@ jest.mock("../../shared/constants", () => ({
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
     ADJUSTMENT: "ADJUSTMENT",
+    SETTLEMENT: "SETTLEMENT",
   },
   CATEGORY_TYPES: {
     INCOME: "INCOME",
@@ -53,6 +54,18 @@ jest.mock("../../shared/constants", () => ({
     TRANSACTION: "Transaction",
     BUDGET: "Budget",
     CATEGORY: "Category",
+  },
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
+  SHARED_HISTORY_REASONS: {
+    SPLIT: "SPLIT",
+    SPLIT_EDITED: "SPLIT_EDITED",
+    AMOUNT_CHANGED: "AMOUNT_CHANGED",
+    UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
   },
 }));
 
@@ -168,6 +181,50 @@ describe("Transaction Entity", () => {
       expect(() => tx.assertValid()).toThrow(
         "categoryId is not allowed for adjustment",
       );
+    });
+  });
+
+  describe("what counts as yours [T-115]", () => {
+    it("is the whole amount until something says otherwise", () => {
+      const tx = new Transaction(validExpenseProps);
+      expect(tx.countsAsYours).toBe(tx.amount);
+      expect(tx.sharedExpenseId).toBeNull();
+      expect(tx.sharedGroupId).toBeNull();
+      expect(tx.sharedHistory).toEqual([]);
+    });
+
+    it("rejects a figure above the amount, which would count money that never left", () => {
+      const tx = new Transaction({
+        ...validExpenseProps,
+        countsAsYours: validExpenseProps.amount + 1,
+      });
+      expect(() => tx.assertValid()).toThrow("between zero and the amount");
+    });
+
+    it("rejects a negative figure", () => {
+      const tx = new Transaction({ ...validExpenseProps, countsAsYours: -1 });
+      expect(() => tx.assertValid()).toThrow("between zero and the amount");
+    });
+
+    it("rejects a link that names only one of the group and the expense", () => {
+      const tx = new Transaction({
+        ...validExpenseProps,
+        sharedExpenseId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91",
+      });
+      expect(() => tx.assertValid()).toThrow("names both its group");
+    });
+
+    it("rejects a split movement that is not an expense", () => {
+      const tx = new Transaction({
+        ...validExpenseProps,
+        type: "INCOME",
+        fromAccountId: null,
+        toAccountId: validExpenseProps.fromAccountId,
+        categoryId: null,
+        sharedExpenseId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac91",
+        sharedGroupId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac92",
+      });
+      expect(() => tx.assertValid()).toThrow("Only an expense can be split");
     });
   });
 

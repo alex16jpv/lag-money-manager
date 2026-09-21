@@ -430,6 +430,74 @@ Content-Type: application/json
   ]
 }
 
+### ---------- Lo compartido, por la misma puerta (T-118) ----------
+
+### Una salida entera desde la bandeja de salida: contacto, grupo, gasto y cobro
+### Los ids se generan por envío: un `@var = {{$guid}}` se resuelve una vez por
+### petición, así que las cuatro operaciones hablan de las mismas filas y el
+### archivo se puede volver a ejecutar sin que todo conteste "ya estaba". Sirve
+### aquí porque el lote entero es UNA petición: una variable así vuelve a
+### resolverse en la siguiente, y por eso los ids que se nombran desde dos
+### peticiones (los de arriba) siguen fijos.
+@sharedContactId = {{$guid}}
+@sharedGroupId = {{$guid}}
+@sharedExpenseId = {{$guid}}
+@sharedSettlementId = {{$guid}}
+
+# @name sharedBatch
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}", "seq": 20, "occurredAt": "2026-09-05T10:00:00.000Z",
+      "entity": "contact", "action": "create", "id": "{{sharedContactId}}",
+      "payload": { "body": { "name": "Ana offline {{$randomInt 100 999}}" } },
+      "opVersion": 1
+    },
+    {
+      "opId": "{{$guid}}", "seq": 21, "occurredAt": "2026-09-05T10:01:00.000Z",
+      "entity": "sharedGroup", "action": "create", "id": "{{sharedGroupId}}",
+      "payload": { "body": { "name": "Salida offline {{$randomInt 100 999}}", "contactIds": ["{{sharedContactId}}"] } },
+      "dependsOn": ["{{sharedContactId}}"], "opVersion": 1
+    },
+    {
+      "opId": "{{$guid}}", "seq": 22, "occurredAt": "2026-09-05T10:02:00.000Z",
+      "entity": "sharedExpense", "action": "create", "id": "{{sharedExpenseId}}",
+      "payload": { "params": { "groupId": "{{sharedGroupId}}" }, "body": { "description": "Cena", "date": "2026-09-05T02:00:00.000Z", "amount": 90000 } },
+      "dependsOn": ["{{sharedGroupId}}"], "opVersion": 1
+    },
+    {
+      "opId": "{{$guid}}", "seq": 23, "occurredAt": "2026-09-05T10:03:00.000Z",
+      "entity": "settlement", "action": "create", "id": "{{sharedSettlementId}}",
+      "payload": { "body": { "contactId": "{{sharedContactId}}", "date": "2026-09-05T15:00:00.000Z", "collected": 20000, "accountId": "{{batchAccId}}" } },
+      "dependsOn": ["{{sharedContactId}}"], "opVersion": 1
+    }
+  ]
+}
+
+### Un gasto de grupo sin su `params.groupId` — rechaza ESA operación, no el lote
+POST {{baseUrl}}/sync
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "operations": [
+    {
+      "opId": "{{$guid}}", "seq": 24, "occurredAt": "2026-09-05T10:04:00.000Z",
+      "entity": "sharedExpense", "action": "create", "id": "{{$guid}}",
+      "payload": { "body": { "description": "Sin grupo", "date": "2026-09-05T02:00:00.000Z", "amount": 1000 } },
+      "opVersion": 1
+    }
+  ]
+}
+
+### Y el feed ya lo trae todo, con sus desapariciones
+GET {{baseUrl}}/sync/changes?limit=100
+Authorization: Bearer {{token}}
+
 ### ---------- Errores del sobre (400, nada se aplica) ----------
 
 ### opId repetido (400 VALIDATION)

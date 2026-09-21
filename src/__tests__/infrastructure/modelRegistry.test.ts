@@ -6,6 +6,10 @@ jest.mock("../../shared/constants", () => ({
     TRANSACTION: "Transaction",
     CATEGORY: "Category",
     BUDGET: "Budget",
+    CONTACT: "Contact",
+    SHARED_GROUP: "SharedGroup",
+    SHARED_EXPENSE: "SharedExpense",
+    SHARED_SETTLEMENT: "SharedSettlement",
   },
   ACCOUNT_TYPES: { CASH: "CASH", ACCOUNT: "ACCOUNT", OTHER: "OTHER" },
   COLORS: { RED: "RED", GREEN: "GREEN" },
@@ -14,6 +18,7 @@ jest.mock("../../shared/constants", () => ({
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
     ADJUSTMENT: "ADJUSTMENT",
+    SETTLEMENT: "SETTLEMENT",
   },
   TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
   CATEGORY_TYPES: {
@@ -23,12 +28,31 @@ jest.mock("../../shared/constants", () => ({
   },
   BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
   BUDGET_PERIOD_TYPES: { MONTHLY: "MONTHLY", CUSTOM: "CUSTOM" },
+  GROUP_SPLIT_MODES: { EQUAL: "EQUAL", PERCENT: "PERCENT" },
+  SPLIT_MODES: {
+    EQUAL: "EQUAL",
+    PERCENT: "PERCENT",
+    EXACT: "EXACT",
+    FIXED_REST: "FIXED_REST",
+  },
+  SHARE_PARTIES: { USER: "USER", CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  SHARED_HISTORY_REASONS: {
+    SPLIT: "SPLIT",
+    SPLIT_EDITED: "SPLIT_EDITED",
+    AMOUNT_CHANGED: "AMOUNT_CHANGED",
+    UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
+  },
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
 }));
 
 import { readdirSync } from "fs";
-import { join } from "path";
-
 import mongoose from "mongoose";
+import { join } from "path";
 
 import * as registry from "../../infrastructure/models";
 

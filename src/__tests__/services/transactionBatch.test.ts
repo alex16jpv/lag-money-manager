@@ -5,6 +5,7 @@ jest.mock("../../shared/constants", () => ({
     EXPENSE: "EXPENSE",
     TRANSFER: "TRANSFER",
     ADJUSTMENT: "ADJUSTMENT",
+    SETTLEMENT: "SETTLEMENT",
   },
   TRANSACTION_SOURCES: { MANUAL: "MANUAL", QUICK: "QUICK", IMPORT: "IMPORT" },
   DEBT_ACCOUNT_FIELDS: {
@@ -17,13 +18,26 @@ jest.mock("../../shared/constants", () => ({
     TRANSFER: "TRANSFER",
   },
   MODEL_NAMES: { TRANSACTION: "Transaction" },
+  TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
+  TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
+  SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
+  GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
+  SHARED_HISTORY_REASONS: {
+    SPLIT: "SPLIT",
+    SPLIT_EDITED: "SPLIT_EDITED",
+    AMOUNT_CHANGED: "AMOUNT_CHANGED",
+    UNSPLIT: "UNSPLIT",
+    PAYMENT: "PAYMENT",
+    REIMPUTED: "REIMPUTED",
+  },
 }));
 
+import { TransactionService } from "../../app/services/TransactionService";
 import { DomainValidationError } from "../../domain/errors";
 import { ApiError } from "../../shared/errors";
-import { TransactionService } from "../../app/services/TransactionService";
 
 const service = new TransactionService(
+  {} as never,
   {} as never,
   {} as never,
   {} as never,

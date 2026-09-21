@@ -121,7 +121,7 @@ const router = Router();
  *         name: type
  *         schema:
  *           type: string
- *           enum: [INCOME, EXPENSE, TRANSFER, ADJUSTMENT]
+ *           enum: [INCOME, EXPENSE, TRANSFER, ADJUSTMENT, SETTLEMENT]
  *         description: Filter transactions by type
  *     responses:
  *       200:
@@ -157,6 +157,7 @@ router.get(
  *       - **EXPENSE**: Subtracts amount from `fromAccountId` (required; `toAccountId` not allowed).
  *       - **TRANSFER**: Subtracts from `fromAccountId` and adds to `toAccountId` (both required, must differ).
  *       - **ADJUSTMENT**: Balance reconciliation; exactly one of `fromAccountId` (decrease) or `toAccountId` (increase), no `categoryId`. Excluded from spending stats and budgets.
+ *       - **SETTLEMENT**: Money between you and a person you split with. The same shape, and **not writable here**: a settle-up records it (`POST /settlements`).
  *
  *       Two rules bind the movement to the **type** of account it touches: money arriving
  *       at a CARD or a LOAN is never an INCOME — it is a TRANSFER from wherever it came
@@ -432,6 +433,16 @@ router.get(
  *       Partial update; the merged result must still be a valid transaction of its type.
  *       When the money movement changes (type, amount, or accounts), the original balance
  *       changes are reversed and the new ones applied atomically.
+ *
+ *       **A movement in a shared group carries its expense with it**, whether
+ *       or not that group is archived: an archived group is a read-only view
+ *       of what happened, and refusing to fix your own movement because of it
+ *       would be the wrong half to block. A new amount, date or description is
+ *       written on both in one transaction, and a new amount resolves the
+ *       split again — except on a split carrying its
+ *       own `EXACT` figures, which stop adding up and answer 400 SPLIT_INVALID:
+ *       restate the split on the expense first. Changing its type is refused
+ *       (code TRANSACTION_NOT_SPLITTABLE): only an expense can be split.
  *     parameters:
  *       - in: path
  *         name: id
@@ -455,7 +466,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/Transaction'
  *       400:
- *         description: Validation error. Codes include FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN (an income moved onto an account type listed in `IncomeRefusedAccountType`), AMOUNT_PRECISION (only when the edit carries an amount) and LOAN_OVERPAID (a movement that would leave a LOAN above zero), the first and the last checked again whenever the edit moves money, CATEGORY_ARCHIVED (assigning an archived category; keeping the one it already had is allowed), CATEGORY_TYPE_MISMATCH.
+ *         description: Validation error. Codes include SPLIT_INVALID and TRANSACTION_NOT_SPLITTABLE (a movement in a shared group), FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN (an income moved onto an account type listed in `IncomeRefusedAccountType`), AMOUNT_PRECISION (only when the edit carries an amount) and LOAN_OVERPAID (a movement that would leave a LOAN above zero), the first and the last checked again whenever the edit moves money, CATEGORY_ARCHIVED (assigning an archived category; keeping the one it already had is allowed), CATEGORY_TYPE_MISMATCH.
  *         content:
  *           application/json:
  *             schema:
@@ -483,7 +494,13 @@ router.put(
  *   delete:
  *     tags: [Transactions]
  *     summary: Delete a transaction
- *     description: Deletes the transaction (soft delete) and reverses any balance changes on associated accounts.
+ *     description: >
+ *       Deletes the transaction (soft delete) and reverses any balance changes
+ *       on associated accounts. **A movement in a shared group takes its
+ *       expense with it**, in the same database transaction: the group now
+ *       costs that much less and every share falls with it. Taking the expense
+ *       out of the group without deleting the movement is the other door,
+ *       `DELETE /shared-groups/{id}/expenses/{expenseId}`.
  *     parameters:
  *       - in: path
  *         name: id

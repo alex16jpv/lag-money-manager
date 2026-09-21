@@ -6,6 +6,7 @@ import { ApiError } from "../../shared/errors";
 import { extractTransactionPagination } from "../../shared/pagination";
 import { hashPayload } from "../../shared/requestHash";
 import repositoryFactory from "../factories/RepositoryFactory";
+import { sharedLedgerService } from "../factories/sharedLedger";
 import {
   BatchDetailUpdate,
   IdempotencyMeta,
@@ -36,6 +37,7 @@ const transactionService = new TransactionService(
   repositoryFactory.getAccountRepository(),
   repositoryFactory.getIdempotencyRepository(),
   repositoryFactory.getCategoryRepository(),
+  sharedLedgerService,
 );
 
 export class TransactionController {
