@@ -498,6 +498,262 @@ describe("paying and being paid, against mongod", () => {
     });
   });
 
+  /**
+   * The rule the whole feature obeys: what counts as yours is what left your
+   * accounts as spending, minus what came back for it. Money of theirs that
+   * covers no line is a surplus you hold, not a repayment, and what you hand
+   * back stops being one too.
+   */
+  const moneyRule = async (money: {
+    collected: number;
+    refunded?: number;
+    surplus?: number;
+  }): Promise<void> => {
+    const rows = await TransactionModel.find({
+      userId: session.userId,
+      type: "EXPENSE",
+      deletedAt: null,
+    }).lean();
+    const spent = rows.reduce((sum, row) => sum + row.amount, 0);
+    const yours = rows.reduce(
+      (sum, row) => sum + (row.countsAsYours ?? row.amount),
+      0,
+    );
+    expect(yours).toBe(
+      spent -
+        cents(money.collected) +
+        cents(money.refunded ?? 0) +
+        cents(money.surplus ?? 0),
+    );
+  };
+
+  describe("a block of guests", () => {
+    let party: string;
+    let expenseId: string;
+
+    beforeEach(async () => {
+      await dropSettlementsAndExpenses();
+      party = await spentFromYourAccount(
+        230_000,
+        "2026-08-18T18:00:00.000Z",
+        "Party",
+      );
+      const created = await newExpense({
+        transactionId: party,
+        split: {
+          mode: "EQUAL",
+          guests: { count: 20, name: "The office" },
+          shares: [
+            { party: "USER" },
+            { party: "CONTACT", contactId: ana },
+            { party: "GUESTS" },
+          ],
+        },
+      });
+      expect(created.status).toBe(201);
+      expenseId = created.body.id as string;
+    });
+
+    it("is collected from like anybody else, in part and in full", async () => {
+      const part = await settle({
+        expenseId,
+        date: "2026-08-28T18:00:00.000Z",
+        collected: 100_000,
+        accountId: ACCOUNT_ID,
+      });
+
+      expect(part.status).toBe(201);
+      // 230.000 over 22 parts: the block weighs twenty of them.
+      expect((await movement(party)).countsAsYours).toBe(130_000);
+      await moneyRule({ collected: 100_000, refunded: 0 });
+
+      const rest = await settle({
+        expenseId,
+        date: "2026-08-29T18:00:00.000Z",
+        collected: 109_090,
+        outsideApp: true,
+      });
+
+      expect(rest.status).toBe(201);
+      expect((await movement(party)).countsAsYours).toBe(20_910);
+      await moneyRule({ collected: 209_090, refunded: 0 });
+    });
+
+    it("cannot be left behind: its expense does not go while it has paid", async () => {
+      await settle({
+        expenseId,
+        date: "2026-08-28T18:00:00.000Z",
+        collected: 100_000,
+        accountId: ACCOUNT_ID,
+      });
+
+      const deleted = await as(request(app).delete(`/transactions/${party}`));
+      const removed = await as(
+        request(app).delete(`/shared-groups/${groupId}/expenses/${expenseId}`),
+      );
+
+      expect(deleted.status).toBe(400);
+      expect(deleted.body.code).toBe("GUEST_BLOCK_HAS_PAYMENTS");
+      expect(removed.status).toBe(400);
+      expect(removed.body.code).toBe("GUEST_BLOCK_HAS_PAYMENTS");
+    });
+  });
+
+  describe("giving back what they paid ahead", () => {
+    let dinner: string;
+
+    beforeEach(async () => {
+      await dropSettlementsAndExpenses();
+      dinner = await spentFromYourAccount(
+        100_000,
+        "2026-08-10T18:00:00.000Z",
+        "Dinner",
+      );
+      expect(
+        (
+          await newExpense({
+            transactionId: dinner,
+            split: {
+              mode: "EXACT",
+              shares: [
+                { party: "USER", fixedAmount: 60_000 },
+                { party: "CONTACT", contactId: ana, fixedAmount: 40_000 },
+              ],
+            },
+          })
+        ).status,
+      ).toBe(201);
+    });
+
+    it("leaves as it came, and stops paying for what comes next", async () => {
+      const before = await balance();
+      await settle({
+        contactId: ana,
+        date: "2026-08-25T18:00:00.000Z",
+        collected: 100_000,
+        accountId: ACCOUNT_ID,
+      });
+      expect((await movement(dinner)).countsAsYours).toBe(60_000);
+
+      const back = await settle({
+        contactId: ana,
+        date: "2026-08-26T18:00:00.000Z",
+        paid: 60_000,
+        accountId: ACCOUNT_ID,
+      });
+
+      expect(back.status).toBe(201);
+      expect(back.body.refunded).toBe(60_000);
+      expect(back.body.covered).toEqual([]);
+      expect(await balance()).toBe(before + cents(40_000));
+      await moneyRule({ collected: 100_000, refunded: 60_000 });
+
+      // What was given back cannot pay for a line recorded afterwards.
+      const later = await spentFromYourAccount(
+        50_000,
+        "2026-08-27T18:00:00.000Z",
+        "Taxi",
+      );
+      expect((await newExpense({ transactionId: later })).status).toBe(201);
+
+      expect((await movement(later)).countsAsYours).toBe(50_000);
+      await moneyRule({ collected: 100_000, refunded: 60_000 });
+    });
+
+    it("refuses to hand back more than they ever paid ahead", async () => {
+      const res = await settle({
+        contactId: ana,
+        date: "2026-08-26T18:00:00.000Z",
+        paid: 10_000,
+        accountId: ACCOUNT_ID,
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("SETTLEMENT_OVER_PAID");
+    });
+  });
+
+  describe("what a payment covers is imputed again", () => {
+    let older: string;
+    let newer: string;
+
+    beforeEach(async () => {
+      await dropSettlementsAndExpenses();
+      older = await spentFromYourAccount(
+        90_000,
+        "2026-08-10T18:00:00.000Z",
+        "Dinner",
+      );
+      newer = await spentFromYourAccount(
+        60_000,
+        "2026-08-20T18:00:00.000Z",
+        "Taxi",
+      );
+      expect((await newExpense({ transactionId: older })).status).toBe(201);
+      expect((await newExpense({ transactionId: newer })).status).toBe(201);
+      await settle({
+        contactId: ana,
+        date: "2026-08-25T18:00:00.000Z",
+        collected: 45_000,
+        accountId: ACCOUNT_ID,
+      });
+      expect((await movement(older)).countsAsYours).toBe(45_000);
+    });
+
+    it("when the line it landed on is deleted", async () => {
+      const gone = await as(request(app).delete(`/transactions/${older}`));
+
+      expect(gone.status).toBe(200);
+      // Her 45.000 are still hers: they now cover what is left, oldest first.
+      expect((await movement(newer)).countsAsYours).toBe(30_000);
+      // Her 45.000 only cover 30.000 now: the rest is hers, sitting in your account.
+      await moneyRule({ collected: 45_000, surplus: 15_000 });
+    });
+
+    it("when a split changes what she owes", async () => {
+      const expenses = await as(
+        request(app).get(`/shared-groups/${groupId}/expenses`),
+      );
+      const oldest = expenses.body.data.find(
+        (one: { description: string }) => one.description === "Dinner",
+      );
+
+      const edited = await as(
+        request(app)
+          .put(`/shared-groups/${groupId}/expenses/${oldest.id}`)
+          .send({
+            split: {
+              mode: "EXACT",
+              shares: [
+                { party: "USER", fixedAmount: 80_000 },
+                { party: "CONTACT", contactId: ana, fixedAmount: 10_000 },
+              ],
+            },
+          }),
+      );
+
+      expect(edited.status).toBe(200);
+      // She only owes 10.000 here now, so 35.000 of hers move on to the next line.
+      expect((await movement(older)).countsAsYours).toBe(80_000);
+      expect((await movement(newer)).countsAsYours).toBe(30_000);
+      await moneyRule({ collected: 45_000, surplus: 5_000 });
+    });
+
+    it("when a new date makes another line the oldest", async () => {
+      const moved = await as(
+        request(app)
+          .put(`/transactions/${newer}`)
+          .send({ date: "2026-08-01T18:00:00.000Z" }),
+      );
+
+      expect(moved.status).toBe(200);
+      // The taxi is the oldest line now: her 45.000 cover its 30.000 first.
+      expect((await movement(newer)).countsAsYours).toBe(30_000);
+      expect((await movement(older)).countsAsYours).toBe(75_000);
+      await moneyRule({ collected: 45_000 });
+    });
+  });
+
   async function dropSettlementsAndExpenses(): Promise<void> {
     const settlements = await as(request(app).get("/settlements?limit=100"));
     for (const one of settlements.body.data ?? []) {

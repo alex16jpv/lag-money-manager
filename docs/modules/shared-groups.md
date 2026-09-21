@@ -74,9 +74,13 @@ A group holds at most **20 people, the owner included** (`400 PARTICIPANT_LIMIT_
 
 **Giving up on what somebody still owes you here moves no figure.** That money was counted as yours the day it left your account, which is the whole answer to "and if nobody ever pays me?": nothing has to happen. What is stored is the decision — the person, or the block of guests of one expense — and every movement it touches records `WRITE_OFF` in its history saying precisely that the figure did not move.
 
-What changes is what is **owed**: `totals.owedToYou` drops by it, `totals.writtenOff` carries it, and the group reads `SETTLED` once nobody is left owing, by paying or by being written off. Somebody who had paid part of it keeps that part, because what is written off is **what is still open**, not a figure: a later re-split that lowers their share takes the write-off down with it, and nothing needs rewriting.
+What changes is what is **owed**: `totals.owedToYou` drops by it, `totals.writtenOff` carries it, and the group reads `SETTLED` once nobody is left owing, by paying or by being written off. Somebody who had paid part of it keeps that part, because what is written off is **what was still open when you decided** — the entry stores that as its ceiling — capped again by what is open now. Both halves matter: a re-split that lowers their share takes the write-off down with it, and **a line added afterwards is owed like any other**, because nobody gave up on a debt that did not exist yet. Taking somebody out of the group takes their write-off with them, so coming back does not come back forgiven.
 
-It is idempotent, and it is taken back with `DELETE` — `partyId` is the contact, or the expense whose block it was, and the stored entry already knows which. Both are refused on an archived group (`400 RESOURCE_ARCHIVED`), which is what makes archiving the moment a write-off stops being undoable.
+The figures are added up **in whole cents** before they are converted: two sums of decimals do not cancel, and `SETTLED` is an equality with zero.
+
+It is idempotent, and it is taken back with `DELETE` — `partyId` is the contact, or the expense whose block it was, and the stored entry already knows which. Both are refused on an archived group (`400 RESOURCE_ARCHIVED`), which is what makes archiving the moment a write-off stops being undoable. **Restoring a group does not take them back**: they were decisions, and each one is undone on its own once it is open again.
+
+The group is read again **inside** the write's own database transaction, because two write-offs at once would otherwise overwrite each other's array, and the version guard rides on that write, so an `If-Match` that no longer matches answers `409` and not `404`.
 
 ### `GET|PUT|DELETE /shared-groups/{id}`, `POST /shared-groups/{id}/restore`
 

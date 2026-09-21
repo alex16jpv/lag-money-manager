@@ -478,40 +478,82 @@ describe("SharedGroupService", () => {
   });
 
   describe("giving up on what somebody owes [T-117]", () => {
-    const owing = (owed: number): void => {
+    const owing = (owedCents: number): SharedExpense => {
+      const expense = equalExpense(90000, [null, ana]);
+      expenses.listByGroup.mockResolvedValue([expense]);
       expenses.totalsByGroup.mockResolvedValue([
         {
           groupId,
           total: 90000,
           yourShare: 45000,
-          owedToYou: owed,
+          owedToYou: owedCents / 100,
           youOwe: 0,
           collected: 0,
-          owedByParty: [{ contactId: ana, expenseId: null, owed }],
+          owedByParty: [{ contactId: ana, expenseId: null, owedCents }],
           expenseCount: 1,
           dateFrom: new Date("2026-08-10T00:00:00.000Z"),
           dateTo: new Date("2026-08-10T00:00:00.000Z"),
         },
       ]);
+      transactions.listBySharedExpenseIds.mockResolvedValue([
+        new Transaction({
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5acd1",
+          type: "EXPENSE",
+          amount: 90000,
+          date: new Date("2026-08-10T18:00:00.000Z"),
+          fromAccountId: "019576a0-d7b6-7d6d-af6a-2b7545f5acd2",
+          userId,
+          currency: "COP",
+          sharedExpenseId: expense.id,
+          sharedGroupId: groupId,
+        }),
+      ]);
       groups.update.mockImplementation(async (_id, write) =>
         makeGroup(write as Partial<SharedGroup>),
       );
+      return expense;
     };
 
-    it("takes it out of what is owed without moving any figure", async () => {
-      owing(45000);
+    it("takes it out of what is owed, and the movement only records that", async () => {
+      owing(4500000);
 
       const view = await service.writeOff(groupId, { contactId: ana }, userId);
 
       expect(view.totals.writtenOff).toBe(45000);
       expect(view.totals.owedToYou).toBe(0);
       expect(view.status).toBe("SETTLED");
-      // The figure on the movement is not touched: only its history says this happened.
-      expect(transactions.applySharedChange).not.toHaveBeenCalled();
+      // The figure is written back unchanged: the entry is there to say it did not move.
+      expect(transactions.applySharedChange).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5acd1",
+        userId,
+        expect.objectContaining({ countsAsYours: 90000 }),
+        expect.objectContaining({
+          reason: "WRITE_OFF",
+          countsAsYours: 90000,
+        }),
+        expect.anything(),
+      );
+    });
+
+    it("never gives up on more than was open when it was decided", async () => {
+      owing(4500000);
+      await service.writeOff(groupId, { contactId: ana }, userId);
+      const given = (groups.update.mock.calls[0]?.[1] as SharedGroup).writeOffs;
+      groups.getByIdIncludingArchived.mockResolvedValue(
+        makeGroup({ writeOffs: given }),
+      );
+      // A line added afterwards doubles what she owes; the ceiling stays where it was.
+      owing(9000000);
+
+      const view = await service.getGroupById(groupId, userId);
+
+      expect(view.totals.writtenOff).toBe(45000);
+      expect(view.totals.owedToYou).toBe(45000);
+      expect(view.status).toBe("OPEN");
     });
 
     it("refuses somebody who is not in the group", async () => {
-      owing(45000);
+      owing(4500000);
 
       await expect(
         service.writeOff(
@@ -523,7 +565,7 @@ describe("SharedGroupService", () => {
     });
 
     it("refuses one on an archived group, which is where it stops being undoable", async () => {
-      owing(45000);
+      owing(4500000);
       groups.getByIdIncludingArchived.mockResolvedValue(
         makeGroup({ archivedAt: new Date() }),
       );

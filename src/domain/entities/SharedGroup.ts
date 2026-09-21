@@ -12,16 +12,13 @@ export interface SharedParticipant {
   addedAt?: Date;
 }
 
-/**
- * Giving up on what somebody still owes here. It moves no figure — that money
- * was counted as yours the day it left — so what is stored is the decision,
- * and what is owed follows the share down if it ever falls.
- */
 export interface SharedWriteOff {
   kind: SettlementPartyKind;
   contactId: string | null;
   // GUESTS only: the expense the block lives in.
   expenseId: string | null;
+  // What was open when it was decided: the ceiling of what is given up, never a figure that moves.
+  amount: number;
   at: Date;
 }
 

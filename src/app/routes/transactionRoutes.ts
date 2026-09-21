@@ -121,7 +121,7 @@ const router = Router();
  *         name: type
  *         schema:
  *           type: string
- *           enum: [INCOME, EXPENSE, TRANSFER, ADJUSTMENT]
+ *           enum: [INCOME, EXPENSE, TRANSFER, ADJUSTMENT, SETTLEMENT]
  *         description: Filter transactions by type
  *     responses:
  *       200:
@@ -157,6 +157,7 @@ router.get(
  *       - **EXPENSE**: Subtracts amount from `fromAccountId` (required; `toAccountId` not allowed).
  *       - **TRANSFER**: Subtracts from `fromAccountId` and adds to `toAccountId` (both required, must differ).
  *       - **ADJUSTMENT**: Balance reconciliation; exactly one of `fromAccountId` (decrease) or `toAccountId` (increase), no `categoryId`. Excluded from spending stats and budgets.
+ *       - **SETTLEMENT**: Money between you and a person you split with. The same shape, and **not writable here**: a settle-up records it (`POST /settlements`).
  *
  *       Two rules bind the movement to the **type** of account it touches: money arriving
  *       at a CARD or a LOAN is never an INCOME — it is a TRANSFER from wherever it came

@@ -20,13 +20,13 @@ import {
   GroupStatus,
   MAX_GROUP_PARTICIPANTS,
   SETTLEMENT_PARTIES,
-  SHARE_PARTIES,
   SHARED_HISTORY_REASONS,
   SharedHistoryReason,
   SPLIT_MODES,
 } from "../../shared/constants";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { ApiError } from "../../shared/errors";
+import { fromCents, toCents } from "../../shared/money";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { TxSession, withTransaction } from "../../shared/unitOfWork";
 import {
@@ -37,7 +37,12 @@ import {
   WriteOffDTO,
 } from "../dtos/SharedGroupDTO";
 import { stampSharedChange } from "./sharedLedger";
-import { counterpartiesOf, SharedLedgerService } from "./SharedLedgerService";
+import {
+  counterpartiesOf,
+  counterpartyKey,
+  counterpartyOfShare,
+  SharedLedgerService,
+} from "./SharedLedgerService";
 import {
   assertDefaultSplit,
   rescaleDefaultSplit,
@@ -87,33 +92,80 @@ const EMPTY_TOTALS: GroupTotalsView = {
   dateTo: null,
 };
 
-const partyKey = (party: {
-  contactId: string | null;
-  expenseId: string | null;
-}): string =>
-  party.expenseId ? `guests:${party.expenseId}` : `contact:${party.contactId}`;
+/** What one person, or one block of guests, still owes you here, in whole cents. */
+interface OpenAmount {
+  cents: number;
+  expenseIds: string[];
+}
 
-const asWriteOff = (party: SettlementCounterparty): SharedWriteOff => ({
-  kind: party.kind,
-  contactId: party.contactId,
-  expenseId: party.expenseId,
-  at: new Date(),
-});
+function writeOffOf(
+  key: string,
+  open: Map<string, OpenAmount>,
+  party?: SettlementCounterparty,
+): SharedWriteOff {
+  const [kind, id] = key.split(":");
+  const named: SettlementCounterparty = party ?? {
+    kind:
+      kind === "guests"
+        ? SETTLEMENT_PARTIES.GUESTS
+        : SETTLEMENT_PARTIES.CONTACT,
+    contactId: kind === "guests" ? null : (id as string),
+    expenseId: kind === "guests" ? (id as string) : null,
+  };
+  return {
+    ...named,
+    amount: fromCents(open.get(key)?.cents ?? 0),
+    at: new Date(),
+  };
+}
 
-/** What the people you have given up on still owe, which is what stops being owed. */
-function writtenOffIn(
+function openByParty(expenses: SharedExpense[]): Map<string, OpenAmount> {
+  const open = new Map<string, OpenAmount>();
+  for (const expense of expenses) {
+    // Only a line you fronted is money owed to you.
+    if (expense.paidByContactId !== null) continue;
+    for (const share of expense.split.shares) {
+      const party = counterpartyOfShare(expense, share);
+      if (!party) continue;
+      const cents = toCents(share.amount) - toCents(share.collected);
+      if (cents <= 0) continue;
+      const key = counterpartyKey(party);
+      const row = open.get(key) ?? { cents: 0, expenseIds: [] };
+      row.cents += cents;
+      row.expenseIds.push(expense.id);
+      open.set(key, row);
+    }
+  }
+  return open;
+}
+
+/**
+ * What is given up on: never more than was open when it was decided, and never
+ * more than is open now, so a share that falls takes the write-off down with it
+ * and a debt that appears later is owed like any other.
+ */
+function writtenOffCents(
   group: SharedGroup,
   owedByParty: {
     contactId: string | null;
     expenseId: string | null;
-    owed: number;
+    owedCents: number;
   }[],
 ): number {
   if (group.writeOffs.length === 0) return 0;
-  const given = new Set(group.writeOffs.map(partyKey));
-  return owedByParty
-    .filter((party) => given.has(partyKey(party)))
-    .reduce((sum, party) => sum + party.owed, 0);
+  const open = new Map(
+    owedByParty.map((party) => [
+      party.expenseId
+        ? `guests:${party.expenseId}`
+        : `contact:${party.contactId}`,
+      party.owedCents,
+    ]),
+  );
+  return group.writeOffs.reduce(
+    (sum, one) =>
+      sum + Math.min(toCents(one.amount), open.get(counterpartyKey(one)) ?? 0),
+    0,
+  );
 }
 
 /** Open until nobody owes anybody here, by paying or by being written off. */
@@ -143,16 +195,17 @@ export class SharedGroupService {
     const byGroup = new Map(totals.map((row) => [row.groupId, row]));
     return groups.map((group) => {
       const row = byGroup.get(group.id);
-      const writtenOff = row ? writtenOffIn(group, row.owedByParty) : 0;
+      // In whole cents: two sums of decimals do not cancel, and `SETTLED` is an equality with zero.
+      const given = row ? writtenOffCents(group, row.owedByParty) : 0;
       const view: GroupTotalsView = row
         ? {
             amount: row.total,
             yourShare: row.yourShare,
             // What has been given up on is not owed any more, here or in the state below.
-            owedToYou: row.owedToYou - writtenOff,
+            owedToYou: fromCents(toCents(row.owedToYou) - given),
             youOwe: row.youOwe,
             collected: row.collected,
-            writtenOff,
+            writtenOff: fromCents(given),
             expenseCount: row.expenseCount,
             dateFrom: row.dateFrom,
             dateTo: row.dateTo,
@@ -316,9 +369,8 @@ export class SharedGroupService {
 
   // Idempotent, and it answers the archived row so a queued restore can guard on its updatedAt.
   /**
-   * Archiving a group where people still owe **writes those amounts off on
-   * your behalf** — his decision, in his words. No figure moves: that money
-   * was counted as yours the day it left.
+   * Archiving a group where people still owe writes those amounts off on your
+   * behalf, which is the owner's decision in his words. No figure moves.
    */
   async deleteGroup(
     id: string,
@@ -327,31 +379,45 @@ export class SharedGroupService {
   ): Promise<SharedGroupView> {
     const existing = await this.ownedGroup(id, userId);
     assertFresh(existing, expectedUpdatedAt, (g) => new SharedGroup(g));
-    if (existing.archivedAt) {
-      const [already] = await this.withTotals(userId, [existing]);
-      return already as SharedGroupView;
-    }
-    return withTransaction(async (session) => {
-      const owing = await this.stillOwing(existing, session);
-      const writeOffs = [...existing.writeOffs, ...owing.map(asWriteOff)];
-      if (owing.length > 0) {
-        await this.repo.update(id, { writeOffs }, session);
-        await this.recordWriteOff(
-          existing,
-          owing,
-          SHARED_HISTORY_REASONS.WRITE_OFF,
-          session,
-        );
-      }
-      const archived = await this.repo.delete(
-        id,
-        session,
-        // The write-off above already moved the version the caller was holding.
-        owing.length > 0 ? undefined : expectedUpdatedAt,
-      );
-      const [view] = await this.withTotals(userId, [archived]);
-      return view as SharedGroupView;
-    });
+    if (existing.archivedAt) return this.viewOf(userId, existing);
+
+    return guardedWrite(
+      expectedUpdatedAt,
+      () =>
+        withTransaction(async (session) => {
+          const group = await this.groupInSession(id, userId, session);
+          const open = openByParty(
+            await this.expenseRepo.listByGroup(userId, id, session),
+          );
+          const given = new Set(group.writeOffs.map(counterpartyKey));
+          const fresh = [...open.keys()]
+            .filter((key) => !given.has(key))
+            .map((key) => writeOffOf(key, open));
+          if (fresh.length === 0) {
+            return this.viewOf(
+              userId,
+              await this.repo.delete(id, session, expectedUpdatedAt),
+            );
+          }
+          // The guard rides on the first write; the archive that follows is inside it.
+          await this.repo.update(
+            id,
+            { writeOffs: [...group.writeOffs, ...fresh] },
+            session,
+            expectedUpdatedAt,
+          );
+          await this.stampWriteOff(
+            userId,
+            fresh,
+            open,
+            SHARED_HISTORY_REASONS.WRITE_OFF,
+            session,
+          );
+          return this.viewOf(userId, await this.repo.delete(id, session));
+        }),
+      () => this.repo.getOwnById(id, userId),
+      (g) => new SharedGroup(g),
+    );
   }
 
   /** Giving up on what one person, or one block of guests, still owes here. */
@@ -363,19 +429,39 @@ export class SharedGroupService {
   ): Promise<SharedGroupView> {
     const group = await this.openGroup(id, userId, expectedUpdatedAt);
     const party = await this.writeOffParty(group, dto);
-    const key = partyKey(party);
-    if (group.writeOffs.some((one) => partyKey(one) === key)) {
-      return this.viewOf(userId, group);
-    }
-    return withTransaction(async (session) =>
-      this.saveWriteOffs(
-        group,
-        [...group.writeOffs, asWriteOff(party)],
-        [party],
-        SHARED_HISTORY_REASONS.WRITE_OFF,
-        session,
-        expectedUpdatedAt,
-      ),
+    const key = counterpartyKey(party);
+
+    return guardedWrite(
+      expectedUpdatedAt,
+      () =>
+        withTransaction(async (session) => {
+          // Read again inside the write: two write-offs at once would overwrite each other.
+          const fresh = await this.groupInSession(id, userId, session);
+          this.assertOpen(fresh);
+          if (fresh.writeOffs.some((one) => counterpartyKey(one) === key)) {
+            return this.viewOf(userId, fresh);
+          }
+          const open = openByParty(
+            await this.expenseRepo.listByGroup(userId, id, session),
+          );
+          const entry = writeOffOf(key, open, party);
+          const saved = await this.repo.update(
+            id,
+            { writeOffs: [...fresh.writeOffs, entry] },
+            session,
+            expectedUpdatedAt,
+          );
+          await this.stampWriteOff(
+            userId,
+            [entry],
+            open,
+            SHARED_HISTORY_REASONS.WRITE_OFF,
+            session,
+          );
+          return this.viewOf(userId, saved);
+        }),
+      () => this.repo.getOwnById(id, userId),
+      (g) => new SharedGroup(g),
     );
   }
 
@@ -386,41 +472,91 @@ export class SharedGroupService {
     userId: string,
     expectedUpdatedAt?: Date,
   ): Promise<SharedGroupView> {
-    const group = await this.openGroup(id, userId, expectedUpdatedAt);
-    // The stored entry already knows whether it is a person or a block of guests.
-    const entry = group.writeOffs.find(
-      (one) => one.contactId === partyId || one.expenseId === partyId,
-    );
-    if (!entry) return this.viewOf(userId, group);
-    const key = partyKey(entry);
-    return withTransaction(async (session) =>
-      this.saveWriteOffs(
-        group,
-        group.writeOffs.filter((one) => partyKey(one) !== key),
-        [entry],
-        SHARED_HISTORY_REASONS.WRITE_OFF_UNDONE,
-        session,
-        expectedUpdatedAt,
-      ),
+    await this.openGroup(id, userId, expectedUpdatedAt);
+
+    return guardedWrite(
+      expectedUpdatedAt,
+      () =>
+        withTransaction(async (session) => {
+          const fresh = await this.groupInSession(id, userId, session);
+          this.assertOpen(fresh);
+          // The stored entry already knows whether it is a person or a block of guests.
+          const entry = fresh.writeOffs.find(
+            (one) => one.contactId === partyId || one.expenseId === partyId,
+          );
+          if (!entry) return this.viewOf(userId, fresh);
+          const key = counterpartyKey(entry);
+          const open = openByParty(
+            await this.expenseRepo.listByGroup(userId, id, session),
+          );
+          const saved = await this.repo.update(
+            id,
+            {
+              writeOffs: fresh.writeOffs.filter(
+                (one) => counterpartyKey(one) !== key,
+              ),
+            },
+            session,
+            expectedUpdatedAt,
+          );
+          await this.stampWriteOff(
+            userId,
+            [entry],
+            open,
+            SHARED_HISTORY_REASONS.WRITE_OFF_UNDONE,
+            session,
+          );
+          return this.viewOf(userId, saved);
+        }),
+      () => this.repo.getOwnById(id, userId),
+      (g) => new SharedGroup(g),
     );
   }
 
-  private async saveWriteOffs(
-    group: SharedGroup,
-    writeOffs: SharedWriteOff[],
-    touched: SettlementCounterparty[],
+  // It moves no figure, and the history of every movement it touches says exactly that.
+  private async stampWriteOff(
+    userId: string,
+    parties: { contactId: string | null; expenseId: string | null }[],
+    open: Map<string, OpenAmount>,
     reason: SharedHistoryReason,
     session: TxSession,
-    expectedUpdatedAt?: Date,
-  ): Promise<SharedGroupView> {
-    const saved = await this.repo.update(
-      group.id,
-      { writeOffs },
-      session,
-      expectedUpdatedAt,
+  ): Promise<void> {
+    const ids = new Set(
+      parties.flatMap(
+        (party) => open.get(counterpartyKey(party))?.expenseIds ?? [],
+      ),
     );
-    await this.recordWriteOff(group, touched, reason, session);
-    return this.viewOf(group.userId, saved);
+    if (ids.size === 0) return;
+    const movements = await this.transactionRepo.listBySharedExpenseIds(
+      userId,
+      [...ids],
+      session,
+    );
+    for (const movement of movements) {
+      await stampSharedChange(this.transactionRepo, session, movement, reason);
+    }
+  }
+
+  private async groupInSession(
+    id: string,
+    userId: string,
+    session: TxSession,
+  ): Promise<SharedGroup> {
+    const group = await this.repo.getByIdIncludingArchived(id, session);
+    if (!group || group.userId !== userId) {
+      throw new ApiError("NotFound", "Shared group not found");
+    }
+    return new SharedGroup(group);
+  }
+
+  private assertOpen(group: SharedGroup): void {
+    if (group.archivedAt) {
+      throw new ApiError(
+        "BadRequest",
+        "Shared group is archived; restore it first",
+        "RESOURCE_ARCHIVED",
+      );
+    }
   }
 
   private async openGroup(
@@ -430,13 +566,7 @@ export class SharedGroupService {
   ): Promise<SharedGroup> {
     const group = await this.ownedGroup(id, userId);
     assertFresh(group, expectedUpdatedAt, (g) => new SharedGroup(g));
-    if (group.archivedAt) {
-      throw new ApiError(
-        "BadRequest",
-        "Shared group is archived; restore it first",
-        "RESOURCE_ARCHIVED",
-      );
-    }
+    this.assertOpen(group);
     return group;
   }
 
@@ -446,71 +576,6 @@ export class SharedGroupService {
   ): Promise<SharedGroupView> {
     const [view] = await this.withTotals(userId, [group]);
     return view as SharedGroupView;
-  }
-
-  /** The people and blocks of this group that still owe something, write-offs aside. */
-  private async stillOwing(
-    group: SharedGroup,
-    session: TxSession,
-  ): Promise<SettlementCounterparty[]> {
-    const given = new Set(group.writeOffs.map(partyKey));
-    const expenses = await this.expenseRepo.listByGroup(
-      group.userId,
-      group.id,
-      session,
-    );
-    const owed = new Map<string, SettlementCounterparty>();
-    for (const expense of expenses) {
-      if (expense.paidByContactId !== null) continue;
-      for (const share of expense.split.shares) {
-        if (share.party === SHARE_PARTIES.USER) continue;
-        if (share.amount - share.collected <= 0) continue;
-        const party: SettlementCounterparty =
-          share.party === SHARE_PARTIES.GUESTS
-            ? {
-                kind: SETTLEMENT_PARTIES.GUESTS,
-                contactId: null,
-                expenseId: expense.id,
-              }
-            : {
-                kind: SETTLEMENT_PARTIES.CONTACT,
-                contactId: share.contactId,
-                expenseId: null,
-              };
-        const key = partyKey(party);
-        if (!given.has(key)) owed.set(key, party);
-      }
-    }
-    return [...owed.values()];
-  }
-
-  /** It moves no figure, and the history of every movement it touches says exactly that. */
-  private async recordWriteOff(
-    group: SharedGroup,
-    parties: { contactId: string | null; expenseId: string | null }[],
-    reason: SharedHistoryReason,
-    session: TxSession,
-  ): Promise<void> {
-    const keys = new Set(parties.map(partyKey));
-    const expenses = await this.expenseRepo.listByGroup(
-      group.userId,
-      group.id,
-      session,
-    );
-    const touched = expenses.filter(
-      (expense) =>
-        expense.paidByContactId === null &&
-        counterpartiesOf(expense).some((party) => keys.has(partyKey(party))),
-    );
-    if (touched.length === 0) return;
-    const movements = await this.transactionRepo.listBySharedExpenseIds(
-      group.userId,
-      touched.map((expense) => expense.id),
-      session,
-    );
-    for (const movement of movements) {
-      await stampSharedChange(this.transactionRepo, session, movement, reason);
-    }
   }
 
   private async writeOffParty(
@@ -535,7 +600,14 @@ export class SharedGroupService {
         expenseId: null,
       };
     }
-    const expense = await this.expenseRepo.getById(dto.expenseId as string);
+    if (!dto.expenseId) {
+      throw new ApiError(
+        "BadRequest",
+        "A write-off names one of them: contactId, or expenseId for its block of guests",
+        "VALIDATION",
+      );
+    }
+    const expense = await this.expenseRepo.getById(dto.expenseId);
     if (
       !expense ||
       expense.userId !== group.userId ||
@@ -550,6 +622,14 @@ export class SharedGroupService {
         "VALIDATION",
       );
     }
+    // A line somebody else fronted owes you nothing, so there is nothing of yours to give up.
+    if (expense.paidByContactId !== null) {
+      throw new ApiError(
+        "BadRequest",
+        "Somebody else fronted that line: its block of guests owes you nothing",
+        "VALIDATION",
+      );
+    }
     return {
       kind: SETTLEMENT_PARTIES.GUESTS,
       contactId: null,
@@ -557,7 +637,6 @@ export class SharedGroupService {
     };
   }
 
-  // Idempotent: restoring an already-active group returns it unchanged.
   async restoreGroup(
     id: string,
     userId: string,
@@ -844,6 +923,10 @@ export class SharedGroupService {
               (participant) => participant.contactId !== contactId,
             ),
             defaultSplit: rescaleDefaultSplit(group.defaultSplit, contactId),
+            // Out of the group is out of it: coming back does not come back forgiven.
+            writeOffs: group.writeOffs.filter(
+              (one) => one.contactId !== contactId,
+            ),
           },
           undefined,
           expectedUpdatedAt,

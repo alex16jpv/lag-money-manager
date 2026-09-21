@@ -17,7 +17,7 @@ export interface GroupTotals {
   owedByParty: {
     contactId: string | null;
     expenseId: string | null;
-    owed: number;
+    owedCents: number;
   }[];
   expenseCount: number;
   dateFrom: Date | null;

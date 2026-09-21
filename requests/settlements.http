@@ -182,6 +182,54 @@ Content-Type: application/json
 
 { "type": "SETTLEMENT", "amount": 1000, "date": "2026-08-27T23:00:00.000Z", "toAccountId": "{{accountId}}" }
 
+### Un gasto con invitados, para cobrarle al bloque
+# @name party
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 230000, "date": "2026-08-18T23:00:00.000Z", "description": "Fiesta", "categoryId": "{{categoryId}}", "fromAccountId": "{{accountId}}" }
+
+###
+
+@partyId = {{party.response.body.id}}
+
+# @name guestExpense
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "transactionId": "{{partyId}}", "split": { "mode": "EQUAL", "guests": { "count": 20, "name": "La oficina" }, "shares": [{ "party": "USER" }, { "party": "CONTACT", "contactId": "{{anaId}}" }, { "party": "GUESTS" }] } }
+
+###
+
+@guestExpenseId = {{guestExpense.response.body.id}}
+
+### El bloque de invitados paga la mitad de lo suyo — se le cobra como a cualquiera
+POST {{baseUrl}}/settlements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "expenseId": "{{guestExpenseId}}", "date": "2026-08-28T23:00:00.000Z", "collected": 100000, "accountId": "{{accountId}}" }
+
+### Borrar ese gasto con el bloque ya pagando — 400 GUEST_BLOCK_HAS_PAYMENTS
+DELETE {{baseUrl}}/transactions/{{partyId}}
+Authorization: Bearer {{token}}
+
+### Ana paga de más: 50.000 cuando ya no debe nada — queda a su favor
+POST {{baseUrl}}/settlements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{anaId}}", "date": "2026-08-29T23:00:00.000Z", "collected": 50000, "accountId": "{{accountId}}" }
+
+### Devolverle lo que pagó de más — quinto tipo SALIENDO, sin categoría y sin ser gasto
+POST {{baseUrl}}/settlements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{anaId}}", "date": "2026-08-30T23:00:00.000Z", "paid": 50000, "accountId": "{{accountId}}" }
+
 ### Lo que ha ido y venido con Ana
 GET {{baseUrl}}/settlements?contactId={{anaId}}
 Authorization: Bearer {{token}}

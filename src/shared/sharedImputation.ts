@@ -1,8 +1,4 @@
-/**
- * A payment belongs to the person, not to the line it lands on: it covers the
- * oldest line first, and anything that changes the lines imputes it again over
- * what is left. The one place that decides it, for the server and the phone.
- */
+// The one place a payment is spread over what is owed, for the server and for the phone.
 
 export interface OwedLine {
   // The expense id, which also breaks the tie between two lines of the same day.

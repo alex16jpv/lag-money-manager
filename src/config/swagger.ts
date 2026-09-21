@@ -622,6 +622,14 @@ const responseViews = {
           "everybody in it, and which movement of yours it is nobody else's.",
       },
       sharedGroupId: { ...uuid, nullable: true },
+      sharedSettlementId: {
+        ...uuid,
+        nullable: true,
+        description:
+          "The settle-up that recorded this movement, or null. Its money belongs to that " +
+          "payment: editing the amount, the date, the type or the accounts is 400 " +
+          "SETTLEMENT_MOVEMENT_LOCKED, and so is deleting it — undo the payment instead.",
+      },
       sharedHistory: {
         type: "array",
         items: { $ref: "#/components/schemas/SharedHistoryEntry" },

@@ -12,6 +12,7 @@ import {
   SPENDING_GROUP_BY,
   SPENDING_SPLIT_BY,
   SPLIT_MODES,
+  TRANSACTION_TYPES,
 } from "../../shared/constants";
 import { ZERO_DECIMAL_CURRENCIES } from "../../shared/currency";
 import { ERROR_CODES } from "../../shared/errorCodes";
@@ -160,6 +161,22 @@ describe("OpenAPI response views", () => {
     const parameter = spending.get.parameters.find((p) => p.name === name);
 
     expect(parameter?.schema.enum).toEqual(Object.keys(values));
+  });
+
+  // Hand-written inside `@openapi` comments, so only this holds them to the enum they copy.
+  it.each([
+    ["/transactions", "get"],
+    ["/stats/spending", "get"],
+  ])("offers every transaction type on %s", (path, method) => {
+    const route = spec.paths[path] as Record<
+      string,
+      { parameters: { name: string; schema: { enum?: string[] } }[] }
+    >;
+    const parameter = (route[method]?.parameters ?? []).find(
+      (one) => one.name === "type",
+    );
+
+    expect(parameter?.schema.enum).toEqual(Object.keys(TRANSACTION_TYPES));
   });
 
   // O-F5b branches on this answer, so its status and code lists must be the server's, not a copy.

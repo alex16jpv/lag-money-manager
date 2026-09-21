@@ -353,7 +353,16 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
         },
       } as unknown as PipelineStage,
     ]);
-    const parties = faceted?.parties ?? [];
+    const byGroup = new Map<string, GroupTotals["owedByParty"]>();
+    for (const party of faceted?.parties ?? []) {
+      const rows = byGroup.get(party._id.groupId) ?? [];
+      rows.push({
+        contactId: party._id.contactId,
+        expenseId: party._id.expenseId,
+        owedCents: party.owed,
+      });
+      byGroup.set(party._id.groupId, rows);
+    }
     return (faceted?.totals ?? []).map((row) => ({
       groupId: row._id,
       total: fromCents(row.total),
@@ -361,13 +370,7 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
       owedToYou: fromCents(row.owedToYou),
       youOwe: fromCents(row.youOwe),
       collected: fromCents(row.collected),
-      owedByParty: parties
-        .filter((party) => party._id.groupId === row._id)
-        .map((party) => ({
-          contactId: party._id.contactId,
-          expenseId: party._id.expenseId,
-          owed: fromCents(party.owed),
-        })),
+      owedByParty: byGroup.get(row._id) ?? [],
       expenseCount: row.expenseCount,
       dateFrom: row.dateFrom ?? null,
       dateTo: row.dateTo ?? null,

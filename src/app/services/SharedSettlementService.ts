@@ -142,7 +142,7 @@ export class SharedSettlementService {
         session,
       );
       const held = surplus.get(counterpartyKey(counterparty));
-      if (held && held.yours > (held.theirs ?? 0)) {
+      if (held && held.yours > 0) {
         throw new ApiError(
           "BadRequest",
           "That is more than you owe them and more than they have paid ahead",
@@ -178,11 +178,7 @@ export class SharedSettlementService {
       }));
   }
 
-  /**
-   * Money coming back is not income and paying somebody back is not one
-   * movement: it is your expense on each line you cover, dated that line, so
-   * the categories come out exact.
-   */
+  // One expense per line you cover, dated that line, so the categories come out exact.
   private async recordMovements(
     input: {
       dto: CreateSharedSettlementDTO;

@@ -62,6 +62,7 @@ export const ERROR_CODES = [
   "TRANSACTION_NOT_SPLITTABLE",
   "SETTLEMENT_OVER_PAID",
   "SETTLEMENT_MOVEMENT_LOCKED",
+  "GUEST_BLOCK_HAS_PAYMENTS",
   // Client-minted ids
   "ID_TAKEN",
   // Optimistic concurrency

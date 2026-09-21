@@ -301,6 +301,7 @@ Codes raised by the services and middleware. Anything not listed here has no `co
 | `TRANSACTION_NOT_SPLITTABLE`      | 400    | Splitting a movement that is not an expense, or turning a split one into another type |
 | `SETTLEMENT_OVER_PAID`            | 400    | Paying somebody back more than you owe them and more than they have paid ahead |
 | `SETTLEMENT_MOVEMENT_LOCKED`      | 400    | Editing the money of a movement a settle-up recorded, or deleting it: undo the payment instead |
+| `GUEST_BLOCK_HAS_PAYMENTS`        | 400    | Deleting an expense whose block of guests has paid: the block lives in that expense and its money would have nowhere to go |
 | `BUDGET_PERIOD_OVERLAP`           | 400    | New budget period overlaps an existing one for the same scope            |
 | `IDEMPOTENCY_KEY_INVALID`         | 400    | `Idempotency-Key` outside `[A-Za-z0-9_-]{1,200}`                         |
 | `MALFORMED_JSON`                  | 400    | Body that is not valid JSON (body-parser `entity.parse.failed`)          |

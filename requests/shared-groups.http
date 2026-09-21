@@ -128,11 +128,16 @@ Content-Type: application/json
 { "description": "Almuerzo", "date": "2026-08-17T17:00:00.000Z", "amount": 150000, "split": { "mode": "FIXED_REST", "shares": [{ "party": "USER" }, { "party": "CONTACT", "contactId": "{{anaId}}", "fixedAmount": 50000 }, { "party": "CONTACT", "contactId": "{{betoId}}" }] } }
 
 ### Invitados: 3 personas + 20 invitados = 23 partes, y el bloque es UN cobro
+# @name createGuestExpense
 POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "description": "Fiesta", "date": "2026-08-18T23:00:00.000Z", "amount": 230000, "split": { "mode": "EQUAL", "guests": { "count": 20, "name": "La oficina" }, "shares": [{ "party": "USER" }, { "party": "CONTACT", "contactId": "{{anaId}}" }, { "party": "CONTACT", "contactId": "{{betoId}}" }, { "party": "GUESTS" }] } }
+
+###
+
+@guestExpenseId = {{createGuestExpense.response.body.id}}
 
 ### Un bloque de invitados sin el número encima — 400 SPLIT_INVALID
 POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
@@ -394,7 +399,7 @@ POST {{baseUrl}}/shared-groups/{{groupId}}/write-offs
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "expenseId": "{{expenseId}}" }
+{ "expenseId": "{{guestExpenseId}}" }
 
 ### Archivar con gente debiendo — lo perdona por ti y lo dice en totals.writtenOff
 DELETE {{baseUrl}}/shared-groups/{{groupId}}

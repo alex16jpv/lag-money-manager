@@ -25,6 +25,7 @@ export interface ISharedGroupDocument {
     kind: SettlementPartyKind;
     contactId: string | null;
     expenseId: string | null;
+    amount: number; // integer cents
     at: Date;
   }[];
   userId: string;
@@ -63,6 +64,7 @@ const WriteOffSchema = new Schema<ISharedGroupDocument["writeOffs"][number]>(
     },
     contactId: { type: String, default: null },
     expenseId: { type: String, default: null },
+    amount: { type: Number, required: true, default: 0 },
     at: { type: Date, required: true },
   },
   { _id: false },

@@ -179,10 +179,8 @@ export class SharedSettlementRepository implements ISharedSettlementRepository {
     if (cursor) {
       // The pivot is read inside the same filter, so no other list's row can order this page.
       const pivot = await SharedSettlementModel.findOne({
+        ...baseFilter,
         _id: cursor,
-        ...(typeof baseFilter.userId === "string"
-          ? { userId: baseFilter.userId }
-          : {}),
       } as never)
         .select("date")
         .lean();

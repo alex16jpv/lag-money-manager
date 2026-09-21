@@ -168,10 +168,7 @@ export class TransactionService {
     }
   }
 
-  /**
-   * A movement written inside somebody else's transaction: a settle-up records
-   * its own, and they have to land or fail with it.
-   */
+  // Written inside somebody else's transaction: a settle-up's movements land or fail with it.
   async recordWithin(
     dto: CreateTransactionDTO,
     timezone: string,

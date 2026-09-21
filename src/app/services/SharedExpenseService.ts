@@ -456,6 +456,7 @@ export class SharedExpenseService {
       return new SharedExpense(existing);
     }
     return withTransaction(async (session) => {
+      await this.ledger.assertNoGuestPayments(userId, id, session);
       const deleted = await this.repo.delete(id, session, expectedUpdatedAt);
       const linked = await this.transactionRepo.getBySharedExpenseId(
         userId,

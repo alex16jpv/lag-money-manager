@@ -45,33 +45,41 @@ export interface RecomputeResult {
   stamped: Set<string>;
 }
 
-export const counterpartyKey = (party: SettlementCounterparty): string =>
-  party.kind === SETTLEMENT_PARTIES.CONTACT
-    ? `contact:${party.contactId}`
-    : `guests:${party.expenseId}`;
+export const counterpartyKey = (party: {
+  contactId: string | null;
+  expenseId: string | null;
+}): string =>
+  party.expenseId ? `guests:${party.expenseId}` : `contact:${party.contactId}`;
+
+/** Who one share is owed by, or owed to. A block of guests is named by the expense it lives in. */
+export function counterpartyOfShare(
+  expense: SharedExpense,
+  share: SharedShare,
+): SettlementCounterparty | null {
+  if (share.party === SHARE_PARTIES.GUESTS) {
+    return {
+      kind: SETTLEMENT_PARTIES.GUESTS,
+      contactId: null,
+      expenseId: expense.id,
+    };
+  }
+  if (share.party === SHARE_PARTIES.CONTACT && share.contactId) {
+    return {
+      kind: SETTLEMENT_PARTIES.CONTACT,
+      contactId: share.contactId,
+      expenseId: null,
+    };
+  }
+  return null;
+}
 
 /** Everybody a payment could be with over one expense; you are never one of them. */
 export function counterpartiesOf(
   expense: SharedExpense,
 ): SettlementCounterparty[] {
-  const parties: SettlementCounterparty[] = [];
-  for (const share of expense.split.shares) {
-    if (share.party === SHARE_PARTIES.CONTACT && share.contactId) {
-      parties.push({
-        kind: SETTLEMENT_PARTIES.CONTACT,
-        contactId: share.contactId,
-        expenseId: null,
-      });
-    }
-    if (share.party === SHARE_PARTIES.GUESTS) {
-      parties.push({
-        kind: SETTLEMENT_PARTIES.GUESTS,
-        contactId: null,
-        expenseId: expense.id,
-      });
-    }
-  }
-  return parties;
+  return expense.split.shares
+    .map((share) => counterpartyOfShare(expense, share))
+    .filter((party): party is SettlementCounterparty => party !== null);
 }
 
 const isTheirs = (
@@ -86,12 +94,7 @@ const isTheirs = (
 const isYours = (share: SharedShare): boolean =>
   share.party === SHARE_PARTIES.USER;
 
-/**
- * The one place that decides what a payment covers and what that leaves as
- * yours. A payment belongs to the person, so it is imputed over everything
- * open with them, oldest line first, and every change imputes it again from
- * scratch: `collected` on a share is never typed, it is always the answer.
- */
+// `collected` on a share is never typed: it is this answer, computed again on every write.
 export class SharedLedgerService {
   constructor(
     private expenseRepo: ISharedExpenseRepository,
@@ -115,12 +118,12 @@ export class SharedLedgerService {
     const touched = new Map<string, SharedExpense>();
 
     for (const [key, party] of unique) {
-      const expenses = await this.expenseRepo.listByCounterparty(
+      const settlements = await this.settlementRepo.listByCounterparty(
         userId,
         party,
         session,
       );
-      const settlements = await this.settlementRepo.listByCounterparty(
+      const expenses = await this.expenseRepo.listByCounterparty(
         userId,
         party,
         session,
@@ -162,11 +165,14 @@ export class SharedLedgerService {
         }
       }
 
-      const theirs = impute(theirLines, pools.theyOwe);
+      // What you handed over covers your own lines first; whatever is left of it is their money
+      // going back, so it comes off what they gave you before any of that is imputed.
       const yours = impute(yourLines, pools.youOwe);
+      const returned = yours.surplus;
+      const theirs = impute(theirLines, pools.theyOwe - returned);
       surplus.set(key, {
         theirs: fromCents(theirs.surplus),
-        yours: fromCents(yours.surplus),
+        yours: fromCents(Math.max(0, returned - pools.theyOwe)),
       });
 
       for (const expense of expenses) {
@@ -228,11 +234,7 @@ export class SharedLedgerService {
     return { changes, surplus, stamped };
   }
 
-  /**
-   * The expense in the shared group is the same fact as the movement. A new
-   * amount resolves the split again; an EXACT split states amounts rather than
-   * proportions, so it stops adding up and the edit is refused.
-   */
+  // The expense and the movement are one fact: neither may state what the other does not.
   async restateExpense(
     before: Transaction,
     after: Transaction,
@@ -240,10 +242,10 @@ export class SharedLedgerService {
     session: TxSession,
   ): Promise<Transaction> {
     const amountChanged = after.amount !== before.amount;
+    // A payment covers the oldest line first, so a new date can move what it covers.
+    const dateChanged = after.date.getTime() !== before.date.getTime();
     const restated =
-      amountChanged ||
-      after.date.getTime() !== before.date.getTime() ||
-      after.description !== before.description;
+      amountChanged || dateChanged || after.description !== before.description;
     if (!restated) return after;
 
     const expense = await this.expenseRepo.getById(sharedExpenseId, session);
@@ -267,15 +269,25 @@ export class SharedLedgerService {
       });
     }
     const saved = await this.expenseRepo.update(expense.id, write, session);
-    if (!amountChanged) return after;
+    if (!amountChanged && !dateChanged) return after;
 
-    // What each person owes moved, so their payments are imputed over it again.
+    // What each person owes, or the order it is owed in, moved: impute the payments again.
     const { stamped } = await this.recompute(
       after.userId,
       counterpartiesOf(saved),
-      SHARED_HISTORY_REASONS.AMOUNT_CHANGED,
+      amountChanged
+        ? SHARED_HISTORY_REASONS.AMOUNT_CHANGED
+        : SHARED_HISTORY_REASONS.REIMPUTED,
       session,
     );
+    if (!amountChanged)
+      return stamped.has(saved.id)
+        ? ((await this.transactionRepo.getBySharedExpenseId(
+            after.userId,
+            saved.id,
+            session,
+          )) ?? after)
+        : after;
     if (stamped.has(saved.id)) {
       const written = await this.transactionRepo.getBySharedExpenseId(
         after.userId,
@@ -292,6 +304,33 @@ export class SharedLedgerService {
     );
   }
 
+  /**
+   * A block of guests exists only inside its expense, so there is nowhere to
+   * impute what it paid and nobody left to give it back to.
+   */
+  async assertNoGuestPayments(
+    userId: string,
+    expenseId: string,
+    session: TxSession,
+  ): Promise<void> {
+    const paid = await this.settlementRepo.listByCounterparty(
+      userId,
+      {
+        kind: SETTLEMENT_PARTIES.GUESTS,
+        contactId: null,
+        expenseId,
+      },
+      session,
+    );
+    if (paid.length > 0) {
+      throw new ApiError(
+        "BadRequest",
+        "Its block of guests has paid: undo those payments first, and then this can go",
+        "GUEST_BLOCK_HAS_PAYMENTS",
+      );
+    }
+  }
+
   /** Deleting the movement takes its expense with it, and what was paid imputes over what is left. */
   async dropExpenseOf(
     movement: Transaction,
@@ -299,6 +338,7 @@ export class SharedLedgerService {
     session: TxSession,
   ): Promise<void> {
     const expense = await this.expenseRepo.getById(sharedExpenseId, session);
+    await this.assertNoGuestPayments(movement.userId, sharedExpenseId, session);
     await this.expenseRepo.delete(sharedExpenseId, session);
     if (!expense) return;
     await this.recompute(

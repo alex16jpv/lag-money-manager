@@ -33,7 +33,10 @@ export interface ISharedGroupRepository extends IRepository<SharedGroup> {
   // Owner-scoped read for client-minted id replay; resolves archived rows too.
   getOwnById(id: string, userId: string): Promise<SharedGroup | null>;
   // Unlike getById, also resolves archived groups (read paths only).
-  getByIdIncludingArchived(id: string): Promise<SharedGroup | null>;
+  getByIdIncludingArchived(
+    id: string,
+    session?: TxSession,
+  ): Promise<SharedGroup | null>;
   // `name` renames in the same write, so nobody can take the name in between.
   restore(
     id: string,

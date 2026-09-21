@@ -6,6 +6,7 @@ import {
   SharedGroupFilters,
 } from "../../../domain/repositories/sharedGroup/ISharedGroupRepository";
 import { ApiError } from "../../../shared/errors";
+import { fromCents, toCents } from "../../../shared/money";
 import {
   buildPaginatedResult,
   pageQueryLimit,
@@ -42,6 +43,7 @@ export class SharedGroupRepository implements ISharedGroupRepository {
         kind: one.kind,
         contactId: one.contactId,
         expenseId: one.expenseId,
+        amount: fromCents(one.amount ?? 0),
         at: one.at,
       })),
       userId: doc.userId,
@@ -58,6 +60,12 @@ export class SharedGroupRepository implements ISharedGroupRepository {
       doc.participants = group.participants.map((p) => ({
         contactId: p.contactId,
         addedAt: p.addedAt ?? now(),
+      }));
+    }
+    if (group.writeOffs) {
+      doc.writeOffs = group.writeOffs.map((one) => ({
+        ...one,
+        amount: toCents(one.amount),
       }));
     }
     return doc;
@@ -100,8 +108,13 @@ export class SharedGroupRepository implements ISharedGroupRepository {
     return doc ? this.toEntity(doc) : null;
   }
 
-  async getByIdIncludingArchived(id: string): Promise<SharedGroup | null> {
-    const doc = await SharedGroupModel.findOne({ _id: id }).lean();
+  async getByIdIncludingArchived(
+    id: string,
+    session?: TxSession,
+  ): Promise<SharedGroup | null> {
+    const doc = await SharedGroupModel.findOne({ _id: id })
+      .session(session ?? null)
+      .lean();
     return doc ? this.toEntity(doc) : null;
   }
 
