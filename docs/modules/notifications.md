@@ -1,9 +1,11 @@
 # Notifications Module
 
-> **Status: defined, not built.** This is the design the module is built to (T-125). Nothing below
-> exists in `src/` yet: the server side arrives with T-127, the inbox with T-128, the first real
-> notification with T-129, email with T-131 and push with T-132. Each of those rewrites the section
-> it builds from "will" to "does"; a section that still describes something unbuilt says so.
+> **Status: defined, not built, and not scheduled.** This is the design the module is meant to be
+> built to (T-125). Nothing below exists in `src/`: the server side is T-127, the inbox T-128, email
+> T-131 and push T-132, and the owner may redo this definition from scratch when that work starts.
+> **Shared invitations do not wait for it**: an invitation is its own entity, shown and answered
+> inside Shared, and the day this module exists its route adds the `notify()` call described below
+> and nothing else changes.
 
 ## What This Module Does
 
@@ -79,9 +81,9 @@ in by accident, and T-127 holds that with a test over every entry.
 
 | `type`                      | Audience                                             | Topic               | `action` | `fold`                  | `once`                     | Built by |
 | --------------------------- | ---------------------------------------------------- | ------------------- | -------- | ----------------------- | -------------------------- | -------- |
-| `sharedInvitation.received` | The invited person                                   | `sharedInvitations` | `answer` | none                    | `invitation:<id>:received` | T-129    |
-| `sharedInvitation.answered` | Whoever invited                                      | `sharedActivity`    | none     | none                    | `invitation:<id>:answered` | T-129    |
-| `sharedGroup.activity`      | Every participant with an account, except the author | `sharedActivity`    | none     | `sharedGroup:<groupId>` | none — it folds instead    | T-130    |
+| `sharedInvitation.received` | The invited person                                   | `sharedInvitations` | `answer` | none                    | `invitation:<id>:received` | T-127    |
+| `sharedInvitation.answered` | Whoever invited                                      | `sharedActivity`    | none     | none                    | `invitation:<id>:answered` | T-127    |
+| `sharedGroup.activity`      | Every participant with an account, except the author | `sharedActivity`    | none     | `sharedGroup:<groupId>` | none — it folds instead    | T-127    |
 
 `params`, in outline (each task fixes its own schema):
 
@@ -92,7 +94,7 @@ in by accident, and T-127 holds that with a test over every entry.
 - `sharedGroup.activity` — `groupId`, `groupName`, `count`, `lastKind` (`expenseAdded`,
   `expenseChanged`, `expenseRemoved`, `paymentRecorded`, `groupArchived`), `lastActorName`.
 
-T-129 and T-130 may add a type they find they need, by the rule above; they may not add a field that
+Whoever builds this may add a type Shared turns out to need, by the rule above; never a field that
 crosses the frontier.
 
 ### The next family: budgets
