@@ -1,8 +1,9 @@
 import bcryptjs from "bcryptjs";
 
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
-import { ENVIRONMENT } from "../../shared/constants";
+import { ENVIRONMENT, INVITATION_STATUSES } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
 import {
   toUserResponse,
@@ -14,6 +15,7 @@ export class UserService {
   constructor(
     private repo: IUserRepository,
     private accountRepo: IAccountRepository,
+    private invitationRepo: ISharedInvitationRepository,
   ) {}
 
   async getUserById(id: string, userId: string): Promise<UserResponseDTO> {
@@ -105,6 +107,10 @@ export class UserService {
     if (!existing) {
       throw new ApiError("NotFound", "User not found");
     }
-    return await this.repo.delete(id);
+    await this.repo.delete(id);
+    await this.invitationRepo.withdrawAll(
+      { userId: id, statuses: [INVITATION_STATUSES.PENDING] },
+      new Date(),
+    );
   }
 }

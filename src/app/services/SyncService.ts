@@ -46,7 +46,6 @@ export interface SyncChanges {
   sharedGroups: SharedGroup[];
   sharedExpenses: SharedExpense[];
   settlements: SharedSettlement[];
-  // The same invitation reads differently to each side: the inviter never learns who answered.
   invitationsSent: SentInvitationView[];
   invitationsReceived: ReceivedInvitationView[];
 }
@@ -91,9 +90,9 @@ export class SyncService {
 
     // limit+1 from every source separates "there is more" from the end, and makes the merge exact.
     const fetch = limit + 1;
-    // Invitations to this person are found by their email, so the profile is read first.
-    const user = await this.users.getById(userId);
+    const profile = this.users.getById(userId);
     const [
+      user,
       accounts,
       categories,
       transactions,
@@ -105,6 +104,7 @@ export class SyncService {
       sent,
       received,
     ] = await Promise.all([
+      profile,
       this.accounts.changesSince(userId, cursor, fetch),
       this.categories.changesSince(userId, cursor, fetch),
       this.transactions.changesSince(userId, cursor, fetch),
@@ -114,14 +114,16 @@ export class SyncService {
       this.sharedExpenses.changesSince(userId, cursor, fetch),
       this.settlements.changesSince(userId, cursor, fetch),
       this.invitations.sentChangesSince(userId, cursor, fetch),
-      user
-        ? this.invitations.receivedChangesSince(
-            userId,
-            user.email,
-            cursor,
-            fetch,
-          )
-        : Promise.resolve([]),
+      profile.then((me) =>
+        me
+          ? this.invitations.receivedChangesSince(
+              userId,
+              me.email,
+              cursor,
+              fetch,
+            )
+          : [],
+      ),
     ]);
 
     // Filtering the user here costs one comparison and keeps it inside the same ordering.

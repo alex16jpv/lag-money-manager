@@ -291,7 +291,7 @@ const responseViews = {
           ...uuid,
           nullable: true,
           description:
-            "The user this contact turned out to be: set when they accept an invitation, and never settable by a client.",
+            "Reserved and always null: accepting an invitation does not fill it, because the inviter is never told who answered. Never settable by a client.",
         },
         userId: uuid,
         archivedAt: nullableDateTime,
@@ -995,7 +995,7 @@ const syncChangesResponse = withRequired({
         invitationsReceived: {
           type: "array",
           description:
-            "Addressed to your email, or answered by you: they keep arriving after they are answered, withdrawn or out of time, which is how a device learns they stopped waiting.",
+            "Addressed to your email and answered by nobody yet, or answered by you: they keep arriving after they are answered, withdrawn or out of time, which is how a device learns they stopped waiting.",
           items: { $ref: "#/components/schemas/ReceivedInvitation" },
         },
       },

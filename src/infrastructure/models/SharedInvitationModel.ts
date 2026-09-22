@@ -15,7 +15,6 @@ export interface ISharedInvitationDocument {
   contactId: string;
   email: string;
   status: InvitationStatus;
-  // Present, and true, only while the invitation is live: waiting or joined.
   open?: true;
   expiresAt: Date;
   inviteeId?: string;
@@ -66,7 +65,6 @@ SharedInvitationSchema.index({ userId: 1, contactId: 1 });
 SharedInvitationSchema.index({ userId: 1, status: 1, expiresAt: 1 });
 SharedInvitationSchema.index({ email: 1, status: 1, expiresAt: 1, _id: 1 });
 
-// Change feed: the inviter's rows, and the invited person's by address and, once answered, by id.
 SharedInvitationSchema.index({ userId: 1, updatedAt: 1, _id: 1 });
 SharedInvitationSchema.index({ email: 1, updatedAt: 1, _id: 1 });
 SharedInvitationSchema.index(

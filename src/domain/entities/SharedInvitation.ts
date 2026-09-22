@@ -8,15 +8,12 @@ import {
 
 export interface SharedInvitationProps {
   id?: string;
-  // The inviter: the group's owner.
   userId: string;
   groupId: string;
   contactId: string;
-  // Lowercased; what the invited person is recognised by until they answer.
   email: string;
   status?: InvitationStatus;
   expiresAt: Date;
-  // Set by whoever answered; never sent to the inviter.
   inviteeId?: string | null;
   answeredAt?: Date | null;
   withdrawnAt?: Date | null;
@@ -76,7 +73,6 @@ export class SharedInvitation {
   }
 }
 
-/** What the inviter reads: never who answered, only how. */
 export interface SentInvitationView {
   id: string;
   groupId: string;
@@ -90,7 +86,6 @@ export interface SentInvitationView {
   updatedAt?: Date;
 }
 
-/** What the invited person reads: the group's name and who sent it, and nothing else of the inviter's. */
 export interface ReceivedInvitationView {
   id: string;
   groupId: string;

@@ -12,6 +12,12 @@ jest.mock("../../shared/constants", () => ({
   TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
   SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
   GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
+  INVITATION_STATUSES: {
+    PENDING: "PENDING",
+    ACCEPTED: "ACCEPTED",
+    DECLINED: "DECLINED",
+    WITHDRAWN: "WITHDRAWN",
+  },
   SHARED_HISTORY_REASONS: {
     SPLIT: "SPLIT",
     SPLIT_EDITED: "SPLIT_EDITED",
@@ -30,6 +36,7 @@ import { User } from "../../domain/entities/User";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
+import { mockInvitationRepo } from "./invitationRepoMock";
 
 const testUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
 
@@ -61,13 +68,15 @@ describe("UserService", () => {
   let service: UserService;
   let repo: jest.Mocked<IUserRepository>;
   let accountRepo: jest.Mocked<IAccountRepository>;
+  let invitations: ReturnType<typeof mockInvitationRepo>;
 
   beforeEach(() => {
     repo = createMockRepo();
     accountRepo = {
       countByUserId: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<IAccountRepository>;
-    service = new UserService(repo, accountRepo);
+    invitations = mockInvitationRepo();
+    service = new UserService(repo, accountRepo, invitations);
   });
 
   describe("getUserById", () => {
@@ -207,6 +216,18 @@ describe("UserService", () => {
 
       expect(repo.getById).toHaveBeenCalledWith(testUserId);
       expect(repo.delete).toHaveBeenCalledWith(testUserId);
+    });
+
+    it("withdraws the invitations it left waiting in other people's Shared", async () => {
+      repo.getById.mockResolvedValue(mockUser);
+      repo.delete.mockResolvedValue();
+
+      await service.deleteUser(testUserId, testUserId);
+
+      expect(invitations.withdrawAll).toHaveBeenCalledWith(
+        { userId: testUserId, statuses: ["PENDING"] },
+        expect.any(Date),
+      );
     });
 
     it("should throw Forbidden when deleting another user", async () => {

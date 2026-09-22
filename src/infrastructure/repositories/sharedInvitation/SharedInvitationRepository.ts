@@ -25,6 +25,7 @@ import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
 import { ID_CURSOR_SORT, invalidCursor } from "../keysetCursor";
 
 const LIVE = [INVITATION_STATUSES.PENDING, INVITATION_STATUSES.ACCEPTED];
+const DUPLICATE_KEY = 11000;
 
 export class SharedInvitationRepository implements ISharedInvitationRepository {
   private toEntity(doc: ISharedInvitationDocument): SharedInvitation {
@@ -49,7 +50,6 @@ export class SharedInvitationRepository implements ISharedInvitationRepository {
     });
   }
 
-  // The pivot has to be one of the rows the scope reaches: a foreign id is not a place to start from.
   private async paginate(
     scope: Record<string, unknown>,
     pagination: PaginationParams,
@@ -110,7 +110,10 @@ export class SharedInvitationRepository implements ISharedInvitationRepository {
     limit: number,
   ): Promise<SharedInvitation[]> {
     const [byEmail, byInvitee] = await Promise.all([
-      SharedInvitationModel.find(changesSinceFilter(email, cursor, "email"))
+      SharedInvitationModel.find({
+        ...changesSinceFilter(email, cursor, "email"),
+        inviteeId: { $in: [null, inviteeId] },
+      })
         .sort(CHANGE_FEED_SORT)
         .limit(limit)
         .lean(),
@@ -189,20 +192,25 @@ export class SharedInvitationRepository implements ISharedInvitationRepository {
       { $unset: { open: "" } },
       { session: session ?? undefined },
     );
-    const { id, ...fields } = invitation;
-    const written = await SharedInvitationModel.updateOne(
-      { ...pair, open: true },
-      { $setOnInsert: { _id: id, ...fields, open: true } },
-      { upsert: true, session: session ?? undefined },
-    );
+    const { id, inviteeId: _unanswered, ...fields } = invitation;
+    let created: boolean;
+    try {
+      const written = await SharedInvitationModel.updateOne(
+        { ...pair, open: true },
+        { $setOnInsert: { _id: id, ...fields, open: true } },
+        { upsert: true, session: session ?? undefined },
+      );
+      created = written.upsertedCount === 1;
+    } catch (error) {
+      // The server only retries an upsert whose filter is exactly the unique key, and `open` is extra.
+      if ((error as { code?: number }).code !== DUPLICATE_KEY) throw error;
+      created = false;
+    }
     const doc = await SharedInvitationModel.findOne({ ...pair, open: true })
       .session(session ?? null)
       .lean();
     if (!doc) throw new Error("The live invitation vanished between two reads");
-    return {
-      invitation: this.toEntity(doc),
-      created: written.upsertedCount === 1,
-    };
+    return { invitation: this.toEntity(doc), created };
   }
 
   async answer(

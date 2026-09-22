@@ -51,7 +51,9 @@ The same document reads differently to each side, and the difference **is** the 
 | `DECLINED`  | They said no                                             | absent                                                                                     |
 | `WITHDRAWN` | It ended without an answer, or sharing stopped after one | absent                                                                                     |
 
-`open` is present — and only ever `true` — on the one **live** invitation of a person in a group, and a partial unique index on `{groupId, contactId}` holds that there is at most one. Two invites that arrive at once meet in the index, not in a read.
+`open` is present — and only ever `true` — on the one **live** invitation of a person in a group, and a partial unique index on `{groupId, contactId}` holds that there is at most one. Two invites that arrive at once meet in the index, not in a read: the loser's upsert hits the duplicate key — MongoDB only retries that by itself when the filter is exactly the index key, and `open` is one field more — and `openOne` answers it with the row that won, as `200`.
+
+Deleting an account withdraws the invitations it left waiting, so they leave strangers' Shared on their next pull.
 
 What ends a live invitation, and what each one ends:
 
@@ -73,7 +75,7 @@ Restoring a group or a contact brings none of them back: inviting again is how s
 
 **Idempotent by the index**: when that person already has a live invitation — waiting and in time, or joined — it is answered as it is with `200`. One that is waiting but out of time steps aside and a new one is written (`201`), with a new id, so the device that showed the old one never mistakes the two.
 
-A user may have at most **50 invitations waiting and in time** (`MAX_PENDING_INVITATIONS_PER_USER`, `400 INVITATION_LIMIT_REACHED`, published as `SharedLimits.maxPendingInvitationsPerUser`). It is what bounds how much one person can put into strangers' Shared. Answering the live invitation of somebody already invited is never refused by it.
+A user may have at most **50 invitations waiting and in time** — a count read before the write, so a burst of parallel invites can pass it by the width of the burst; it bounds abuse, it is not a ledger (`MAX_PENDING_INVITATIONS_PER_USER`, `400 INVITATION_LIMIT_REACHED`, published as `SharedLimits.maxPendingInvitationsPerUser`). It is what bounds how much one person can put into strangers' Shared. Answering the live invitation of somebody already invited is never refused by it.
 
 ### `GET /shared-groups/{id}/invitations`
 
@@ -94,14 +96,16 @@ The invitation has to be addressed to your email, or already answered by you —
 - **Accept** refuses a group in another currency (`400 CURRENCY_MISMATCH`), a group you already joined through another contact of the same inviter (`400 PARTICIPANT_ALREADY_IN_GROUP`), and one that can no longer be answered (`400 INVITATION_UNAVAILABLE`). It moves the invitation to `ACCEPTED` and fills the inviter's contact's `linkedUserId` **in one transaction**; the group is read inside it, so a group archived or a person taken out a moment before answers `INVITATION_UNAVAILABLE` instead of joining.
 - **Decline** takes any currency.
 
-Both are idempotent for the person who already gave that answer; the other answer after it is `INVITATION_UNAVAILABLE`. Nothing in the invited person's ledger is touched by either.
+Both are idempotent for the person who already gave that answer; the other answer after it is `INVITATION_UNAVAILABLE`, and so is one whose sender deleted their account. Nothing in either person's data is written besides the invitation: not the invited person's ledger, and **not the inviter's contact** — its `linkedUserId` stays `null`, because it would tell the inviter who answered and bump a row they may be editing offline ([contacts.md](contacts.md)).
+
+**An address is not a person.** An invitation reaches the invited person by their email only while **nobody has answered it**; once answered, it belongs to whoever did, by `inviteeId`. So a user who changes their email keeps their answers, and whoever registers the old address later sees only what still waits there — never somebody else's history of groups joined or declined. `accept`, `decline` and the change feed apply the same rule.
 
 ## How it reaches the devices
 
 Through the change feed ([sync.md](sync.md)), two sources:
 
 - `invitationsSent` — the inviter's rows, over `(userId, updatedAt, _id)`.
-- `invitationsReceived` — the invited person's, found **by the email on their profile** over `(email, updatedAt, _id)`, and **by who answered** over `(inviteeId, updatedAt, _id)`. The second keeps an answered invitation reaching them after they change their email. The two scans are merged by id.
+- `invitationsReceived` — the invited person's, found **by the email on their profile** over `(email, updatedAt, _id)` among the rows nobody has answered, and **by who answered** over `(inviteeId, updatedAt, _id)`. The second keeps an answered invitation reaching them after they change their email. The two scans are merged by id.
 
 Every event above rewrites the row, so its `updatedAt` moves and both sides learn it on their next pull. There is **no batch operation**: inviting, withdrawing and answering all need a connection, because each is about somebody else and only the server can say whether the invitation still stands.
 

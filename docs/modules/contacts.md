@@ -9,7 +9,7 @@ Two things set it apart from plain CRUD, and both are deliberate:
 - **A contact is not an account.** It has no balance, no type, no credit limit and no currency, it never appears in `GET /accounts`, in a transfer, in `Stats groupBy=account` or in any total of what the user has or owes. Money only ever moves in the user's own accounts. Modelling a person as an account would have meant an "except for people" exception in each of the ten surfaces that already read accounts, and the one that got forgotten would teach a person as if they were a bank.
 - **The `email` is an identifier, not a channel.** Nothing is sent from this API. It is what an invitation to a shared group is addressed to ([invitations.md](invitations.md)). Two contacts may carry the same address — an invitation names a contact, never an address, so the ambiguity never arises.
 
-`linkedUserId` is the user this contact turned out to be: it is filled when they accept an invitation, in the same transaction, and stays when sharing stops later — it says who the person is, not what they can see. It is server-owned, and a client that sends it has it dropped by validation.
+`linkedUserId` is server-owned, and a client that sends it has it dropped by validation. **Accepting an invitation does not fill it** (T-129): who is in a group is the accepted invitation itself ([invitations.md](invitations.md)), and a user id written into the inviter's address book would tell the inviter who answered — which the invitation never does — and would bump a row the inviter may be editing offline. It stays `null` until T-130 decides whether it is needed at all.
 
 **Two writes here end invitations, in the same transaction**: changing or clearing the email withdraws the contact's waiting ones (they were addressed to the old address), and archiving the contact ends every live one, joined included.
 
@@ -91,4 +91,4 @@ Every write accepts `If-Match: <updatedAt ISO>` and answers `409 STALE_UPDATE` w
 
 - It does not send anything, anywhere. See `email` above.
 - It does not know about groups, splits or money. That is the shared-groups module; a contact only ever appears there by id.
-- It does not link a contact to a real user by itself. Only accepting an invitation fills `linkedUserId`.
+- It does not link a contact to a real user. `linkedUserId` stays `null`; see above.

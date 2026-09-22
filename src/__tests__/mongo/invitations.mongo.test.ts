@@ -160,7 +160,15 @@ describe("invitations against mongod", () => {
     });
   });
 
-  it("accepts, and links the inviter's contact to the person who accepted", async () => {
+  it("stores who answered only once somebody has: the partial index leaves the rest out", async () => {
+    const waiting = await SharedInvitationModel.findOne({
+      email: "beto@invitations.test",
+    }).lean();
+
+    expect(waiting).not.toHaveProperty("inviteeId");
+  });
+
+  it("accepts without writing anything into the inviter's contacts", async () => {
     const [waiting] = (await feed(beto)).invitationsReceived as {
       id: string;
     }[];
@@ -175,7 +183,7 @@ describe("invitations against mongod", () => {
     const linked = (await feed(john)).contacts.find(
       (c) => c.email === "beto@invitations.test",
     );
-    expect(linked?.linkedUserId).toBe(beto.userId);
+    expect(linked?.linkedUserId).toBeNull();
     const sent = (await feed(john)).invitationsSent.find(
       (i) => i.id === waiting.id,
     );
@@ -202,6 +210,12 @@ describe("invitations against mongod", () => {
 
     expect(received).toHaveLength(1);
     expect(received[0]).toMatchObject({ status: "ACCEPTED" });
+  });
+
+  it("never hands somebody else's answers to whoever registers the old address", async () => {
+    const newcomer = await register("beto@invitations.test", "Not Beto");
+
+    expect((await feed(newcomer)).invitationsReceived).toHaveLength(0);
   });
 
   it("refuses a group in another currency, and lets it be declined", async () => {

@@ -314,7 +314,7 @@ describe("SharedInvitationService", () => {
       );
     });
 
-    it("joins, and links the inviter's contact to the person who accepted, in one transaction", async () => {
+    it("joins inside a transaction, and writes nothing into the inviter's contacts", async () => {
       const answered = await service.accept(invitationId, inviteeId);
 
       expect(answered.status).toBe("ACCEPTED");
@@ -325,11 +325,27 @@ describe("SharedInvitationService", () => {
         expect.any(Date),
         {},
       );
-      expect(contacts.update).toHaveBeenCalledWith(
-        contactId,
-        { linkedUserId: inviteeId },
-        {},
+      expect(contacts.update).not.toHaveBeenCalled();
+    });
+
+    it("refuses an invitation whose sender deleted their account", async () => {
+      users.getById.mockImplementation(async (id: string) =>
+        id === inviteeId ? invitee : null,
       );
+
+      await expect(
+        service.accept(invitationId, inviteeId),
+      ).rejects.toMatchObject({ code: "INVITATION_UNAVAILABLE" });
+    });
+
+    it("answers somebody else's answered invitation to this address like a missing one", async () => {
+      repo.getById.mockResolvedValue(
+        makeInvitation({ status: "ACCEPTED", inviteeId: inviterId }),
+      );
+
+      await expect(
+        service.decline(invitationId, inviteeId),
+      ).rejects.toMatchObject({ statusCode: 404 });
     });
 
     it("answers an invitation addressed to somebody else like a missing one", async () => {
@@ -428,7 +444,6 @@ describe("SharedInvitationService", () => {
       const answered = await service.decline(invitationId, inviteeId);
 
       expect(answered.status).toBe("DECLINED");
-      expect(contacts.update).not.toHaveBeenCalled();
     });
 
     it("refuses one that can no longer be answered", async () => {

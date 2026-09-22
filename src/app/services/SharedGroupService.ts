@@ -406,7 +406,6 @@ export class SharedGroupService {
       () =>
         withTransaction(async (session) => {
           const group = await this.groupInSession(id, userId, session);
-          // An archived group is read, not worked: nobody can join it any more.
           await this.invitationRepo.withdrawAll(
             { userId, groupId: id, statuses: [INVITATION_STATUSES.PENDING] },
             new Date(),

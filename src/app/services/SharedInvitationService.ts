@@ -34,12 +34,6 @@ export interface InviteOutcome {
   created: boolean;
 }
 
-/**
- * Letting somebody see a shared group. The invitation is addressed to the
- * email of a contact in the group and waits in that person's Shared; nothing
- * is emailed. Whether the address has an account is never observable from the
- * inviter's side: the invite does not look for one.
- */
 export class SharedInvitationService {
   constructor(
     private repo: ISharedInvitationRepository,
@@ -157,7 +151,6 @@ export class SharedInvitationService {
     return { data: result.data.map(sentView), pagination: result.pagination };
   }
 
-  // Idempotent: an invitation that already ended answers as it is. Withdrawing a joined one stops sharing.
   async withdraw(
     groupId: string,
     invitationId: string,
@@ -195,10 +188,10 @@ export class SharedInvitationService {
 
   private async addressedToMe(id: string, me: User): Promise<SharedInvitation> {
     const invitation = await this.repo.getById(id);
-    if (
-      !invitation ||
-      (invitation.email !== me.email && invitation.inviteeId !== me.id)
-    ) {
+    const mine =
+      invitation?.inviteeId === me.id ||
+      (invitation?.email === me.email && invitation.inviteeId === null);
+    if (!invitation || !mine) {
       throw new ApiError("NotFound", "Invitation not found");
     }
     if (invitation.userId === me.id) {
@@ -211,7 +204,6 @@ export class SharedInvitationService {
     return invitation;
   }
 
-  // The same answer twice, from the same person, is the answer they already gave.
   private settledAs(
     invitation: SharedInvitation,
     status: InvitationStatus,
@@ -228,6 +220,7 @@ export class SharedInvitationService {
     }
     const now = new Date();
     if (!invitation.isAnswerable(now)) throw unavailable();
+    if (!(await this.userRepo.getById(invitation.userId))) throw unavailable();
     if (invitation.groupCurrency !== me.currency) {
       throw new ApiError(
         "BadRequest",
@@ -263,11 +256,6 @@ export class SharedInvitationService {
         session,
       );
       if (!accepted) throw unavailable();
-      await this.contactRepo.update(
-        invitation.contactId,
-        { linkedUserId: me.id },
-        session,
-      );
       return receivedView(accepted);
     });
   }

@@ -9,7 +9,6 @@ export interface OpenInvitationResult {
   created: boolean;
 }
 
-// Which live invitations a change ends: a group's, or one person's in one group or in all of them.
 export interface InvitationScope {
   userId: string;
   groupId?: string;
@@ -20,13 +19,12 @@ export interface InvitationScope {
 export interface ISharedInvitationRepository {
   getById(id: string, session?: TxSession): Promise<SharedInvitation | null>;
 
-  // The inviter's rows, after `cursor` in (updatedAt, _id) order.
   sentChangesSince(
     userId: string,
     cursor: ChangeCursor | undefined,
     limit: number,
   ): Promise<SharedInvitation[]>;
-  // The invited person's rows: addressed to their email, or answered by them.
+  // Addressed to the email and unanswered, or answered by this user: never another user's answers.
   receivedChangesSince(
     inviteeId: string,
     email: string,
@@ -39,7 +37,6 @@ export interface ISharedInvitationRepository {
     groupId: string,
     pagination: PaginationParams,
   ): Promise<PaginatedResult<SharedInvitation>>;
-  // Waiting for this address and still in time.
   listAnswerable(
     email: string,
     now: Date,
@@ -51,13 +48,11 @@ export interface ISharedInvitationRepository {
     contactId: string,
   ): Promise<SharedInvitation | null>;
 
-  // The live one for this person in this group, or a new one; an expired one steps aside first.
   openOne(
     invitation: SharedInvitation,
     now: Date,
     session?: TxSession,
   ): Promise<OpenInvitationResult>;
-  // Only a waiting, unexpired invitation moves; null when it was not one any more.
   answer(
     id: string,
     status: InvitationStatus,
@@ -75,7 +70,6 @@ export interface ISharedInvitationRepository {
     now: Date,
     session?: TxSession,
   ): Promise<number>;
-  // A waiting invitation shows the group as it is now.
   refreshGroup(
     userId: string,
     groupId: string,

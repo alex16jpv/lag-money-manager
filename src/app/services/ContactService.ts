@@ -94,7 +94,6 @@ export class ContactService {
       );
     }
 
-    // A waiting invitation was addressed to the old email, which is no longer this person's.
     const readdressed =
       dto.email !== undefined && (dto.email ?? undefined) !== existing.email;
     return guardedWrite(
