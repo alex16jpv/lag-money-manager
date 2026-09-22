@@ -3,15 +3,23 @@ import {
   ContactFilters,
   IContactRepository,
 } from "../../domain/repositories/contact/IContactRepository";
+import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { assertFresh, guardedWrite } from "../../shared/concurrency";
-import { MAX_CONTACTS_PER_USER } from "../../shared/constants";
+import {
+  INVITATION_STATUSES,
+  MAX_CONTACTS_PER_USER,
+} from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
+import { withTransaction } from "../../shared/unitOfWork";
 import { CreateContactDTO, UpdateContactDTO } from "../dtos/ContactDTO";
 
 export class ContactService {
-  constructor(private repo: IContactRepository) {}
+  constructor(
+    private repo: IContactRepository,
+    private invitationRepo: ISharedInvitationRepository,
+  ) {}
 
   async getAllContacts(
     userId: string,
@@ -86,11 +94,33 @@ export class ContactService {
       );
     }
 
+    // A waiting invitation was addressed to the old email, which is no longer this person's.
+    const readdressed =
+      dto.email !== undefined && (dto.email ?? undefined) !== existing.email;
     return guardedWrite(
       expectedUpdatedAt,
       async () =>
         new Contact(
-          await this.repo.update(id, dto, undefined, expectedUpdatedAt),
+          readdressed
+            ? await withTransaction(async (session) => {
+                const updated = await this.repo.update(
+                  id,
+                  dto,
+                  session,
+                  expectedUpdatedAt,
+                );
+                await this.invitationRepo.withdrawAll(
+                  {
+                    userId,
+                    contactId: id,
+                    statuses: [INVITATION_STATUSES.PENDING],
+                  },
+                  new Date(),
+                  session,
+                );
+                return updated;
+              })
+            : await this.repo.update(id, dto, undefined, expectedUpdatedAt),
         ),
       () => this.repo.getOwnById(id, userId),
       (c) => new Contact(c),
@@ -113,7 +143,26 @@ export class ContactService {
     }
     try {
       return new Contact(
-        await this.repo.delete(id, undefined, expectedUpdatedAt),
+        await withTransaction(async (session) => {
+          const archived = await this.repo.delete(
+            id,
+            session,
+            expectedUpdatedAt,
+          );
+          await this.invitationRepo.withdrawAll(
+            {
+              userId,
+              contactId: id,
+              statuses: [
+                INVITATION_STATUSES.PENDING,
+                INVITATION_STATUSES.ACCEPTED,
+              ],
+            },
+            new Date(),
+            session,
+          );
+          return archived;
+        }),
       );
     } catch (err) {
       // Lost the race to a concurrent archive: still a success.

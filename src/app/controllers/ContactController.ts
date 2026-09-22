@@ -9,6 +9,7 @@ import { ifMatch } from "./ifMatch";
 
 const contactService = new ContactService(
   repositoryFactory.getContactRepository(),
+  repositoryFactory.getSharedInvitationRepository(),
 );
 
 export class ContactController {

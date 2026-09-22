@@ -13,9 +13,12 @@ import {
   DebtAccountField,
   GROUP_SPLIT_MODES,
   GROUP_STATUSES,
+  INVITATION_LIFETIME_DAYS,
+  INVITATION_STATUSES,
   MAX_CONTACTS_PER_USER,
   MAX_EXPENSE_GUESTS,
   MAX_GROUP_PARTICIPANTS,
+  MAX_PENDING_INVITATIONS_PER_USER,
   SETTLEMENT_PARTIES,
   SHARE_PARTIES,
   SHARED_HISTORY_REASONS,
@@ -68,6 +71,7 @@ const requestBodies = {
   CreateSharedExpenseInput: bodyOf(v.createSharedExpenseSchema),
   CreateSettlementInput: bodyOf(v.createSettlementSchema),
   WriteOffInput: bodyOf(v.writeOffSchema),
+  CreateInvitationInput: bodyOf(v.createInvitationSchema),
   UpdateSharedExpenseInput: bodyOf(v.updateSharedExpenseSchema),
   UpdateCategoryInput: bodyOf(v.updateCategorySchema),
   CreateTransactionInput: bodyOf(v.createTransactionSchema),
@@ -281,13 +285,13 @@ const responseViews = {
           type: "string",
           format: "email",
           description:
-            "Identifier for inviting them later; nothing is sent from this API, and two contacts may carry the same address.",
+            "What an invitation to a shared group is addressed to; nothing is emailed from this API, and two contacts may carry the same address. Changing it withdraws the contact's waiting invitations.",
         },
         linkedUserId: {
           ...uuid,
           nullable: true,
           description:
-            "The user this contact turned out to be, once an invitation is accepted. Always null today.",
+            "The user this contact turned out to be: set when they accept an invitation, and never settable by a client.",
         },
         userId: uuid,
         archivedAt: nullableDateTime,
@@ -524,6 +528,54 @@ const responseViews = {
     properties: {
       group: { $ref: "#/components/schemas/SharedGroup" },
       applied: { $ref: "#/components/schemas/AddParticipantsPreview" },
+    },
+  }),
+  SentInvitation: withRequired({
+    type: "object",
+    description:
+      "An invitation to one of your groups, as the inviter reads it: who it was addressed to and how it stands. It never says whether the address has an account, nor who answered. A PENDING one past `expiresAt` can no longer be answered — nothing on the server marks that moment, so it is read from the date.",
+    properties: {
+      id: uuid,
+      groupId: uuid,
+      contactId: uuid,
+      email: { type: "string", format: "email" },
+      status: enumOf(INVITATION_STATUSES),
+      expiresAt: dateTime,
+      answeredAt: nullableDateTime,
+      withdrawnAt: {
+        ...nullableDateTime,
+        description:
+          "Set when it was withdrawn, or when a joined person stopped being shared with: by you, by taking them out of the group, by archiving their contact or the group, or by changing their email.",
+      },
+      createdAt: dateTime,
+      updatedAt: dateTime,
+    },
+  }),
+  ReceivedInvitation: withRequired({
+    type: "object",
+    description:
+      "An invitation to somebody else's group, as the invited person reads it: the group's name, colour and currency as they are now, and who sent it — nothing else of the group before joining. A PENDING one past `expiresAt` can no longer be answered.",
+    properties: {
+      id: uuid,
+      groupId: uuid,
+      groupName: { type: "string" },
+      groupColor: { ...enumOf(COLORS), nullable: true },
+      groupCurrency: {
+        type: "string",
+        example: "COP",
+        description:
+          "A group in a currency other than yours can only be declined (CURRENCY_MISMATCH).",
+      },
+      inviterName: {
+        type: "string",
+        description: "The sender's profile name when it was sent.",
+      },
+      inviterEmail: { type: "string", format: "email" },
+      status: enumOf(INVITATION_STATUSES),
+      expiresAt: dateTime,
+      answeredAt: nullableDateTime,
+      createdAt: dateTime,
+      updatedAt: dateTime,
     },
   }),
   Settlement: withRequired({
@@ -936,6 +988,16 @@ const syncChangesResponse = withRequired({
           // The payment's own view already carries its tombstone, like the expense's.
           items: { $ref: "#/components/schemas/Settlement" },
         },
+        invitationsSent: {
+          type: "array",
+          items: { $ref: "#/components/schemas/SentInvitation" },
+        },
+        invitationsReceived: {
+          type: "array",
+          description:
+            "Addressed to your email, or answered by you: they keep arriving after they are answered, withdrawn or out of time, which is how a device learns they stopped waiting.",
+          items: { $ref: "#/components/schemas/ReceivedInvitation" },
+        },
       },
     }),
     pagination: withRequired({
@@ -1082,6 +1144,17 @@ const sharedLimits = {
       description:
         "People in one shared group, the owner included. Adding past it is 400 PARTICIPANT_LIMIT_REACHED.",
     },
+    maxPendingInvitationsPerUser: {
+      type: "integer",
+      enum: [MAX_PENDING_INVITATIONS_PER_USER],
+      description:
+        "Invitations one user may have waiting at once. Inviting past it is 400 INVITATION_LIMIT_REACHED.",
+    },
+    invitationLifetimeDays: {
+      type: "integer",
+      enum: [INVITATION_LIFETIME_DAYS],
+      description: "How long an invitation waits to be answered.",
+    },
     maxGuestsPerExpense: {
       type: "integer",
       enum: [MAX_EXPENSE_GUESTS],
@@ -1093,6 +1166,8 @@ const sharedLimits = {
     "maxContactsPerUser",
     "maxParticipantsPerGroup",
     "maxGuestsPerExpense",
+    "maxPendingInvitationsPerUser",
+    "invitationLifetimeDays",
   ],
 };
 
@@ -1185,6 +1260,8 @@ const options: swaggerJsdoc.Options = {
         SharedGroupConflict: conflictOf("SharedGroup"),
         SharedExpenseConflict: conflictOf("SharedExpense"),
         SettlementList: listOf("Settlement"),
+        SentInvitationList: listOf("SentInvitation"),
+        ReceivedInvitationList: listOf("ReceivedInvitation"),
         TransactionConflict: conflictOf("Transaction"),
         BudgetConflict: conflictOf("Budget"),
       },

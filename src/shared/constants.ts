@@ -14,6 +14,7 @@ export const MODEL_NAMES = {
   SHARED_GROUP: "SharedGroup",
   SHARED_EXPENSE: "SharedExpense",
   SHARED_SETTLEMENT: "SharedSettlement",
+  SHARED_INVITATION: "SharedInvitation",
 } as const;
 
 export const BUDGET_PERIOD_TYPES = {
@@ -118,6 +119,20 @@ export const MAX_GROUP_PARTICIPANTS = 20;
 
 // Sanity bound on an integer field, not a product rule: a guest block is one row whatever it counts.
 export const MAX_EXPENSE_GUESTS = 999;
+
+// Bounds what one inviter can put in strangers' Shared; published as SharedLimits.
+export const MAX_PENDING_INVITATIONS_PER_USER = 50;
+export const INVITATION_LIFETIME_DAYS = 30;
+
+// An expired invitation is still PENDING: nothing wakes the server at that moment, so it is judged by its date.
+export const INVITATION_STATUSES = {
+  PENDING: "PENDING",
+  ACCEPTED: "ACCEPTED",
+  DECLINED: "DECLINED",
+  WITHDRAWN: "WITHDRAWN",
+} as const;
+
+export type InvitationStatus = keyof typeof INVITATION_STATUSES;
 
 export const SPLIT_MODES = {
   EQUAL: "EQUAL",

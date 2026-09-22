@@ -15,6 +15,7 @@ const sharedGroupService = new SharedGroupService(
   repositoryFactory.getUserRepository(),
   repositoryFactory.getTransactionRepository(),
   sharedLedgerService,
+  repositoryFactory.getSharedInvitationRepository(),
 );
 
 export class SharedGroupController {

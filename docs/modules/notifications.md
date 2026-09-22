@@ -88,7 +88,7 @@ in by accident, and T-127 holds that with a test over every entry.
 `params`, in outline (each task fixes its own schema):
 
 - `sharedInvitation.received` — `invitationId`, `groupId`, `groupName`, `inviterName`, and the
-  invitation's own `expiresAt` if T-129 gives invitations a lifetime.
+  invitation's own `expiresAt`: T-129 gave invitations 30 days ([invitations.md](invitations.md)).
 - `sharedInvitation.answered` — `invitationId`, `groupId`, `groupName`, `inviteeName`, `answer`
   (`accepted` | `declined`).
 - `sharedGroup.activity` — `groupId`, `groupName`, `count`, `lastKind` (`expenseAdded`,
@@ -171,8 +171,8 @@ and the snapshot in `params` was taken before anybody answered, so the row is th
 client can learn how it ended.
 
 **An invitation that runs out of time is not resolved by the server**, because nothing wakes the
-server at that moment and house rule 24 rules out a timer for it. If T-129 gives invitations a
-lifetime, their `expiresAt` travels in `params`, the client shows "No longer available" past it by
+server at that moment and house rule 24 rules out a timer for it. Invitations have a lifetime
+(30 days, T-129), so their `expiresAt` travels in `params`, the client shows "No longer available" past it by
 its own clock, and the notification's own `expiresAt` is set at creation from it (_Retention_). The
 invitation's route refuses an answer after it, which is the rule that actually matters.
 

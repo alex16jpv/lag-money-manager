@@ -2,14 +2,14 @@
 
 ## What This Module Does
 
-Two endpoints for the offline client. `GET /sync/changes` feeds an **offline mirror**: every row of the user's data that changed after a given position, across the eight entities and the user's own profile, ordered and paginated. `POST /sync` takes the client's **outbox as one batch** and answers one structured result per operation.
+Two endpoints for the offline client. `GET /sync/changes` feeds an **offline mirror**: every row of the user's data that changed after a given position, across the eight entities, the invitations on both sides, and the user's own profile, ordered and paginated. `POST /sync` takes the client's **outbox as one batch** and answers one structured result per operation.
 
 Two properties separate it from the listing endpoints, and both are the reason it exists:
 
 1. **It reports disappearances.** Archived accounts, categories, budgets, contacts and shared groups come with their `archivedAt`; deleted transactions, shared expenses and payments come with a `deletedAt` that no other response carries. A client holding a local copy has no other way to learn that a row is gone — the listings simply stop returning it, which is indistinguishable from "no change".
 2. **It is ordered by `(updatedAt, _id)`, not by the business date.** A row that is edited moves to the end of that order and never backwards, which is what makes "everything after X" a complete answer.
 
-The feed owns no data and no writes: it is a merge over nine repositories. The batch owns exactly one collection — the registry of landed operations (`syncops`) — and **no business rule**: every operation goes through the same service its HTTP route calls (offline plan, trap 7.8).
+The feed owns no data and no writes: it is a merge over ten repositories. The batch owns exactly one collection — the registry of landed operations (`syncops`) — and **no business rule**: every operation goes through the same service its HTTP route calls (offline plan, trap 7.8).
 
 ## Files and Responsibilities
 
@@ -17,7 +17,7 @@ The feed owns no data and no writes: it is a merge over nine repositories. The b
 | --- | --- |
 | `src/app/routes/syncRoutes.ts` | Route definitions with OpenAPI docs (`GET /sync/changes`, `POST /sync`) |
 | `src/app/controllers/SyncController.ts` | Feed: resolves the request's position (`cursor`, else `since`, else a snapshot). Batch: resolves the user's timezone and hands the operations to the batch service |
-| `src/app/services/SyncService.ts` | Merges the nine sources into one globally ordered page and mints the next cursor |
+| `src/app/services/SyncService.ts` | Merges the eleven sources into one globally ordered page and mints the next cursor |
 | `src/app/services/SyncBatchService.ts` | Applies a batch in `seq` order through the account, category, transaction, budget, contact, shared group, shared expense and settlement services; blocks, remembers and classifies outcomes, and applies the reconciliation rules below |
 | `src/shared/syncBatch.ts` | The batch contract: limits, statuses, warnings, actions per entity, TTL |
 | `src/shared/collation.ts` | The collation of the unique name indexes, shared by the indexes and by the name lookups the reconciliation uses |
@@ -73,7 +73,11 @@ The feed owns no data and no writes: it is a merge over nine repositories. The b
 
 `contacts`, `sharedGroups`, `sharedExpenses` and `settlements` come down the same feed as everything else. What they hold is the **fact** — the outing, its people, its lines, the split, who fronted each one and what has been settled — and nothing of anybody's ledger: no account, no category, no note, no `countsAsYours` and no link to a movement. Those live on the user's own transactions, which travel in `transactions` as they always did.
 
-That separation is not tidiness: it is what makes the second delivery possible. The day a group is shown to the person you split with, the group, its expenses and its payments are the rows that can be shown as they are, with nothing to strip out of them first ([settlements.md](settlements.md), [shared-groups.md](shared-groups.md)). **A contact is not one of them**: it is the owner's address book — it carries an email and the `linkedUserId` that an invitation will fill — and what the other side would ever see of it is a name and a colour.
+That separation is not tidiness: it is what makes the second delivery possible. The day a group is shown to the person you split with, the group, its expenses and its payments are the rows that can be shown as they are, with nothing to strip out of them first ([settlements.md](settlements.md), [shared-groups.md](shared-groups.md)). **A contact is not one of them**: it is the owner's address book — it carries an email and the `linkedUserId` that an invitation fills — and what the other side would ever see of it is a name and a colour.
+
+### Invitations: the first rows that are not only yours
+
+`invitationsSent` and `invitationsReceived` carry the invitations to shared groups ([invitations.md](invitations.md)), **the same document read two ways**: the inviter's view never says who answered, and the invited person's never carries the inviter's contact or address book. The received side is found **by the email on the profile**, which is why the profile is read before the other sources rather than beside them — one primary-key read ahead of the rest — and **by who answered**, so an answered invitation keeps arriving after the person changes their email. Both keep arriving after they stop waiting: answered, withdrawn or out of time, which is how a device learns to stop showing one. There is no batch operation for them: every invitation write needs a connection.
 
 ### Paging, and why the cursor goes backwards at the end
 
@@ -230,9 +234,9 @@ Every entity in the feed carries `(userId, updatedAt, _id)`. The keyset predicat
 
 The index has **no partial filter**: a filter on `archivedAt`/`deletedAt` would exclude exactly the rows the feed exists to report.
 
-Adding a new entity to the sync feed means adding this index to it in the same change. It is invariant 5 of the offline contract, not an optimization. The four of the shared layer — contacts, groups, expenses and payments — declared theirs when they were written, before the feed carried them.
+Adding a new entity to the sync feed means adding this index to it in the same change. It is invariant 5 of the offline contract, not an optimization. The four of the shared layer — contacts, groups, expenses and payments — declared theirs when they were written, before the feed carried them. **Invitations carry three**, because they are found three ways: `(userId, …)` for the inviter, and `(email, …)` and `(inviteeId, …)` for the invited person, the last partial on `inviteeId` existing ([invitations.md](invitations.md)).
 
-**One page costs one read per source**: eight of `limit + 1` whole documents, plus the profile by id. They are all keyset scans over their own index, so they are cheap per row, but the page keeps only `limit` of what they bring: with one entity dominating a page the other seven are read for nothing. The lever, when it is worth pulling, is reading `{_id, updatedAt}` first — covered by the index — and fetching whole documents only for the rows that made the page. The feed caps rows, never bytes.
+**One page costs one read per source**: ten of `limit + 1` whole documents (the invited person's side is two), plus the profile by id, read first because that side is found by its email. They are all keyset scans over their own index, so they are cheap per row, but the page keeps only `limit` of what they bring: with one entity dominating a page the others are read for nothing. The lever, when it is worth pulling, is reading `{_id, updatedAt}` first — covered by the index — and fetching whole documents only for the rows that made the page. The feed caps rows, never bytes.
 
 `syncops` carries a TTL index on `createdAt` (`expireAfterSeconds` = 30 days) and is keyed by `${userId}:${opId}`, so two users' opIds can never collide and the lookup per operation is a primary-key read.
 

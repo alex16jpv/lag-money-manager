@@ -4,6 +4,12 @@ import { Category } from "../../domain/entities/Category";
 import { Contact } from "../../domain/entities/Contact";
 import { SharedExpense } from "../../domain/entities/SharedExpense";
 import { SharedGroup } from "../../domain/entities/SharedGroup";
+import {
+  ReceivedInvitationView,
+  receivedView,
+  SentInvitationView,
+  sentView,
+} from "../../domain/entities/SharedInvitation";
 import { SharedSettlement } from "../../domain/entities/SharedSettlement";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { IBudgetRepository } from "../../domain/repositories/budget/IBudgetRepository";
@@ -11,6 +17,7 @@ import { ICategoryRepository } from "../../domain/repositories/category/ICategor
 import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import {
   ChangedTransaction,
@@ -39,6 +46,9 @@ export interface SyncChanges {
   sharedGroups: SharedGroup[];
   sharedExpenses: SharedExpense[];
   settlements: SharedSettlement[];
+  // The same invitation reads differently to each side: the inviter never learns who answered.
+  invitationsSent: SentInvitationView[];
+  invitationsReceived: ReceivedInvitationView[];
 }
 
 export interface SyncChangesResult {
@@ -63,6 +73,7 @@ export class SyncService {
     private sharedGroups: ISharedGroupRepository,
     private sharedExpenses: ISharedExpenseRepository,
     private settlements: ISharedSettlementRepository,
+    private invitations: ISharedInvitationRepository,
   ) {}
 
   /**
@@ -80,8 +91,9 @@ export class SyncService {
 
     // limit+1 from every source separates "there is more" from the end, and makes the merge exact.
     const fetch = limit + 1;
+    // Invitations to this person are found by their email, so the profile is read first.
+    const user = await this.users.getById(userId);
     const [
-      user,
       accounts,
       categories,
       transactions,
@@ -90,8 +102,9 @@ export class SyncService {
       sharedGroups,
       sharedExpenses,
       settlements,
+      sent,
+      received,
     ] = await Promise.all([
-      this.users.getById(userId),
       this.accounts.changesSince(userId, cursor, fetch),
       this.categories.changesSince(userId, cursor, fetch),
       this.transactions.changesSince(userId, cursor, fetch),
@@ -100,6 +113,15 @@ export class SyncService {
       this.sharedGroups.changesSince(userId, cursor, fetch),
       this.sharedExpenses.changesSince(userId, cursor, fetch),
       this.settlements.changesSince(userId, cursor, fetch),
+      this.invitations.sentChangesSince(userId, cursor, fetch),
+      user
+        ? this.invitations.receivedChangesSince(
+            userId,
+            user.email,
+            cursor,
+            fetch,
+          )
+        : Promise.resolve([]),
     ]);
 
     // Filtering the user here costs one comparison and keeps it inside the same ordering.
@@ -116,6 +138,8 @@ export class SyncService {
       ...sharedGroups,
       ...sharedExpenses,
       ...settlements,
+      ...sent,
+      ...received,
     ]
       .map(changeKeyOf)
       .sort(compareChanges);
@@ -135,6 +159,8 @@ export class SyncService {
       sharedGroups: upTo(sharedGroups),
       sharedExpenses: upTo(sharedExpenses),
       settlements: upTo(settlements),
+      invitationsSent: upTo(sent).map(sentView),
+      invitationsReceived: upTo(received).map(receivedView),
     };
 
     return {

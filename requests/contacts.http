@@ -1,8 +1,8 @@
 ### ==========================================================
 ### CONTACTS — las personas con las que se comparten gastos.
 ### Un contacto NO es una cuenta: no tiene saldo, no sale en
-### /accounts, y su email es solo el identificador para invitar
-### más adelante (de aquí no se envía nada).
+### /accounts, y su email es a quién se dirige una invitación a
+### un grupo (de aquí no se envía nada: ver invitations.http).
 ### ==========================================================
 @baseUrl = http://localhost:3000
 @email = tester@test.com

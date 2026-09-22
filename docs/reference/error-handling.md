@@ -302,6 +302,10 @@ Codes raised by the services and middleware. Anything not listed here has no `co
 | `SETTLEMENT_OVER_PAID`            | 400    | Paying somebody back more than you owe them and more than they have paid ahead |
 | `SETTLEMENT_MOVEMENT_LOCKED`      | 400    | Editing the money of a movement a settle-up recorded, or deleting it: undo the payment instead |
 | `GUEST_BLOCK_HAS_PAYMENTS`        | 400    | Deleting an expense whose block of guests has paid: the block lives in that expense and its money would have nowhere to go |
+| `CONTACT_HAS_NO_EMAIL`            | 400    | Inviting a contact who has no email: an invitation is addressed to one |
+| `INVITATION_TO_SELF`              | 400    | Inviting a contact whose email is your own, or answering an invitation you sent |
+| `INVITATION_LIMIT_REACHED`        | 400    | More invitations waiting at once than one user may have (`SharedLimits.maxPendingInvitationsPerUser`) |
+| `INVITATION_UNAVAILABLE`          | 400    | Answering an invitation that was withdrawn, whose group was archived or whose person was taken out, or whose 30 days passed |
 | `BUDGET_PERIOD_OVERLAP`           | 400    | New budget period overlaps an existing one for the same scope            |
 | `IDEMPOTENCY_KEY_INVALID`         | 400    | `Idempotency-Key` outside `[A-Za-z0-9_-]{1,200}`                         |
 | `MALFORMED_JSON`                  | 400    | Body that is not valid JSON (body-parser `entity.parse.failed`)          |

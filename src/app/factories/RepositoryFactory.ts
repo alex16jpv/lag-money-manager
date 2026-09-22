@@ -6,6 +6,7 @@ import { IIdempotencyRepository } from "../../domain/repositories/idempotency/II
 import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ISyncOpRepository } from "../../domain/repositories/syncOp/ISyncOpRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
@@ -32,6 +33,7 @@ export const REPO_KEYS = {
   SHARED_GROUP: "sharedGroup",
   SHARED_EXPENSE: "sharedExpense",
   SHARED_SETTLEMENT: "sharedSettlement",
+  SHARED_INVITATION: "sharedInvitation",
 } as const;
 
 type DbProvider = (factory: RepositoryFactory) => void;
@@ -120,6 +122,12 @@ export class RepositoryFactory {
   getSharedExpenseRepository(): ISharedExpenseRepository {
     return this.getRepository<ISharedExpenseRepository>(
       REPO_KEYS.SHARED_EXPENSE,
+    );
+  }
+
+  getSharedInvitationRepository(): ISharedInvitationRepository {
+    return this.getRepository<ISharedInvitationRepository>(
+      REPO_KEYS.SHARED_INVITATION,
     );
   }
 

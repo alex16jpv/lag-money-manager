@@ -1,0 +1,120 @@
+### ==========================================================
+### INVITATIONS — dejar que alguien vea un grupo compartido.
+### Se invita al email de un contacto que está en el grupo. No
+### se envía ningún correo: la invitación espera en el Shared de
+### esa persona 30 días. El que invita nunca sabe si el correo
+### tiene cuenta: la respuesta es la misma en los dos casos.
+### Hacen falta dos usuarios: el que invita (@email) y el
+### invitado (@inviteeEmail), registrado con la misma moneda.
+### ==========================================================
+@baseUrl = http://localhost:3000
+@email = tester@test.com
+@password = SecureP@ss123
+@inviteeEmail = invitee@test.com
+@inviteePassword = SecureP@ss123
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+
+@token = {{login.response.body.accessToken}}
+
+### Registrar al invitado (solo la primera vez; luego 409 EMAIL_TAKEN)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "name": "Invitee", "email": "{{inviteeEmail}}", "password": "{{inviteePassword}}" }
+
+### Login del invitado
+# @name inviteeLogin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{inviteeEmail}}", "password": "{{inviteePassword}}" }
+
+###
+
+@inviteeToken = {{inviteeLogin.response.body.accessToken}}
+
+### Un contacto con el email del invitado
+# @name inviteeContact
+POST {{baseUrl}}/contacts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Invitee {{$randomInt 100 999}}", "email": "{{inviteeEmail}}" }
+
+###
+
+@inviteeContactId = {{inviteeContact.response.body.id}}
+
+### Un contacto sin email
+# @name noEmailContact
+POST {{baseUrl}}/contacts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Sin correo {{$randomInt 100 999}}" }
+
+###
+
+@noEmailContactId = {{noEmailContact.response.body.id}}
+
+### El grupo, con los dos dentro
+# @name invitedGroup
+POST {{baseUrl}}/shared-groups
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Salida {{$randomInt 100 999}}", "contactIds": ["{{inviteeContactId}}", "{{noEmailContactId}}"] }
+
+###
+
+@groupId = {{invitedGroup.response.body.id}}
+
+### Invitar (201) — repetirlo contesta la misma invitación con 200
+# @name sentInvitation
+POST {{baseUrl}}/shared-groups/{{groupId}}/invitations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{inviteeContactId}}" }
+
+###
+
+@invitationId = {{sentInvitation.response.body.id}}
+
+### Invitar a quien no tiene email — 400 CONTACT_HAS_NO_EMAIL
+POST {{baseUrl}}/shared-groups/{{groupId}}/invitations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{noEmailContactId}}" }
+
+### Las invitaciones del grupo, como las ve el que invita
+GET {{baseUrl}}/shared-groups/{{groupId}}/invitations
+Authorization: Bearer {{token}}
+
+### Las que esperan al invitado (solo nombre del grupo y quién invita)
+GET {{baseUrl}}/invitations
+Authorization: Bearer {{inviteeToken}}
+
+### Aceptar (200) — aceptar otra vez contesta lo mismo
+POST {{baseUrl}}/invitations/{{invitationId}}/accept
+Authorization: Bearer {{inviteeToken}}
+
+### Rechazar una ya aceptada — 400 INVITATION_UNAVAILABLE
+POST {{baseUrl}}/invitations/{{invitationId}}/decline
+Authorization: Bearer {{inviteeToken}}
+
+### Aceptarla con el usuario que invita — 404 (no va dirigida a él)
+POST {{baseUrl}}/invitations/{{invitationId}}/accept
+Authorization: Bearer {{token}}
+
+### Dejar de compartir con quien ya entró (200, WITHDRAWN) — idempotente
+DELETE {{baseUrl}}/shared-groups/{{groupId}}/invitations/{{invitationId}}
+Authorization: Bearer {{token}}

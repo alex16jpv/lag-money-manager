@@ -128,6 +128,13 @@ const mockSharedSettlementRepo: jest.Mocked<ISharedSettlementRepository> = {
   delete: jest.fn(),
 };
 
+const mockSharedInvitationRepo = {
+  sentChangesSince: jest.fn().mockResolvedValue([]),
+  receivedChangesSince: jest.fn().mockResolvedValue([]),
+  withdrawAll: jest.fn().mockResolvedValue(0),
+  refreshGroup: jest.fn().mockResolvedValue(undefined),
+};
+
 const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
@@ -287,7 +294,16 @@ jest.mock("../../shared/constants", () => ({
     SHARED_GROUP: "SharedGroup",
     SHARED_EXPENSE: "SharedExpense",
     SHARED_SETTLEMENT: "SharedSettlement",
+    SHARED_INVITATION: "SharedInvitation",
   },
+  INVITATION_STATUSES: {
+    PENDING: "PENDING",
+    ACCEPTED: "ACCEPTED",
+    DECLINED: "DECLINED",
+    WITHDRAWN: "WITHDRAWN",
+  },
+  MAX_PENDING_INVITATIONS_PER_USER: 50,
+  INVITATION_LIFETIME_DAYS: 30,
   TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
   TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
   SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
@@ -339,6 +355,7 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getSharedGroupRepository: () => mockSharedGroupRepo,
     getSharedExpenseRepository: () => mockSharedExpenseRepo,
     getSharedSettlementRepository: () => mockSharedSettlementRepo,
+    getSharedInvitationRepository: () => mockSharedInvitationRepo,
     getTransactionRepository: () => mockTransactionRepo,
     getIdempotencyRepository: () => mockIdempotencyRepo,
     getBudgetRepository: () => mockBudgetRepo,
@@ -1118,9 +1135,10 @@ describe("Integration Tests", () => {
       expect(mockContactRepo.update).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5acc1",
         { email: null },
-        undefined,
+        expect.anything(),
         undefined,
       );
+      expect(mockSharedInvitationRepo.withdrawAll).toHaveBeenCalled();
     });
 
     it("archives a contact and answers the archived row", async () => {
@@ -2192,6 +2210,8 @@ describe("Integration Tests", () => {
         "sharedGroups",
         "sharedExpenses",
         "settlements",
+        "invitationsSent",
+        "invitationsReceived",
       ]);
       expect(res.body.changes.user.id).toBe(testUser.id);
       expect(res.body.changes.user.password).toBeUndefined();

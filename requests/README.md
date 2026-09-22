@@ -39,6 +39,7 @@ Cada archivo define arriba: `@baseUrl`, `@email`, `@password` y `@apiSecret`.
 | `users.http` | Perfil (currency, lastLoginAt), timezone, currency con bloqueo, credenciales con `currentPassword` |
 | `accounts.http` | Cuentas (currency estampada), default (bloqueo al archivarla), archivar/restaurar idempotentes, lectura de archivadas, `INVALID_CURSOR` |
 | `contacts.http` | Contactos: unicidad case-insensitive, email como identificador (normalizado), `linkedUserId` descartado si lo manda el cliente, archivar/restaurar idempotentes, `If-Match`, `INVALID_CURSOR` |
+| `invitations.http` | Invitar a un grupo por el email de un contacto, la misma respuesta haya o no cuenta, aceptar y rechazar como el invitado, dejar de compartir, `CONTACT_HAS_NO_EMAIL`, `INVITATION_UNAVAILABLE` |
 | `shared-groups.http` | Grupos compartidos: reparto heredado y propio (los cuatro modos), invitados como un bloque, el sobrante para quien pagó, añadir gente con simulación previa, rango y totales derivados, `PARTICIPANT_*`, `SPLIT_INVALID` |
 | `categories.http` | Categorías, seedKey/restore-defaults, type bloqueado con historial, unicidad case-insensitive, archivar idempotente, `INVALID_CURSOR` |
 | `transactions.http` | Transacciones, ADJUSTMENT, quick-add con idempotencia, hash de payload (422), filtros nuevos (categoría/fechas/tag/uncategorized), `GET /transactions/tags`, FUTURE_DATE |

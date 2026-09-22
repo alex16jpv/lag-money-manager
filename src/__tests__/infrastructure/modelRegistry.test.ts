@@ -10,6 +10,7 @@ jest.mock("../../shared/constants", () => ({
     SHARED_GROUP: "SharedGroup",
     SHARED_EXPENSE: "SharedExpense",
     SHARED_SETTLEMENT: "SharedSettlement",
+    SHARED_INVITATION: "SharedInvitation",
   },
   ACCOUNT_TYPES: { CASH: "CASH", ACCOUNT: "ACCOUNT", OTHER: "OTHER" },
   COLORS: { RED: "RED", GREEN: "GREEN" },
@@ -48,6 +49,12 @@ jest.mock("../../shared/constants", () => ({
   TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
   SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
   GROUP_STATUSES: { OPEN: "OPEN", SETTLED: "SETTLED" },
+  INVITATION_STATUSES: {
+    PENDING: "PENDING",
+    ACCEPTED: "ACCEPTED",
+    DECLINED: "DECLINED",
+    WITHDRAWN: "WITHDRAWN",
+  },
 }));
 
 import { readdirSync } from "fs";
