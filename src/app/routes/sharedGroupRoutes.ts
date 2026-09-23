@@ -2,13 +2,17 @@ import { Router } from "express";
 
 import { SharedExpenseController } from "../controllers/SharedExpenseController";
 import { SharedGroupController } from "../controllers/SharedGroupController";
+import { SharedInvitationController } from "../controllers/SharedInvitationController";
 import {
   addParticipantsSchema,
+  createInvitationSchema,
   createSharedExpenseSchema,
   createSharedGroupSchema,
+  getGroupInvitationsSchema,
   getSharedExpensesSchema,
   getSharedGroupsSchema,
   idParamSchema,
+  invitationParamsSchema,
   removeParticipantSchema,
   restoreSchema,
   sharedExpenseParamsSchema,
@@ -1059,6 +1063,181 @@ router.delete(
   "/:id/expenses/:expenseId",
   validate(sharedExpenseParamsSchema),
   SharedExpenseController.deleteExpense,
+);
+
+/**
+ * @openapi
+ * /shared-groups/{id}/invitations:
+ *   get:
+ *     tags: [Shared groups]
+ *     summary: The invitations sent for this group
+ *     description: >
+ *       Every invitation ever sent for this group, oldest first, in the
+ *       inviter's view: who it was addressed to and how it stands. It never
+ *       says whether an address has an account, nor who answered.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *         description: Shared group ID
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+ *         description: Maximum number of items to return
+ *       - in: query
+ *         name: offset
+ *         schema: { type: integer, minimum: 0, default: 0 }
+ *         description: Number of items to skip (offset-based pagination)
+ *       - in: query
+ *         name: cursor
+ *         schema: { type: string, format: uuid }
+ *         description: ID of the last item of the previous page; must name an invitation of this group's (overrides offset)
+ *     responses:
+ *       200:
+ *         description: Paginated list of the group's invitations
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SentInvitationList'
+ *       400:
+ *         description: Invalid query parameters (code VALIDATION), or a cursor that names no invitation of this group's (code INVALID_CURSOR)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Shared group not found (uniform for missing and not owned)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *   post:
+ *     tags: [Shared groups]
+ *     summary: Invite somebody in the group to see it
+ *     description: >
+ *       Addressed to the email of a contact who is in the group. **Nothing is
+ *       emailed**: the invitation waits in that person's Shared, found by the
+ *       address, for 30 days. The answer is the same whether or not the address
+ *       has an account — the route never looks — so an invitation cannot be
+ *       used to find out who uses the app.
+ *
+ *       One live invitation per person per group: inviting somebody who is
+ *       already waiting or already joined answers that invitation with 200.
+ *       One that ran out of time steps aside and a new one is sent (201).
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *         description: Shared group ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateInvitationInput'
+ *     responses:
+ *       200:
+ *         description: That person already has a live invitation to this group; it is answered as it is
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SentInvitation'
+ *       201:
+ *         description: Invitation sent
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SentInvitation'
+ *       400:
+ *         description: Validation error (code VALIDATION), somebody who is not in the group (code PARTICIPANT_NOT_IN_GROUP), a contact with no email (code CONTACT_HAS_NO_EMAIL), your own email (code INVITATION_TO_SELF), too many invitations waiting (code INVITATION_LIMIT_REACHED) or an archived group (code RESOURCE_ARCHIVED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Shared group or contact not found (uniform for missing and not owned)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.get(
+  "/:id/invitations",
+  validate(getGroupInvitationsSchema),
+  SharedInvitationController.listForGroup,
+);
+router.post(
+  "/:id/invitations",
+  validate(createInvitationSchema),
+  SharedInvitationController.invite,
+);
+
+/**
+ * @openapi
+ * /shared-groups/{id}/invitations/{invitationId}:
+ *   delete:
+ *     tags: [Shared groups]
+ *     summary: Withdraw an invitation, or stop sharing with somebody who joined
+ *     description: >
+ *       A waiting invitation stops being answerable; a joined one ends, and
+ *       that person stops seeing the group. **Nothing about the money
+ *       changes**: they stay in the group as a person you split with. Idempotent
+ *       — an invitation that already ended is answered as it is.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *         description: Shared group ID
+ *       - in: path
+ *         name: invitationId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *         description: Invitation ID
+ *     responses:
+ *       200:
+ *         description: The invitation, withdrawn
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SentInvitation'
+ *       400:
+ *         description: Validation error (code VALIDATION)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Invitation not found in this group (uniform for missing and not owned)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.delete(
+  "/:id/invitations/:invitationId",
+  validate(invitationParamsSchema),
+  SharedInvitationController.withdraw,
 );
 
 export default router;

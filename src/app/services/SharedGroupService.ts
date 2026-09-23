@@ -11,6 +11,7 @@ import {
   ISharedGroupRepository,
   SharedGroupFilters,
 } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
@@ -18,6 +19,7 @@ import { assertFresh, guardedWrite } from "../../shared/concurrency";
 import {
   GROUP_STATUSES,
   GroupStatus,
+  INVITATION_STATUSES,
   MAX_GROUP_PARTICIPANTS,
   SETTLEMENT_PARTIES,
   SHARED_HISTORY_REASONS,
@@ -182,6 +184,7 @@ export class SharedGroupService {
     private userRepo: IUserRepository,
     private transactionRepo: ITransactionRepository,
     private ledger: SharedLedgerService,
+    private invitationRepo: ISharedInvitationRepository,
   ) {}
 
   private async withTotals(
@@ -359,7 +362,24 @@ export class SharedGroupService {
 
     const updated = await guardedWrite(
       expectedUpdatedAt,
-      () => this.repo.update(id, write, undefined, expectedUpdatedAt),
+      () =>
+        withTransaction(async (session) => {
+          const group = await this.repo.update(
+            id,
+            write,
+            session,
+            expectedUpdatedAt,
+          );
+          if (write.name !== undefined || dto.color !== undefined) {
+            await this.invitationRepo.refreshGroup(
+              userId,
+              id,
+              { groupName: group.name, groupColor: group.color },
+              session,
+            );
+          }
+          return group;
+        }),
       () => this.repo.getOwnById(id, userId),
       (g) => new SharedGroup(g),
     );
@@ -386,6 +406,11 @@ export class SharedGroupService {
       () =>
         withTransaction(async (session) => {
           const group = await this.groupInSession(id, userId, session);
+          await this.invitationRepo.withdrawAll(
+            { userId, groupId: id, statuses: [INVITATION_STATUSES.PENDING] },
+            new Date(),
+            session,
+          );
           const open = openByParty(
             await this.expenseRepo.listByGroup(userId, id, session),
           );
@@ -916,21 +941,37 @@ export class SharedGroupService {
     const updated = await guardedWrite(
       expectedUpdatedAt,
       () =>
-        this.repo.update(
-          id,
-          {
-            participants: group.participants.filter(
-              (participant) => participant.contactId !== contactId,
-            ),
-            defaultSplit: rescaleDefaultSplit(group.defaultSplit, contactId),
-            // Out of the group is out of it: coming back does not come back forgiven.
-            writeOffs: group.writeOffs.filter(
-              (one) => one.contactId !== contactId,
-            ),
-          },
-          undefined,
-          expectedUpdatedAt,
-        ),
+        withTransaction(async (session) => {
+          const written = await this.repo.update(
+            id,
+            {
+              participants: group.participants.filter(
+                (participant) => participant.contactId !== contactId,
+              ),
+              defaultSplit: rescaleDefaultSplit(group.defaultSplit, contactId),
+              // Out of the group is out of it: coming back does not come back forgiven.
+              writeOffs: group.writeOffs.filter(
+                (one) => one.contactId !== contactId,
+              ),
+            },
+            session,
+            expectedUpdatedAt,
+          );
+          await this.invitationRepo.withdrawAll(
+            {
+              userId,
+              groupId: id,
+              contactId,
+              statuses: [
+                INVITATION_STATUSES.PENDING,
+                INVITATION_STATUSES.ACCEPTED,
+              ],
+            },
+            new Date(),
+            session,
+          );
+          return written;
+        }),
       () => this.repo.getOwnById(id, userId),
       (g) => new SharedGroup(g),
     );

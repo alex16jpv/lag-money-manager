@@ -12,6 +12,7 @@ import { AuthPayload } from "../middlewares/authMiddleware";
 import { AccountService } from "../services/AccountService";
 import { BudgetService } from "../services/BudgetService";
 import { CategoryService } from "../services/CategoryService";
+import { JoinedGroupService } from "../services/JoinedGroupService";
 import { ContactService } from "../services/ContactService";
 import { SharedExpenseService } from "../services/SharedExpenseService";
 import { SharedGroupService } from "../services/SharedGroupService";
@@ -29,6 +30,7 @@ const budgetRepository = repositoryFactory.getBudgetRepository();
 const contactRepository = repositoryFactory.getContactRepository();
 const sharedGroupRepository = repositoryFactory.getSharedGroupRepository();
 const sharedExpenseRepository = repositoryFactory.getSharedExpenseRepository();
+const invitationRepository = repositoryFactory.getSharedInvitationRepository();
 
 const syncService = new SyncService(
   userRepository,
@@ -40,6 +42,22 @@ const syncService = new SyncService(
   sharedGroupRepository,
   sharedExpenseRepository,
   repositoryFactory.getSharedSettlementRepository(),
+  invitationRepository,
+  new JoinedGroupService(
+    invitationRepository,
+    sharedGroupRepository,
+    sharedExpenseRepository,
+    contactRepository,
+    userRepository,
+    transactionRepository,
+    new TransactionService(
+      transactionRepository,
+      accountRepository,
+      repositoryFactory.getIdempotencyRepository(),
+      categoryRepository,
+      sharedLedgerService,
+    ),
+  ),
 );
 
 // The same service wiring the HTTP controllers use: the batch must answer what the routes would.
@@ -60,7 +78,7 @@ const syncBatchService = new SyncBatchService(
     userRepository,
   ),
   repositoryFactory.getSyncOpRepository(),
-  new ContactService(contactRepository),
+  new ContactService(contactRepository, invitationRepository),
   new SharedGroupService(
     sharedGroupRepository,
     sharedExpenseRepository,
@@ -68,6 +86,7 @@ const syncBatchService = new SyncBatchService(
     userRepository,
     transactionRepository,
     sharedLedgerService,
+    invitationRepository,
   ),
   new SharedExpenseService(
     sharedExpenseRepository,

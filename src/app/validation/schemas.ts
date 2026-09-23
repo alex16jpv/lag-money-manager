@@ -677,6 +677,46 @@ export const createSharedExpenseSchema = z.object({
     }),
 });
 
+export const getGroupInvitationsSchema = getSharedExpensesSchema;
+
+export const getReceivedInvitationsSchema = z.object({
+  query: getSharedExpensesSchema.shape.query,
+});
+
+export const createInvitationSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+  }),
+  body: z.object({
+    contactId: z.string().uuid("contactId must be a valid UUID"),
+  }),
+});
+
+export const invitationParamsSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+    invitationId: z.string().uuid("invitationId must be a valid UUID"),
+  }),
+});
+
+export const getJoinedGroupsSchema = getReceivedInvitationsSchema;
+
+export const addToLedgerSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+    expenseId: z.string().uuid("expenseId must be a valid UUID"),
+  }),
+  body: z.object({
+    id: clientMintedId,
+    accountId: z.string().uuid("accountId must be a valid UUID"),
+    categoryId: z
+      .string()
+      .uuid("categoryId must be a valid UUID")
+      .optional()
+      .nullable(),
+  }),
+});
+
 export const sharedExpenseParamsSchema = z.object({
   params: z.object({
     id: z.string().uuid("ID must be a valid UUID"),

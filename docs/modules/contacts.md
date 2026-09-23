@@ -7,9 +7,11 @@ Holds the people a user splits expenses with. A contact is **a private entity of
 Two things set it apart from plain CRUD, and both are deliberate:
 
 - **A contact is not an account.** It has no balance, no type, no credit limit and no currency, it never appears in `GET /accounts`, in a transfer, in `Stats groupBy=account` or in any total of what the user has or owes. Money only ever moves in the user's own accounts. Modelling a person as an account would have meant an "except for people" exception in each of the ten surfaces that already read accounts, and the one that got forgotten would teach a person as if they were a bank.
-- **The `email` is an identifier, not a channel.** Nothing is sent from this API. It exists so a later delivery can invite that person to a shared group by address; until then it is a string the user typed. Two contacts may carry the same address — an invitation names a contact, never an address, so the ambiguity never arises.
+- **The `email` is an identifier, not a channel.** Nothing is sent from this API. It is what an invitation to a shared group is addressed to ([invitations.md](invitations.md)). Two contacts may carry the same address — an invitation names a contact, never an address, so the ambiguity never arises.
 
-`linkedUserId` is the seat that invitation will fill: it is always `null` today, it is server-owned, and a client that sends it has it dropped by validation. It is published in the contract so the frontend can already read it rather than have the shape change under it later.
+**A contact is never linked to a user.** Who is in a group is the accepted invitation itself ([invitations.md](invitations.md)), and a user id written into the inviter's address book would tell the inviter who answered, which the invitation never does. It would also bump a row the inviter may be editing offline. The field reserved for it, `linkedUserId`, was removed in T-130 once nothing turned out to need it. Documents written before that may still carry `linkedUserId: null`, and nothing reads it.
+
+**Two writes here end invitations, in the same transaction**: changing or clearing the email withdraws the contact's waiting ones (they were addressed to the old address), and archiving the contact ends every live one, joined included.
 
 ## Files and Responsibilities
 
@@ -89,4 +91,4 @@ Every write accepts `If-Match: <updatedAt ISO>` and answers `409 STALE_UPDATE` w
 
 - It does not send anything, anywhere. See `email` above.
 - It does not know about groups, splits or money. That is the shared-groups module; a contact only ever appears there by id.
-- It does not link a contact to a real user. `linkedUserId` stays `null` until the invitation flow exists.
+- It does not link a contact to a real user; see above.

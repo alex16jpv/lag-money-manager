@@ -13,9 +13,12 @@ import {
   DebtAccountField,
   GROUP_SPLIT_MODES,
   GROUP_STATUSES,
+  INVITATION_LIFETIME_DAYS,
+  INVITATION_STATUSES,
   MAX_CONTACTS_PER_USER,
   MAX_EXPENSE_GUESTS,
   MAX_GROUP_PARTICIPANTS,
+  MAX_PENDING_INVITATIONS_PER_USER,
   SETTLEMENT_PARTIES,
   SHARE_PARTIES,
   SHARED_HISTORY_REASONS,
@@ -68,6 +71,8 @@ const requestBodies = {
   CreateSharedExpenseInput: bodyOf(v.createSharedExpenseSchema),
   CreateSettlementInput: bodyOf(v.createSettlementSchema),
   WriteOffInput: bodyOf(v.writeOffSchema),
+  CreateInvitationInput: bodyOf(v.createInvitationSchema),
+  AddToLedgerInput: bodyOf(v.addToLedgerSchema),
   UpdateSharedExpenseInput: bodyOf(v.updateSharedExpenseSchema),
   UpdateCategoryInput: bodyOf(v.updateCategorySchema),
   CreateTransactionInput: bodyOf(v.createTransactionSchema),
@@ -281,13 +286,7 @@ const responseViews = {
           type: "string",
           format: "email",
           description:
-            "Identifier for inviting them later; nothing is sent from this API, and two contacts may carry the same address.",
-        },
-        linkedUserId: {
-          ...uuid,
-          nullable: true,
-          description:
-            "The user this contact turned out to be, once an invitation is accepted. Always null today.",
+            "What an invitation to a shared group is addressed to; nothing is emailed from this API, and two contacts may carry the same address. Changing it withdraws the contact's waiting invitations.",
         },
         userId: uuid,
         archivedAt: nullableDateTime,
@@ -489,6 +488,90 @@ const responseViews = {
       updatedAt: dateTime,
     },
   }),
+  JoinedParticipant: withRequired({
+    type: "object",
+    properties: {
+      contactId: {
+        ...uuid,
+        nullable: true,
+        description:
+          "null is the person who shared the group, as in their own rows: `paidByContactId: null` and a USER share are theirs.",
+      },
+      name: {
+        type: "string",
+        description:
+          "The name on their own profile for the person who shared the group and for anybody who joined it; the name the owner gave them otherwise.",
+      },
+      color: { ...enumOf(COLORS), nullable: true },
+      you: { type: "boolean" },
+      joined: { type: "boolean" },
+    },
+  }),
+  JoinedGroup: withRequired({
+    type: "object",
+    description:
+      "A group somebody else shared with you, read-only: its people, its default split and who was written off. Nothing of anybody's ledger — no account, category, note or what counts as the owner's. `updatedAt` is when anything here last changed for you, or when you joined, whichever is later.",
+    properties: {
+      id: uuid,
+      invitationId: {
+        ...uuid,
+        description: "The invitation you joined with: leaving goes through it.",
+      },
+      name: { type: "string" },
+      color: { ...enumOf(COLORS), nullable: true },
+      currency: { type: "string", example: "COP" },
+      ownerId: {
+        ...uuid,
+        description:
+          "Who shared it: the same for every group of theirs, so their groups can be told apart from another person's with the same name.",
+      },
+      ownerName: { type: "string" },
+      participants: {
+        type: "array",
+        items: { $ref: "#/components/schemas/JoinedParticipant" },
+      },
+      defaultSplit: { $ref: "#/components/schemas/DefaultSplit" },
+      writeOffs: {
+        type: "array",
+        items: withRequired({
+          type: "object",
+          properties: {
+            kind: enumOf(SETTLEMENT_PARTIES),
+            contactId: { ...uuid, nullable: true },
+            expenseId: { ...uuid, nullable: true },
+            amount: money,
+            at: dateTime,
+          },
+        }),
+      },
+      archivedAt: nullableDateTime,
+      createdAt: dateTime,
+      updatedAt: dateTime,
+    },
+  }),
+  JoinedExpense: withRequired({
+    type: "object",
+    description:
+      "A line of a group shared with you, exactly as its owner keeps it, minus who owns it. Your part is the CONTACT share named by your participant row; it reads paid once its `collected` reaches its `amount`.",
+    properties: {
+      id: uuid,
+      groupId: uuid,
+      description: { type: "string", nullable: true },
+      date: dateTime,
+      amount: money,
+      paidByContactId: {
+        ...uuid,
+        nullable: true,
+        description: "null is the person who shared the group.",
+      },
+      split: { $ref: "#/components/schemas/SharedSplit" },
+      customSplit: { type: "boolean" },
+      currency: { type: "string", example: "COP" },
+      deletedAt: nullableDateTime,
+      createdAt: dateTime,
+      updatedAt: dateTime,
+    },
+  }),
   AddParticipantsPreview: withRequired({
     type: "object",
     description:
@@ -524,6 +607,63 @@ const responseViews = {
     properties: {
       group: { $ref: "#/components/schemas/SharedGroup" },
       applied: { $ref: "#/components/schemas/AddParticipantsPreview" },
+    },
+  }),
+  SentInvitation: withRequired({
+    type: "object",
+    description:
+      "An invitation to one of your groups, as the inviter reads it: who it was addressed to and how it stands. It never says whether the address has an account, nor who answered. A PENDING one past `expiresAt` can no longer be answered — nothing on the server marks that moment, so it is read from the date.",
+    properties: {
+      id: uuid,
+      groupId: uuid,
+      contactId: uuid,
+      email: { type: "string", format: "email" },
+      status: enumOf(INVITATION_STATUSES),
+      expiresAt: dateTime,
+      answeredAt: nullableDateTime,
+      withdrawnAt: {
+        ...nullableDateTime,
+        description:
+          "Set when it was withdrawn, or when a joined person stopped being shared with: by you, by taking them out of the group or archiving their contact, or by deleting your account. Archiving the group or changing their email ends only one still waiting.",
+      },
+      leftAt: {
+        ...nullableDateTime,
+        description:
+          "Set when the person who joined left the group themselves (status LEFT), or deleted their account.",
+      },
+      createdAt: dateTime,
+      updatedAt: dateTime,
+    },
+  }),
+  ReceivedInvitation: withRequired({
+    type: "object",
+    description:
+      "An invitation to somebody else's group, as the invited person reads it: the group's name, colour and currency as they are now, and who sent it — nothing else of the group before joining. A PENDING one past `expiresAt` can no longer be answered.",
+    properties: {
+      id: uuid,
+      groupId: uuid,
+      groupName: { type: "string" },
+      groupColor: { ...enumOf(COLORS), nullable: true },
+      groupCurrency: {
+        type: "string",
+        example: "COP",
+        description:
+          "A group in a currency other than yours can only be declined (CURRENCY_MISMATCH).",
+      },
+      inviterName: {
+        type: "string",
+        description: "The sender's profile name when it was sent.",
+      },
+      inviterEmail: { type: "string", format: "email" },
+      status: enumOf(INVITATION_STATUSES),
+      expiresAt: dateTime,
+      answeredAt: nullableDateTime,
+      leftAt: {
+        ...nullableDateTime,
+        description: "Set when you left the group (status LEFT).",
+      },
+      createdAt: dateTime,
+      updatedAt: dateTime,
     },
   }),
   Settlement: withRequired({
@@ -660,6 +800,22 @@ const responseViews = {
         description:
           "Why `countsAsYours` is what it is, oldest first. Empty on a " +
           "movement that was never split.",
+      },
+      importedFromGroupId: {
+        ...uuid,
+        nullable: true,
+        description:
+          "The group shared with you this expense was added from with Add to " +
+          "my ledger, or null. It is an ordinary expense of yours: its whole " +
+          "amount counts as yours, and deleting it makes that line ready to " +
+          "add again.",
+      },
+      importedFromExpenseId: {
+        ...uuid,
+        nullable: true,
+        description:
+          "The line of that group whose share of yours this is. One line " +
+          "reaches your ledger once (SHARED_LINE_IN_LEDGER).",
       },
       createdAt: dateTime,
       updatedAt: dateTime,
@@ -936,6 +1092,26 @@ const syncChangesResponse = withRequired({
           // The payment's own view already carries its tombstone, like the expense's.
           items: { $ref: "#/components/schemas/Settlement" },
         },
+        invitationsSent: {
+          type: "array",
+          items: { $ref: "#/components/schemas/SentInvitation" },
+        },
+        invitationsReceived: {
+          type: "array",
+          description:
+            "Addressed to your email and answered by nobody yet, or answered by you: they keep arriving after they are answered, withdrawn or out of time, which is how a device learns they stopped waiting.",
+          items: { $ref: "#/components/schemas/ReceivedInvitation" },
+        },
+        joinedGroups: {
+          type: "array",
+          description:
+            "Groups somebody else shared with you. A group you joined after the cursor arrives whole, because its rows are placed at the moment you joined. When your invitation stops being ACCEPTED, drop the group and its lines.",
+          items: { $ref: "#/components/schemas/JoinedGroup" },
+        },
+        joinedExpenses: {
+          type: "array",
+          items: { $ref: "#/components/schemas/JoinedExpense" },
+        },
       },
     }),
     pagination: withRequired({
@@ -1082,6 +1258,17 @@ const sharedLimits = {
       description:
         "People in one shared group, the owner included. Adding past it is 400 PARTICIPANT_LIMIT_REACHED.",
     },
+    maxPendingInvitationsPerUser: {
+      type: "integer",
+      enum: [MAX_PENDING_INVITATIONS_PER_USER],
+      description:
+        "Invitations one user may have waiting at once. Inviting past it is 400 INVITATION_LIMIT_REACHED.",
+    },
+    invitationLifetimeDays: {
+      type: "integer",
+      enum: [INVITATION_LIFETIME_DAYS],
+      description: "How long an invitation waits to be answered.",
+    },
     maxGuestsPerExpense: {
       type: "integer",
       enum: [MAX_EXPENSE_GUESTS],
@@ -1093,6 +1280,8 @@ const sharedLimits = {
     "maxContactsPerUser",
     "maxParticipantsPerGroup",
     "maxGuestsPerExpense",
+    "maxPendingInvitationsPerUser",
+    "invitationLifetimeDays",
   ],
 };
 
@@ -1185,6 +1374,10 @@ const options: swaggerJsdoc.Options = {
         SharedGroupConflict: conflictOf("SharedGroup"),
         SharedExpenseConflict: conflictOf("SharedExpense"),
         SettlementList: listOf("Settlement"),
+        SentInvitationList: listOf("SentInvitation"),
+        ReceivedInvitationList: listOf("ReceivedInvitation"),
+        JoinedGroupList: listOf("JoinedGroup"),
+        JoinedExpenseList: listOf("JoinedExpense"),
         TransactionConflict: conflictOf("Transaction"),
         BudgetConflict: conflictOf("Budget"),
       },

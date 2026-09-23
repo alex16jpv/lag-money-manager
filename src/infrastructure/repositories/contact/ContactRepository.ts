@@ -29,7 +29,6 @@ export class ContactRepository implements IContactRepository {
       name: doc.name,
       color: doc.color,
       email: doc.email,
-      linkedUserId: doc.linkedUserId,
       userId: doc.userId,
       archivedAt: doc.archivedAt,
       createdAt: doc.createdAt,
@@ -102,6 +101,12 @@ export class ContactRepository implements IContactRepository {
   async getOwnById(id: string, userId: string): Promise<Contact | null> {
     const doc = await ContactModel.findOne({ _id: id, userId }).lean();
     return doc ? this.toEntity(doc) : null;
+  }
+
+  async getManyIncludingArchived(ids: string[]): Promise<Contact[]> {
+    if (ids.length === 0) return [];
+    const docs = await ContactModel.find({ _id: { $in: ids } }).lean();
+    return docs.map((doc) => this.toEntity(doc));
   }
 
   async getByIdIncludingArchived(id: string): Promise<Contact | null> {

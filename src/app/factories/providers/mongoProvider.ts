@@ -7,6 +7,7 @@ import { IdempotencyRepository } from "../../../infrastructure/repositories/idem
 import { RefreshSessionRepository } from "../../../infrastructure/repositories/refreshSession/RefreshSessionRepository";
 import { SharedExpenseRepository } from "../../../infrastructure/repositories/sharedExpense/SharedExpenseRepository";
 import { SharedGroupRepository } from "../../../infrastructure/repositories/sharedGroup/SharedGroupRepository";
+import { SharedInvitationRepository } from "../../../infrastructure/repositories/sharedInvitation/SharedInvitationRepository";
 import { SharedSettlementRepository } from "../../../infrastructure/repositories/sharedSettlement/SharedSettlementRepository";
 import { SyncOpRepository } from "../../../infrastructure/repositories/syncOp/SyncOpRepository";
 import { TransactionRepository } from "../../../infrastructure/repositories/transaction/TransactionRepository";
@@ -40,4 +41,5 @@ export function registerRepositories(factory: RegistryTarget): void {
   factory.register("sharedGroup", () => new SharedGroupRepository());
   factory.register("sharedExpense", () => new SharedExpenseRepository());
   factory.register("sharedSettlement", () => new SharedSettlementRepository());
+  factory.register("sharedInvitation", () => new SharedInvitationRepository());
 }

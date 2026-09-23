@@ -2,8 +2,18 @@ import { Account } from "../../domain/entities/Account";
 import { Budget } from "../../domain/entities/Budget";
 import { Category } from "../../domain/entities/Category";
 import { Contact } from "../../domain/entities/Contact";
+import {
+  JoinedExpenseView,
+  JoinedGroupView,
+} from "../../domain/entities/JoinedGroup";
 import { SharedExpense } from "../../domain/entities/SharedExpense";
 import { SharedGroup } from "../../domain/entities/SharedGroup";
+import {
+  ReceivedInvitationView,
+  receivedView,
+  SentInvitationView,
+  sentView,
+} from "../../domain/entities/SharedInvitation";
 import { SharedSettlement } from "../../domain/entities/SharedSettlement";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { IBudgetRepository } from "../../domain/repositories/budget/IBudgetRepository";
@@ -11,6 +21,7 @@ import { ICategoryRepository } from "../../domain/repositories/category/ICategor
 import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
+import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import {
   ChangedTransaction,
@@ -27,6 +38,7 @@ import {
   SYNC_OVERLAP_MS,
 } from "../../shared/syncCursor";
 import { toUserResponse, UserResponseDTO } from "../dtos/UserDTO";
+import { JoinedGroupService } from "./JoinedGroupService";
 
 export interface SyncChanges {
   user: UserResponseDTO | null;
@@ -39,6 +51,10 @@ export interface SyncChanges {
   sharedGroups: SharedGroup[];
   sharedExpenses: SharedExpense[];
   settlements: SharedSettlement[];
+  invitationsSent: SentInvitationView[];
+  invitationsReceived: ReceivedInvitationView[];
+  joinedGroups: JoinedGroupView[];
+  joinedExpenses: JoinedExpenseView[];
 }
 
 export interface SyncChangesResult {
@@ -63,6 +79,8 @@ export class SyncService {
     private sharedGroups: ISharedGroupRepository,
     private sharedExpenses: ISharedExpenseRepository,
     private settlements: ISharedSettlementRepository,
+    private invitations: ISharedInvitationRepository,
+    private joined: Pick<JoinedGroupService, "changes">,
   ) {}
 
   /**
@@ -80,6 +98,7 @@ export class SyncService {
 
     // limit+1 from every source separates "there is more" from the end, and makes the merge exact.
     const fetch = limit + 1;
+    const profile = this.users.getById(userId);
     const [
       user,
       accounts,
@@ -90,8 +109,11 @@ export class SyncService {
       sharedGroups,
       sharedExpenses,
       settlements,
+      sent,
+      received,
+      joined,
     ] = await Promise.all([
-      this.users.getById(userId),
+      profile,
       this.accounts.changesSince(userId, cursor, fetch),
       this.categories.changesSince(userId, cursor, fetch),
       this.transactions.changesSince(userId, cursor, fetch),
@@ -100,6 +122,18 @@ export class SyncService {
       this.sharedGroups.changesSince(userId, cursor, fetch),
       this.sharedExpenses.changesSince(userId, cursor, fetch),
       this.settlements.changesSince(userId, cursor, fetch),
+      this.invitations.sentChangesSince(userId, cursor, fetch),
+      profile.then((me) =>
+        me
+          ? this.invitations.receivedChangesSince(
+              userId,
+              me.email,
+              cursor,
+              fetch,
+            )
+          : [],
+      ),
+      this.joined.changes(userId, cursor, fetch),
     ]);
 
     // Filtering the user here costs one comparison and keeps it inside the same ordering.
@@ -116,6 +150,10 @@ export class SyncService {
       ...sharedGroups,
       ...sharedExpenses,
       ...settlements,
+      ...sent,
+      ...received,
+      ...joined.groups,
+      ...joined.expenses,
     ]
       .map(changeKeyOf)
       .sort(compareChanges);
@@ -135,6 +173,10 @@ export class SyncService {
       sharedGroups: upTo(sharedGroups),
       sharedExpenses: upTo(sharedExpenses),
       settlements: upTo(settlements),
+      invitationsSent: upTo(sent).map(sentView),
+      invitationsReceived: upTo(received).map(receivedView),
+      joinedGroups: upTo(joined.groups),
+      joinedExpenses: upTo(joined.expenses),
     };
 
     return {

@@ -63,6 +63,14 @@ export const ERROR_CODES = [
   "SETTLEMENT_OVER_PAID",
   "SETTLEMENT_MOVEMENT_LOCKED",
   "GUEST_BLOCK_HAS_PAYMENTS",
+  // Invitations to a shared group
+  "CONTACT_HAS_NO_EMAIL",
+  "INVITATION_TO_SELF",
+  "INVITATION_LIMIT_REACHED",
+  "INVITATION_UNAVAILABLE",
+  // A group shared with you
+  "SHARED_LINE_NOT_PAID",
+  "SHARED_LINE_IN_LEDGER",
   // Client-minted ids
   "ID_TAKEN",
   // Optimistic concurrency

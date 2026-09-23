@@ -17,6 +17,10 @@ export interface CreateTransactionDTO {
   source?: TransactionSource;
   // Server-derived: only a settle-up writes it, and the schema never accepts it either.
   sharedSettlementId?: string | null;
+  // Server-derived: only Add to my ledger writes these.
+  currency?: string;
+  importedFromGroupId?: string | null;
+  importedFromExpenseId?: string | null;
 }
 
 export interface UpdateTransactionDTO {

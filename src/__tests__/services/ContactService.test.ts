@@ -1,8 +1,13 @@
+jest.mock("../../shared/unitOfWork", () => ({
+  withTransaction: jest.fn((fn: (session: unknown) => unknown) => fn({})),
+}));
+
 import { ContactService } from "../../app/services/ContactService";
 import { Contact } from "../../domain/entities/Contact";
 import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
 import { MAX_CONTACTS_PER_USER } from "../../shared/constants";
 import { ApiError, StaleUpdateError } from "../../shared/errors";
+import { mockInvitationRepo } from "./invitationRepoMock";
 
 const testUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac71";
 const otherUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac7f";
@@ -19,6 +24,7 @@ const makeContact = (props: Partial<Contact> = {}): Contact =>
   });
 
 const createMockRepo = (): jest.Mocked<IContactRepository> => ({
+  getManyIncludingArchived: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
@@ -36,10 +42,12 @@ const createMockRepo = (): jest.Mocked<IContactRepository> => ({
 describe("ContactService", () => {
   let service: ContactService;
   let repo: jest.Mocked<IContactRepository>;
+  let invitations: ReturnType<typeof mockInvitationRepo>;
 
   beforeEach(() => {
     repo = createMockRepo();
-    service = new ContactService(repo);
+    invitations = mockInvitationRepo();
+    service = new ContactService(repo, invitations);
   });
 
   describe("getAllContacts", () => {
@@ -130,7 +138,7 @@ describe("ContactService", () => {
       });
 
       expect(created.name).toBe("Ana");
-      expect(created.linkedUserId).toBeNull();
+      expect(created).not.toHaveProperty("linkedUserId");
       expect(repo.create).toHaveBeenCalled();
     });
 
@@ -183,6 +191,51 @@ describe("ContactService", () => {
       );
 
       expect(updated.name).toBe("Ana María");
+    });
+
+    it("withdraws a waiting invitation when the email changes: it was sent to the old one", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        makeContact({ email: "ana@example.com" }),
+      );
+      repo.update.mockResolvedValue(makeContact({ email: "ana@new.com" }));
+
+      await service.updateContact(
+        contactId,
+        { email: "ana@new.com" },
+        testUserId,
+      );
+
+      expect(invitations.withdrawAll).toHaveBeenCalledWith(
+        { userId: testUserId, contactId, statuses: ["PENDING"] },
+        expect.any(Date),
+        {},
+      );
+    });
+
+    it("withdraws it when the email is cleared too", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        makeContact({ email: "ana@example.com" }),
+      );
+      repo.update.mockResolvedValue(makeContact());
+
+      await service.updateContact(contactId, { email: null }, testUserId);
+
+      expect(invitations.withdrawAll).toHaveBeenCalled();
+    });
+
+    it("leaves invitations alone when the email stays the same", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        makeContact({ email: "ana@example.com" }),
+      );
+      repo.update.mockResolvedValue(makeContact({ name: "Ana María" }));
+
+      await service.updateContact(
+        contactId,
+        { name: "Ana María", email: "ana@example.com" },
+        testUserId,
+      );
+
+      expect(invitations.withdrawAll).not.toHaveBeenCalled();
     });
 
     it("refuses an archived contact with RESOURCE_ARCHIVED", async () => {
@@ -238,6 +291,23 @@ describe("ContactService", () => {
       const result = await service.deleteContact(contactId, testUserId);
 
       expect(result.archivedAt).not.toBeNull();
+    });
+
+    it("ends their invitations, waiting or joined, in the same transaction", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(makeContact());
+      repo.delete.mockResolvedValue(makeContact({ archivedAt: new Date() }));
+
+      await service.deleteContact(contactId, testUserId);
+
+      expect(invitations.withdrawAll).toHaveBeenCalledWith(
+        {
+          userId: testUserId,
+          contactId,
+          statuses: ["PENDING", "ACCEPTED"],
+        },
+        expect.any(Date),
+        {},
+      );
     });
 
     it("is idempotent on an already-archived contact", async () => {

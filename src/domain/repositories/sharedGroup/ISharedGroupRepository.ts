@@ -45,6 +45,8 @@ export interface ISharedGroupRepository extends IRepository<SharedGroup> {
     id: string,
     session?: TxSession,
   ): Promise<SharedGroup | null>;
+  // Whoever owns them: what the people who joined them read.
+  getManyIncludingArchived(ids: string[]): Promise<SharedGroup[]>;
   // `name` renames in the same write, so nobody can take the name in between.
   restore(
     id: string,

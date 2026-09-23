@@ -32,6 +32,8 @@ export interface ITransactionDocument {
   sharedExpenseId?: string;
   sharedGroupId?: string;
   sharedSettlementId?: string;
+  importedFromGroupId?: string;
+  importedFromExpenseId?: string;
   sharedHistory: {
     at: Date;
     reason: SharedHistoryReason;
@@ -87,6 +89,8 @@ const TransactionSchema = new Schema<ITransactionDocument>(
     sharedExpenseId: { type: String },
     sharedGroupId: { type: String },
     sharedSettlementId: { type: String },
+    importedFromGroupId: { type: String },
+    importedFromExpenseId: { type: String },
     sharedHistory: {
       type: [
         new Schema(
@@ -166,6 +170,18 @@ TransactionSchema.index(
   {
     unique: true,
     partialFilterExpression: { sharedExpenseId: { $exists: true } },
+  },
+);
+
+// A line of a group shared with you reaches your ledger once; deleting that expense frees it.
+TransactionSchema.index(
+  { userId: 1, importedFromExpenseId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      importedFromExpenseId: { $exists: true },
+      deletedAt: null,
+    },
   },
 );
 

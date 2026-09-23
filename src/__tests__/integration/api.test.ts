@@ -19,6 +19,7 @@ import { ApiError } from "../../shared/errors";
 
 // --- Mock repositories ---
 const mockUserRepo: jest.Mocked<IUserRepository> = {
+  getManyByIds: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getById: jest.fn(),
   getByEmail: jest.fn(),
@@ -72,6 +73,7 @@ const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
 };
 
 const mockContactRepo: jest.Mocked<IContactRepository> = {
+  getManyIncludingArchived: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
@@ -87,6 +89,7 @@ const mockContactRepo: jest.Mocked<IContactRepository> = {
 };
 
 const mockSharedGroupRepo: jest.Mocked<ISharedGroupRepository> = {
+  getManyIncludingArchived: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
@@ -100,6 +103,8 @@ const mockSharedGroupRepo: jest.Mocked<ISharedGroupRepository> = {
 };
 
 const mockSharedExpenseRepo: jest.Mocked<ISharedExpenseRepository> = {
+  atJoin: jest.fn().mockResolvedValue([]),
+  changesInGroups: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getAllByGroup: jest.fn(),
   getById: jest.fn(),
@@ -128,7 +133,17 @@ const mockSharedSettlementRepo: jest.Mocked<ISharedSettlementRepository> = {
   delete: jest.fn(),
 };
 
+const mockSharedInvitationRepo = {
+  sentChangesSince: jest.fn().mockResolvedValue([]),
+  receivedChangesSince: jest.fn().mockResolvedValue([]),
+  withdrawAll: jest.fn().mockResolvedValue(0),
+  refreshGroup: jest.fn().mockResolvedValue(undefined),
+  memberships: jest.fn().mockResolvedValue([]),
+  leaveAll: jest.fn().mockResolvedValue(0),
+};
+
 const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
+  getImported: jest.fn().mockResolvedValue(null),
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
@@ -287,7 +302,16 @@ jest.mock("../../shared/constants", () => ({
     SHARED_GROUP: "SharedGroup",
     SHARED_EXPENSE: "SharedExpense",
     SHARED_SETTLEMENT: "SharedSettlement",
+    SHARED_INVITATION: "SharedInvitation",
   },
+  INVITATION_STATUSES: {
+    PENDING: "PENDING",
+    ACCEPTED: "ACCEPTED",
+    DECLINED: "DECLINED",
+    WITHDRAWN: "WITHDRAWN",
+  },
+  MAX_PENDING_INVITATIONS_PER_USER: 50,
+  INVITATION_LIFETIME_DAYS: 30,
   TYPES_OUTSIDE_SPENDING: ["ADJUSTMENT", "SETTLEMENT"],
   TYPES_RECORDED_ELSEWHERE: ["SETTLEMENT"],
   SETTLEMENT_PARTIES: { CONTACT: "CONTACT", GUESTS: "GUESTS" },
@@ -339,6 +363,7 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getSharedGroupRepository: () => mockSharedGroupRepo,
     getSharedExpenseRepository: () => mockSharedExpenseRepo,
     getSharedSettlementRepository: () => mockSharedSettlementRepo,
+    getSharedInvitationRepository: () => mockSharedInvitationRepo,
     getTransactionRepository: () => mockTransactionRepo,
     getIdempotencyRepository: () => mockIdempotencyRepo,
     getBudgetRepository: () => mockBudgetRepo,
@@ -1059,10 +1084,10 @@ describe("Integration Tests", () => {
         .send({ name: "Ana", color: "TEAL", email: "Ana@Example.com" });
 
       expect(res.status).toBe(201);
-      expect(res.body.linkedUserId).toBeNull();
+      expect(res.body).not.toHaveProperty("linkedUserId");
     });
 
-    it("drops linkedUserId sent by a client instead of storing it", async () => {
+    it("drops a user id sent by a client instead of storing it", async () => {
       mockContactRepo.create.mockImplementation(
         async (c) => new Contact(c as Contact),
       );
@@ -1076,7 +1101,7 @@ describe("Integration Tests", () => {
         });
 
       expect(res.status).toBe(201);
-      expect(res.body.linkedUserId).toBeNull();
+      expect(res.body).not.toHaveProperty("linkedUserId");
     });
 
     it("refuses a create without a name", async () => {
@@ -1118,9 +1143,10 @@ describe("Integration Tests", () => {
       expect(mockContactRepo.update).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5acc1",
         { email: null },
-        undefined,
+        expect.anything(),
         undefined,
       );
+      expect(mockSharedInvitationRepo.withdrawAll).toHaveBeenCalled();
     });
 
     it("archives a contact and answers the archived row", async () => {
@@ -2192,6 +2218,10 @@ describe("Integration Tests", () => {
         "sharedGroups",
         "sharedExpenses",
         "settlements",
+        "invitationsSent",
+        "invitationsReceived",
+        "joinedGroups",
+        "joinedExpenses",
       ]);
       expect(res.body.changes.user.id).toBe(testUser.id);
       expect(res.body.changes.user.password).toBeUndefined();

@@ -20,6 +20,8 @@ import authRoutes from "../../app/routes/authRoutes";
 import budgetRoutes from "../../app/routes/budgetRoutes";
 import categoryRoutes from "../../app/routes/categoryRoutes";
 import contactRoutes from "../../app/routes/contactRoutes";
+import invitationRoutes from "../../app/routes/invitationRoutes";
+import joinedGroupRoutes from "../../app/routes/joinedGroupRoutes";
 import sharedGroupRoutes from "../../app/routes/sharedGroupRoutes";
 import sharedSettlementRoutes from "../../app/routes/sharedSettlementRoutes";
 import statsRoutes from "../../app/routes/statsRoutes";
@@ -36,6 +38,8 @@ const MOUNTS: Record<string, Router> = {
   "/categories": categoryRoutes,
   "/contacts": contactRoutes,
   "/shared-groups": sharedGroupRoutes,
+  "/invitations": invitationRoutes,
+  "/joined-groups": joinedGroupRoutes,
   "/settlements": sharedSettlementRoutes,
   "/transactions": transactionRoutes,
   "/budgets": budgetRoutes,

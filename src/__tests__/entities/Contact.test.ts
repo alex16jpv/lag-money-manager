@@ -10,7 +10,6 @@ describe("Contact Entity", () => {
         name: "Ana",
         color: "TEAL",
         email: "ana@example.com",
-        linkedUserId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac72",
         userId,
       });
 
@@ -18,7 +17,6 @@ describe("Contact Entity", () => {
       expect(contact.name).toBe("Ana");
       expect(contact.color).toBe("TEAL");
       expect(contact.email).toBe("ana@example.com");
-      expect(contact.linkedUserId).toBe("019576a0-d7b6-7d6d-af6a-2b7545f5ac72");
       expect(contact.userId).toBe(userId);
       expect(contact.archivedAt).toBeNull();
     });
@@ -36,12 +34,6 @@ describe("Contact Entity", () => {
 
       expect(contact.color).toBeUndefined();
       expect(contact.email).toBeUndefined();
-    });
-
-    it("should default linkedUserId to null, not undefined", () => {
-      const contact = new Contact({ name: "Beto", userId });
-
-      expect(contact.linkedUserId).toBeNull();
     });
   });
 });

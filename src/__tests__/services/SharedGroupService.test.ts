@@ -14,6 +14,7 @@ import { ISharedSettlementRepository } from "../../domain/repositories/sharedSet
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { MAX_GROUP_PARTICIPANTS } from "../../shared/constants";
+import { mockInvitationRepo } from "./invitationRepoMock";
 
 const userId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
 const otherUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5acff";
@@ -63,6 +64,7 @@ const equalExpense = (
   });
 
 const groupRepo = (): jest.Mocked<ISharedGroupRepository> => ({
+  getManyIncludingArchived: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
@@ -81,6 +83,8 @@ const groupRepo = (): jest.Mocked<ISharedGroupRepository> => ({
 });
 
 const expenseRepo = (): jest.Mocked<ISharedExpenseRepository> => ({
+  atJoin: jest.fn().mockResolvedValue([]),
+  changesInGroups: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getAllByGroup: jest.fn(),
   getById: jest.fn(),
@@ -120,6 +124,7 @@ const settlementRepo = (): jest.Mocked<ISharedSettlementRepository> => ({
 });
 
 const transactionRepo = (): jest.Mocked<ITransactionRepository> => ({
+  getImported: jest.fn().mockResolvedValue(null),
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
@@ -146,8 +151,10 @@ describe("SharedGroupService", () => {
   let expenses: jest.Mocked<ISharedExpenseRepository>;
   let contacts: jest.Mocked<IContactRepository>;
   let transactions: jest.Mocked<ITransactionRepository>;
+  let invitations: ReturnType<typeof mockInvitationRepo>;
 
   beforeEach(() => {
+    invitations = mockInvitationRepo();
     groups = groupRepo();
     expenses = expenseRepo();
     contacts = contactRepo();
@@ -160,6 +167,7 @@ describe("SharedGroupService", () => {
       userRepo(),
       transactions,
       new SharedLedgerService(expenses, settlements, transactions),
+      invitations,
     );
   });
 
@@ -653,6 +661,48 @@ describe("SharedGroupService", () => {
       );
 
       expect(expenses.replaceSplits).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("what it does to the group's invitations", () => {
+    it("shows a waiting invitation the group's new name and colour", async () => {
+      await service.updateGroup(
+        groupId,
+        { name: "Night out, again", color: "TEAL" },
+        userId,
+      );
+
+      expect(invitations.refreshGroup).toHaveBeenCalledWith(
+        userId,
+        groupId,
+        { groupName: "Night out, again", groupColor: "TEAL" },
+        {},
+      );
+    });
+
+    it("leaves them alone when only the default split changes", async () => {
+      await service.updateGroup(
+        groupId,
+        { defaultSplit: { mode: "EQUAL" } },
+        userId,
+      );
+
+      expect(invitations.refreshGroup).not.toHaveBeenCalled();
+    });
+
+    it("ends the live invitation of somebody taken out, joined or waiting", async () => {
+      await service.removeParticipant(groupId, ana, userId);
+
+      expect(invitations.withdrawAll).toHaveBeenCalledWith(
+        {
+          userId,
+          groupId,
+          contactId: ana,
+          statuses: ["PENDING", "ACCEPTED"],
+        },
+        expect.any(Date),
+        {},
+      );
     });
   });
 });

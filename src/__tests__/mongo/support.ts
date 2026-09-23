@@ -155,13 +155,14 @@ export function shared(): {
   const groupRepo = repositoryFactory.getSharedGroupRepository();
   const contactRepo = repositoryFactory.getContactRepository();
   const userRepo = repositoryFactory.getUserRepository();
+  const invitationRepo = repositoryFactory.getSharedInvitationRepository();
   const ledger = new SharedLedgerService(
     expenseRepo,
     settlementRepo,
     transactionRepo,
   );
   return {
-    contacts: new ContactService(contactRepo),
+    contacts: new ContactService(contactRepo, invitationRepo),
     sharedGroups: new SharedGroupService(
       groupRepo,
       expenseRepo,
@@ -169,6 +170,7 @@ export function shared(): {
       userRepo,
       transactionRepo,
       ledger,
+      invitationRepo,
     ),
     sharedExpenses: new SharedExpenseService(
       expenseRepo,

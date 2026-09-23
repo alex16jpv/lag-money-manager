@@ -6,6 +6,7 @@ import { UserService } from "../services/UserService";
 const userService = new UserService(
   repositoryFactory.getUserRepository(),
   repositoryFactory.getAccountRepository(),
+  repositoryFactory.getSharedInvitationRepository(),
 );
 
 export class UserController {

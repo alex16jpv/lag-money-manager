@@ -2,6 +2,7 @@ import { SyncService } from "../../app/services/SyncService";
 import { Account } from "../../domain/entities/Account";
 import { Budget } from "../../domain/entities/Budget";
 import { Category } from "../../domain/entities/Category";
+import { SharedInvitation } from "../../domain/entities/SharedInvitation";
 import { Transaction } from "../../domain/entities/Transaction";
 import { User } from "../../domain/entities/User";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
@@ -98,6 +99,11 @@ interface Harness {
   sharedGroups: Feed;
   sharedExpenses: Feed;
   settlements: Feed;
+  invitations: {
+    sentChangesSince: jest.Mock;
+    receivedChangesSince: jest.Mock;
+  };
+  joined: { changes: jest.Mock };
 }
 
 // The profile is absent by default: always sending it would hide the boundary the merge is about.
@@ -112,6 +118,13 @@ const build = (): Harness => {
   const sharedGroups = feed();
   const sharedExpenses = feed();
   const settlements = feed();
+  const invitations = {
+    sentChangesSince: jest.fn().mockResolvedValue([]),
+    receivedChangesSince: jest.fn().mockResolvedValue([]),
+  };
+  const joined = {
+    changes: jest.fn().mockResolvedValue({ groups: [], expenses: [] }),
+  };
   const service = new SyncService(
     users as unknown as IUserRepository,
     accounts as unknown as IAccountRepository,
@@ -122,6 +135,8 @@ const build = (): Harness => {
     sharedGroups as never,
     sharedExpenses as never,
     settlements as never,
+    invitations as never,
+    joined,
   );
   return {
     service,
@@ -134,8 +149,27 @@ const build = (): Harness => {
     sharedGroups,
     sharedExpenses,
     settlements,
+    invitations,
+    joined,
   };
 };
+
+const invitation = (id: string, updatedAt: string): SharedInvitation =>
+  new SharedInvitation({
+    id,
+    userId: "inviter",
+    groupId: "g1",
+    contactId: "c1",
+    email: "john@example.com",
+    inviteeId: USER_ID,
+    expiresAt: at("2026-02-01T00:00:00.000Z"),
+    groupName: "Night out",
+    groupCurrency: "COP",
+    inviterName: "Ana Ruiz",
+    inviterEmail: "ana@example.com",
+    createdAt: at(updatedAt),
+    updatedAt: at(updatedAt),
+  });
 
 describe("SyncService.getChanges", () => {
   it("asks every source for one row past the page, so hasMore needs no second query", async () => {
@@ -261,6 +295,10 @@ describe("SyncService.getChanges", () => {
       sharedGroups: [],
       sharedExpenses: [],
       settlements: [],
+      invitationsSent: [],
+      invitationsReceived: [],
+      joinedGroups: [],
+      joinedExpenses: [],
     });
     expect(decodeCursor(page.pagination.nextCursor).id).toBeNull();
   });
@@ -333,5 +371,74 @@ describe("SyncService.getChanges", () => {
     const page = await service.getChanges(USER_ID, undefined, 50);
 
     expect(page.serverTime.getTime()).toBeLessThan(before + 20);
+  });
+
+  describe("invitations", () => {
+    it("finds the ones addressed to this person by the email on their profile", async () => {
+      const { service, users, invitations } = build();
+      users.getById.mockResolvedValue(user);
+
+      await service.getChanges(USER_ID, undefined, 10);
+
+      expect(invitations.sentChangesSince).toHaveBeenCalledWith(
+        USER_ID,
+        undefined,
+        11,
+      );
+      expect(invitations.receivedChangesSince).toHaveBeenCalledWith(
+        USER_ID,
+        "john@example.com",
+        undefined,
+        11,
+      );
+    });
+
+    it("asks for none received when the profile cannot be read", async () => {
+      const { service, invitations } = build();
+
+      const page = await service.getChanges(USER_ID, undefined, 10);
+
+      expect(invitations.receivedChangesSince).not.toHaveBeenCalled();
+      expect(page.changes.invitationsReceived).toEqual([]);
+    });
+
+    it("gives each side its own view: the inviter never learns who answered", async () => {
+      const { service, users, invitations } = build();
+      users.getById.mockResolvedValue(user);
+      invitations.sentChangesSince.mockResolvedValue([
+        invitation("i1", "2026-01-02T00:00:00.000Z"),
+      ]);
+      invitations.receivedChangesSince.mockResolvedValue([
+        invitation("i2", "2026-01-03T00:00:00.000Z"),
+      ]);
+
+      const page = await service.getChanges(USER_ID, undefined, 10);
+
+      const [sent] = page.changes.invitationsSent;
+      const [received] = page.changes.invitationsReceived;
+      expect(sent).toMatchObject({ id: "i1", contactId: "c1" });
+      expect(sent).not.toHaveProperty("inviteeId");
+      expect(received).toMatchObject({ id: "i2", groupName: "Night out" });
+      for (const hidden of ["inviteeId", "contactId", "email", "userId"]) {
+        expect(received).not.toHaveProperty(hidden);
+      }
+    });
+
+    it("cuts them at the same global boundary as everything else", async () => {
+      const { service, users, accounts, invitations } = build();
+      users.getById.mockResolvedValue(user);
+      accounts.changesSince.mockResolvedValue([
+        account("a1", "2025-12-31T00:00:00.000Z"),
+      ]);
+      invitations.receivedChangesSince.mockResolvedValue([
+        invitation("i2", "2026-01-05T00:00:00.000Z"),
+      ]);
+
+      const page = await service.getChanges(USER_ID, undefined, 1);
+
+      expect(page.changes.accounts.map((a) => a.id)).toEqual(["a1"]);
+      expect(page.changes.invitationsReceived).toEqual([]);
+      expect(page.pagination.hasMore).toBe(true);
+    });
   });
 });

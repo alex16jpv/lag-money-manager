@@ -8,7 +8,6 @@ export interface IContactDocument {
   name: string;
   color?: Color;
   email?: string;
-  linkedUserId: string | null;
   userId: string;
   archivedAt: Date | null;
   createdAt: Date;
@@ -21,7 +20,6 @@ const ContactSchema = new Schema<IContactDocument>(
     name: { type: String, required: true },
     color: { type: String, required: false, enum: Object.keys(COLORS) },
     email: { type: String, required: false, lowercase: true, trim: true },
-    linkedUserId: { type: String, default: null },
     userId: { type: String, required: true },
     archivedAt: { type: Date, default: null },
   },

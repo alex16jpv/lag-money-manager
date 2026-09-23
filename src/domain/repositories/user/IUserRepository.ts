@@ -5,6 +5,7 @@ import { IRepository } from "../IRepository";
 export interface IUserRepository extends IRepository<User> {
   delete(id: string, session?: TxSession): Promise<void>;
   getByEmail(email: string): Promise<User | null>;
+  getManyByIds(ids: string[]): Promise<User[]>;
   // Unlike getById, keeps the password hash (current-password verification).
   getByIdWithPassword(id: string): Promise<User | null>;
   // Atomic $inc: revokes every live refresh token of the user.
