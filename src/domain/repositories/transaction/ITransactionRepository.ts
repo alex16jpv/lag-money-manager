@@ -122,6 +122,13 @@ export interface ITransactionRepository extends IRepository<Transaction> {
     session?: unknown,
   ): Promise<Transaction[]>;
 
+  // What each live one of these, yours, is stamped now: read at the end of a write, inside it.
+  stampsOf(
+    userId: string,
+    ids: string[],
+    session: unknown,
+  ): Promise<Map<string, Date>>;
+
   // Everything one settle-up recorded, so undoing it reverses exactly those movements.
   listBySettlementId(
     userId: string,

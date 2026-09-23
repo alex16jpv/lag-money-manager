@@ -7,6 +7,7 @@ import { AccountService } from "../../app/services/AccountService";
 import { BudgetService } from "../../app/services/BudgetService";
 import { CategoryService } from "../../app/services/CategoryService";
 import { ContactService } from "../../app/services/ContactService";
+import { Restamp } from "../../app/services/restamps";
 import { SharedExpenseService } from "../../app/services/SharedExpenseService";
 import { SharedGroupService } from "../../app/services/SharedGroupService";
 import { SharedSettlementService } from "../../app/services/SharedSettlementService";
@@ -1832,6 +1833,204 @@ describe("SyncBatchService", () => {
         }),
         TZ,
         expect.anything(),
+      );
+    });
+  });
+
+  describe("rows a write rewrote besides its own [T-145]", () => {
+    const A = new Date("2026-09-05T09:00:00.000Z");
+    const B = new Date("2026-09-05T10:00:00.000Z");
+    const C = new Date("2026-09-05T11:00:00.000Z");
+    const movementId = uuid(60);
+    const expenseId = uuid(61);
+    const groupId = uuid(62);
+    const restamp = (from: Date, to: Date, id = expenseId): Restamp => ({
+      entity: "sharedExpense",
+      id,
+      previousUpdatedAt: from,
+      updatedAt: to,
+    });
+    const amountEdit = (): SyncOperationInput =>
+      op({
+        entity: "transaction",
+        action: "update",
+        id: movementId,
+        payload: { body: { amount: 7 } },
+      });
+    const splitEdit = (guard: Date, id = expenseId): SyncOperationInput =>
+      op({
+        entity: "sharedExpense",
+        action: "update",
+        id,
+        payload: { body: { useGroupSplit: true }, params: { groupId } },
+        baseUpdatedAt: guard.toISOString(),
+      });
+
+    beforeEach(() => {
+      sharedExpenses.updateExpense.mockResolvedValue({
+        id: expenseId,
+        restamped: [],
+      });
+    });
+
+    it("lifts the list out of the row, so the row is the route's row", async () => {
+      transactions.updateTransaction.mockResolvedValue({
+        id: movementId,
+        amount: 7,
+        restamped: [restamp(A, B)],
+      });
+
+      const { results } = await service.apply(ctx, [amountEdit()]);
+
+      expect(results[0].result).toEqual({ id: movementId, amount: 7 });
+      expect(results[0].restamped).toEqual([restamp(A, B)]);
+    });
+
+    it("answers a removal that rewrote other rows with the list and still no row", async () => {
+      transactions.deleteTransaction.mockResolvedValue({
+        restamped: [restamp(A, B)],
+      });
+
+      const { results } = await service.apply(ctx, [
+        op({ entity: "transaction", action: "delete", id: movementId }),
+      ]);
+
+      expect(results[0].status).toBe("applied");
+      expect(results[0]).not.toHaveProperty("result");
+      expect(results[0].restamped).toEqual([restamp(A, B)]);
+    });
+
+    it("runs a later write guarded by the stamp it had against the one the earlier write gave it", async () => {
+      transactions.updateTransaction.mockResolvedValue({
+        id: movementId,
+        restamped: [restamp(A, B)],
+      });
+
+      await service.apply(ctx, [amountEdit(), splitEdit(A)]);
+
+      expect(sharedExpenses.updateExpense).toHaveBeenCalledWith(
+        expenseId,
+        { useGroupSplit: true },
+        USER,
+        B,
+        groupId,
+      );
+    });
+
+    it("follows the row through two writes that each rewrote it", async () => {
+      transactions.updateTransaction
+        .mockResolvedValueOnce({ id: movementId, restamped: [restamp(A, B)] })
+        .mockResolvedValueOnce({ id: movementId, restamped: [restamp(B, C)] });
+
+      await service.apply(ctx, [amountEdit(), amountEdit(), splitEdit(A)]);
+
+      expect(sharedExpenses.updateExpense).toHaveBeenCalledWith(
+        expenseId,
+        { useGroupSplit: true },
+        USER,
+        C,
+        groupId,
+      );
+    });
+
+    it("keeps a guard it cannot vouch for: another stamp, or another row", async () => {
+      const other = uuid(63);
+      transactions.updateTransaction.mockResolvedValue({
+        id: movementId,
+        restamped: [restamp(A, B)],
+      });
+
+      await service.apply(ctx, [
+        amountEdit(),
+        splitEdit(C),
+        splitEdit(A, other),
+      ]);
+
+      expect(sharedExpenses.updateExpense).toHaveBeenNthCalledWith(
+        1,
+        expenseId,
+        { useGroupSplit: true },
+        USER,
+        C,
+        groupId,
+      );
+      expect(sharedExpenses.updateExpense).toHaveBeenNthCalledWith(
+        2,
+        other,
+        { useGroupSplit: true },
+        USER,
+        A,
+        groupId,
+      );
+    });
+
+    it("remembers the list with the operation, and a resend moves the guards behind it", async () => {
+      transactions.updateTransaction.mockResolvedValue({
+        id: movementId,
+        restamped: [restamp(A, B)],
+      });
+      const landed = amountEdit();
+      await service.apply(ctx, [landed]);
+      expect(syncOps.record).toHaveBeenCalledWith(
+        USER,
+        landed.opId,
+        expect.objectContaining({ restamped: [restamp(A, B)] }),
+      );
+
+      syncOps.find.mockImplementation(async (_user, opId) =>
+        opId === landed.opId
+          ? {
+              status: "applied",
+              entityId: movementId,
+              code: null,
+              restamped: [restamp(A, B)],
+            }
+          : null,
+      );
+      const { results } = await service.apply(ctx, [landed, splitEdit(A)]);
+
+      expect(results[0].status).toBe("duplicate");
+      expect(results[0].restamped).toEqual([restamp(A, B)]);
+      expect(sharedExpenses.updateExpense).toHaveBeenCalledWith(
+        expenseId,
+        { useGroupSplit: true },
+        USER,
+        B,
+        groupId,
+      );
+    });
+
+    it("records nothing more for a write that rewrote nothing else", async () => {
+      transactions.updateTransaction.mockResolvedValue({
+        id: movementId,
+        restamped: [],
+      });
+      const landed = amountEdit();
+
+      await service.apply(ctx, [landed]);
+
+      expect(syncOps.record).toHaveBeenCalledWith(USER, landed.opId, {
+        status: "applied",
+        entityId: movementId,
+        code: null,
+      });
+    });
+
+    it("starts every batch from the guards the device sent", async () => {
+      transactions.updateTransaction.mockResolvedValue({
+        id: movementId,
+        restamped: [restamp(A, B)],
+      });
+      await service.apply(ctx, [amountEdit()]);
+
+      await service.apply(ctx, [splitEdit(A)]);
+
+      expect(sharedExpenses.updateExpense).toHaveBeenCalledWith(
+        expenseId,
+        { useGroupSplit: true },
+        USER,
+        A,
+        groupId,
       );
     });
   });

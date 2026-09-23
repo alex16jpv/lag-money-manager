@@ -18,6 +18,7 @@ import { ApiError } from "../../shared/errors";
 import { fromCents, toCents } from "../../shared/money";
 import { impute, OwedLine } from "../../shared/sharedImputation";
 import { TxSession } from "../../shared/unitOfWork";
+import { Restamp, RestampJournal } from "./restamps";
 import { stampSharedChange } from "./sharedLedger";
 import { resplitForNewAmount } from "./sharedSplitting";
 
@@ -107,6 +108,7 @@ export class SharedLedgerService {
     counterparties: SettlementCounterparty[],
     reason: SharedHistoryReason,
     session: TxSession,
+    journal: RestampJournal,
   ): Promise<RecomputeResult> {
     const unique = new Map<string, SettlementCounterparty>();
     for (const party of counterparties) {
@@ -215,6 +217,9 @@ export class SharedLedgerService {
 
     const stamped = new Set<string>();
     if (touched.size > 0) {
+      for (const expense of touched.values()) {
+        journal.note("sharedExpense", expense);
+      }
       await this.expenseRepo.replaceSplits(
         [...touched.values()].map((expense) => ({
           id: expense.id,
@@ -227,6 +232,7 @@ export class SharedLedgerService {
         [...touched.values()],
         reason,
         session,
+        journal,
       )) {
         stamped.add(id);
       }
@@ -240,6 +246,7 @@ export class SharedLedgerService {
     after: Transaction,
     sharedExpenseId: string,
     session: TxSession,
+    journal: RestampJournal,
   ): Promise<Transaction> {
     const amountChanged = after.amount !== before.amount;
     // A payment covers the oldest line first, so a new date can move what it covers.
@@ -268,6 +275,7 @@ export class SharedLedgerService {
         paidByContactId: expense.paidByContactId,
       });
     }
+    journal.note("sharedExpense", expense);
     const saved = await this.expenseRepo.update(expense.id, write, session);
     if (!amountChanged && !dateChanged) return after;
 
@@ -279,6 +287,7 @@ export class SharedLedgerService {
         ? SHARED_HISTORY_REASONS.AMOUNT_CHANGED
         : SHARED_HISTORY_REASONS.REIMPUTED,
       session,
+      journal,
     );
     if (!amountChanged)
       return stamped.has(saved.id)
@@ -301,6 +310,7 @@ export class SharedLedgerService {
       session,
       after,
       SHARED_HISTORY_REASONS.AMOUNT_CHANGED,
+      journal,
     );
   }
 
@@ -336,6 +346,7 @@ export class SharedLedgerService {
     movement: Transaction,
     sharedExpenseId: string,
     session: TxSession,
+    journal: RestampJournal,
   ): Promise<void> {
     const expense = await this.expenseRepo.getById(sharedExpenseId, session);
     await this.assertNoGuestPayments(movement.userId, sharedExpenseId, session);
@@ -346,7 +357,47 @@ export class SharedLedgerService {
       counterpartiesOf(new SharedExpense(expense)),
       SHARED_HISTORY_REASONS.REIMPUTED,
       session,
+      journal,
     );
+  }
+
+  /** What the journal noted, stamped as it stands at the end of the write; the answered row is its own. */
+  async restampsOf(
+    userId: string,
+    journal: RestampJournal,
+    session: TxSession,
+    answered?: { entity: Restamp["entity"]; id: string },
+  ): Promise<Restamp[]> {
+    if (journal.entries().length === 0) return [];
+    const now = {
+      sharedExpense: await this.expenseRepo.stampsOf(
+        userId,
+        journal.idsOf("sharedExpense"),
+        session,
+      ),
+      transaction: await this.transactionRepo.stampsOf(
+        userId,
+        journal.idsOf("transaction"),
+        session,
+      ),
+    };
+    const restamped: Restamp[] = [];
+    for (const before of journal.entries()) {
+      if (before.entity === answered?.entity && before.id === answered.id) {
+        continue;
+      }
+      const updatedAt = now[before.entity].get(before.id);
+      if (!updatedAt || updatedAt.getTime() === before.updatedAt.getTime()) {
+        continue;
+      }
+      restamped.push({
+        entity: before.entity,
+        id: before.id,
+        previousUpdatedAt: before.updatedAt,
+        updatedAt,
+      });
+    }
+    return restamped;
   }
 
   /** What is left of a line you fronted after what came back: the figure Stats and the budgets read. */
@@ -355,6 +406,7 @@ export class SharedLedgerService {
     expenses: SharedExpense[],
     reason: SharedHistoryReason,
     session: TxSession,
+    journal: RestampJournal,
   ): Promise<string[]> {
     const written: string[] = [];
     const yours = expenses.filter(
@@ -382,6 +434,7 @@ export class SharedLedgerService {
         session,
         Object.assign(movement, { countsAsYours }),
         reason,
+        journal,
       );
       written.push(expense.id);
     }

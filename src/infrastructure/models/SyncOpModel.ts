@@ -1,6 +1,10 @@
 import mongoose, { Schema } from "mongoose";
 
-import { SYNC_OP_STATUSES, SYNC_OP_TTL_SECONDS } from "../../shared/syncBatch";
+import {
+  RESTAMPED_ENTITIES,
+  SYNC_OP_STATUSES,
+  SYNC_OP_TTL_SECONDS,
+} from "../../shared/syncBatch";
 
 // D-2: enough to answer a resent opId without applying it again, and nothing else.
 export interface ISyncOpDocument {
@@ -10,8 +14,24 @@ export interface ISyncOpDocument {
   status: string;
   entityId: string;
   code: string | null;
+  restamped?: {
+    entity: string;
+    id: string;
+    previousUpdatedAt: Date;
+    updatedAt: Date;
+  }[];
   createdAt: Date;
 }
+
+const RestampSchema = new Schema(
+  {
+    entity: { type: String, required: true, enum: [...RESTAMPED_ENTITIES] },
+    id: { type: String, required: true },
+    previousUpdatedAt: { type: Date, required: true },
+    updatedAt: { type: Date, required: true },
+  },
+  { _id: false, id: false },
+);
 
 const SyncOpSchema = new Schema<ISyncOpDocument>(
   {
@@ -21,6 +41,7 @@ const SyncOpSchema = new Schema<ISyncOpDocument>(
     status: { type: String, required: true, enum: [...SYNC_OP_STATUSES] },
     entityId: { type: String, required: true },
     code: { type: String, default: null },
+    restamped: { type: [RestampSchema], default: undefined },
     createdAt: { type: Date, required: true, default: () => new Date() },
   },
   { versionKey: false },

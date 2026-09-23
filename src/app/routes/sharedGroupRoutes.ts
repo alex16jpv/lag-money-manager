@@ -293,7 +293,7 @@ router.put(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/SharedGroup'
+ *               $ref: '#/components/schemas/SharedGroupWithRestamps'
  *       400:
  *         description: Invalid ID format (code VALIDATION)
  *         content:
@@ -620,7 +620,7 @@ router.delete(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/SharedGroup'
+ *               $ref: '#/components/schemas/SharedGroupWithRestamps'
  *       400:
  *         description: Validation error (code VALIDATION), somebody who is not in the group (code PARTICIPANT_NOT_IN_GROUP) or an archived group (code RESOURCE_ARCHIVED)
  *         content:
@@ -680,7 +680,7 @@ router.post(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/SharedGroup'
+ *               $ref: '#/components/schemas/SharedGroupWithRestamps'
  *       400:
  *         description: Invalid ID format (code VALIDATION) or an archived group (code RESOURCE_ARCHIVED)
  *         content:
@@ -827,13 +827,13 @@ router.get(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/SharedExpense'
+ *               $ref: '#/components/schemas/SharedExpenseWithRestamps'
  *       201:
  *         description: Expense recorded
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/SharedExpense'
+ *               $ref: '#/components/schemas/SharedExpenseWithRestamps'
  *       400:
  *         description: Validation error (code VALIDATION), a split that cannot describe one (code SPLIT_INVALID), somebody in the split who is not in the group (code PARTICIPANT_NOT_IN_GROUP), a date more than 24h ahead (code FUTURE_DATE), decimals in a `ZeroDecimalCurrency` (code AMOUNT_PRECISION), an archived group (code RESOURCE_ARCHIVED), a movement that is already in a group (code TRANSACTION_ALREADY_SHARED), one that is not an expense (code TRANSACTION_NOT_SPLITTABLE) or one in another currency (code CURRENCY_MISMATCH)
  *         content:
@@ -968,7 +968,7 @@ router.get(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/SharedExpense'
+ *               $ref: '#/components/schemas/SharedExpenseWithRestamps'
  *       400:
  *         description: Validation error (code VALIDATION), a split that cannot describe one (code SPLIT_INVALID), somebody in the split who is not in the group (code PARTICIPANT_NOT_IN_GROUP), a date more than 24h ahead (code FUTURE_DATE), decimals in a `ZeroDecimalCurrency` (code AMOUNT_PRECISION), restating what the linked movement states (code SHARED_EXPENSE_LINKED), or the expense is deleted or its group archived (code RESOURCE_ARCHIVED)
  *         content:
@@ -1033,7 +1033,7 @@ router.put(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/SharedExpense'
+ *               $ref: '#/components/schemas/SharedExpenseWithRestamps'
  *       400:
  *         description: Invalid ID format (code VALIDATION)
  *         content:

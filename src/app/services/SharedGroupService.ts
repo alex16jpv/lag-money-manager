@@ -38,6 +38,7 @@ import {
   UpdateSharedGroupDTO,
   WriteOffDTO,
 } from "../dtos/SharedGroupDTO";
+import { RestampJournal, WithRestamps } from "./restamps";
 import { stampSharedChange } from "./sharedLedger";
 import {
   counterpartiesOf,
@@ -396,15 +397,20 @@ export class SharedGroupService {
     id: string,
     userId: string,
     expectedUpdatedAt?: Date,
-  ): Promise<SharedGroupView> {
+  ): Promise<WithRestamps<SharedGroupView>> {
     const existing = await this.ownedGroup(id, userId);
     assertFresh(existing, expectedUpdatedAt, (g) => new SharedGroup(g));
-    if (existing.archivedAt) return this.viewOf(userId, existing);
+    if (existing.archivedAt) {
+      return Object.assign(await this.viewOf(userId, existing), {
+        restamped: [],
+      });
+    }
 
     return guardedWrite(
       expectedUpdatedAt,
       () =>
         withTransaction(async (session) => {
+          const journal = new RestampJournal();
           const group = await this.groupInSession(id, userId, session);
           await this.invitationRepo.withdrawAll(
             { userId, groupId: id, statuses: [INVITATION_STATUSES.PENDING] },
@@ -419,9 +425,12 @@ export class SharedGroupService {
             .filter((key) => !given.has(key))
             .map((key) => writeOffOf(key, open));
           if (fresh.length === 0) {
-            return this.viewOf(
-              userId,
-              await this.repo.delete(id, session, expectedUpdatedAt),
+            return Object.assign(
+              await this.viewOf(
+                userId,
+                await this.repo.delete(id, session, expectedUpdatedAt),
+              ),
+              { restamped: [] },
             );
           }
           // The guard rides on the first write; the archive that follows is inside it.
@@ -437,8 +446,14 @@ export class SharedGroupService {
             open,
             SHARED_HISTORY_REASONS.WRITE_OFF,
             session,
+            journal,
           );
-          return this.viewOf(userId, await this.repo.delete(id, session));
+          return Object.assign(
+            await this.viewOf(userId, await this.repo.delete(id, session)),
+            {
+              restamped: await this.ledger.restampsOf(userId, journal, session),
+            },
+          );
         }),
       () => this.repo.getOwnById(id, userId),
       (g) => new SharedGroup(g),
@@ -451,7 +466,7 @@ export class SharedGroupService {
     dto: WriteOffDTO,
     userId: string,
     expectedUpdatedAt?: Date,
-  ): Promise<SharedGroupView> {
+  ): Promise<WithRestamps<SharedGroupView>> {
     const group = await this.openGroup(id, userId, expectedUpdatedAt);
     const party = await this.writeOffParty(group, dto);
     const key = counterpartyKey(party);
@@ -460,11 +475,14 @@ export class SharedGroupService {
       expectedUpdatedAt,
       () =>
         withTransaction(async (session) => {
+          const journal = new RestampJournal();
           // Read again inside the write: two write-offs at once would overwrite each other.
           const fresh = await this.groupInSession(id, userId, session);
           this.assertOpen(fresh);
           if (fresh.writeOffs.some((one) => counterpartyKey(one) === key)) {
-            return this.viewOf(userId, fresh);
+            return Object.assign(await this.viewOf(userId, fresh), {
+              restamped: [],
+            });
           }
           const open = openByParty(
             await this.expenseRepo.listByGroup(userId, id, session),
@@ -482,8 +500,11 @@ export class SharedGroupService {
             open,
             SHARED_HISTORY_REASONS.WRITE_OFF,
             session,
+            journal,
           );
-          return this.viewOf(userId, saved);
+          return Object.assign(await this.viewOf(userId, saved), {
+            restamped: await this.ledger.restampsOf(userId, journal, session),
+          });
         }),
       () => this.repo.getOwnById(id, userId),
       (g) => new SharedGroup(g),
@@ -496,20 +517,25 @@ export class SharedGroupService {
     partyId: string,
     userId: string,
     expectedUpdatedAt?: Date,
-  ): Promise<SharedGroupView> {
+  ): Promise<WithRestamps<SharedGroupView>> {
     await this.openGroup(id, userId, expectedUpdatedAt);
 
     return guardedWrite(
       expectedUpdatedAt,
       () =>
         withTransaction(async (session) => {
+          const journal = new RestampJournal();
           const fresh = await this.groupInSession(id, userId, session);
           this.assertOpen(fresh);
           // The stored entry already knows whether it is a person or a block of guests.
           const entry = fresh.writeOffs.find(
             (one) => one.contactId === partyId || one.expenseId === partyId,
           );
-          if (!entry) return this.viewOf(userId, fresh);
+          if (!entry) {
+            return Object.assign(await this.viewOf(userId, fresh), {
+              restamped: [],
+            });
+          }
           const key = counterpartyKey(entry);
           const open = openByParty(
             await this.expenseRepo.listByGroup(userId, id, session),
@@ -530,8 +556,11 @@ export class SharedGroupService {
             open,
             SHARED_HISTORY_REASONS.WRITE_OFF_UNDONE,
             session,
+            journal,
           );
-          return this.viewOf(userId, saved);
+          return Object.assign(await this.viewOf(userId, saved), {
+            restamped: await this.ledger.restampsOf(userId, journal, session),
+          });
         }),
       () => this.repo.getOwnById(id, userId),
       (g) => new SharedGroup(g),
@@ -545,6 +574,7 @@ export class SharedGroupService {
     open: Map<string, OpenAmount>,
     reason: SharedHistoryReason,
     session: TxSession,
+    journal: RestampJournal,
   ): Promise<void> {
     const ids = new Set(
       parties.flatMap(
@@ -558,7 +588,13 @@ export class SharedGroupService {
       session,
     );
     for (const movement of movements) {
-      await stampSharedChange(this.transactionRepo, session, movement, reason);
+      await stampSharedChange(
+        this.transactionRepo,
+        session,
+        movement,
+        reason,
+        journal,
+      );
     }
   }
 
@@ -825,7 +861,9 @@ export class SharedGroupService {
     dto: AddParticipantsDTO,
     userId: string,
     expectedUpdatedAt?: Date,
-  ): Promise<{ group: SharedGroupView; applied: AddParticipantsPreview }> {
+  ): Promise<
+    WithRestamps<{ group: SharedGroupView; applied: AddParticipantsPreview }>
+  > {
     const { group, plannedGroup, contactIds } = await this.plan(
       id,
       dto,
@@ -834,36 +872,42 @@ export class SharedGroupService {
     assertFresh(group, expectedUpdatedAt, (g) => new SharedGroup(g));
 
     // Read and written in the same transaction: an expense added in between would keep the old split.
-    const { updated, preview } = await guardedWrite(
+    const { updated, preview, restamped } = await guardedWrite(
       expectedUpdatedAt,
       () =>
         withTransaction(async (session) => {
+          const journal = new RestampJournal();
           const plan = await this.simulate(
             plannedGroup,
             contactIds,
             dto.applyToExistingExpenses ?? false,
             session,
           );
+          for (const expense of plan.resplit) {
+            journal.note("sharedExpense", expense);
+          }
           await this.expenseRepo.replaceSplits(plan.updates, session);
-          await this.recordResplit(userId, plan.resplit, session);
+          await this.recordResplit(userId, plan.resplit, session, journal);
+          const saved = await this.repo.update(
+            id,
+            {
+              participants: plannedGroup.participants,
+              defaultSplit: plannedGroup.defaultSplit,
+            },
+            session,
+            expectedUpdatedAt,
+          );
           return {
-            updated: await this.repo.update(
-              id,
-              {
-                participants: plannedGroup.participants,
-                defaultSplit: plannedGroup.defaultSplit,
-              },
-              session,
-              expectedUpdatedAt,
-            ),
+            updated: saved,
             preview: plan.preview,
+            restamped: await this.ledger.restampsOf(userId, journal, session),
           };
         }),
       () => this.repo.getOwnById(id, userId),
       (g) => new SharedGroup(g),
     );
     const [view] = await this.withTotals(userId, [updated]);
-    return { group: view as SharedGroupView, applied: preview };
+    return { group: view as SharedGroupView, applied: preview, restamped };
   }
 
   /**
@@ -875,6 +919,7 @@ export class SharedGroupService {
     userId: string,
     expenses: SharedExpense[],
     session: TxSession,
+    journal: RestampJournal,
   ): Promise<void> {
     if (expenses.length === 0) return;
     const { stamped } = await this.ledger.recompute(
@@ -882,6 +927,7 @@ export class SharedGroupService {
       expenses.flatMap(counterpartiesOf),
       SHARED_HISTORY_REASONS.SPLIT_EDITED,
       session,
+      journal,
     );
     const movements = await this.transactionRepo.listBySharedExpenseIds(
       userId,
@@ -895,6 +941,7 @@ export class SharedGroupService {
         session,
         movement,
         SHARED_HISTORY_REASONS.SPLIT_EDITED,
+        journal,
       );
     }
   }

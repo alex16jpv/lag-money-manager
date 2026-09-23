@@ -73,3 +73,10 @@ export type SyncAction<E extends SyncEntity = SyncEntity> =
 
 export const describeSyncActions = (): string =>
   SYNC_ENTITIES.map((e) => `${e}: ${SYNC_ACTIONS[e].join(", ")}`).join("; ");
+
+// What a write can rewrite besides the row it answers: the device moves the guards it queued on them.
+export const RESTAMPED_ENTITIES = [
+  "sharedExpense",
+  "transaction",
+] as const satisfies readonly SyncEntity[];
+export type RestampedEntity = (typeof RESTAMPED_ENTITIES)[number];
