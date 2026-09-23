@@ -25,6 +25,12 @@ export interface GroupTotals {
   dateTo: Date | null;
 }
 
+// `after`: only what changed after you joined, because what was there by then arrives at that moment.
+export interface JoinedScope {
+  groupId: string;
+  after: Date | null;
+}
+
 export interface ISharedExpenseRepository extends IRepository<SharedExpense> {
   // Change feed after `cursor` in (updatedAt, _id) order, deleted rows included.
   changesSince(
@@ -35,12 +41,17 @@ export interface ISharedExpenseRepository extends IRepository<SharedExpense> {
 
   // The feed of somebody who joined these groups, whoever owns them; deleted rows included.
   changesInGroups(
-    groupIds: string[],
+    scopes: JoinedScope[],
     cursor: ChangeCursor | undefined,
     limit: number,
   ): Promise<SharedExpense[]>;
-  // Every row of these groups, deleted ones included: what a person who just joined has never seen.
-  allInGroups(groupIds: string[]): Promise<SharedExpense[]>;
+  // What a group held when you joined it, in id order: the rows the feed places at that moment.
+  atJoin(
+    groupId: string,
+    joinedAt: Date,
+    afterId: string | null,
+    limit: number,
+  ): Promise<SharedExpense[]>;
 
   // `expectedUpdatedAt` goes in the write's own filter: a guard checked before would race.
   update(

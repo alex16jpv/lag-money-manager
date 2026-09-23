@@ -150,7 +150,7 @@ describe("JoinedGroupService", () => {
     expenses = {
       getById: jest.fn().mockResolvedValue(line()),
       changesInGroups: jest.fn().mockResolvedValue([]),
-      allInGroups: jest.fn().mockResolvedValue([]),
+      atJoin: jest.fn().mockResolvedValue([]),
       getAllByGroup: jest.fn(),
     } as unknown as jest.Mocked<ISharedExpenseRepository>;
     contacts = {
@@ -258,21 +258,20 @@ describe("JoinedGroupService", () => {
   describe("the feed", () => {
     it("sends a group joined after the cursor whole, placed at the moment of joining", async () => {
       const older = line({ updatedAt: at("2026-09-02") });
-      expenses.allInGroups.mockResolvedValue([older]);
+      expenses.atJoin.mockResolvedValue([older]);
+      const cursor = { updatedAt: at("2026-09-09"), id: null };
 
-      const changes = await service.changes(
-        meId,
-        { updatedAt: at("2026-09-09"), id: null },
+      const changes = await service.changes(meId, cursor, 10);
+
+      expect(expenses.atJoin).toHaveBeenCalledWith(
+        groupId,
+        at("2026-09-10"),
+        null,
         10,
       );
-
-      expect(expenses.allInGroups).toHaveBeenCalledWith([groupId]);
       expect(expenses.changesInGroups).toHaveBeenCalledWith(
-        [],
-        {
-          updatedAt: at("2026-09-09"),
-          id: null,
-        },
+        [{ groupId, after: at("2026-09-10") }],
+        cursor,
         10,
       );
       expect(changes.expenses).toHaveLength(1);
@@ -280,19 +279,33 @@ describe("JoinedGroupService", () => {
       expect(changes.groups).toHaveLength(1);
     });
 
-    it("asks a group joined before the cursor only for what changed since", async () => {
-      await service.changes(
-        meId,
-        { updatedAt: at("2026-09-12"), id: null },
+    it("resumes a join cut by a page at the id it stopped on, never from the start", async () => {
+      const cursor = {
+        updatedAt: at("2026-09-10"),
+        id: "019576a0-0000-7000-8000-000000000001",
+      };
+
+      await service.changes(meId, cursor, 10);
+
+      expect(expenses.atJoin).toHaveBeenCalledWith(
+        groupId,
+        at("2026-09-10"),
+        cursor.id,
         10,
       );
+    });
+
+    it("asks a group joined before the cursor only for what changed since", async () => {
+      const cursor = { updatedAt: at("2026-09-12"), id: null };
+
+      await service.changes(meId, cursor, 10);
 
       expect(expenses.changesInGroups).toHaveBeenCalledWith(
-        [groupId],
-        { updatedAt: at("2026-09-12"), id: null },
+        [{ groupId, after: null }],
+        cursor,
         10,
       );
-      expect(expenses.allInGroups).toHaveBeenCalledWith([]);
+      expect(expenses.atJoin).not.toHaveBeenCalled();
     });
 
     it("reads nothing else for somebody who joined nothing", async () => {
@@ -327,6 +340,7 @@ describe("JoinedGroupService", () => {
           categoryId,
           fromAccountId: accountId,
           userId: meId,
+          currency: "COP",
           importedFromGroupId: groupId,
           importedFromExpenseId: expenseId,
         },

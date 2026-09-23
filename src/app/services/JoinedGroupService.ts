@@ -64,7 +64,6 @@ const isDuplicateKey = (err: unknown): boolean =>
 const joinedAt = (membership: SharedInvitation): Date =>
   membership.answeredAt ?? membership.updatedAt ?? new Date(0);
 
-// Only the owner writes in a group in v1, so everything here reads, except Add to my ledger.
 export class JoinedGroupService {
   constructor(
     private invitations: ISharedInvitationRepository,
@@ -113,7 +112,6 @@ export class JoinedGroupService {
       const touched: (Date | undefined)[] = [
         group.updatedAt,
         joinedAt(membership),
-        owner.updatedAt,
         ...ofGroup.map((inv) => inv.updatedAt),
       ];
       const participants = group.participants.map(
@@ -129,7 +127,7 @@ export class JoinedGroupService {
           }
           const contact = contactById.get(contactId);
           const user = joinedUser.get(contactId);
-          touched.push(contact?.updatedAt, user?.updatedAt);
+          touched.push(contact?.updatedAt);
           return {
             contactId,
             name: user?.name ?? contact?.name ?? "",
@@ -146,6 +144,7 @@ export class JoinedGroupService {
           name: group.name,
           color: group.color ?? null,
           currency: group.currency ?? membership.groupCurrency,
+          ownerId: owner.id,
           ownerName: owner.name,
           participants,
           defaultSplit: group.defaultSplit,
@@ -201,10 +200,7 @@ export class JoinedGroupService {
     };
   }
 
-  /**
-   * The feed's two joined sources. A row's position is when it last changed or when you joined,
-   * whichever is later: a group joined after the cursor arrives whole, and pages like any other.
-   */
+  // A row sits where it changed or where you joined, whichever is later, so a late join arrives whole.
   async changes(
     userId: string,
     cursor: ChangeCursor | undefined,
@@ -213,19 +209,32 @@ export class JoinedGroupService {
     const memberships = await this.invitations.memberships(userId);
     if (memberships.length === 0) return { groups: [], expenses: [] };
 
-    const fresh = memberships.filter(
-      (m) => !cursor || joinedAt(m).getTime() >= cursor.updatedAt.getTime(),
-    );
-    const old = memberships.filter((m) => !fresh.includes(m));
+    const onCursor = (at: Date): boolean =>
+      cursor !== undefined && at.getTime() === cursor.updatedAt.getTime();
+    const fresh = memberships.filter((m) => {
+      const at = joinedAt(m);
+      if (!cursor || at.getTime() > cursor.updatedAt.getTime()) return true;
+      return onCursor(at) && cursor.id !== null;
+    });
     const sinceOf = new Map(memberships.map((m) => [m.groupId, joinedAt(m)]));
-    const [views, recent, whole] = await Promise.all([
+    const [views, recent, ...atJoin] = await Promise.all([
       this.views(memberships),
       this.expenses.changesInGroups(
-        old.map((m) => m.groupId),
+        memberships.map((m) => ({
+          groupId: m.groupId,
+          after: fresh.includes(m) ? joinedAt(m) : null,
+        })),
         cursor,
         limit,
       ),
-      this.expenses.allInGroups(fresh.map((m) => m.groupId)),
+      ...fresh.map((m) =>
+        this.expenses.atJoin(
+          m.groupId,
+          joinedAt(m),
+          onCursor(joinedAt(m)) ? (cursor?.id ?? null) : null,
+          limit,
+        ),
+      ),
     ]);
     const firstOf = <T extends { id: string; updatedAt: Date }>(
       rows: T[],
@@ -237,7 +246,7 @@ export class JoinedGroupService {
     return {
       groups: firstOf(views),
       expenses: firstOf(
-        [...recent, ...whole].map((expense) =>
+        [...recent, ...atJoin.flat()].map((expense) =>
           joinedExpenseView(
             expense,
             sinceOf.get(expense.groupId) ?? new Date(0),
@@ -307,6 +316,7 @@ export class JoinedGroupService {
             categoryId: dto.categoryId ?? null,
             fromAccountId: dto.accountId,
             userId,
+            currency: expense.currency,
             importedFromGroupId: groupId,
             importedFromExpenseId: expenseId,
           },

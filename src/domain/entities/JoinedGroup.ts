@@ -18,6 +18,7 @@ export interface JoinedGroupView {
   name: string;
   color: Color | null;
   currency: string;
+  ownerId: string;
   ownerName: string;
   participants: JoinedParticipantView[];
   defaultSplit: DefaultSplit;

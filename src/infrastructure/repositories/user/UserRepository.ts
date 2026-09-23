@@ -44,10 +44,9 @@ export class UserRepository implements IUserRepository {
 
   async getManyByIds(ids: string[]): Promise<User[]> {
     if (ids.length === 0) return [];
-    const docs = await UserModel.find({
-      _id: { $in: ids },
-      deletedAt: null,
-    }).lean();
+    const docs = await UserModel.find({ _id: { $in: ids }, deletedAt: null })
+      .select("-password")
+      .lean();
     return docs.map((doc) => this.toEntity(doc));
   }
 

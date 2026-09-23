@@ -53,7 +53,6 @@ export interface SyncChanges {
   settlements: SharedSettlement[];
   invitationsSent: SentInvitationView[];
   invitationsReceived: ReceivedInvitationView[];
-  // Groups somebody else shared with you, and their lines: read-only, and never their ledger.
   joinedGroups: JoinedGroupView[];
   joinedExpenses: JoinedExpenseView[];
 }

@@ -9,6 +9,7 @@ import { SettlementCounterparty } from "../../../domain/entities/SharedSettlemen
 import {
   GroupTotals,
   ISharedExpenseRepository,
+  JoinedScope,
 } from "../../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { SETTLEMENT_PARTIES, SHARE_PARTIES } from "../../../shared/constants";
 import { ApiError } from "../../../shared/errors";
@@ -25,7 +26,11 @@ import {
   ISharedExpenseDocument,
   SharedExpenseModel,
 } from "../../models/SharedExpenseModel";
-import { CHANGE_FEED_SORT, changesSinceFilter } from "../changeFeed";
+import {
+  CHANGE_FEED_SORT,
+  changesSinceFilter,
+  keysetAfter,
+} from "../changeFeed";
 import { invalidCursor } from "../keysetCursor";
 
 // Newest first: a group is read from the last thing that happened backwards.
@@ -158,25 +163,41 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
   }
 
   async changesInGroups(
-    groupIds: string[],
+    scopes: JoinedScope[],
     cursor: ChangeCursor | undefined,
     limit: number,
   ): Promise<SharedExpense[]> {
-    if (groupIds.length === 0) return [];
-    const docs = await SharedExpenseModel.find(
-      changesSinceFilter({ $in: groupIds }, cursor, "groupId"),
-    )
+    if (scopes.length === 0) return [];
+    const docs = await SharedExpenseModel.find({
+      ...keysetAfter(cursor),
+      $and: [
+        {
+          $or: scopes.map(({ groupId, after }) =>
+            after ? { groupId, updatedAt: { $gt: after } } : { groupId },
+          ),
+        },
+      ],
+    })
       .sort(CHANGE_FEED_SORT)
       .limit(limit)
       .lean();
     return docs.map((doc) => this.toEntity(doc));
   }
 
-  async allInGroups(groupIds: string[]): Promise<SharedExpense[]> {
-    if (groupIds.length === 0) return [];
+  async atJoin(
+    groupId: string,
+    joinedAt: Date,
+    afterId: string | null,
+    limit: number,
+  ): Promise<SharedExpense[]> {
     const docs = await SharedExpenseModel.find({
-      groupId: { $in: groupIds },
-    }).lean();
+      groupId,
+      updatedAt: { $lte: joinedAt },
+      ...(afterId && { _id: { $gt: afterId } }),
+    })
+      .sort({ _id: 1 })
+      .limit(limit)
+      .lean();
     return docs.map((doc) => this.toEntity(doc));
   }
 

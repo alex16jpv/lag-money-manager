@@ -53,7 +53,7 @@ const groupRepo = (): jest.Mocked<ISharedGroupRepository> => ({
 });
 
 const expenseRepo = (): jest.Mocked<ISharedExpenseRepository> => ({
-  allInGroups: jest.fn().mockResolvedValue([]),
+  atJoin: jest.fn().mockResolvedValue([]),
   changesInGroups: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getAllByGroup: jest.fn(),

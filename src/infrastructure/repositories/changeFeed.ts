@@ -7,15 +7,18 @@ import { ChangeCursor } from "../../shared/syncCursor";
  * already sorted and MongoDB merges them instead of sorting in memory.
  */
 export function changesSinceFilter(
-  owner: string | { $in: string[] },
+  owner: string,
   cursor?: ChangeCursor,
   ownerField = "userId",
 ): Record<string, unknown> {
-  const scope = { [ownerField]: owner };
-  if (!cursor) return scope;
-  if (!cursor.id) return { ...scope, updatedAt: { $gt: cursor.updatedAt } };
+  return { [ownerField]: owner, ...keysetAfter(cursor) };
+}
+
+// The same keyset with no owner, for a caller that scopes the rows another way.
+export function keysetAfter(cursor?: ChangeCursor): Record<string, unknown> {
+  if (!cursor) return {};
+  if (!cursor.id) return { updatedAt: { $gt: cursor.updatedAt } };
   return {
-    ...scope,
     $or: [
       { updatedAt: { $gt: cursor.updatedAt } },
       { updatedAt: cursor.updatedAt, _id: { $gt: cursor.id } },

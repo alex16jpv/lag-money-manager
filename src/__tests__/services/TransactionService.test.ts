@@ -82,7 +82,7 @@ const TX_ID = "019576a0-d7b6-7d6d-af6a-2b7545f5ac80";
 
 const createMockSharedExpenseRepo =
   (): jest.Mocked<ISharedExpenseRepository> => ({
-    allInGroups: jest.fn().mockResolvedValue([]),
+    atJoin: jest.fn().mockResolvedValue([]),
     changesInGroups: jest.fn().mockResolvedValue([]),
     getAll: jest.fn(),
     getAllByGroup: jest.fn(),

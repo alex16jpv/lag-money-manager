@@ -520,6 +520,11 @@ const responseViews = {
       name: { type: "string" },
       color: { ...enumOf(COLORS), nullable: true },
       currency: { type: "string", example: "COP" },
+      ownerId: {
+        ...uuid,
+        description:
+          "Who shared it: the same for every group of theirs, so their groups can be told apart from another person's with the same name.",
+      },
       ownerName: { type: "string" },
       participants: {
         type: "array",
