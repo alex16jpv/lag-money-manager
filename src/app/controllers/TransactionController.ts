@@ -157,11 +157,13 @@ export class TransactionController {
 
   static deleteTransaction = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
-    await transactionService.deleteTransaction(
+    const { restamped } = await transactionService.deleteTransaction(
       req.params.id as string,
       userId,
       ifMatch(req),
     );
-    res.status(200).json({ message: "Transaction deleted successfully" });
+    res
+      .status(200)
+      .json({ message: "Transaction deleted successfully", restamped });
   };
 }

@@ -66,6 +66,7 @@ const expenseRepo = (): jest.Mocked<ISharedExpenseRepository> => ({
   countSharesOfContact: jest.fn().mockResolvedValue(0),
   totalsByGroup: jest.fn().mockResolvedValue([]),
   replaceSplits: jest.fn().mockResolvedValue(undefined),
+  stampsOf: jest.fn().mockResolvedValue(new Map()),
   create: jest.fn().mockImplementation(async (e) => e as SharedExpense),
   update: jest.fn(),
   delete: jest.fn(),
@@ -80,6 +81,7 @@ const transactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   isDeleted: jest.fn().mockResolvedValue(false),
   getBySharedExpenseId: jest.fn().mockResolvedValue(null),
   listBySharedExpenseIds: jest.fn().mockResolvedValue([]),
+  stampsOf: jest.fn().mockResolvedValue(new Map()),
   listBySettlementId: jest.fn().mockResolvedValue([]),
   applySharedChange: jest.fn(),
   changesSince: jest.fn().mockResolvedValue([]),
@@ -429,6 +431,43 @@ describe("SharedExpenseService", () => {
             ...(write as Partial<SharedExpense>),
           }),
       );
+    });
+
+    describe("a line that is no movement of yours [T-145]", () => {
+      beforeEach(() => {
+        expenses.getByIdIncludingDeleted.mockResolvedValue(
+          stored({ paidByContactId: ana }),
+        );
+      });
+
+      it("imputes everybody's payments again over a new amount", async () => {
+        await service.updateExpense(expenseId, { amount: 120000 }, userId);
+
+        const parties = settlements.listByCounterparty.mock.calls.map(
+          ([, party]) => party.contactId,
+        );
+        expect(parties).toEqual(expect.arrayContaining([ana, beto]));
+      });
+
+      it("imputes them again over a new date, which orders the lines", async () => {
+        await service.updateExpense(
+          expenseId,
+          { date: new Date("2026-09-02T12:00:00.000Z") },
+          userId,
+        );
+
+        expect(settlements.listByCounterparty).toHaveBeenCalled();
+      });
+
+      it("leaves them alone when only the description changes", async () => {
+        await service.updateExpense(
+          expenseId,
+          { description: "Brunch" },
+          userId,
+        );
+
+        expect(settlements.listByCounterparty).not.toHaveBeenCalled();
+      });
     });
 
     it("splits the shares again when the amount changes", async () => {

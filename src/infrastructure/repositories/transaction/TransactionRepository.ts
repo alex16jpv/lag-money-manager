@@ -283,6 +283,21 @@ export class TransactionRepository implements ITransactionRepository {
     return docs.map((doc) => this.toEntity(doc));
   }
 
+  async stampsOf(
+    userId: string,
+    ids: string[],
+    session: TxSession,
+  ): Promise<Map<string, Date>> {
+    if (ids.length === 0) return new Map();
+    const docs = await TransactionModel.find(
+      { _id: { $in: ids }, userId, deletedAt: null },
+      { updatedAt: 1 },
+    )
+      .session(session)
+      .lean();
+    return new Map(docs.map((doc) => [String(doc._id), doc.updatedAt]));
+  }
+
   async listBySettlementId(
     userId: string,
     sharedSettlementId: string,

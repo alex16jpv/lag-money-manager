@@ -95,6 +95,7 @@ const createMockSharedExpenseRepo =
     countSharesOfContact: jest.fn().mockResolvedValue(0),
     totalsByGroup: jest.fn().mockResolvedValue([]),
     replaceSplits: jest.fn().mockResolvedValue(undefined),
+    stampsOf: jest.fn().mockResolvedValue(new Map()),
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
@@ -122,6 +123,7 @@ const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   isDeleted: jest.fn().mockResolvedValue(false),
   getBySharedExpenseId: jest.fn().mockResolvedValue(null),
   listBySharedExpenseIds: jest.fn().mockResolvedValue([]),
+  stampsOf: jest.fn().mockResolvedValue(new Map()),
   listBySettlementId: jest.fn().mockResolvedValue([]),
   applySharedChange: jest.fn(),
   changesSince: jest.fn().mockResolvedValue([]),
@@ -856,6 +858,7 @@ describe("TransactionService", () => {
         date: new Date("2026-08-12T18:00:00.000Z"),
         amount: 120000,
         userId: USER,
+        updatedAt: new Date("2026-08-12T19:00:00.000Z"),
         currency: "COP",
         customSplit: mode !== "EQUAL",
         split: {

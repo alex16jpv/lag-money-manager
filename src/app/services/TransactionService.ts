@@ -24,6 +24,7 @@ import {
   QuickAddTransactionDTO,
   UpdateTransactionDTO,
 } from "../dtos/TransactionDTO";
+import { Restamp, RestampJournal, WithRestamps } from "./restamps";
 import { SharedLedgerService } from "./SharedLedgerService";
 
 function isDuplicateKeyError(err: unknown): boolean {
@@ -368,12 +369,13 @@ export class TransactionService {
     userId: string,
     timezone: string,
     expectedUpdatedAt?: Date,
-  ): Promise<Transaction> {
+  ): Promise<WithRestamps<Transaction>> {
     if (dto.id && dto.id !== id) {
       throw new ApiError("BadRequest", "Transaction id does not match");
     }
 
     return await withTransaction(async (session) => {
+      const journal = new RestampJournal();
       const existing = await this.transactionRepo.getById(id, session);
       if (!existing) {
         throw new ApiError("NotFound", "Transaction not found");
@@ -443,13 +445,21 @@ export class TransactionService {
         revision,
         expectedUpdatedAt,
       );
-      if (!existing.sharedExpenseId) return saved;
-      return await this.ledger.restateExpense(
-        existing,
-        saved,
-        existing.sharedExpenseId,
-        session,
-      );
+      const answer = existing.sharedExpenseId
+        ? await this.ledger.restateExpense(
+            existing,
+            saved,
+            existing.sharedExpenseId,
+            session,
+            journal,
+          )
+        : saved;
+      return Object.assign(answer, {
+        restamped: await this.ledger.restampsOf(userId, journal, session, {
+          entity: "transaction",
+          id,
+        }),
+      });
     });
   }
 
@@ -457,8 +467,9 @@ export class TransactionService {
     id: string,
     userId: string,
     expectedUpdatedAt?: Date,
-  ): Promise<void> {
-    await withTransaction(async (session) => {
+  ): Promise<{ restamped: Restamp[] }> {
+    return withTransaction(async (session) => {
+      const journal = new RestampJournal();
       const transaction = await this.transactionRepo.getById(id, session);
       if (!transaction) {
         throw new ApiError("NotFound", "Transaction not found");
@@ -482,9 +493,13 @@ export class TransactionService {
           transaction,
           transaction.sharedExpenseId,
           session,
+          journal,
         );
       }
       await this.transactionRepo.delete(id, session, expectedUpdatedAt);
+      return {
+        restamped: await this.ledger.restampsOf(userId, journal, session),
+      };
     });
   }
 

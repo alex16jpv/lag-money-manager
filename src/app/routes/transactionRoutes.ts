@@ -464,7 +464,7 @@ router.get(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Transaction'
+ *               $ref: '#/components/schemas/TransactionWithRestamps'
  *       400:
  *         description: Validation error. Codes include SPLIT_INVALID and TRANSACTION_NOT_SPLITTABLE (a movement in a shared group), FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN (an income moved onto an account type listed in `IncomeRefusedAccountType`), AMOUNT_PRECISION (only when the edit carries an amount) and LOAN_OVERPAID (a movement that would leave a LOAN above zero), the first and the last checked again whenever the edit moves money, CATEGORY_ARCHIVED (assigning an archived category; keeping the one it already had is allowed), CATEGORY_TYPE_MISMATCH.
  *         content:
@@ -516,7 +516,7 @@ router.put(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Message'
+ *               $ref: '#/components/schemas/MessageWithRestamps'
  *       400:
  *         description: Invalid ID format
  *       401:

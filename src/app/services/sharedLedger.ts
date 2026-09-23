@@ -11,6 +11,7 @@ import {
   SharedHistoryReason,
 } from "../../shared/constants";
 import { TxSession } from "../../shared/unitOfWork";
+import { RestampJournal } from "./restamps";
 
 export interface SharedLink {
   sharedExpenseId: string | null;
@@ -32,6 +33,7 @@ export async function stampSharedChange(
   session: TxSession,
   movement: Transaction,
   reason: SharedHistoryReason,
+  journal: RestampJournal,
   link: SharedLink = {
     sharedExpenseId: movement.sharedExpenseId,
     sharedGroupId: movement.sharedGroupId,
@@ -40,6 +42,7 @@ export async function stampSharedChange(
   const countsAsYours = figureAfter(movement, reason);
   const patch: SharedLinkPatch = { ...link, countsAsYours };
   const entry: SharedHistoryEntry = { at: new Date(), reason, countsAsYours };
+  journal.note("transaction", movement);
   return repo.applySharedChange(
     movement.id,
     movement.userId,

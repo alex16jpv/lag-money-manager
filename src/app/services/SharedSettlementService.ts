@@ -24,6 +24,7 @@ import { assertAmountPrecision } from "../../shared/money";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { TxSession, withTransaction } from "../../shared/unitOfWork";
 import { CreateSharedSettlementDTO } from "../dtos/SharedSettlementDTO";
+import { Restamp, RestampJournal, WithRestamps } from "./restamps";
 import {
   counterpartyKey,
   ShareChange,
@@ -45,6 +46,7 @@ export interface SettlementResult {
   covered: SettlementCoverage[];
   // What you handed over that covered no line: their money going back to them.
   refunded: number;
+  restamped: Restamp[];
 }
 
 export class SharedSettlementService {
@@ -89,6 +91,7 @@ export class SharedSettlementService {
         settlement,
         covered: [],
         refunded: 0,
+        restamped: [],
       }),
       create: () => this.insert(dto, timezone),
     });
@@ -117,6 +120,7 @@ export class SharedSettlementService {
     }
 
     return withTransaction(async (session) => {
+      const journal = new RestampJournal();
       const currency = await this.currencyOf(dto.userId);
       assertAmountPrecision(collected, currency, "collected");
       assertAmountPrecision(paid, currency, "paid");
@@ -140,6 +144,7 @@ export class SharedSettlementService {
         [counterparty],
         SHARED_HISTORY_REASONS.PAYMENT,
         session,
+        journal,
       );
       const held = surplus.get(counterpartyKey(counterparty));
       if (held && held.yours > 0) {
@@ -159,7 +164,12 @@ export class SharedSettlementService {
           session,
         );
       }
-      return { settlement: created, covered, refunded };
+      return {
+        settlement: created,
+        covered,
+        refunded,
+        restamped: await this.ledger.restampsOf(dto.userId, journal, session),
+      };
     });
   }
 
@@ -257,12 +267,13 @@ export class SharedSettlementService {
     id: string,
     userId: string,
     expectedUpdatedAt?: Date,
-  ): Promise<SharedSettlement> {
+  ): Promise<WithRestamps<SharedSettlement>> {
     const existing = await this.getSettlementById(id, userId);
     assertFresh(existing, expectedUpdatedAt, (s) => s);
-    if (existing.deletedAt) return existing;
+    if (existing.deletedAt) return Object.assign(existing, { restamped: [] });
 
     return withTransaction(async (session) => {
+      const journal = new RestampJournal();
       const movements = await this.transactions.settlementMovements(
         userId,
         id,
@@ -277,8 +288,11 @@ export class SharedSettlementService {
         [existing.counterparty],
         SHARED_HISTORY_REASONS.REIMPUTED,
         session,
+        journal,
       );
-      return deleted;
+      return Object.assign(deleted, {
+        restamped: await this.ledger.restampsOf(userId, journal, session),
+      });
     });
   }
 

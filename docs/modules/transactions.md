@@ -71,6 +71,8 @@ The two are **one fact seen from two sides**, so nothing may leave them saying d
 | `DELETE …/expenses/{expenseId}` | The movement stays, leaves the group, counts as yours in full again and records `UNSPLIT` |
 | People are added to the group with `applyToExistingExpenses` | Every movement whose expense was re-split records `SPLIT_EDITED`, in the same database transaction as the re-split |
 
+`PUT /transactions/{id}` answers the movement plus **`restamped`**, and `DELETE /transactions/{id}` answers its message plus `restamped`: the expense and the other lines and movements the write rewrote along the way, each with the `updatedAt` it had before and the one it has now, so a device can move the guards of the writes it still has queued on them (T-145; `docs/modules/sync.md`, *Rows a write rewrote besides its own*). A movement in no group always answers it empty.
+
 A movement a settle-up recorded carries **`sharedSettlementId`**, and it is locked the other way round: its money is the payment's, so an edit that touches the amount, the date, the type or the accounts is `400 SETTLEMENT_MOVEMENT_LOCKED` and so is deleting it — undo the payment and it goes with it. Its description, its category and its tags are yours to change. The field is published so a client can tell before it tries: the expenses that paying somebody back writes are ordinary expenses in every other way.
 
 **On the kinds that are not spending, `countsAsYours` is just the amount and means nothing.** An `ADJUSTMENT` and a `SETTLEMENT` are excluded by their **type**, not by this figure; anything summing it — the offline projection included — has to exclude them the same way the aggregations here do.

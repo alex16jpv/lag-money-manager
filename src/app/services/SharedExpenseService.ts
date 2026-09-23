@@ -23,6 +23,7 @@ import {
   SplitDTO,
   UpdateSharedExpenseDTO,
 } from "../dtos/SharedExpenseDTO";
+import { RestampJournal, WithRestamps } from "./restamps";
 import { stampSharedChange } from "./sharedLedger";
 import { counterpartiesOf, SharedLedgerService } from "./SharedLedgerService";
 import { buildSplit, inheritedSplit, statedSplitOf } from "./sharedSplitting";
@@ -167,22 +168,24 @@ export class SharedExpenseService {
   async createExpense(
     dto: CreateSharedExpenseDTO,
     outcome?: CreateOutcome,
-  ): Promise<SharedExpense> {
+  ): Promise<WithRestamps<SharedExpense>> {
     return createOrReplay({
       clientId: dto.id,
       outcome,
       findOwn: (id) => this.repo.getOwnById(id, dto.userId),
-      replay: async (expense) => new SharedExpense(expense),
+      replay: async (expense) =>
+        Object.assign(new SharedExpense(expense), { restamped: [] }),
       create: () => this.insertExpense(dto),
     });
   }
 
   private async insertExpense(
     dto: CreateSharedExpenseDTO,
-  ): Promise<SharedExpense> {
+  ): Promise<WithRestamps<SharedExpense>> {
     const transactionId = dto.transactionId;
     if (transactionId === undefined) {
       return withTransaction(async (session) => {
+        const journal = new RestampJournal();
         const group = await this.liveGroup(dto.groupId, dto.userId);
         const expense = this.buildExpense(dto, group, {
           amount: required(dto.amount, "amount"),
@@ -192,13 +195,14 @@ export class SharedExpenseService {
         const created = new SharedExpense(
           await this.repo.create(expense, session),
         );
-        await this.reimpute(created, session);
-        return created;
+        await this.reimpute(created, session, journal);
+        return this.answer(created, journal, session);
       });
     }
 
     // The movement states the figures, so linking it and writing them cannot leave two versions.
     return withTransaction(async (session) => {
+      const journal = new RestampJournal();
       const group = await this.liveGroup(dto.groupId, dto.userId);
       const transaction = await this.splittableTransaction(
         transactionId,
@@ -217,10 +221,33 @@ export class SharedExpenseService {
         session,
         transaction,
         SHARED_HISTORY_REASONS.SPLIT,
+        journal,
         { sharedExpenseId: created.id, sharedGroupId: group.id },
       );
-      await this.reimpute(new SharedExpense(created), session);
-      return new SharedExpense(created);
+      await this.reimpute(new SharedExpense(created), session, journal);
+      return this.answer(new SharedExpense(created), journal, session);
+    });
+  }
+
+  // The imputation may have rewritten the answered row after its own write.
+  private async answer(
+    expense: SharedExpense,
+    journal: RestampJournal,
+    session: TxSession,
+  ): Promise<WithRestamps<SharedExpense>> {
+    const rewritten = journal.idsOf("sharedExpense").includes(expense.id)
+      ? await this.repo.getById(expense.id, session)
+      : null;
+    return Object.assign(new SharedExpense(rewritten ?? expense), {
+      restamped: await this.ledger.restampsOf(
+        expense.userId,
+        journal,
+        session,
+        {
+          entity: "sharedExpense",
+          id: expense.id,
+        },
+      ),
     });
   }
 
@@ -307,7 +334,7 @@ export class SharedExpenseService {
     userId: string,
     expectedUpdatedAt?: Date,
     groupId?: string,
-  ): Promise<SharedExpense> {
+  ): Promise<WithRestamps<SharedExpense>> {
     if (dto.id && dto.id !== id) {
       throw new ApiError("BadRequest", "Shared expense id does not match");
     }
@@ -379,42 +406,59 @@ export class SharedExpenseService {
       });
       write.customSplit = stated !== undefined;
     }
+    // A new date moves which line a payment covers first, so it imputes them again too.
+    const reimputes =
+      resplit || merged.date.getTime() !== existing.date.getTime();
 
     return guardedWrite(
       expectedUpdatedAt,
       async () =>
-        linked && resplit
+        reimputes
           ? withTransaction(async (session) => {
+              const journal = new RestampJournal();
               const saved = await this.repo.update(
                 id,
                 write,
                 session,
                 expectedUpdatedAt,
               );
+              // Whoever left the line has payments to impute over what is left, too.
               const { stamped } = await this.ledger.recompute(
                 userId,
-                counterpartiesOf(new SharedExpense(saved)),
-                SHARED_HISTORY_REASONS.SPLIT_EDITED,
+                [
+                  ...counterpartiesOf(existing),
+                  ...counterpartiesOf(new SharedExpense(saved)),
+                ],
+                resplit
+                  ? SHARED_HISTORY_REASONS.SPLIT_EDITED
+                  : SHARED_HISTORY_REASONS.REIMPUTED,
                 session,
+                journal,
               );
               // Read again inside the write: a delete in between would otherwise be undone here.
-              const movement = await this.transactionRepo.getBySharedExpenseId(
-                userId,
-                id,
-                session,
-              );
+              const movement = linked
+                ? await this.transactionRepo.getBySharedExpenseId(
+                    userId,
+                    id,
+                    session,
+                  )
+                : null;
               if (movement && !stamped.has(id)) {
                 await stampSharedChange(
                   this.transactionRepo,
                   session,
                   movement,
                   SHARED_HISTORY_REASONS.SPLIT_EDITED,
+                  journal,
                 );
               }
-              return new SharedExpense(saved);
+              return this.answer(new SharedExpense(saved), journal, session);
             })
-          : new SharedExpense(
-              await this.repo.update(id, write, undefined, expectedUpdatedAt),
+          : Object.assign(
+              new SharedExpense(
+                await this.repo.update(id, write, undefined, expectedUpdatedAt),
+              ),
+              { restamped: [] },
             ),
       () => this.repo.getOwnById(id, userId),
       (e) => new SharedExpense(e),
@@ -425,12 +469,14 @@ export class SharedExpenseService {
   private async reimpute(
     expense: SharedExpense,
     session: TxSession,
+    journal: RestampJournal,
   ): Promise<void> {
     await this.ledger.recompute(
       expense.userId,
       counterpartiesOf(expense),
       SHARED_HISTORY_REASONS.REIMPUTED,
       session,
+      journal,
     );
   }
 
@@ -456,13 +502,14 @@ export class SharedExpenseService {
     userId: string,
     expectedUpdatedAt?: Date,
     groupId?: string,
-  ): Promise<SharedExpense> {
+  ): Promise<WithRestamps<SharedExpense>> {
     const existing = await this.getExpenseById(id, userId, groupId);
     assertFresh(existing, expectedUpdatedAt, (e) => new SharedExpense(e));
     if (existing.deletedAt) {
-      return new SharedExpense(existing);
+      return Object.assign(new SharedExpense(existing), { restamped: [] });
     }
     return withTransaction(async (session) => {
+      const journal = new RestampJournal();
       await this.ledger.assertNoGuestPayments(userId, id, session);
       const deleted = await this.repo.delete(id, session, expectedUpdatedAt);
       const linked = await this.transactionRepo.getBySharedExpenseId(
@@ -476,11 +523,12 @@ export class SharedExpenseService {
           session,
           linked,
           SHARED_HISTORY_REASONS.UNSPLIT,
+          journal,
           { sharedExpenseId: null, sharedGroupId: null },
         );
       }
-      await this.reimpute(new SharedExpense(deleted), session);
-      return new SharedExpense(deleted);
+      await this.reimpute(new SharedExpense(deleted), session, journal);
+      return this.answer(new SharedExpense(deleted), journal, session);
     });
   }
 }

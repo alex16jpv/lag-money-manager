@@ -33,6 +33,7 @@ import { ERROR_CODES } from "../shared/errorCodes";
 import { CATEGORY_ICONS } from "../shared/icons";
 import { LOCALES } from "../shared/locale";
 import {
+  RESTAMPED_ENTITIES,
   SYNC_ENTITIES,
   SYNC_OP_STATUSES,
   SYNC_WARNINGS,
@@ -126,6 +127,26 @@ const without = (
     Object.entries(properties).filter(([key]) => !drop.includes(key)),
   );
 
+const restamped = {
+  type: "array",
+  items: { $ref: "#/components/schemas/Restamp" },
+  description:
+    "The other rows this write rewrote, empty when it touched none. A queued " +
+    "write on one of them guarded by `previousUpdatedAt` may be guarded by " +
+    "`updatedAt` instead: nothing else moved it in between.",
+};
+
+const withRestamps = (view: string): Record<string, unknown> => ({
+  allOf: [
+    { $ref: `#/components/schemas/${view}` },
+    {
+      type: "object",
+      properties: { restamped },
+      required: ["restamped"],
+    },
+  ],
+});
+
 const responseViews = {
   ErrorResponse: {
     type: "object",
@@ -155,6 +176,23 @@ const responseViews = {
     type: "object",
     properties: { message: { type: "string" } },
   }),
+  Restamp: withRequired({
+    type: "object",
+    description:
+      "A row a write rewrote besides the one it answers: an expense whose " +
+      "split was imputed again, a movement whose figure or history moved.",
+    properties: {
+      entity: { type: "string", enum: [...RESTAMPED_ENTITIES] },
+      id: uuid,
+      previousUpdatedAt: dateTime,
+      updatedAt: dateTime,
+    },
+  }),
+  TransactionWithRestamps: withRestamps("Transaction"),
+  MessageWithRestamps: withRestamps("Message"),
+  SharedExpenseWithRestamps: withRestamps("SharedExpense"),
+  SharedGroupWithRestamps: withRestamps("SharedGroup"),
+  SettlementWithRestamps: withRestamps("Settlement"),
   Pagination: withRequired({
     type: "object",
     properties: {
@@ -607,6 +645,7 @@ const responseViews = {
     properties: {
       group: { $ref: "#/components/schemas/SharedGroup" },
       applied: { $ref: "#/components/schemas/AddParticipantsPreview" },
+      restamped,
     },
   }),
   SentInvitation: withRequired({
@@ -735,6 +774,7 @@ const responseViews = {
         description:
           "What you handed over that covered no line: their money going back to them.",
       },
+      restamped,
     },
   }),
   Transaction: withRequired({
@@ -1193,6 +1233,15 @@ const syncOpResult = withRequired(
           "CATEGORY_ARCHIVED_DROPPED — the category was archived online, so " +
           "the movement was saved without it and flagged pendingDetails.",
       },
+      restamped: {
+        ...restamped,
+        description:
+          "On the writes whose route answers `restamped`: the same list, " +
+          "lifted out of `result`, and kept with the opId so a resent one " +
+          "answered `duplicate` carries it again. " +
+          "Later operations of the same batch guarded by a `previousUpdatedAt` " +
+          "here were already run against its `updatedAt`.",
+      },
     },
   },
   [
@@ -1204,6 +1253,7 @@ const syncOpResult = withRequired(
     "blockedBy",
     "mergedInto",
     "warnings",
+    "restamped",
   ],
 );
 

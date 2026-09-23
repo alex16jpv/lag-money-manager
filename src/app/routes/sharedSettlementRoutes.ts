@@ -211,7 +211,7 @@ router.get(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Settlement'
+ *               $ref: '#/components/schemas/SettlementWithRestamps'
  *       400:
  *         description: Invalid ID format (code VALIDATION)
  *         content:

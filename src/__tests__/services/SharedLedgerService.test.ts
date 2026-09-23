@@ -1,3 +1,4 @@
+import { RestampJournal } from "../../app/services/restamps";
 import {
   counterpartiesOf,
   RecomputeResult,
@@ -29,6 +30,7 @@ const expense = (
     groupId: "019576a0-d7b6-7d6d-af6a-2b7545f5ab00",
     description: `Line ${id.slice(-1)}`,
     date: new Date(`2026-08-${day}T18:00:00.000Z`),
+    updatedAt: new Date("2026-08-26T09:00:00.000Z"),
     amount,
     paidByContactId: null,
     userId,
@@ -99,6 +101,7 @@ describe("SharedLedgerService", () => {
       countSharesOfContact: jest.fn().mockResolvedValue(0),
       totalsByGroup: jest.fn().mockResolvedValue([]),
       replaceSplits: jest.fn().mockResolvedValue(undefined),
+      stampsOf: jest.fn().mockResolvedValue(new Map()),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -116,13 +119,16 @@ describe("SharedLedgerService", () => {
     } as unknown as jest.Mocked<ISharedSettlementRepository>;
     transactions = {
       listBySharedExpenseIds: jest.fn().mockResolvedValue([]),
+      stampsOf: jest.fn().mockResolvedValue(new Map()),
       applySharedChange: jest.fn(),
     } as unknown as jest.Mocked<ITransactionRepository>;
     ledger = new SharedLedgerService(expenses, settlements, transactions);
   });
 
-  const recompute = async (): Promise<RecomputeResult> =>
-    ledger.recompute(userId, [withAna], "PAYMENT", "session" as never);
+  const recompute = async (
+    journal = new RestampJournal(),
+  ): Promise<RecomputeResult> =>
+    ledger.recompute(userId, [withAna], "PAYMENT", "session" as never, journal);
 
   it("covers the oldest line first and leaves the rest of the money on the next", async () => {
     expenses.listByCounterparty.mockResolvedValue([
@@ -177,6 +183,99 @@ describe("SharedLedgerService", () => {
     // Her share was already settled in full, so nothing was rewritten.
     expect(expenses.replaceSplits).not.toHaveBeenCalled();
     expect(transactions.applySharedChange).not.toHaveBeenCalled();
+  });
+
+  describe("what it rewrote besides the row a write answers [T-145]", () => {
+    const BEFORE = new Date("2026-08-26T10:00:00.000Z");
+    const AFTER = new Date("2026-08-26T10:00:05.000Z");
+    const stamped = (row: SharedExpense): SharedExpense =>
+      Object.assign(row, { updatedAt: BEFORE });
+
+    it("names each line and movement it rewrote, with the stamp it had and the one it has", async () => {
+      expenses.listByCounterparty.mockResolvedValue([
+        stamped(expense(OLDER, "10", 90_000)),
+      ]);
+      settlements.listByCounterparty.mockResolvedValue([paymentOf(30_000)]);
+      const movement = Object.assign(movementOf(OLDER, 90_000), {
+        updatedAt: BEFORE,
+      });
+      transactions.listBySharedExpenseIds.mockResolvedValue([movement]);
+      expenses.stampsOf.mockResolvedValue(new Map([[OLDER, AFTER]]));
+      transactions.stampsOf.mockResolvedValue(new Map([[movement.id, AFTER]]));
+      const journal = new RestampJournal();
+
+      await recompute(journal);
+      const restamped = await ledger.restampsOf(
+        userId,
+        journal,
+        "session" as never,
+      );
+
+      expect(expenses.stampsOf).toHaveBeenCalledWith(
+        userId,
+        [OLDER],
+        "session",
+      );
+      expect(restamped).toEqual([
+        {
+          entity: "sharedExpense",
+          id: OLDER,
+          previousUpdatedAt: BEFORE,
+          updatedAt: AFTER,
+        },
+        {
+          entity: "transaction",
+          id: movement.id,
+          previousUpdatedAt: BEFORE,
+          updatedAt: AFTER,
+        },
+      ]);
+    });
+
+    it("leaves out the row the write answers, one gone, and one whose stamp did not move", async () => {
+      const journal = new RestampJournal();
+      journal.note("sharedExpense", { id: OLDER, updatedAt: BEFORE });
+      journal.note("sharedExpense", { id: NEWER, updatedAt: BEFORE });
+      journal.note("transaction", { id: "tx-answered", updatedAt: BEFORE });
+      journal.note("transaction", { id: "tx-gone", updatedAt: BEFORE });
+      expenses.stampsOf.mockResolvedValue(new Map([[NEWER, BEFORE]]));
+      transactions.stampsOf.mockResolvedValue(
+        new Map([["tx-answered", AFTER]]),
+      );
+
+      const restamped = await ledger.restampsOf(
+        userId,
+        journal,
+        "session" as never,
+        { entity: "transaction", id: "tx-answered" },
+      );
+
+      // OLDER and tx-gone came back from no live row; NEWER holds the stamp it had.
+      expect(restamped).toEqual([]);
+    });
+
+    it("keeps the first stamp it saw, because a later read already sees this write", () => {
+      const journal = new RestampJournal();
+      journal.note("sharedExpense", { id: OLDER, updatedAt: BEFORE });
+      journal.note("sharedExpense", { id: OLDER, updatedAt: AFTER });
+
+      expect(journal.entries()).toEqual([
+        { entity: "sharedExpense", id: OLDER, updatedAt: BEFORE },
+      ]);
+    });
+
+    it("refuses a row read without its stamp, rather than leave it out in silence", () => {
+      expect(() =>
+        new RestampJournal().note("sharedExpense", { id: NEWER }),
+      ).toThrow("read without its updatedAt");
+    });
+
+    it("reads nothing when the write rewrote nothing", async () => {
+      await ledger.restampsOf(userId, new RestampJournal(), "session" as never);
+
+      expect(expenses.stampsOf).not.toHaveBeenCalled();
+      expect(transactions.stampsOf).not.toHaveBeenCalled();
+    });
   });
 
   it("names everybody a line could be settled with, and never you", () => {

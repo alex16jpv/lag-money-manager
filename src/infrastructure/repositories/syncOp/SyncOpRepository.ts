@@ -3,7 +3,7 @@ import {
   SyncOpRecord,
 } from "../../../domain/repositories/syncOp/ISyncOpRepository";
 import { isDuplicateIdError } from "../../../shared/clientMintedId";
-import { SyncOpStatus } from "../../../shared/syncBatch";
+import { RestampedEntity, SyncOpStatus } from "../../../shared/syncBatch";
 import { SyncOpModel } from "../../models/SyncOpModel";
 
 export class SyncOpRepository implements ISyncOpRepository {
@@ -18,6 +18,14 @@ export class SyncOpRepository implements ISyncOpRepository {
       status: doc.status as SyncOpStatus,
       entityId: doc.entityId,
       code: doc.code,
+      ...(doc.restamped?.length && {
+        restamped: doc.restamped.map((row) => ({
+          entity: row.entity as RestampedEntity,
+          id: row.id,
+          previousUpdatedAt: row.previousUpdatedAt,
+          updatedAt: row.updatedAt,
+        })),
+      }),
     };
   }
 

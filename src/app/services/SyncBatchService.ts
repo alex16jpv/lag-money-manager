@@ -19,6 +19,7 @@ import { AccountService } from "./AccountService";
 import { BudgetService } from "./BudgetService";
 import { CategoryService } from "./CategoryService";
 import { ContactService } from "./ContactService";
+import { Restamp } from "./restamps";
 import { SharedExpenseService } from "./SharedExpenseService";
 import { SharedGroupService } from "./SharedGroupService";
 import { SharedSettlementService } from "./SharedSettlementService";
@@ -43,6 +44,8 @@ export interface SyncOpResult {
   mergedInto?: string;
   // The write landed, but not as it was sent (an archived reference dropped).
   warnings?: SyncWarning[];
+  // Other rows the write rewrote, lifted out of `result` so a removal still answers none.
+  restamped?: Restamp[];
 }
 
 export interface SyncBatchResult {
@@ -100,6 +103,53 @@ interface Handler {
 const ACCOUNT_SIDES = ["fromAccountId", "toAccountId"] as const;
 
 type PathParam = "groupId" | "partyId";
+
+// A guard moves only from a stamp an earlier operation of this batch moved the row from.
+class MovedGuards {
+  private readonly rows = new Map<string, { from: Set<number>; to: Date }>();
+
+  record(restamped: Restamp[]): void {
+    for (const row of restamped) {
+      const key = `${row.entity}:${row.id}`;
+      const before = row.previousUpdatedAt.getTime();
+      const moved = this.rows.get(key);
+      if (moved && moved.to.getTime() === before) {
+        moved.from.add(before);
+        moved.to = row.updatedAt;
+      } else {
+        this.rows.set(key, { from: new Set([before]), to: row.updatedAt });
+      }
+    }
+  }
+
+  guard(
+    entity: SyncEntity,
+    id: string,
+    sent: Date | undefined,
+  ): Date | undefined {
+    if (sent === undefined) return undefined;
+    const moved = this.rows.get(`${entity}:${id}`);
+    return moved?.from.has(sent.getTime()) ? moved.to : sent;
+  }
+}
+
+function liftRestamps(answer: unknown): {
+  result?: unknown;
+  restamped?: Restamp[];
+} {
+  if (
+    typeof answer !== "object" ||
+    answer === null ||
+    !("restamped" in answer)
+  ) {
+    return { result: answer };
+  }
+  const { restamped, ...rest } = answer as { restamped: Restamp[] };
+  return {
+    result: Object.keys(rest).length > 0 ? rest : undefined,
+    restamped,
+  };
+}
 
 function sameValue(stored: unknown, sent: unknown): boolean {
   if (sent === null || sent === undefined) {
@@ -571,6 +621,7 @@ export class SyncBatchService {
     // Id the device minted → the server row a merge landed it on (§5.1).
     const merged = new Map<string, string>();
     const results: SyncOpResult[] = [];
+    const moved = new MovedGuards();
 
     for (const op of ordered) {
       const id = merged.get(op.id) ?? op.id;
@@ -581,7 +632,9 @@ export class SyncBatchService {
         failed,
         uncreated,
         merged,
+        moved,
       );
+      if (outcome.restamped) moved.record(outcome.restamped);
       if (!SYNC_LANDED_STATUSES.includes(outcome.status)) {
         failed.set(id, op.opId);
         if (this.handlers[`${op.entity}:${op.action}`]?.create) {
@@ -611,6 +664,7 @@ export class SyncBatchService {
     failed: Map<string, string>,
     uncreated: Map<string, string>,
     merged: Map<string, string>,
+    moved: MovedGuards,
   ): Promise<Outcome> {
     const resolve = (row: string): string => merged.get(row) ?? row;
     // The row is its own dependency: a second write on a failed row repeats the same failure.
@@ -639,15 +693,17 @@ export class SyncBatchService {
         ...(seen.code && { code: seen.code as ErrorCode }),
         // A merge the device may not know yet; the rest of the batch still names the id it minted.
         ...(seen.entityId !== op.id && { mergedInto: seen.entityId }),
+        ...(seen.restamped && { restamped: seen.restamped }),
       };
     }
 
-    const outcome = await this.execute(ctx, op, id, merged);
+    const outcome = await this.execute(ctx, op, id, merged, moved);
     if (SYNC_LANDED_STATUSES.includes(outcome.status)) {
       await this.syncOps.record(ctx.userId, op.opId, {
         status: outcome.status,
         entityId: outcome.mergedInto ?? id,
         code: outcome.code ?? null,
+        ...(outcome.restamped?.length && { restamped: outcome.restamped }),
       });
     }
     return outcome;
@@ -658,6 +714,7 @@ export class SyncBatchService {
     op: SyncOperationInput,
     id: string,
     merged: Map<string, string>,
+    moved: MovedGuards,
   ): Promise<Outcome> {
     if (!SYNC_SUPPORTED_OP_VERSIONS.includes(op.opVersion)) {
       return rejected(
@@ -715,7 +772,11 @@ export class SyncBatchService {
       params: (op.payload.params ?? {}) as Record<PathParam, string>,
       body,
       ctx,
-      guard: op.baseUpdatedAt ? new Date(op.baseUpdatedAt) : undefined,
+      guard: moved.guard(
+        op.entity,
+        id,
+        op.baseUpdatedAt ? new Date(op.baseUpdatedAt) : undefined,
+      ),
       outcome: { replayed: false },
     };
     const outcome = await this.attempt(handler, args);
@@ -728,10 +789,11 @@ export class SyncBatchService {
   /** One pass through the route's own service, answered like the route. */
   private async attempt(handler: Handler, args: RunArgs): Promise<Outcome> {
     try {
-      const result = await handler.run(args);
+      const { result, restamped } = liftRestamps(await handler.run(args));
       return {
         status: args.outcome.replayed ? "duplicate" : "applied",
         ...(result !== undefined && { result }),
+        ...(restamped !== undefined && { restamped }),
       };
     } catch (err) {
       const failure = describeFailure(err as Error);

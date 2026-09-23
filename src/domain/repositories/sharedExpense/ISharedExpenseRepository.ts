@@ -90,6 +90,13 @@ export interface ISharedExpenseRepository extends IRepository<SharedExpense> {
     session?: TxSession,
   ): Promise<SharedExpense[]>;
 
+  // What each live one of these, yours, is stamped now: read at the end of a write, inside it.
+  stampsOf(
+    userId: string,
+    ids: string[],
+    session: TxSession,
+  ): Promise<Map<string, Date>>;
+
   // Live expenses of the group where this contact holds a share.
   countSharesOfContact(
     userId: string,
