@@ -454,4 +454,55 @@ describe("SharedInvitationService", () => {
       ).rejects.toMatchObject({ code: "INVITATION_UNAVAILABLE" });
     });
   });
+
+  describe("leave", () => {
+    const joined = () =>
+      makeInvitation({ status: "ACCEPTED", inviteeId, answeredAt: new Date() });
+
+    it("leaves a group you joined, and only that invitation moves", async () => {
+      repo.getById.mockResolvedValue(joined());
+      repo.leave.mockResolvedValue(
+        makeInvitation({ status: "LEFT", inviteeId, leftAt: new Date() }),
+      );
+
+      const left = await service.leave(invitationId, inviteeId);
+
+      expect(repo.leave).toHaveBeenCalledWith(
+        invitationId,
+        inviteeId,
+        expect.any(Date),
+      );
+      expect(left.status).toBe("LEFT");
+      expect(left.leftAt).toBeInstanceOf(Date);
+    });
+
+    it("answers a second leave with the invitation as it is", async () => {
+      repo.getById.mockResolvedValue(
+        makeInvitation({ status: "LEFT", inviteeId, leftAt: new Date() }),
+      );
+
+      const left = await service.leave(invitationId, inviteeId);
+
+      expect(left.status).toBe("LEFT");
+      expect(repo.leave).not.toHaveBeenCalled();
+    });
+
+    it("is not found for somebody who did not join with it", async () => {
+      repo.getById.mockResolvedValue(joined());
+
+      await expect(
+        service.leave(invitationId, inviterId),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it("refuses one the owner already stopped sharing", async () => {
+      repo.getById.mockResolvedValue(
+        makeInvitation({ status: "WITHDRAWN", inviteeId }),
+      );
+
+      await expect(
+        service.leave(invitationId, inviteeId),
+      ).rejects.toMatchObject({ code: "INVITATION_UNAVAILABLE" });
+    });
+  });
 });

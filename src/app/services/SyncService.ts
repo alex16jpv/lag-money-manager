@@ -2,6 +2,10 @@ import { Account } from "../../domain/entities/Account";
 import { Budget } from "../../domain/entities/Budget";
 import { Category } from "../../domain/entities/Category";
 import { Contact } from "../../domain/entities/Contact";
+import {
+  JoinedExpenseView,
+  JoinedGroupView,
+} from "../../domain/entities/JoinedGroup";
 import { SharedExpense } from "../../domain/entities/SharedExpense";
 import { SharedGroup } from "../../domain/entities/SharedGroup";
 import {
@@ -34,6 +38,7 @@ import {
   SYNC_OVERLAP_MS,
 } from "../../shared/syncCursor";
 import { toUserResponse, UserResponseDTO } from "../dtos/UserDTO";
+import { JoinedGroupService } from "./JoinedGroupService";
 
 export interface SyncChanges {
   user: UserResponseDTO | null;
@@ -48,6 +53,9 @@ export interface SyncChanges {
   settlements: SharedSettlement[];
   invitationsSent: SentInvitationView[];
   invitationsReceived: ReceivedInvitationView[];
+  // Groups somebody else shared with you, and their lines: read-only, and never their ledger.
+  joinedGroups: JoinedGroupView[];
+  joinedExpenses: JoinedExpenseView[];
 }
 
 export interface SyncChangesResult {
@@ -73,6 +81,7 @@ export class SyncService {
     private sharedExpenses: ISharedExpenseRepository,
     private settlements: ISharedSettlementRepository,
     private invitations: ISharedInvitationRepository,
+    private joined: Pick<JoinedGroupService, "changes">,
   ) {}
 
   /**
@@ -103,6 +112,7 @@ export class SyncService {
       settlements,
       sent,
       received,
+      joined,
     ] = await Promise.all([
       profile,
       this.accounts.changesSince(userId, cursor, fetch),
@@ -124,6 +134,7 @@ export class SyncService {
             )
           : [],
       ),
+      this.joined.changes(userId, cursor, fetch),
     ]);
 
     // Filtering the user here costs one comparison and keeps it inside the same ordering.
@@ -142,6 +153,8 @@ export class SyncService {
       ...settlements,
       ...sent,
       ...received,
+      ...joined.groups,
+      ...joined.expenses,
     ]
       .map(changeKeyOf)
       .sort(compareChanges);
@@ -163,6 +176,8 @@ export class SyncService {
       settlements: upTo(settlements),
       invitationsSent: upTo(sent).map(sentView),
       invitationsReceived: upTo(received).map(receivedView),
+      joinedGroups: upTo(joined.groups),
+      joinedExpenses: upTo(joined.expenses),
     };
 
     return {

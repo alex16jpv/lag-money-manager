@@ -48,6 +48,7 @@ jest.mock("../../shared/logger", () => ({
 }));
 
 const createMockRepo = (): jest.Mocked<IUserRepository> => ({
+  getManyByIds: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getById: jest.fn(),
   getByEmail: jest.fn(),

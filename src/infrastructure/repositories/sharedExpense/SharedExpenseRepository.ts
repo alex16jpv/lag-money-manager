@@ -157,6 +157,29 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
     return docs.map((doc) => this.toEntity(doc));
   }
 
+  async changesInGroups(
+    groupIds: string[],
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<SharedExpense[]> {
+    if (groupIds.length === 0) return [];
+    const docs = await SharedExpenseModel.find(
+      changesSinceFilter({ $in: groupIds }, cursor, "groupId"),
+    )
+      .sort(CHANGE_FEED_SORT)
+      .limit(limit)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
+  async allInGroups(groupIds: string[]): Promise<SharedExpense[]> {
+    if (groupIds.length === 0) return [];
+    const docs = await SharedExpenseModel.find({
+      groupId: { $in: groupIds },
+    }).lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
   async getById(
     id: string,
     session?: TxSession,

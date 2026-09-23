@@ -57,6 +57,14 @@ export class SharedInvitationController {
     res.status(200).json(invitation);
   };
 
+  static leave = async (req: Request, res: Response) => {
+    const invitation = await invitationService.leave(
+      req.params.id as string,
+      req.user!.userId,
+    );
+    res.status(200).json(invitation);
+  };
+
   static decline = async (req: Request, res: Response) => {
     const invitation = await invitationService.decline(
       req.params.id as string,

@@ -275,4 +275,17 @@ export class SharedInvitationService {
     if (!declined) throw unavailable();
     return receivedView(declined);
   }
+
+  async leave(id: string, userId: string): Promise<ReceivedInvitationView> {
+    const invitation = await this.repo.getById(id);
+    if (!invitation || invitation.inviteeId !== userId) {
+      throw new ApiError("NotFound", "Invitation not found");
+    }
+    if (invitation.status === INVITATION_STATUSES.LEFT) {
+      return receivedView(invitation);
+    }
+    const left = await this.repo.leave(id, userId, new Date());
+    if (!left) throw unavailable();
+    return receivedView(left);
+  }
 }

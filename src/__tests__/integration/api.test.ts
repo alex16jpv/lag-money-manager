@@ -19,6 +19,7 @@ import { ApiError } from "../../shared/errors";
 
 // --- Mock repositories ---
 const mockUserRepo: jest.Mocked<IUserRepository> = {
+  getManyByIds: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getById: jest.fn(),
   getByEmail: jest.fn(),
@@ -72,6 +73,7 @@ const mockCategoryRepo: jest.Mocked<ICategoryRepository> = {
 };
 
 const mockContactRepo: jest.Mocked<IContactRepository> = {
+  getManyIncludingArchived: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
@@ -87,6 +89,7 @@ const mockContactRepo: jest.Mocked<IContactRepository> = {
 };
 
 const mockSharedGroupRepo: jest.Mocked<ISharedGroupRepository> = {
+  getManyIncludingArchived: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
@@ -100,6 +103,8 @@ const mockSharedGroupRepo: jest.Mocked<ISharedGroupRepository> = {
 };
 
 const mockSharedExpenseRepo: jest.Mocked<ISharedExpenseRepository> = {
+  allInGroups: jest.fn().mockResolvedValue([]),
+  changesInGroups: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getAllByGroup: jest.fn(),
   getById: jest.fn(),
@@ -133,9 +138,12 @@ const mockSharedInvitationRepo = {
   receivedChangesSince: jest.fn().mockResolvedValue([]),
   withdrawAll: jest.fn().mockResolvedValue(0),
   refreshGroup: jest.fn().mockResolvedValue(undefined),
+  memberships: jest.fn().mockResolvedValue([]),
+  leaveAll: jest.fn().mockResolvedValue(0),
 };
 
 const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
+  getImported: jest.fn().mockResolvedValue(null),
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
@@ -1076,10 +1084,10 @@ describe("Integration Tests", () => {
         .send({ name: "Ana", color: "TEAL", email: "Ana@Example.com" });
 
       expect(res.status).toBe(201);
-      expect(res.body.linkedUserId).toBeNull();
+      expect(res.body).not.toHaveProperty("linkedUserId");
     });
 
-    it("drops linkedUserId sent by a client instead of storing it", async () => {
+    it("drops a user id sent by a client instead of storing it", async () => {
       mockContactRepo.create.mockImplementation(
         async (c) => new Contact(c as Contact),
       );
@@ -1093,7 +1101,7 @@ describe("Integration Tests", () => {
         });
 
       expect(res.status).toBe(201);
-      expect(res.body.linkedUserId).toBeNull();
+      expect(res.body).not.toHaveProperty("linkedUserId");
     });
 
     it("refuses a create without a name", async () => {
@@ -2212,6 +2220,8 @@ describe("Integration Tests", () => {
         "settlements",
         "invitationsSent",
         "invitationsReceived",
+        "joinedGroups",
+        "joinedExpenses",
       ]);
       expect(res.body.changes.user.id).toBe(testUser.id);
       expect(res.body.changes.user.password).toBeUndefined();

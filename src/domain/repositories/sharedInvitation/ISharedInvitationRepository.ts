@@ -76,6 +76,24 @@ export interface ISharedInvitationRepository {
     group: { groupName: string; groupColor?: Color },
     session?: TxSession,
   ): Promise<void>;
+  // Ends a joined invitation from the invited person's side; null when it was not theirs and live.
+  leave(
+    id: string,
+    inviteeId: string,
+    now: Date,
+  ): Promise<SharedInvitation | null>;
+  leaveAll(inviteeId: string, now: Date): Promise<number>;
+  // The groups this user joined: their accepted, live invitations.
+  memberships(
+    inviteeId: string,
+    session?: TxSession,
+  ): Promise<SharedInvitation[]>;
+  membershipsPage(
+    inviteeId: string,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<SharedInvitation>>;
+  // Every invitation of these groups, in any state: who joined them, and when that last changed.
+  inGroups(ownerIds: string[], groupIds: string[]): Promise<SharedInvitation[]>;
   hasJoined(
     groupId: string,
     inviteeId: string,

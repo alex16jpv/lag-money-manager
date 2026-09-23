@@ -699,6 +699,24 @@ export const invitationParamsSchema = z.object({
   }),
 });
 
+export const getJoinedGroupsSchema = getReceivedInvitationsSchema;
+
+export const addToLedgerSchema = z.object({
+  params: z.object({
+    id: z.string().uuid("ID must be a valid UUID"),
+    expenseId: z.string().uuid("expenseId must be a valid UUID"),
+  }),
+  body: z.object({
+    id: clientMintedId,
+    accountId: z.string().uuid("accountId must be a valid UUID"),
+    categoryId: z
+      .string()
+      .uuid("categoryId must be a valid UUID")
+      .optional()
+      .nullable(),
+  }),
+});
+
 export const sharedExpenseParamsSchema = z.object({
   params: z.object({
     id: z.string().uuid("ID must be a valid UUID"),

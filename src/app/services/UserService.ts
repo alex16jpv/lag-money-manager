@@ -108,9 +108,14 @@ export class UserService {
       throw new ApiError("NotFound", "User not found");
     }
     await this.repo.delete(id);
+    const now = new Date();
     await this.invitationRepo.withdrawAll(
-      { userId: id, statuses: [INVITATION_STATUSES.PENDING] },
-      new Date(),
+      {
+        userId: id,
+        statuses: [INVITATION_STATUSES.PENDING, INVITATION_STATUSES.ACCEPTED],
+      },
+      now,
     );
+    await this.invitationRepo.leaveAll(id, now);
   }
 }

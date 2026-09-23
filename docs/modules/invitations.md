@@ -4,7 +4,7 @@
 
 Lets somebody see one of your shared groups. An invitation is **addressed to the email of a contact who is in the group**, waits in that person's Shared, and is accepted or declined there. It is the first thing in this API that one user writes for another to read, so most of what follows is about what each side may learn.
 
-**Nothing is emailed.** There is no mail system: the address is how the invited person is recognised, and they find the invitation the next time they open the app with that address. What joining lets them see of the group, and putting their part into their own ledger, is the next task (T-130); this module only decides who is in.
+**Nothing is emailed.** There is no mail system: the address is how the invited person is recognised, and they find the invitation the next time they open the app with that address. This module decides who is in. What joining lets them see of the group, and putting their part into their own ledger, is [joined-groups.md](joined-groups.md).
 
 Four rules, three of them the owner's (2026-09-22):
 
@@ -50,20 +50,23 @@ The same document reads differently to each side, and the difference **is** the 
 | `ACCEPTED`  | They joined                                              | `true` until sharing stops                                                                 |
 | `DECLINED`  | They said no                                             | absent                                                                                     |
 | `WITHDRAWN` | It ended without an answer, or sharing stopped after one | absent                                                                                     |
+| `LEFT`      | The person who joined left, or deleted their account     | absent                                                                                     |
 
 `open` is present — and only ever `true` — on the one **live** invitation of a person in a group, and a partial unique index on `{groupId, contactId}` holds that there is at most one. Two invites that arrive at once meet in the index, not in a read: the loser's upsert hits the duplicate key — MongoDB only retries that by itself when the filter is exactly the index key, and `open` is one field more — and `openOne` answers it with the row that won, as `200`.
 
-Deleting an account withdraws the invitations it left waiting, so they leave strangers' Shared on their next pull.
+Deleting an account withdraws what it shared, waiting or joined, so it leaves strangers' Shared on their next pull. What it joined reads `LEFT` to each owner.
 
 What ends a live invitation, and what each one ends:
 
 | Event                                                   | Waiting | Joined                                                       | Where                                                    |
 | ------------------------------------------------------- | ------- | ------------------------------------------------------------ | -------------------------------------------------------- |
 | `DELETE /shared-groups/{id}/invitations/{invitationId}` | ✓       | ✓ (stop sharing)                                             | This module                                              |
-| The group is archived                                   | ✓       | — (T-130 decides what an archived group shows to who joined) | `SharedGroupService.deleteGroup`, same transaction       |
+| The group is archived                                   | ✓       | — (it stays with whoever joined, read-only)                  | `SharedGroupService.deleteGroup`, same transaction       |
 | The person is taken out of the group                    | ✓       | ✓                                                            | `SharedGroupService.removeParticipant`, same transaction |
 | Their contact is archived                               | ✓       | ✓                                                            | `ContactService.deleteContact`, same transaction         |
 | Their contact's email changes, or is cleared            | ✓       | —                                                            | `ContactService.updateContact`, same transaction         |
+| They leave (`POST /invitations/{id}/leave`)             | —       | ✓ (`LEFT`)                                                   | This module                                              |
+| Either account is deleted                               | ✓       | ✓ (`WITHDRAWN` for the owner's, `LEFT` for the joiner's)     | `UserService.deleteUser`                                 |
 
 Restoring a group or a contact brings none of them back: inviting again is how somebody comes back.
 
@@ -93,10 +96,14 @@ The invitations waiting for **the email on your profile** and still in time, old
 
 The invitation has to be addressed to your email, or already answered by you — anything else is a `404`, the same as one that does not exist. Answering your own is `400 INVITATION_TO_SELF`.
 
-- **Accept** refuses a group in another currency (`400 CURRENCY_MISMATCH`), a group you already joined through another contact of the same inviter (`400 PARTICIPANT_ALREADY_IN_GROUP`), and one that can no longer be answered (`400 INVITATION_UNAVAILABLE`). It moves the invitation to `ACCEPTED` and fills the inviter's contact's `linkedUserId` **in one transaction**; the group is read inside it, so a group archived or a person taken out a moment before answers `INVITATION_UNAVAILABLE` instead of joining.
+- **Accept** refuses a group in another currency (`400 CURRENCY_MISMATCH`), a group you already joined through another contact of the same inviter (`400 PARTICIPANT_ALREADY_IN_GROUP`), and one that can no longer be answered (`400 INVITATION_UNAVAILABLE`). It moves the invitation to `ACCEPTED` **in one transaction** that reads the group, so a group archived or a person taken out a moment before answers `INVITATION_UNAVAILABLE` instead of joining.
 - **Decline** takes any currency.
 
-Both are idempotent for the person who already gave that answer; the other answer after it is `INVITATION_UNAVAILABLE`, and so is one whose sender deleted their account. Nothing in either person's data is written besides the invitation: not the invited person's ledger, and **not the inviter's contact** — its `linkedUserId` stays `null`, because it would tell the inviter who answered and bump a row they may be editing offline ([contacts.md](contacts.md)).
+Both are idempotent for the person who already gave that answer; the other answer after it is `INVITATION_UNAVAILABLE`, and so is one whose sender deleted their account. Nothing in either person's data is written besides the invitation: not the invited person's ledger, and **not the inviter's contact**. Linking it to the user who answered would tell the inviter who answered and bump a row they may be editing offline ([contacts.md](contacts.md)).
+
+### `POST /invitations/{id}/leave`
+
+The invited person's way out of a group they joined: `Stop sharing` seen from their side. The invitation reads `LEFT` with `leftAt`, which the owner sees, and nothing about the money moves: they stay in the group as somebody the owner splits with. Idempotent for whoever left; one the owner already ended is `INVITATION_UNAVAILABLE`, and anybody else's is a `404`. Inviting them again is how they come back.
 
 **An address is not a person.** An invitation reaches the invited person by their email only while **nobody has answered it**; once answered, it belongs to whoever did, by `inviteeId`. So a user who changes their email keeps their answers, and whoever registers the old address later sees only what still waits there — never somebody else's history of groups joined or declined. `accept`, `decline` and the change feed apply the same rule.
 
@@ -124,6 +131,6 @@ Every event above rewrites the row, so its `updatedAt` moves and both sides lear
 
 ## What This Module Does Not Do
 
-- **It does not show the group.** What somebody who joined can read of it, and `Add to my ledger`, are T-130.
+- **It does not show the group.** What somebody who joined reads of it, and `Add to my ledger`, are [joined-groups.md](joined-groups.md).
 - **It sends nothing.** When notifications exist, the route that creates an invitation adds its `notify()` call in the same transaction ([notifications.md](notifications.md)); nothing else here changes.
 - **It never tells the inviter who answered**, nor whether an address has an account.

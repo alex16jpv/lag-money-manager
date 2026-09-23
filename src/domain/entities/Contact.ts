@@ -8,8 +8,6 @@ export interface ContactProps {
   color?: Color;
   // Identifier for inviting them later (T-129); nothing is sent from here.
   email?: string;
-  // Reserved for the invited user who accepted (T-129); never settable by a client.
-  linkedUserId?: string | null;
   userId: string;
   archivedAt?: Date | null;
   createdAt?: Date;
@@ -21,7 +19,6 @@ export class Contact {
   name: string;
   color?: Color;
   email?: string;
-  linkedUserId: string | null;
   userId: string;
   archivedAt: Date | null;
   createdAt?: Date;
@@ -32,7 +29,6 @@ export class Contact {
     name,
     color,
     email,
-    linkedUserId,
     userId,
     archivedAt,
     createdAt,
@@ -42,7 +38,6 @@ export class Contact {
     this.name = name;
     this.color = color;
     this.email = email;
-    this.linkedUserId = linkedUserId ?? null;
     this.userId = userId;
     this.archivedAt = archivedAt ?? null;
     this.createdAt = createdAt;

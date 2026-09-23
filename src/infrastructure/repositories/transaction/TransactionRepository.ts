@@ -74,6 +74,8 @@ const SHARED_LINK_FIELDS = [
   "sharedExpenseId",
   "sharedGroupId",
   "sharedSettlementId",
+  "importedFromGroupId",
+  "importedFromExpenseId",
 ] as const;
 
 export class TransactionRepository implements ITransactionRepository {
@@ -98,6 +100,8 @@ export class TransactionRepository implements ITransactionRepository {
       sharedExpenseId: doc.sharedExpenseId ?? null,
       sharedGroupId: doc.sharedGroupId ?? null,
       sharedSettlementId: doc.sharedSettlementId ?? null,
+      importedFromGroupId: doc.importedFromGroupId ?? null,
+      importedFromExpenseId: doc.importedFromExpenseId ?? null,
       sharedHistory: (doc.sharedHistory ?? []).map((entry) => ({
         at: entry.at,
         reason: entry.reason,
@@ -230,6 +234,21 @@ export class TransactionRepository implements ITransactionRepository {
 
   async getOwnById(id: string, userId: string): Promise<Transaction | null> {
     const doc = await TransactionModel.findOne({ _id: id, userId }).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async getImported(
+    userId: string,
+    importedFromExpenseId: string,
+    session?: TxSession,
+  ): Promise<Transaction | null> {
+    const doc = await TransactionModel.findOne({
+      userId,
+      importedFromExpenseId,
+      deletedAt: null,
+    })
+      .session(session ?? null)
+      .lean();
     return doc ? this.toEntity(doc) : null;
   }
 

@@ -130,6 +130,7 @@ export const INVITATION_STATUSES = {
   ACCEPTED: "ACCEPTED",
   DECLINED: "DECLINED",
   WITHDRAWN: "WITHDRAWN",
+  LEFT: "LEFT",
 } as const;
 
 export type InvitationStatus = keyof typeof INVITATION_STATUSES;

@@ -14,5 +14,10 @@ export const mockInvitationRepo =
     withdraw: jest.fn().mockResolvedValue(null),
     withdrawAll: jest.fn().mockResolvedValue(0),
     refreshGroup: jest.fn().mockResolvedValue(undefined),
+    leave: jest.fn().mockResolvedValue(null),
+    leaveAll: jest.fn().mockResolvedValue(0),
+    memberships: jest.fn().mockResolvedValue([]),
+    membershipsPage: jest.fn(),
+    inGroups: jest.fn().mockResolvedValue([]),
     hasJoined: jest.fn().mockResolvedValue(false),
   });

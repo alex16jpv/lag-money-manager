@@ -17,6 +17,7 @@ export interface SharedInvitationProps {
   inviteeId?: string | null;
   answeredAt?: Date | null;
   withdrawnAt?: Date | null;
+  leftAt?: Date | null;
   groupName: string;
   groupColor?: Color;
   groupCurrency: string;
@@ -37,6 +38,7 @@ export class SharedInvitation {
   inviteeId: string | null;
   answeredAt: Date | null;
   withdrawnAt: Date | null;
+  leftAt: Date | null;
   groupName: string;
   groupColor?: Color;
   groupCurrency: string;
@@ -56,6 +58,7 @@ export class SharedInvitation {
     this.inviteeId = props.inviteeId ?? null;
     this.answeredAt = props.answeredAt ?? null;
     this.withdrawnAt = props.withdrawnAt ?? null;
+    this.leftAt = props.leftAt ?? null;
     this.groupName = props.groupName;
     this.groupColor = props.groupColor;
     this.groupCurrency = props.groupCurrency;
@@ -82,6 +85,7 @@ export interface SentInvitationView {
   expiresAt: Date;
   answeredAt: Date | null;
   withdrawnAt: Date | null;
+  leftAt: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -97,6 +101,7 @@ export interface ReceivedInvitationView {
   status: InvitationStatus;
   expiresAt: Date;
   answeredAt: Date | null;
+  leftAt: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -110,6 +115,7 @@ export const sentView = (inv: SharedInvitation): SentInvitationView => ({
   expiresAt: inv.expiresAt,
   answeredAt: inv.answeredAt,
   withdrawnAt: inv.withdrawnAt,
+  leftAt: inv.leftAt,
   createdAt: inv.createdAt,
   updatedAt: inv.updatedAt,
 });
@@ -127,6 +133,7 @@ export const receivedView = (
   status: inv.status,
   expiresAt: inv.expiresAt,
   answeredAt: inv.answeredAt,
+  leftAt: inv.leftAt,
   createdAt: inv.createdAt,
   updatedAt: inv.updatedAt,
 });

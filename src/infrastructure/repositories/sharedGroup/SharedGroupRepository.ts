@@ -122,6 +122,12 @@ export class SharedGroupRepository implements ISharedGroupRepository {
     return doc ? this.toEntity(doc) : null;
   }
 
+  async getManyIncludingArchived(ids: string[]): Promise<SharedGroup[]> {
+    if (ids.length === 0) return [];
+    const docs = await SharedGroupModel.find({ _id: { $in: ids } }).lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
   async getByIdIncludingArchived(
     id: string,
     session?: TxSession,

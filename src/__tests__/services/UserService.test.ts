@@ -50,6 +50,7 @@ const mockUser: User = new User({
 });
 
 const createMockRepo = (): jest.Mocked<IUserRepository> => ({
+  getManyByIds: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getById: jest.fn(),
   getByEmail: jest.fn(),
@@ -218,14 +219,18 @@ describe("UserService", () => {
       expect(repo.delete).toHaveBeenCalledWith(testUserId);
     });
 
-    it("withdraws the invitations it left waiting in other people's Shared", async () => {
+    it("ends what it shared and what it joined, so nobody keeps reading a deleted account", async () => {
       repo.getById.mockResolvedValue(mockUser);
       repo.delete.mockResolvedValue();
 
       await service.deleteUser(testUserId, testUserId);
 
       expect(invitations.withdrawAll).toHaveBeenCalledWith(
-        { userId: testUserId, statuses: ["PENDING"] },
+        { userId: testUserId, statuses: ["PENDING", "ACCEPTED"] },
+        expect.any(Date),
+      );
+      expect(invitations.leaveAll).toHaveBeenCalledWith(
+        testUserId,
         expect.any(Date),
       );
     });

@@ -95,8 +95,8 @@ router.get(
  *
  *       `email` is optional and is only an **identifier for inviting them
  *       later**: nothing is sent from here, and two contacts may carry the
- *       same address. `linkedUserId` is server-owned and always null until an
- *       invitation is accepted; a client that sends it has it dropped.
+ *       same address. A contact is never linked to a user: who joined a group
+ *       is the accepted invitation, which never tells the inviter who answered.
  *
  *       A user is capped at `SharedLimits.maxContactsPerUser` active contacts
  *       (400 CONTACT_LIMIT_REACHED). Read that schema instead of copying the

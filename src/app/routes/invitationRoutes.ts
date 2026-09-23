@@ -157,4 +157,55 @@ router.post(
   SharedInvitationController.decline,
 );
 
+/**
+ * @openapi
+ * /invitations/{id}/leave:
+ *   post:
+ *     tags: [Invitations]
+ *     summary: Leave a shared group you joined
+ *     description: >
+ *       Stop seeing the group, from your side. You stay in it as somebody the
+ *       owner splits with: your share, what you paid and what you owe do not
+ *       move, and nothing in your ledger is touched. The owner's row reads
+ *       LEFT. Leaving twice answers the invitation as it is; one that is no
+ *       longer joined (the owner stopped sharing) answers
+ *       INVITATION_UNAVAILABLE.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *         description: Invitation ID
+ *     responses:
+ *       200:
+ *         description: The invitation, left
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ReceivedInvitation'
+ *       400:
+ *         description: Validation error (code VALIDATION), or an invitation that is no longer joined (code INVITATION_UNAVAILABLE)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Invitation not found (uniform for missing and not yours)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/:id/leave",
+  validate(idParamSchema),
+  SharedInvitationController.leave,
+);
+
 export default router;

@@ -100,6 +100,8 @@ SharedExpenseSchema.index({ userId: 1, "split.shares.contactId": 1 });
 
 // Change feed: keyset over (updatedAt, _id), archived and deleted rows included.
 SharedExpenseSchema.index({ userId: 1, updatedAt: 1, _id: 1 });
+// The same keyset for whoever joined the group, which is not the owner.
+SharedExpenseSchema.index({ groupId: 1, updatedAt: 1, _id: 1 });
 
 export const SharedExpenseModel = mongoose.model<ISharedExpenseDocument>(
   MODEL_NAMES.SHARED_EXPENSE,

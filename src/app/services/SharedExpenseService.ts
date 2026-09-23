@@ -277,6 +277,13 @@ export class SharedExpenseService {
         "TRANSACTION_NOT_SPLITTABLE",
       );
     }
+    if (transaction.importedFromExpenseId) {
+      throw new ApiError(
+        "BadRequest",
+        "That expense is already your part of a group shared with you",
+        "TRANSACTION_NOT_SPLITTABLE",
+      );
+    }
     if (transaction.sharedExpenseId) {
       throw new ApiError(
         "BadRequest",

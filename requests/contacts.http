@@ -39,7 +39,7 @@ Content-Type: application/json
 @contactId = {{createContact.response.body.id}}
 @contactVersion = {{createContact.response.body.updatedAt}}
 
-### Get por id (éxito) — linkedUserId llega null: lo llenará la invitación
+### Get por id (éxito)
 GET {{baseUrl}}/contacts/{{contactId}}
 Authorization: Bearer {{token}}
 
@@ -50,7 +50,7 @@ Content-Type: application/json
 
 { "name": "{{createContact.response.body.name}}" }
 
-### linkedUserId lo pone el servidor: enviado por el cliente se descarta (201, y llega null)
+### Un campo que el contacto no tiene se descarta (201, y no llega)
 POST {{baseUrl}}/contacts
 Authorization: Bearer {{token}}
 Content-Type: application/json

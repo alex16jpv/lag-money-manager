@@ -41,6 +41,9 @@ export interface TransactionProps {
   // The settle-up that recorded this movement: a collection, a refund, or your side of a line.
   sharedSettlementId?: string | null;
   sharedHistory?: SharedHistoryEntry[];
+  // Your part of a line in a group shared with you, taken into your ledger with Add to my ledger.
+  importedFromGroupId?: string | null;
+  importedFromExpenseId?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -66,6 +69,8 @@ export class Transaction {
   sharedGroupId: string | null;
   sharedSettlementId: string | null;
   sharedHistory: SharedHistoryEntry[];
+  importedFromGroupId: string | null;
+  importedFromExpenseId: string | null;
   createdAt: Date;
   updatedAt: Date;
 
@@ -90,6 +95,8 @@ export class Transaction {
     this.sharedGroupId = props.sharedGroupId ?? null;
     this.sharedSettlementId = props.sharedSettlementId ?? null;
     this.sharedHistory = props.sharedHistory ?? [];
+    this.importedFromGroupId = props.importedFromGroupId ?? null;
+    this.importedFromExpenseId = props.importedFromExpenseId ?? null;
     this.createdAt = props.createdAt ?? new Date();
     this.updatedAt = props.updatedAt ?? new Date();
   }
@@ -154,6 +161,28 @@ export class Transaction {
       throw new DomainValidationError(
         "Only an expense can be split with other people",
         "type",
+        "TRANSACTION_NOT_SPLITTABLE",
+      );
+    }
+    if (
+      (this.importedFromExpenseId === null) !==
+      (this.importedFromGroupId === null)
+    ) {
+      throw new DomainValidationError(
+        "An expense added from a shared group names both the group and the line",
+        "importedFromExpenseId",
+      );
+    }
+    if (this.importedFromExpenseId && this.type !== "EXPENSE") {
+      throw new DomainValidationError(
+        "An expense added from a group shared with you stays an expense",
+        "type",
+      );
+    }
+    if (this.importedFromExpenseId && this.sharedExpenseId) {
+      throw new DomainValidationError(
+        "An expense added from a group shared with you is already your part of it",
+        "sharedExpenseId",
         "TRANSACTION_NOT_SPLITTABLE",
       );
     }

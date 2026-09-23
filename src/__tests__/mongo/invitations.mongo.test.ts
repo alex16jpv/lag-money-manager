@@ -183,7 +183,8 @@ describe("invitations against mongod", () => {
     const linked = (await feed(john)).contacts.find(
       (c) => c.email === "beto@invitations.test",
     );
-    expect(linked?.linkedUserId).toBeNull();
+    expect(linked).toBeDefined();
+    expect(linked).not.toHaveProperty("linkedUserId");
     const sent = (await feed(john)).invitationsSent.find(
       (i) => i.id === waiting.id,
     );

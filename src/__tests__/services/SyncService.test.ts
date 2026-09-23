@@ -103,6 +103,7 @@ interface Harness {
     sentChangesSince: jest.Mock;
     receivedChangesSince: jest.Mock;
   };
+  joined: { changes: jest.Mock };
 }
 
 // The profile is absent by default: always sending it would hide the boundary the merge is about.
@@ -121,6 +122,9 @@ const build = (): Harness => {
     sentChangesSince: jest.fn().mockResolvedValue([]),
     receivedChangesSince: jest.fn().mockResolvedValue([]),
   };
+  const joined = {
+    changes: jest.fn().mockResolvedValue({ groups: [], expenses: [] }),
+  };
   const service = new SyncService(
     users as unknown as IUserRepository,
     accounts as unknown as IAccountRepository,
@@ -132,6 +136,7 @@ const build = (): Harness => {
     sharedExpenses as never,
     settlements as never,
     invitations as never,
+    joined,
   );
   return {
     service,
@@ -145,6 +150,7 @@ const build = (): Harness => {
     sharedExpenses,
     settlements,
     invitations,
+    joined,
   };
 };
 
@@ -291,6 +297,8 @@ describe("SyncService.getChanges", () => {
       settlements: [],
       invitationsSent: [],
       invitationsReceived: [],
+      joinedGroups: [],
+      joinedExpenses: [],
     });
     expect(decodeCursor(page.pagination.nextCursor).id).toBeNull();
   });

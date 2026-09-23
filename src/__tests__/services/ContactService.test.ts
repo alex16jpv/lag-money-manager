@@ -24,6 +24,7 @@ const makeContact = (props: Partial<Contact> = {}): Contact =>
   });
 
 const createMockRepo = (): jest.Mocked<IContactRepository> => ({
+  getManyIncludingArchived: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
@@ -137,7 +138,7 @@ describe("ContactService", () => {
       });
 
       expect(created.name).toBe("Ana");
-      expect(created.linkedUserId).toBeNull();
+      expect(created).not.toHaveProperty("linkedUserId");
       expect(repo.create).toHaveBeenCalled();
     });
 

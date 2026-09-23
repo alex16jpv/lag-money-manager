@@ -20,6 +20,7 @@ export interface ISharedInvitationDocument {
   inviteeId?: string;
   answeredAt: Date | null;
   withdrawnAt: Date | null;
+  leftAt: Date | null;
   groupName: string;
   groupColor?: Color;
   groupCurrency: string;
@@ -46,6 +47,7 @@ const SharedInvitationSchema = new Schema<ISharedInvitationDocument>(
     inviteeId: { type: String, required: false },
     answeredAt: { type: Date, default: null },
     withdrawnAt: { type: Date, default: null },
+    leftAt: { type: Date, default: null },
     groupName: { type: String, required: true },
     groupColor: { type: String, required: false, enum: Object.keys(COLORS) },
     groupCurrency: { type: String, required: true },

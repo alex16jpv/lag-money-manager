@@ -33,6 +33,15 @@ export interface ISharedExpenseRepository extends IRepository<SharedExpense> {
     limit: number,
   ): Promise<SharedExpense[]>;
 
+  // The feed of somebody who joined these groups, whoever owns them; deleted rows included.
+  changesInGroups(
+    groupIds: string[],
+    cursor: ChangeCursor | undefined,
+    limit: number,
+  ): Promise<SharedExpense[]>;
+  // Every row of these groups, deleted ones included: what a person who just joined has never seen.
+  allInGroups(groupIds: string[]): Promise<SharedExpense[]>;
+
   // `expectedUpdatedAt` goes in the write's own filter: a guard checked before would race.
   update(
     id: string,

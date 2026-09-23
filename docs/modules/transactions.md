@@ -85,6 +85,12 @@ One entry per thing that could have moved the figure, oldest first: `{ at, reaso
 
 Unlike `revisions[]` it is **public**: it is the answer to a question the user asks. It is also uncapped, and deliberately: capping the explanation of a figure loses the oldest events, which are the ones nobody remembers. It grows by one entry per split edit and per payment — tens over a group's life. A group large enough to make that a document-size problem is a group whose payments belong in a collection of their own.
 
+### Added from a group shared with you (`importedFromGroupId`, `importedFromExpenseId`)
+
+`Add to my ledger` ([joined-groups.md](joined-groups.md)) writes **an ordinary expense**: your share of a line somebody else's group keeps, dated that line, in your account and your category. Its whole amount counts as yours, so `countsAsYours` is the amount and there is no history. The two fields say where it came from, and **only that route writes them**: the schemas never accept them, and an edit keeps them. `{ userId, importedFromExpenseId }`, unique and partial over the live rows that have one, is what lets a line into your ledger once. Deleting the movement frees the line.
+
+Such a movement **stays an expense** (`VALIDATION`) and **cannot be split into a group of yours** (`TRANSACTION_NOT_SPLITTABLE`), because it already is your part of one. Nothing the owner of that group does reaches it later.
+
 ## Files and Responsibilities
 
 | File                                                                   | Role                                                                          |

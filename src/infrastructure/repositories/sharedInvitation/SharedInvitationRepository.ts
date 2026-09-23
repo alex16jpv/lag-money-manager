@@ -40,6 +40,7 @@ export class SharedInvitationRepository implements ISharedInvitationRepository {
       inviteeId: doc.inviteeId ?? null,
       answeredAt: doc.answeredAt,
       withdrawnAt: doc.withdrawnAt,
+      leftAt: doc.leftAt ?? null,
       groupName: doc.groupName,
       groupColor: doc.groupColor,
       groupCurrency: doc.groupCurrency,
@@ -287,6 +288,68 @@ export class SharedInvitationRepository implements ISharedInvitationRepository {
         : { $set: { groupName: group.groupName }, $unset: { groupColor: "" } },
       { session: session ?? undefined },
     );
+  }
+
+  async leave(
+    id: string,
+    inviteeId: string,
+    now: Date,
+  ): Promise<SharedInvitation | null> {
+    const doc = await SharedInvitationModel.findOneAndUpdate(
+      { _id: id, inviteeId, status: INVITATION_STATUSES.ACCEPTED },
+      {
+        $set: { status: INVITATION_STATUSES.LEFT, leftAt: now },
+        $unset: { open: "" },
+      },
+      { new: true },
+    ).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async leaveAll(inviteeId: string, now: Date): Promise<number> {
+    const result = await SharedInvitationModel.updateMany(
+      { inviteeId, status: INVITATION_STATUSES.ACCEPTED },
+      {
+        $set: { status: INVITATION_STATUSES.LEFT, leftAt: now },
+        $unset: { open: "" },
+      },
+    );
+    return result.modifiedCount;
+  }
+
+  async memberships(
+    inviteeId: string,
+    session?: TxSession,
+  ): Promise<SharedInvitation[]> {
+    const docs = await SharedInvitationModel.find({
+      inviteeId,
+      status: INVITATION_STATUSES.ACCEPTED,
+    })
+      .session(session ?? null)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
+  async membershipsPage(
+    inviteeId: string,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<SharedInvitation>> {
+    return this.paginate(
+      { inviteeId, status: INVITATION_STATUSES.ACCEPTED },
+      pagination,
+    );
+  }
+
+  async inGroups(
+    ownerIds: string[],
+    groupIds: string[],
+  ): Promise<SharedInvitation[]> {
+    if (groupIds.length === 0) return [];
+    const docs = await SharedInvitationModel.find({
+      userId: { $in: ownerIds },
+      groupId: { $in: groupIds },
+    }).lean();
+    return docs.map((doc) => this.toEntity(doc));
   }
 
   async hasJoined(

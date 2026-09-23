@@ -305,7 +305,9 @@ Codes raised by the services and middleware. Anything not listed here has no `co
 | `CONTACT_HAS_NO_EMAIL`            | 400    | Inviting a contact who has no email: an invitation is addressed to one |
 | `INVITATION_TO_SELF`              | 400    | Inviting a contact whose email is your own, or answering an invitation you sent |
 | `INVITATION_LIMIT_REACHED`        | 400    | More invitations waiting at once than one user may have (`SharedLimits.maxPendingInvitationsPerUser`) |
-| `INVITATION_UNAVAILABLE`          | 400    | Answering an invitation that was withdrawn, whose group was archived or whose person was taken out, or whose 30 days passed |
+| `INVITATION_UNAVAILABLE`          | 400    | Answering an invitation that was withdrawn, whose group was archived or whose person was taken out, or whose 30 days passed; or leaving a group the owner already stopped sharing |
+| `SHARED_LINE_NOT_PAID`            | 400    | Add to my ledger on a line somebody other than the owner paid, one you have no part in, or one whose part the owner has not marked paid|
+| `SHARED_LINE_IN_LEDGER`           | 400    | Add to my ledger on a line whose part is already in your ledger                                                             |
 | `BUDGET_PERIOD_OVERLAP`           | 400    | New budget period overlaps an existing one for the same scope            |
 | `IDEMPOTENCY_KEY_INVALID`         | 400    | `Idempotency-Key` outside `[A-Za-z0-9_-]{1,200}`                         |
 | `MALFORMED_JSON`                  | 400    | Body that is not valid JSON (body-parser `entity.parse.failed`)          |

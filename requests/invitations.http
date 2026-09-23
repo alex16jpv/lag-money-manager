@@ -115,6 +115,49 @@ Authorization: Bearer {{inviteeToken}}
 POST {{baseUrl}}/invitations/{{invitationId}}/accept
 Authorization: Bearer {{token}}
 
+### Los grupos que le compartieron, como los ve quien entró (solo lectura, sin nada del libro de nadie)
+GET {{baseUrl}}/joined-groups
+Authorization: Bearer {{inviteeToken}}
+
+### Un gasto que pagó el dueño
+# @name ownerLine
+POST {{baseUrl}}/shared-groups/{{groupId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Cena", "date": "2026-09-20T20:00:00-05:00", "amount": 90000 }
+
+###
+
+@ownerLineId = {{ownerLine.response.body.id}}
+
+### Las líneas del grupo, como las ve quien entró
+GET {{baseUrl}}/joined-groups/{{groupId}}/expenses
+Authorization: Bearer {{inviteeToken}}
+
+### Una cuenta del invitado
+# @name inviteeAccount
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{inviteeToken}}
+Content-Type: application/json
+
+{ "name": "Nequi {{$randomInt 100 999}}", "type": "OTHER", "balance": 100000 }
+
+###
+
+@inviteeAccountId = {{inviteeAccount.response.body.id}}
+
+### Meter su parte en su libro antes de que el dueño la marque pagada — 400 SHARED_LINE_NOT_PAID
+POST {{baseUrl}}/joined-groups/{{groupId}}/expenses/{{ownerLineId}}/add-to-ledger
+Authorization: Bearer {{inviteeToken}}
+Content-Type: application/json
+
+{ "accountId": "{{inviteeAccountId}}" }
+
+### Salir del grupo, como el invitado (200, LEFT) — idempotente
+POST {{baseUrl}}/invitations/{{invitationId}}/leave
+Authorization: Bearer {{inviteeToken}}
+
 ### Dejar de compartir con quien ya entró (200, WITHDRAWN) — idempotente
 DELETE {{baseUrl}}/shared-groups/{{groupId}}/invitations/{{invitationId}}
 Authorization: Bearer {{token}}

@@ -101,6 +101,13 @@ export interface ITransactionRepository extends IRepository<Transaction> {
   // §5.4: what tells a movement another device deleted from one that never existed.
   isDeleted(id: string, userId: string): Promise<boolean>;
 
+  // Your part of a line of a group shared with you, when you already added it to your ledger.
+  getImported(
+    userId: string,
+    importedFromExpenseId: string,
+    session?: unknown,
+  ): Promise<Transaction | null>;
+
   // The movement a shared expense is; null when it was somebody else who paid that line.
   getBySharedExpenseId(
     userId: string,

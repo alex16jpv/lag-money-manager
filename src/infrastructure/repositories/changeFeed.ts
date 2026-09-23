@@ -7,7 +7,7 @@ import { ChangeCursor } from "../../shared/syncCursor";
  * already sorted and MongoDB merges them instead of sorting in memory.
  */
 export function changesSinceFilter(
-  owner: string,
+  owner: string | { $in: string[] },
   cursor?: ChangeCursor,
   ownerField = "userId",
 ): Record<string, unknown> {

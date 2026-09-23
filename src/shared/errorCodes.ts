@@ -68,6 +68,9 @@ export const ERROR_CODES = [
   "INVITATION_TO_SELF",
   "INVITATION_LIMIT_REACHED",
   "INVITATION_UNAVAILABLE",
+  // A group shared with you
+  "SHARED_LINE_NOT_PAID",
+  "SHARED_LINE_IN_LEDGER",
   // Client-minted ids
   "ID_TAKEN",
   // Optimistic concurrency

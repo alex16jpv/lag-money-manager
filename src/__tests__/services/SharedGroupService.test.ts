@@ -64,6 +64,7 @@ const equalExpense = (
   });
 
 const groupRepo = (): jest.Mocked<ISharedGroupRepository> => ({
+  getManyIncludingArchived: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
@@ -82,6 +83,8 @@ const groupRepo = (): jest.Mocked<ISharedGroupRepository> => ({
 });
 
 const expenseRepo = (): jest.Mocked<ISharedExpenseRepository> => ({
+  allInGroups: jest.fn().mockResolvedValue([]),
+  changesInGroups: jest.fn().mockResolvedValue([]),
   getAll: jest.fn(),
   getAllByGroup: jest.fn(),
   getById: jest.fn(),
@@ -121,6 +124,7 @@ const settlementRepo = (): jest.Mocked<ISharedSettlementRepository> => ({
 });
 
 const transactionRepo = (): jest.Mocked<ITransactionRepository> => ({
+  getImported: jest.fn().mockResolvedValue(null),
   getAll: jest.fn(),
   getAllByUserId: jest.fn(),
   getById: jest.fn(),
