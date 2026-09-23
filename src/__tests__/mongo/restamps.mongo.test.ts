@@ -531,4 +531,49 @@ describe("what a write rewrote besides its own row, against mongod", () => {
       expect(out.status).toBe(200);
     });
   });
+
+  describe("a line Ana fronted, and paid back", () => {
+    let hers: string;
+
+    beforeEach(async () => {
+      await clear();
+      const created = await as(
+        request(app).post(`/shared-groups/${groupId}/expenses`).send({
+          description: "Tickets",
+          date: "2026-08-12T18:00:00.000Z",
+          amount: 40_000,
+          paidByContactId: ana,
+        }),
+      );
+      expect(created.status).toBe(201);
+      hers = created.body.id as string;
+      expect(
+        (
+          await settle({
+            contactId: ana,
+            date: "2026-08-25T18:00:00.000Z",
+            paid: 20_000,
+            accountId: ACCOUNT_ID,
+            categoryId: CATEGORY_ID,
+          })
+        ).status,
+      ).toBe(201);
+    });
+
+    it("a new amount imputes what you paid her over the line again", async () => {
+      const res = await as(
+        request(app)
+          .put(`/shared-groups/${groupId}/expenses/${hers}`)
+          .send({ amount: 30_000 }),
+      );
+
+      expect(res.status).toBe(200);
+      const yours = (
+        (await expense(hers)).split as { shares: Share[] }
+      ).shares.find((share) => share.party === "USER") as Share;
+      expect(yours.amount).toBe(15_000);
+      expect(yours.collected).toBe(15_000);
+      expect(res.body.split).toEqual((await expense(hers)).split);
+    });
+  });
 });

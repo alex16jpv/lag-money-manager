@@ -406,11 +406,14 @@ export class SharedExpenseService {
       });
       write.customSplit = stated !== undefined;
     }
+    // A new date moves which line a payment covers first, so it imputes them again too.
+    const reimputes =
+      resplit || merged.date.getTime() !== existing.date.getTime();
 
     return guardedWrite(
       expectedUpdatedAt,
       async () =>
-        linked && resplit
+        reimputes
           ? withTransaction(async (session) => {
               const journal = new RestampJournal();
               const saved = await this.repo.update(
@@ -419,19 +422,27 @@ export class SharedExpenseService {
                 session,
                 expectedUpdatedAt,
               );
+              // Whoever left the line has payments to impute over what is left, too.
               const { stamped } = await this.ledger.recompute(
                 userId,
-                counterpartiesOf(new SharedExpense(saved)),
-                SHARED_HISTORY_REASONS.SPLIT_EDITED,
+                [
+                  ...counterpartiesOf(existing),
+                  ...counterpartiesOf(new SharedExpense(saved)),
+                ],
+                resplit
+                  ? SHARED_HISTORY_REASONS.SPLIT_EDITED
+                  : SHARED_HISTORY_REASONS.REIMPUTED,
                 session,
                 journal,
               );
               // Read again inside the write: a delete in between would otherwise be undone here.
-              const movement = await this.transactionRepo.getBySharedExpenseId(
-                userId,
-                id,
-                session,
-              );
+              const movement = linked
+                ? await this.transactionRepo.getBySharedExpenseId(
+                    userId,
+                    id,
+                    session,
+                  )
+                : null;
               if (movement && !stamped.has(id)) {
                 await stampSharedChange(
                   this.transactionRepo,
