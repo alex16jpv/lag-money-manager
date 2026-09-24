@@ -24,6 +24,7 @@ const joinedGroupService = new JoinedGroupService(
     repositoryFactory.getCategoryRepository(),
     sharedLedgerService,
   ),
+  sharedLedgerService,
 );
 
 export class JoinedGroupController {

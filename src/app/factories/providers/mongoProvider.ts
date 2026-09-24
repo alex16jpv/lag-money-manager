@@ -5,6 +5,7 @@ import { CategoryRepository } from "../../../infrastructure/repositories/categor
 import { ContactRepository } from "../../../infrastructure/repositories/contact/ContactRepository";
 import { IdempotencyRepository } from "../../../infrastructure/repositories/idempotency/IdempotencyRepository";
 import { RefreshSessionRepository } from "../../../infrastructure/repositories/refreshSession/RefreshSessionRepository";
+import { SharedCounterpartyRepository } from "../../../infrastructure/repositories/sharedCounterparty/SharedCounterpartyRepository";
 import { SharedExpenseRepository } from "../../../infrastructure/repositories/sharedExpense/SharedExpenseRepository";
 import { SharedGroupRepository } from "../../../infrastructure/repositories/sharedGroup/SharedGroupRepository";
 import { SharedInvitationRepository } from "../../../infrastructure/repositories/sharedInvitation/SharedInvitationRepository";
@@ -42,4 +43,8 @@ export function registerRepositories(factory: RegistryTarget): void {
   factory.register("sharedExpense", () => new SharedExpenseRepository());
   factory.register("sharedSettlement", () => new SharedSettlementRepository());
   factory.register("sharedInvitation", () => new SharedInvitationRepository());
+  factory.register(
+    "sharedCounterparty",
+    () => new SharedCounterpartyRepository(),
+  );
 }

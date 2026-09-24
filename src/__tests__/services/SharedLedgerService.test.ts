@@ -7,10 +7,12 @@ import {
 import { SharedExpense } from "../../domain/entities/SharedExpense";
 import { SharedSettlement } from "../../domain/entities/SharedSettlement";
 import { Transaction } from "../../domain/entities/Transaction";
+import { ISharedCounterpartyRepository } from "../../domain/repositories/sharedCounterparty/ISharedCounterpartyRepository";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { noAccountStamps } from "./accountStampsMock";
+import { counterpartyClaims } from "./counterpartyClaimsMock";
 
 const userId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
 const ana = "019576a0-d7b6-7d6d-af6a-2b7545f5aca1";
@@ -87,6 +89,7 @@ describe("SharedLedgerService", () => {
   let expenses: jest.Mocked<ISharedExpenseRepository>;
   let settlements: jest.Mocked<ISharedSettlementRepository>;
   let transactions: jest.Mocked<ITransactionRepository>;
+  let claims: jest.Mocked<ISharedCounterpartyRepository>;
   let ledger: SharedLedgerService;
 
   beforeEach(() => {
@@ -128,6 +131,7 @@ describe("SharedLedgerService", () => {
       settlements,
       transactions,
       noAccountStamps(),
+      (claims = counterpartyClaims()),
     );
   });
 
@@ -135,6 +139,32 @@ describe("SharedLedgerService", () => {
     journal = new RestampJournal(),
   ): Promise<RecomputeResult> =>
     ledger.recompute(userId, [withAna], "PAYMENT", "session" as never, journal);
+
+  it("claims each person once, before reading what they paid", async () => {
+    const guests = {
+      kind: "GUESTS" as const,
+      contactId: null,
+      expenseId: OLDER,
+    };
+    settlements.listByCounterparty.mockImplementation(async () => {
+      expect(claims.claim).toHaveBeenCalledTimes(1);
+      return [];
+    });
+
+    await ledger.recompute(
+      userId,
+      [withAna, guests, withAna],
+      "PAYMENT",
+      "session" as never,
+      new RestampJournal(),
+    );
+
+    expect(claims.claim).toHaveBeenCalledWith(
+      userId,
+      [`contact:${ana}`, `guests:${OLDER}`],
+      "session",
+    );
+  });
 
   it("covers the oldest line first and leaves the rest of the money on the next", async () => {
     expenses.listByCounterparty.mockResolvedValue([

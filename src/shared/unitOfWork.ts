@@ -9,12 +9,12 @@ export async function withTransaction<T>(
   const session = await mongoose.startSession();
   try {
     let result: T;
-    // The driver's default retry loop can run ~120 s, longer than the Lambda timeout.
+    // Bounds every attempt and the commit together: the driver's own retry loop runs up to 120 s.
     await session.withTransaction(
       async () => {
         result = await fn(session);
       },
-      { maxCommitTimeMS: 10_000 },
+      { timeoutMS: 10_000 },
     );
     return result!;
   } finally {

@@ -15,6 +15,7 @@ export const MODEL_NAMES = {
   SHARED_EXPENSE: "SharedExpense",
   SHARED_SETTLEMENT: "SharedSettlement",
   SHARED_INVITATION: "SharedInvitation",
+  SHARED_COUNTERPARTY: "SharedCounterparty",
 } as const;
 
 export const BUDGET_PERIOD_TYPES = {

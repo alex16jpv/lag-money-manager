@@ -161,6 +161,7 @@ export function shared(): {
     settlementRepo,
     transactionRepo,
     repositoryFactory.getAccountRepository(),
+    repositoryFactory.getSharedCounterpartyRepository(),
   );
   return {
     contacts: new ContactService(contactRepo, invitationRepo),

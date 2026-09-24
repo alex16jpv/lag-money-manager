@@ -4,6 +4,7 @@ import { ICategoryRepository } from "../../domain/repositories/category/ICategor
 import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
 import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
 import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
+import { ISharedCounterpartyRepository } from "../../domain/repositories/sharedCounterparty/ISharedCounterpartyRepository";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
 import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
@@ -34,6 +35,7 @@ export const REPO_KEYS = {
   SHARED_EXPENSE: "sharedExpense",
   SHARED_SETTLEMENT: "sharedSettlement",
   SHARED_INVITATION: "sharedInvitation",
+  SHARED_COUNTERPARTY: "sharedCounterparty",
 } as const;
 
 type DbProvider = (factory: RepositoryFactory) => void;
@@ -128,6 +130,12 @@ export class RepositoryFactory {
   getSharedInvitationRepository(): ISharedInvitationRepository {
     return this.getRepository<ISharedInvitationRepository>(
       REPO_KEYS.SHARED_INVITATION,
+    );
+  }
+
+  getSharedCounterpartyRepository(): ISharedCounterpartyRepository {
+    return this.getRepository<ISharedCounterpartyRepository>(
+      REPO_KEYS.SHARED_COUNTERPARTY,
     );
   }
 
