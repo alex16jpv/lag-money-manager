@@ -4,6 +4,7 @@ import {
 } from "../../domain/entities/SharedExpense";
 import { SettlementCounterparty } from "../../domain/entities/SharedSettlement";
 import { Transaction } from "../../domain/entities/Transaction";
+import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
@@ -101,6 +102,7 @@ export class SharedLedgerService {
     private expenseRepo: ISharedExpenseRepository,
     private settlementRepo: ISharedSettlementRepository,
     private transactionRepo: ITransactionRepository,
+    private accountRepo: IAccountRepository,
   ) {}
 
   async recompute(
@@ -370,6 +372,11 @@ export class SharedLedgerService {
   ): Promise<Restamp[]> {
     if (journal.entries().length === 0) return [];
     const now = {
+      account: await this.accountRepo.stampsOf(
+        userId,
+        journal.idsOf("account"),
+        session,
+      ),
       sharedExpense: await this.expenseRepo.stampsOf(
         userId,
         journal.idsOf("sharedExpense"),

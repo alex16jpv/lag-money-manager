@@ -160,6 +160,7 @@ export function shared(): {
     expenseRepo,
     settlementRepo,
     transactionRepo,
+    repositoryFactory.getAccountRepository(),
   );
   return {
     contacts: new ContactService(contactRepo, invitationRepo),

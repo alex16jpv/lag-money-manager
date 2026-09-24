@@ -181,7 +181,8 @@ const responseViews = {
     type: "object",
     description:
       "A row a write rewrote besides the one it answers: an expense whose " +
-      "split was imputed again, a movement whose figure or history moved.",
+      "split was imputed again, a movement whose figure or history moved, " +
+      "an account whose balance a movement moved or whose default was taken.",
     properties: {
       entity: { type: "string", enum: [...RESTAMPED_ENTITIES] },
       id: uuid,
@@ -189,6 +190,7 @@ const responseViews = {
       updatedAt: dateTime,
     },
   }),
+  AccountWithRestamps: withRestamps("Account"),
   TransactionWithRestamps: withRestamps("Transaction"),
   MessageWithRestamps: withRestamps("Message"),
   SharedExpenseWithRestamps: withRestamps("SharedExpense"),

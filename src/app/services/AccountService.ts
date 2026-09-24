@@ -17,6 +17,7 @@ import { ApiError } from "../../shared/errors";
 import { assertAmountPrecision } from "../../shared/money";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { CreateAccountDTO, UpdateAccountDTO } from "../dtos/AccountDTO";
+import { WithRestamps } from "./restamps";
 
 // Soft cap: protects the shared Atlas M0 tier from runaway creation.
 const MAX_ACCOUNTS_PER_USER = 100;
@@ -114,10 +115,15 @@ export class AccountService {
     id: string,
     userId: string,
     expectedUpdatedAt?: Date,
-  ): Promise<Account> {
-    const account = await this.repo.setDefault(id, userId, expectedUpdatedAt);
-    if (account) {
-      return account;
+  ): Promise<WithRestamps<Account>> {
+    const set = await this.repo.setDefault(id, userId, expectedUpdatedAt);
+    if (set) {
+      return Object.assign(set.account, {
+        restamped: set.unset.map((row) => ({
+          entity: "account" as const,
+          ...row,
+        })),
+      });
     }
     // null also means archived or missing, which stay 404 as before.
     const current = await this.repo.getOwnById(id, userId);

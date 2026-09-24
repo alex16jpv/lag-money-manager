@@ -10,6 +10,7 @@ import { Transaction } from "../../domain/entities/Transaction";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
+import { noAccountStamps } from "./accountStampsMock";
 
 const userId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
 const ana = "019576a0-d7b6-7d6d-af6a-2b7545f5aca1";
@@ -122,7 +123,12 @@ describe("SharedLedgerService", () => {
       stampsOf: jest.fn().mockResolvedValue(new Map()),
       applySharedChange: jest.fn(),
     } as unknown as jest.Mocked<ITransactionRepository>;
-    ledger = new SharedLedgerService(expenses, settlements, transactions);
+    ledger = new SharedLedgerService(
+      expenses,
+      settlements,
+      transactions,
+      noAccountStamps(),
+    );
   });
 
   const recompute = async (

@@ -195,13 +195,13 @@ router.get(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Transaction'
+ *               $ref: '#/components/schemas/TransactionWithRestamps'
  *       200:
  *         description: The expense already created under that client-minted id (replay)
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Transaction'
+ *               $ref: '#/components/schemas/TransactionWithRestamps'
  *       400:
  *         description: Validation error (code VALIDATION), a line somebody else paid, one you have no part in or whose part is not marked paid (code SHARED_LINE_NOT_PAID), a line already in your ledger (code SHARED_LINE_IN_LEDGER), or an archived category (code CATEGORY_ARCHIVED)
  *         content:

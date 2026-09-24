@@ -129,7 +129,7 @@ describe("JoinedGroupService", () => {
   let contacts: jest.Mocked<IContactRepository>;
   let users: jest.Mocked<IUserRepository>;
   let transactions: jest.Mocked<ITransactionRepository>;
-  let recordWithin: jest.Mock;
+  let recordAnswered: jest.Mock;
   let service: JoinedGroupService;
 
   beforeEach(() => {
@@ -175,9 +175,10 @@ describe("JoinedGroupService", () => {
       getOwnById: jest.fn().mockResolvedValue(null),
       getImported: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<ITransactionRepository>;
-    recordWithin = jest.fn(
-      async (dto: Record<string, unknown>) =>
-        new Transaction(dto as unknown as Transaction),
+    recordAnswered = jest.fn(async (dto: Record<string, unknown>) =>
+      Object.assign(new Transaction(dto as unknown as Transaction), {
+        restamped: [],
+      }),
     );
     service = new JoinedGroupService(
       invitations,
@@ -186,7 +187,7 @@ describe("JoinedGroupService", () => {
       contacts,
       users,
       transactions,
-      { recordWithin } as unknown as TransactionService,
+      { recordAnswered } as unknown as TransactionService,
     );
   });
 
@@ -330,7 +331,7 @@ describe("JoinedGroupService", () => {
         "America/Bogota",
       );
 
-      expect(recordWithin).toHaveBeenCalledWith(
+      expect(recordAnswered).toHaveBeenCalledWith(
         {
           id: undefined,
           type: "EXPENSE",
@@ -366,7 +367,7 @@ describe("JoinedGroupService", () => {
       await expect(
         service.addToLedger(groupId, expenseId, dto, meId, "UTC"),
       ).rejects.toMatchObject({ code: "SHARED_LINE_NOT_PAID" });
-      expect(recordWithin).not.toHaveBeenCalled();
+      expect(recordAnswered).not.toHaveBeenCalled();
     });
 
     it("refuses a line somebody other than the owner paid", async () => {
@@ -411,7 +412,7 @@ describe("JoinedGroupService", () => {
     });
 
     it("answers two devices adding the same line at once with the same refusal", async () => {
-      recordWithin.mockRejectedValue(
+      recordAnswered.mockRejectedValue(
         Object.assign(new Error("E11000"), {
           code: 11000,
           keyPattern: { userId: 1, importedFromExpenseId: 1 },
@@ -453,7 +454,7 @@ describe("JoinedGroupService", () => {
 
       expect(result).toBe(stored);
       expect(outcome.replayed).toBe(true);
-      expect(recordWithin).not.toHaveBeenCalled();
+      expect(recordAnswered).not.toHaveBeenCalled();
     });
   });
 });

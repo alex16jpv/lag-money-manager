@@ -76,6 +76,7 @@ export const describeSyncActions = (): string =>
 
 // What a write can rewrite besides the row it answers: the device moves the guards it queued on them.
 export const RESTAMPED_ENTITIES = [
+  "account",
   "sharedExpense",
   "transaction",
 ] as const satisfies readonly SyncEntity[];

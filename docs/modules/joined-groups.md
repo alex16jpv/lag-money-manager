@@ -64,7 +64,7 @@ The fallback for a device with no copy of the feed yet. The listing pages over y
 
 `{ id?, accountId, categoryId? }`. It writes **one ordinary expense of yours**: your share, dated the line, with its description, from `accountId` and in `categoryId`. It writes nothing in the group, and nothing the owner can see.
 
-Refused with `400 SHARED_LINE_NOT_PAID` for a line somebody other than the owner paid, one you have no part in, and one whose part is not marked paid yet, `Written off` included. A line already in your ledger is `400 SHARED_LINE_IN_LEDGER`. The account and the category follow the rules of any expense, because it goes through `TransactionService.recordWithin`.
+Refused with `400 SHARED_LINE_NOT_PAID` for a line somebody other than the owner paid, one you have no part in, and one whose part is not marked paid yet, `Written off` included. A line already in your ledger is `400 SHARED_LINE_IN_LEDGER`. The account and the category follow the rules of any expense, because it goes through `TransactionService.recordAnswered`, and like any movement it answers `restamped` with the account whose balance it moved (T-146; [sync.md](sync.md)).
 
 **Once per line.** The movement carries `importedFromGroupId` and `importedFromExpenseId`, and a partial unique index over `{ userId, importedFromExpenseId }` on the live ones makes that a guarantee rather than a check. Two devices adding the same line at once meet in the index, and the loser answers `SHARED_LINE_IN_LEDGER`. Deleting the movement frees the line. A client-minted `id` replays like any create.
 

@@ -380,11 +380,11 @@ router.post(
  *       - $ref: '#/components/parameters/IfMatch'
  *     responses:
  *       200:
- *         description: Default account set
+ *         description: Default account set; `restamped` holds the account it took the default from
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Account'
+ *               $ref: '#/components/schemas/AccountWithRestamps'
  *       400:
  *         description: Invalid ID format (code VALIDATION)
  *         content:

@@ -32,6 +32,7 @@ import {
   isAfterCursor,
 } from "../../shared/syncCursor";
 import { TxSession, withTransaction } from "../../shared/unitOfWork";
+import { WithRestamps } from "./restamps";
 import { TransactionService } from "./TransactionService";
 
 export interface AddToLedgerDTO {
@@ -263,12 +264,12 @@ export class JoinedGroupService {
     userId: string,
     timezone: string,
     outcome?: CreateOutcome,
-  ): Promise<Transaction> {
+  ): Promise<WithRestamps<Transaction>> {
     return createOrReplay({
       clientId: dto.id,
       outcome,
       findOwn: (id) => this.transactions.getOwnById(id, userId),
-      replay: async (t) => t,
+      replay: async (t) => Object.assign(t, { restamped: [] }),
       create: () => this.recordShare(groupId, expenseId, dto, userId, timezone),
     });
   }
@@ -279,7 +280,7 @@ export class JoinedGroupService {
     dto: AddToLedgerDTO,
     userId: string,
     timezone: string,
-  ): Promise<Transaction> {
+  ): Promise<WithRestamps<Transaction>> {
     try {
       return await withTransaction(async (session) => {
         const membership = await this.membershipOf(groupId, userId, session);
@@ -306,7 +307,7 @@ export class JoinedGroupService {
         if (await this.transactions.getImported(userId, expenseId, session)) {
           throw inLedger();
         }
-        return this.transactionService.recordWithin(
+        return this.transactionService.recordAnswered(
           {
             id: dto.id,
             type: TRANSACTION_TYPES.EXPENSE,

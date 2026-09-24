@@ -45,12 +45,15 @@ const mockAccountRepo: jest.Mocked<IAccountRepository> = {
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
-  incrementBalance: jest.fn().mockResolvedValue(true),
+  incrementBalance: jest
+    .fn()
+    .mockResolvedValue({ updatedAt: new Date("2026-01-01T00:00:00.000Z") }),
   incrementBalanceCapped: jest.fn().mockResolvedValue("applied"),
   archiveNonDefault: jest.fn().mockResolvedValue(null),
   restore: jest.fn(),
   getDefaultByUserId: jest.fn(),
   setDefault: jest.fn(),
+  stampsOf: jest.fn().mockResolvedValue(new Map()),
   countByUserId: jest.fn().mockResolvedValue(1),
 };
 
@@ -2111,7 +2114,10 @@ describe("Integration Tests", () => {
         V1,
       );
 
-      mockAccountRepo.setDefault.mockResolvedValue(at(V2));
+      mockAccountRepo.setDefault.mockResolvedValue({
+        account: at(V2),
+        unset: [],
+      });
       await request(app)
         .post(`/accounts/${ACC}/default`)
         .set("Authorization", `Bearer ${token}`)

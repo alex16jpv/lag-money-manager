@@ -80,7 +80,9 @@ Un-archive an account. Idempotent: restoring an already-active account returns i
 
 ### `POST /accounts/:id/default`
 
-Mark the account as the user's default. Runs in a MongoDB transaction that demotes the previous default, backed by a unique partial index on `{ userId }` restricted to `{ isDefault: true, archivedAt: null }` — at most one active default per user.
+Mark the account as the user's default. Runs in a MongoDB transaction that demotes the previous default, backed by a unique partial index on `{ userId }` restricted to `{ isDefault: true, archivedAt: null }` — at most one active default per user. It answers the account plus **`restamped`**: the account it demoted, with the `updatedAt` it had before and the one it has now, empty when the account already was the default (T-146; `docs/modules/sync.md`, _Rows a write rewrote besides its own_).
+
+Every movement moves its account's `updatedAt` along with its `balance`, so the writes that move a balance name the account in their own `restamped` ([transactions.md](transactions.md)).
 
 ## Internal Flow
 
