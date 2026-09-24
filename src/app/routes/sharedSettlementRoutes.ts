@@ -213,7 +213,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/SettlementWithRestamps'
  *       400:
- *         description: Invalid ID format (code VALIDATION)
+ *         description: Invalid ID format (code VALIDATION), or LOAN_OVERPAID when it was paid from a LOAN paid off since, and giving that money back would leave the loan above zero
  *         content:
  *           application/json:
  *             schema:

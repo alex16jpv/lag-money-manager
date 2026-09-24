@@ -132,8 +132,13 @@ export class AccountRepository implements IAccountRepository {
     return doc ? this.toEntity(doc) : null;
   }
 
-  async getByIdIncludingArchived(id: string): Promise<Account | null> {
-    const doc = await AccountModel.findById(id).lean();
+  async getByIdIncludingArchived(
+    id: string,
+    session?: TxSession,
+  ): Promise<Account | null> {
+    const doc = await AccountModel.findById(id)
+      .session(session ?? null)
+      .lean();
     return doc ? this.toEntity(doc) : null;
   }
 

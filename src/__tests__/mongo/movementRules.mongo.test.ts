@@ -261,7 +261,7 @@ describe("what a movement may do to an account", () => {
     expect(fixed.status).toBe(200);
   });
 
-  it("still lets a loan that is finished be undone: a reversal is never capped", async () => {
+  it("still lets a finished loan's payment be undone: that only takes it back below zero", async () => {
     const list = await as(
       owner,
       request(app).get(`/transactions?accountId=${loan}&limit=50`),
