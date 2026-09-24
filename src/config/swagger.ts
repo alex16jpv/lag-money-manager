@@ -235,10 +235,15 @@ const responseViews = {
         accessToken: { type: "string" },
         refreshToken: { type: "string" },
         user: { $ref: "#/components/schemas/User" },
+        deviceToken: {
+          type: "string",
+          description:
+            "Login and register only. Proof that this device already signed in to this email: send it back as `deviceToken` on the next login or register and its failed attempts get a budget of their own, so a stranger's failures cannot lock this device out. Keep it across logouts, and keep the new one each login or register answers. A password or email change and a logout-all revoke every device token issued before.",
+        },
       },
       required: ["accessToken", "refreshToken"],
     },
-    ["user"],
+    ["user", "deviceToken"],
   ),
   Session: withRequired(
     {

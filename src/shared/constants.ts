@@ -235,6 +235,7 @@ const baseEnvSchema = z.object({
   CORS_ORIGIN: z.string().min(1, "CORS_ORIGIN is required"),
   RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(1000),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(10),
+  AUTH_EMAIL_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(50),
   AUTH_IP_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(60),
   REFRESH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(60),
   LOG_LEVEL: z

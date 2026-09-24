@@ -25,4 +25,5 @@ process.env.CORS_ORIGIN ??= "http://localhost:3000";
 // The suite fires bursts on purpose; the limiter is not what is under test.
 process.env.RATE_LIMIT_MAX ??= "100000";
 process.env.AUTH_RATE_LIMIT_MAX ??= "10000";
+process.env.AUTH_EMAIL_RATE_LIMIT_MAX ??= "10000";
 process.env.BCRYPT_SALT_ROUNDS ??= "4";

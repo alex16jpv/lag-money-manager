@@ -8,7 +8,7 @@
 @password = SecureP@ss123
 
 ### Register (éxito) — timezone y currency opcionales (defaults America/Bogota, COP)
-### Devuelve { accessToken, refreshToken, user } — ya no hace falta login aparte.
+### Devuelve { accessToken, refreshToken, user, deviceToken } — ya no hace falta login aparte.
 # @name register
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
@@ -27,7 +27,7 @@ Content-Type: application/json
 ### user.reactivated: true. Con otra password: 409 EMAIL_TAKEN, como una viva.
 # (mismo request de arriba tras un DELETE /users/:id)
 
-### Login (éxito) — captura accessToken y refreshToken
+### Login (éxito) — captura accessToken, refreshToken y deviceToken
 # @name login
 POST {{baseUrl}}/auth/login
 Content-Type: application/json
@@ -41,6 +41,18 @@ Content-Type: application/json
 
 @accessToken = {{login.response.body.accessToken}}
 @refreshToken = {{login.response.body.refreshToken}}
+@deviceToken = {{login.response.body.deviceToken}}
+
+### Login desde un dispositivo reconocido — con el deviceToken de un login anterior
+### sus fallos tienen su propio contador: los de un extraño contra este correo no lo bloquean.
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "deviceToken": "{{deviceToken}}"
+}
 
 ### Refresh (éxito) — ROTA de verdad: el refresh viejo queda invalidado.
 ### Guarda SIEMPRE el par nuevo.
@@ -172,4 +184,6 @@ Content-Type: application/json
 
 { "refreshToken": "{{accessToken}}" }
 
-### Rate limit — repetir login fallido >10 veces/15min por IP o por email (429 RATE_LIMITED)
+### Rate limit — sin deviceToken, >10 fallos/15min con este correo desde esta IP, o >50/hora
+### con este correo desde cualquier IP (429 RATE_LIMITED). Con el deviceToken de arriba, el login
+### bueno sigue entrando.

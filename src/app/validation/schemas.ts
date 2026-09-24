@@ -1087,10 +1087,13 @@ export const deleteUserSchema = z.object({
   body: z.object({ currentPassword: z.string().min(1).max(128) }),
 });
 
+const deviceTokenField = z.string().max(2048).optional();
+
 export const loginSchema = z.object({
   body: z.object({
     email: emailField,
     password: z.string().min(1, "Password is required"),
+    deviceToken: deviceTokenField,
   }),
 });
 
@@ -1111,6 +1114,7 @@ export const registerSchema = z.object({
     timezone: timezoneField,
     currency: currencyField,
     locale: localeField,
+    deviceToken: deviceTokenField,
   }),
 });
 

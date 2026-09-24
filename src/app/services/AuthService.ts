@@ -18,6 +18,7 @@ import {
   UserResponseDTO,
 } from "../dtos/UserDTO";
 import { CategoryService } from "./CategoryService";
+import { readDeviceToken, signDeviceToken } from "./deviceToken";
 
 type LostAnswer =
   | { kind: "reissued"; tokens: AuthTokens; count: number }
@@ -44,6 +45,10 @@ const TIMING_EQUALIZATION_HASH =
 interface AuthTokens {
   accessToken: string;
   refreshToken: string;
+}
+
+interface OpenedSession extends AuthTokens {
+  deviceToken: string;
 }
 
 interface RefreshPayload {
@@ -101,7 +106,7 @@ export class AuthService {
   private async openSession(
     user: User,
     userAgent?: string,
-  ): Promise<AuthTokens> {
+  ): Promise<OpenedSession> {
     const jti = uuidv7();
     const refreshToken = this.signRefreshToken(user, jti);
     const { exp } = jwt.decode(refreshToken) as { exp: number };
@@ -113,14 +118,18 @@ export class AuthService {
       userAgent,
     });
     await this.repo.recordLogin(user.id);
-    return { accessToken: this.signAccessToken(user, jti), refreshToken };
+    return {
+      accessToken: this.signAccessToken(user, jti),
+      refreshToken,
+      deviceToken: signDeviceToken(user.email, user.tokenVersion),
+    };
   }
 
   // The request just proved possession of the new password, so a follow-up login adds nothing.
   async register(
     dto: CreateUserDTO,
     userAgent?: string,
-  ): Promise<AuthTokens & { user: UserResponseDTO }> {
+  ): Promise<OpenedSession & { user: UserResponseDTO }> {
     // Owner decisions R2-09 and T-153: a soft-deleted account comes back only with the password it had.
     const deleted = await this.repo.getDeletedByEmail(dto.email);
     if (deleted) {
@@ -178,11 +187,22 @@ export class AuthService {
     return { ...tokens, user: toUserResponse(created) };
   }
 
+  // A password change or a logout-all bumps tokenVersion, and with it every device token issued before.
+  async recognizedDevice(
+    deviceToken: unknown,
+    email: string,
+  ): Promise<string | null> {
+    const claim = readDeviceToken(deviceToken, email);
+    if (!claim) return null;
+    const user = await this.repo.getByEmail(email);
+    return user?.tokenVersion === claim.tokenVersion ? claim.deviceId : null;
+  }
+
   async login(
     email: string,
     password: string,
     userAgent?: string,
-  ): Promise<AuthTokens & { user: UserResponseDTO }> {
+  ): Promise<OpenedSession & { user: UserResponseDTO }> {
     const user = await this.repo.getByEmail(email);
     if (!user || !user.password) {
       await bcryptjs.compare(password, TIMING_EQUALIZATION_HASH);

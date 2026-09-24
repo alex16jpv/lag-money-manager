@@ -470,7 +470,8 @@ import time, so a missing required variable crashes the process at startup.
 - **Required:** `JWT_SECRET`, `CORS_ORIGIN`, `MONGO_URI`
 - **With defaults:** `PORT` (3000), `DB_TYPE` (`MONGO`), `NODE_ENV` (`development`),
   `JWT_EXPIRATION` (15m), `REFRESH_TOKEN_EXPIRATION` (30d), `BCRYPT_SALT_ROUNDS` (12),
-  `RATE_LIMIT_MAX` (200), `AUTH_RATE_LIMIT_MAX` (10), `REFRESH_RATE_LIMIT_MAX` (60),
+  `RATE_LIMIT_MAX` (200), `AUTH_RATE_LIMIT_MAX` (10), `AUTH_EMAIL_RATE_LIMIT_MAX` (50),
+  `AUTH_IP_RATE_LIMIT_MAX` (60), `REFRESH_RATE_LIMIT_MAX` (60),
   `LOG_LEVEL` (info)
 - **Optional:** `REFRESH_SECRET` (falls back to `JWT_SECRET`), `API_SECRET`
 

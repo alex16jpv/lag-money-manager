@@ -458,7 +458,7 @@ Two layers, both with a 15-minute window. **Only one of them is a ceiling** — 
 | Layer                                               | Applies to                                       | Limit                                                                                                                                                            | Store                                                                |
 | --------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | Global limiter (`express-rate-limit`, `src/app.ts`) | Every mounted route, `/` and `/health/db` too    | `RATE_LIMIT_MAX` per user, or per client IP where there is no session (default `1000`)                                                                           | In-memory — **per Lambda instance**, so it is a brake, not a ceiling |
-| Auth limiter (`authRateLimitMiddleware.ts`)         | `/auth/login`, `/auth/register`, `/auth/refresh` | `AUTH_IP_RATE_LIMIT_MAX` per IP (default `60`) and `AUTH_RATE_LIMIT_MAX` per email on login (default `10`); refresh uses `REFRESH_RATE_LIMIT_MAX` (default `60`) | MongoDB (`RateLimitModel`), so the limit holds across instances      |
+| Auth limiter (`authRateLimitMiddleware.ts`)         | `/auth/login`, `/auth/register`, `/auth/refresh` | `AUTH_IP_RATE_LIMIT_MAX` per IP (default `60`), `AUTH_RATE_LIMIT_MAX` per recognized device or per email and IP (default `10`) and `AUTH_EMAIL_RATE_LIMIT_MAX` per email per hour (default `50`); refresh uses `REFRESH_RATE_LIMIT_MAX` (default `60`) | MongoDB (`RateLimitModel`), so the limit holds across instances      |
 
 Login is limited on two dimensions: per IP and per target email. The per-email counter is refunded on success, so only failed logins burn that budget. Over-limit responses are `429` with `code: "RATE_LIMITED"` and a `Retry-After` header; the store failing open is deliberate — a Mongo error must not lock everyone out of login.
 
@@ -516,6 +516,6 @@ Before deploying, ensure these are set:
 - [ ] `BCRYPT_SALT_ROUNDS` — 12+ for production
 - [ ] Indexes synced — the deploy does this and aborts on failure; only run `npm run db:sync-indexes` by hand if you deployed some other way
 
-Optional: `REFRESH_SECRET` (falls back to `JWT_SECRET`; a separate value lets you rotate the access secret without invalidating every session), `RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_MAX`, `REFRESH_RATE_LIMIT_MAX`, `JWT_EXPIRATION`, `REFRESH_TOKEN_EXPIRATION`.
+Optional: `REFRESH_SECRET` (falls back to `JWT_SECRET`; a separate value lets you rotate the access secret without invalidating every session), `RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_MAX`, `AUTH_EMAIL_RATE_LIMIT_MAX`, `AUTH_IP_RATE_LIMIT_MAX`, `REFRESH_RATE_LIMIT_MAX`, `JWT_EXPIRATION`, `REFRESH_TOKEN_EXPIRATION`.
 
 See `docs/guides/environment-vars.md` for the complete list.

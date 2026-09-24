@@ -99,6 +99,57 @@ describe("AuthService", () => {
     );
   });
 
+  describe("recognizedDevice [T-176]", () => {
+    const owner = (tokenVersion: number) =>
+      new User({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        name: "Owner",
+        email: "owner@example.com",
+        password: "hash",
+        tokenVersion,
+      });
+
+    it("recognizes the device a login answered while the token version holds", async () => {
+      repo.getByEmail.mockResolvedValueOnce(
+        new User({ ...owner(2), password: bcryptjs.hashSync("pw", 4) }),
+      );
+      const { deviceToken } = await service.login("owner@example.com", "pw");
+      repo.getByEmail.mockResolvedValue(owner(2));
+      await expect(
+        service.recognizedDevice(deviceToken, "owner@example.com"),
+      ).resolves.toEqual(expect.any(String));
+    });
+
+    it("stops recognizing it after a password change or a logout-all", async () => {
+      repo.getByEmail.mockResolvedValueOnce(
+        new User({ ...owner(2), password: bcryptjs.hashSync("pw", 4) }),
+      );
+      const { deviceToken } = await service.login("owner@example.com", "pw");
+      repo.getByEmail.mockResolvedValue(owner(3));
+      await expect(
+        service.recognizedDevice(deviceToken, "owner@example.com"),
+      ).resolves.toBeNull();
+    });
+
+    it("does not recognize a device of an account that is gone", async () => {
+      repo.getByEmail.mockResolvedValueOnce(
+        new User({ ...owner(0), password: bcryptjs.hashSync("pw", 4) }),
+      );
+      const { deviceToken } = await service.login("owner@example.com", "pw");
+      repo.getByEmail.mockResolvedValue(null);
+      await expect(
+        service.recognizedDevice(deviceToken, "owner@example.com"),
+      ).resolves.toBeNull();
+    });
+
+    it("does not look the user up for a token it cannot read", async () => {
+      await expect(
+        service.recognizedDevice("garbage", "owner@example.com"),
+      ).resolves.toBeNull();
+      expect(repo.getByEmail).not.toHaveBeenCalled();
+    });
+  });
+
   describe("register", () => {
     it("reactivates a soft-deleted account with the password it had [R2-09, T-153]", async () => {
       const deletedUser = new User({
