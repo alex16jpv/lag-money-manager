@@ -195,13 +195,13 @@ router.get(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Transaction'
+ *               $ref: '#/components/schemas/TransactionWithRestamps'
  *       201:
  *         description: Transaction created
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Transaction'
+ *               $ref: '#/components/schemas/TransactionWithRestamps'
  *       400:
  *         description: Validation error. Codes include FUTURE_DATE (date more than 24h in the future), CURRENCY_MISMATCH (transfer between accounts with different currencies), INCOME_ON_CARD_OR_LOAN (an income landing on an account type listed in `IncomeRefusedAccountType`), AMOUNT_PRECISION (decimals in a `ZeroDecimalCurrency`), LOAN_OVERPAID (a movement that would leave a LOAN above zero), CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH, IDEMPOTENCY_KEY_INVALID (malformed Idempotency-Key header).
  *         content:
@@ -274,13 +274,13 @@ router.post(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Transaction'
+ *               $ref: '#/components/schemas/TransactionWithRestamps'
  *       201:
  *         description: Transaction created (pendingDetails=true, source=QUICK)
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Transaction'
+ *               $ref: '#/components/schemas/TransactionWithRestamps'
  *       400:
  *         description: Validation error. Codes include NO_DEFAULT_ACCOUNT (no account id given and no default account set), FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN (a quick income whose destination account has a type listed in `IncomeRefusedAccountType`), LOAN_OVERPAID, CATEGORY_ARCHIVED, CATEGORY_TYPE_MISMATCH, IDEMPOTENCY_KEY_INVALID.
  *         content:

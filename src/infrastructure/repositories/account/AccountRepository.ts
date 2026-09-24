@@ -6,6 +6,7 @@ import {
   AccountFilters,
   AccountWrite,
   IAccountRepository,
+  StampMove,
 } from "../../../domain/repositories/account/IAccountRepository";
 import { NAME_COLLATION } from "../../../shared/collation";
 import { DEBT_ACCOUNT_FIELD_NAMES } from "../../../shared/constants";
@@ -201,14 +202,18 @@ export class AccountRepository implements IAccountRepository {
     id: string,
     delta: number,
     session?: TxSession,
-  ): Promise<boolean> {
+  ): Promise<{ updatedAt?: Date } | null> {
     // No archivedAt filter: reversals must reach archived accounts too.
-    const res = await AccountModel.updateOne(
+    const before = await AccountModel.findOneAndUpdate(
       { _id: id },
       { $inc: { balance: toCents(delta) } },
-      { session: session ?? undefined },
-    );
-    return res.matchedCount === 1;
+      {
+        returnDocument: "before",
+        projection: { updatedAt: 1 },
+        session: session ?? undefined,
+      },
+    ).lean();
+    return before && { updatedAt: before.updatedAt };
   }
 
   async incrementBalanceCapped(
@@ -293,7 +298,7 @@ export class AccountRepository implements IAccountRepository {
     id: string,
     userId: string,
     expectedUpdatedAt?: Date,
-  ): Promise<Account | null> {
+  ): Promise<{ account: Account; unset: StampMove[] } | null> {
     return withTransaction(async (session) => {
       const exists = await AccountModel.exists({
         _id: id,
@@ -302,12 +307,12 @@ export class AccountRepository implements IAccountRepository {
         ...(expectedUpdatedAt && { updatedAt: expectedUpdatedAt }),
       }).session(session);
       if (!exists) return null;
+      const others = { userId, _id: { $ne: id }, isDefault: true };
+      const before = await AccountModel.find(others, { updatedAt: 1 })
+        .session(session)
+        .lean();
       // Unset BEFORE set: the partial unique index refuses a second isDefault per write.
-      await AccountModel.updateMany(
-        { userId, _id: { $ne: id }, isDefault: true },
-        { isDefault: false },
-        { session },
-      );
+      await AccountModel.updateMany(others, { isDefault: false }, { session });
       const target = await AccountModel.findOneAndUpdate(
         {
           _id: id,
@@ -318,8 +323,41 @@ export class AccountRepository implements IAccountRepository {
         { isDefault: true },
         { new: true, session },
       ).lean();
-      return target ? this.toEntity(target) : null;
+      if (!target) return null;
+      const now = await this.stampsOf(
+        userId,
+        before.map((doc) => String(doc._id)),
+        session,
+      );
+      const unset = before.flatMap((doc) => {
+        const updatedAt = now.get(String(doc._id));
+        return updatedAt
+          ? [
+              {
+                id: String(doc._id),
+                previousUpdatedAt: doc.updatedAt,
+                updatedAt,
+              },
+            ]
+          : [];
+      });
+      return { account: this.toEntity(target), unset };
     });
+  }
+
+  async stampsOf(
+    userId: string,
+    ids: string[],
+    session: TxSession,
+  ): Promise<Map<string, Date>> {
+    if (ids.length === 0) return new Map();
+    const docs = await AccountModel.find(
+      { _id: { $in: ids }, userId },
+      { updatedAt: 1 },
+    )
+      .session(session)
+      .lean();
+    return new Map(docs.map((doc) => [String(doc._id), doc.updatedAt]));
   }
 
   async countByUserId(userId: string): Promise<number> {

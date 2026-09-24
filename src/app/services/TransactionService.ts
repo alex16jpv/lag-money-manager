@@ -77,6 +77,9 @@ function describeItemFailure(
   return null;
 }
 
+const nothingRestamped = (row: Transaction): WithRestamps<Transaction> =>
+  Object.assign(row, { restamped: [] });
+
 export class TransactionService {
   constructor(
     private transactionRepo: ITransactionRepository,
@@ -118,12 +121,12 @@ export class TransactionService {
     timezone: string,
     idempotency?: IdempotencyMeta,
     outcome?: CreateOutcome,
-  ): Promise<Transaction> {
+  ): Promise<WithRestamps<Transaction>> {
     return createOrReplay({
       clientId: dto.id,
       outcome,
       findOwn: (id) => this.transactionRepo.getOwnById(id, dto.userId),
-      replay: async (t) => t,
+      replay: async (t) => nothingRestamped(t),
       create: () => this.insertTransaction(dto, timezone, idempotency),
     });
   }
@@ -132,10 +135,10 @@ export class TransactionService {
     dto: CreateTransactionDTO,
     timezone: string,
     idempotency?: IdempotencyMeta,
-  ): Promise<Transaction> {
+  ): Promise<WithRestamps<Transaction>> {
     if (idempotency) {
       const existing = await this.replayIdempotent(dto.userId, idempotency);
-      if (existing) return existing;
+      if (existing) return nothingRestamped(existing);
     }
 
     const transaction = new Transaction({
@@ -147,7 +150,12 @@ export class TransactionService {
 
     try {
       return await withTransaction(async (session) => {
-        const created = await this.applyAndCreate(transaction, session);
+        const journal = new RestampJournal();
+        const created = await this.applyAndCreate(
+          transaction,
+          session,
+          journal,
+        );
         if (idempotency) {
           await this.idempotencyRepo.record(
             dto.userId,
@@ -158,12 +166,14 @@ export class TransactionService {
             session,
           );
         }
-        return created;
+        return Object.assign(created, {
+          restamped: await this.ledger.restampsOf(dto.userId, journal, session),
+        });
       });
     } catch (err) {
       if (idempotency && isDuplicateKeyError(err)) {
         const existing = await this.replayIdempotent(dto.userId, idempotency);
-        if (existing) return existing;
+        if (existing) return nothingRestamped(existing);
       }
       throw err;
     }
@@ -174,6 +184,7 @@ export class TransactionService {
     dto: CreateTransactionDTO,
     timezone: string,
     session: TxSession,
+    journal: RestampJournal,
   ): Promise<Transaction> {
     const transaction = new Transaction({
       ...dto,
@@ -181,7 +192,20 @@ export class TransactionService {
     });
     transaction.assertValid();
     await this.assertCategoryUsable(transaction);
-    return this.applyAndCreate(transaction, session);
+    return this.applyAndCreate(transaction, session, journal);
+  }
+
+  // The movement is the only write of the caller's transaction, so what it rewrote is the answer's.
+  async recordAnswered(
+    dto: CreateTransactionDTO,
+    timezone: string,
+    session: TxSession,
+  ): Promise<WithRestamps<Transaction>> {
+    const journal = new RestampJournal();
+    const recorded = await this.recordWithin(dto, timezone, session, journal);
+    return Object.assign(recorded, {
+      restamped: await this.ledger.restampsOf(dto.userId, journal, session),
+    });
   }
 
   /** A settle-up wrote this movement's money, so undoing the payment is what changes it. */
@@ -218,16 +242,18 @@ export class TransactionService {
   async reverseWithin(
     transaction: Transaction,
     session: TxSession,
+    journal: RestampJournal,
   ): Promise<void> {
-    await this.adjustBalances(transaction, -1, session);
+    await this.adjustBalances(transaction, -1, session, journal);
     await this.transactionRepo.delete(transaction.id, session);
   }
 
   private async applyAndCreate(
     transaction: Transaction,
     session: TxSession,
+    journal: RestampJournal,
   ): Promise<Transaction> {
-    await this.adjustBalances(transaction, 1, session);
+    await this.adjustBalances(transaction, 1, session, journal);
     return this.transactionRepo.create(transaction, session);
   }
 
@@ -267,12 +293,12 @@ export class TransactionService {
     timezone: string,
     idempotency?: IdempotencyMeta,
     outcome?: CreateOutcome,
-  ): Promise<Transaction> {
+  ): Promise<WithRestamps<Transaction>> {
     return createOrReplay({
       clientId: dto.id,
       outcome,
       findOwn: (id) => this.transactionRepo.getOwnById(id, dto.userId),
-      replay: async (t) => t,
+      replay: async (t) => nothingRestamped(t),
       create: () => this.insertQuickAdd(dto, timezone, idempotency),
     });
   }
@@ -281,7 +307,7 @@ export class TransactionService {
     dto: QuickAddTransactionDTO,
     timezone: string,
     idempotency?: IdempotencyMeta,
-  ): Promise<Transaction> {
+  ): Promise<WithRestamps<Transaction>> {
     const type = dto.type ?? "EXPENSE";
     let fromAccountId = dto.fromAccountId ?? null;
     let toAccountId = dto.toAccountId ?? null;
@@ -413,8 +439,8 @@ export class TransactionService {
         updated.fromAccountId !== existing.fromAccountId ||
         updated.toAccountId !== existing.toAccountId;
       if (monetaryChanged) {
-        await this.adjustBalances(existing, -1, session);
-        await this.adjustBalances(updated, 1, session);
+        await this.adjustBalances(existing, -1, session, journal);
+        await this.adjustBalances(updated, 1, session, journal);
       }
 
       // R2-27: the day only moves when the date does, or an unrelated edit re-books a past expense.
@@ -486,7 +512,7 @@ export class TransactionService {
         );
       }
 
-      await this.adjustBalances(transaction, -1, session);
+      await this.adjustBalances(transaction, -1, session, journal);
       // The group's expense is this movement seen from the other side: one cannot outlive the other.
       if (transaction.sharedExpenseId) {
         await this.ledger.dropExpenseOf(
@@ -536,6 +562,7 @@ export class TransactionService {
     transaction: Transaction,
     direction: 1 | -1,
     session: TxSession,
+    journal: RestampJournal,
   ): Promise<void> {
     const { type, amount, fromAccountId, toAccountId } = transaction;
 
@@ -589,6 +616,7 @@ export class TransactionService {
           throw new ApiError("BadRequest", refusal.message, refusal.code);
         }
         if (account.type === "LOAN" && sign > 0) {
+          journal.note("account", account);
           const outcome = await this.accountRepo.incrementBalanceCapped(
             accountId,
             amount * sign * direction,
@@ -612,18 +640,19 @@ export class TransactionService {
         }
       }
 
-      const applied = await this.accountRepo.incrementBalance(
+      const before = await this.accountRepo.incrementBalance(
         accountId,
         amount * sign * direction,
         session,
       );
-      if (!applied) {
+      if (!before) {
         // Aborts the Mongo transaction: a skipped increment would desync the balance from the ledger.
         throw new ApiError(
           "InternalServerError",
           "Account missing during balance adjustment",
         );
       }
+      journal.note("account", { id: accountId, ...before });
     };
 
     if (type === "EXPENSE" && fromAccountId) {

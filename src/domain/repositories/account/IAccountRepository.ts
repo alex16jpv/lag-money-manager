@@ -12,6 +12,12 @@ export type AccountWrite = Partial<
   borrowedAmount?: number | null;
 };
 
+export interface StampMove {
+  id: string;
+  previousUpdatedAt: Date;
+  updatedAt: Date;
+}
+
 export interface AccountFilters {
   ids?: string[];
   includeArchived?: boolean;
@@ -47,12 +53,12 @@ export interface IAccountRepository extends IRepository<Account> {
   // The ACTIVE row holding this name, matched as the unique index does; null when it is free.
   findActiveByName(userId: string, name: string): Promise<Account | null>;
 
-  // Atomic $inc; false when nothing matched, which callers must treat as corruption.
+  // Atomic $inc answering the stamp it replaced; null when nothing matched, which callers must treat as corruption.
   incrementBalance(
     id: string,
     delta: number,
     session?: TxSession,
-  ): Promise<boolean>;
+  ): Promise<{ updatedAt?: Date } | null>;
 
   // The same $inc, refused in the same write when it would push the balance past `maxBalance`.
   incrementBalanceCapped(
@@ -78,11 +84,18 @@ export interface IAccountRepository extends IRepository<Account> {
   ): Promise<Account | null>;
 
   getDefaultByUserId(userId: string): Promise<Account | null>;
-  // Sets this account as the user's only default; null if not found.
+  // Sets this account as the user's only default; null if not found. `unset` is every account it took the default from.
   setDefault(
     id: string,
     userId: string,
     expectedUpdatedAt?: Date,
-  ): Promise<Account | null>;
+  ): Promise<{ account: Account; unset: StampMove[] } | null>;
+
+  // What each of these, yours and archived or not, is stamped now: read at the end of a write, inside it.
+  stampsOf(
+    userId: string,
+    ids: string[],
+    session: TxSession,
+  ): Promise<Map<string, Date>>;
   countByUserId(userId: string): Promise<number>;
 }

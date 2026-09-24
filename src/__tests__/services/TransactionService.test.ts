@@ -148,12 +148,15 @@ const createMockAccountRepo = (): jest.Mocked<IAccountRepository> => ({
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
-  incrementBalance: jest.fn().mockResolvedValue(true),
+  incrementBalance: jest
+    .fn()
+    .mockResolvedValue({ updatedAt: new Date("2026-01-01T00:00:00.000Z") }),
   incrementBalanceCapped: jest.fn().mockResolvedValue("applied"),
   archiveNonDefault: jest.fn().mockResolvedValue(null),
   restore: jest.fn(),
   getDefaultByUserId: jest.fn(),
   setDefault: jest.fn(),
+  stampsOf: jest.fn().mockResolvedValue(new Map()),
   countByUserId: jest.fn(),
 });
 
@@ -187,6 +190,7 @@ const account = (overrides: Partial<Account> = {}): Account =>
     type: "SAVINGS",
     balance: 1000,
     userId: USER,
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     ...overrides,
   });
 
@@ -213,9 +217,9 @@ describe("TransactionService", () => {
         sharedExpenseRepo,
         createMockSettlementRepo(),
         txRepo,
+        acctRepo,
       ),
     );
-    acctRepo.incrementBalance.mockResolvedValue(true);
   });
 
   describe("createTransaction", () => {
@@ -1259,6 +1263,131 @@ describe("TransactionService", () => {
       await expect(
         service.updateTransaction(TX_ID, { amount: 175 }, USER, TZ),
       ).resolves.toBeDefined();
+    });
+  });
+
+  describe("the accounts a movement moved [T-146]", () => {
+    const BEFORE = new Date("2026-09-01T10:00:00.000Z");
+    const BETWEEN = new Date("2026-09-01T10:00:00.500Z");
+    const AFTER = new Date("2026-09-01T10:00:01.000Z");
+    const expense = {
+      type: "EXPENSE" as const,
+      amount: 100,
+      date: new Date("2026-08-31"),
+      fromAccountId: ACC_A,
+      userId: USER,
+    };
+
+    beforeEach(() => {
+      acctRepo.getById.mockResolvedValue(account());
+      acctRepo.stampsOf.mockResolvedValue(new Map([[ACC_A, AFTER]]));
+      txRepo.create.mockImplementation(async (tx) => tx as Transaction);
+    });
+
+    it("a create names the account with the stamp it replaced and the one it holds now", async () => {
+      acctRepo.incrementBalance.mockResolvedValue({ updatedAt: BEFORE });
+
+      const created = await service.createTransaction(expense, TZ);
+
+      expect(acctRepo.stampsOf).toHaveBeenCalledWith(
+        USER,
+        [ACC_A],
+        "test-session",
+      );
+      expect(created.restamped).toEqual([
+        {
+          entity: "account",
+          id: ACC_A,
+          previousUpdatedAt: BEFORE,
+          updatedAt: AFTER,
+        },
+      ]);
+    });
+
+    it("an edit that moves money names the stamp from before its reversal", async () => {
+      const existing = new Transaction({ id: TX_ID, ...expense });
+      txRepo.getById.mockResolvedValue(existing);
+      txRepo.update.mockResolvedValue(
+        new Transaction({ ...existing, amount: 175 }),
+      );
+      acctRepo.incrementBalance
+        .mockResolvedValueOnce({ updatedAt: BEFORE })
+        .mockResolvedValueOnce({ updatedAt: BETWEEN });
+
+      const updated = await service.updateTransaction(
+        TX_ID,
+        { amount: 175 },
+        USER,
+        TZ,
+      );
+
+      expect(updated.restamped).toEqual([
+        {
+          entity: "account",
+          id: ACC_A,
+          previousUpdatedAt: BEFORE,
+          updatedAt: AFTER,
+        },
+      ]);
+    });
+
+    it("an edit that moves no money reads no stamp", async () => {
+      const existing = new Transaction({ id: TX_ID, ...expense });
+      txRepo.getById.mockResolvedValue(existing);
+      txRepo.update.mockResolvedValue(existing);
+
+      const updated = await service.updateTransaction(
+        TX_ID,
+        { description: "Lunch" },
+        USER,
+        TZ,
+      );
+
+      expect(updated.restamped).toEqual([]);
+      expect(acctRepo.stampsOf).not.toHaveBeenCalled();
+    });
+
+    it("a payment to a loan names the loan with the stamp it was read with", async () => {
+      acctRepo.getById.mockResolvedValue(
+        account({ type: "LOAN", balance: -8400, updatedAt: BEFORE }),
+      );
+
+      const created = await service.createTransaction(
+        {
+          type: "ADJUSTMENT",
+          amount: 400,
+          date: new Date("2026-09-05"),
+          toAccountId: ACC_A,
+          userId: USER,
+        },
+        TZ,
+      );
+
+      expect(created.restamped).toEqual([
+        expect.objectContaining({ id: ACC_A, previousUpdatedAt: BEFORE }),
+      ]);
+    });
+
+    it("an account whose stamp comes back missing aborts the write", async () => {
+      acctRepo.incrementBalance.mockResolvedValue({ updatedAt: undefined });
+
+      await expect(service.createTransaction(expense, TZ)).rejects.toThrow(
+        "without its updatedAt",
+      );
+    });
+
+    it("a replayed create names nothing", async () => {
+      txRepo.getOwnById.mockResolvedValue(
+        new Transaction({ id: TX_ID, ...expense }),
+      );
+
+      const replayed = await service.createTransaction(
+        { id: TX_ID, ...expense },
+        TZ,
+      );
+
+      expect(replayed.restamped).toEqual([]);
+      expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
     });
   });
 

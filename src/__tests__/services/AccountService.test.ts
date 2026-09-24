@@ -90,6 +90,7 @@ const validAccountProps = {
 };
 
 const mockAccount = new Account(validAccountProps);
+const OTHER_ACCOUNT = "019576a0-d7b6-7d6d-af6a-2b7545f5ac72";
 
 const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   getAll: jest.fn(),
@@ -102,12 +103,15 @@ const createMockRepo = (): jest.Mocked<IAccountRepository> => ({
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
-  incrementBalance: jest.fn().mockResolvedValue(true),
+  incrementBalance: jest
+    .fn()
+    .mockResolvedValue({ updatedAt: new Date("2026-01-01T00:00:00.000Z") }),
   incrementBalanceCapped: jest.fn().mockResolvedValue("applied"),
   archiveNonDefault: jest.fn().mockResolvedValue(null),
   restore: jest.fn(),
   getDefaultByUserId: jest.fn(),
   setDefault: jest.fn(),
+  stampsOf: jest.fn().mockResolvedValue(new Map()),
   countByUserId: jest.fn().mockResolvedValue(1),
 });
 
@@ -320,9 +324,10 @@ describe("AccountService", () => {
 
   describe("setDefaultAccount [F2]", () => {
     it("sets the account as default", async () => {
-      repo.setDefault.mockResolvedValue(
-        new Account({ ...validAccountProps, isDefault: true }),
-      );
+      repo.setDefault.mockResolvedValue({
+        account: new Account({ ...validAccountProps, isDefault: true }),
+        unset: [],
+      });
 
       const result = await service.setDefaultAccount(
         mockAccount.id,
@@ -335,6 +340,24 @@ describe("AccountService", () => {
         undefined,
       );
       expect(result.isDefault).toBe(true);
+    });
+
+    it("names the account it took the default from [T-146]", async () => {
+      const previousUpdatedAt = new Date("2026-09-01T10:00:00.000Z");
+      const updatedAt = new Date("2026-09-01T10:00:01.000Z");
+      repo.setDefault.mockResolvedValue({
+        account: new Account({ ...validAccountProps, isDefault: true }),
+        unset: [{ id: OTHER_ACCOUNT, previousUpdatedAt, updatedAt }],
+      });
+
+      const result = await service.setDefaultAccount(
+        mockAccount.id,
+        mockAccount.userId,
+      );
+
+      expect(result.restamped).toEqual([
+        { entity: "account", id: OTHER_ACCOUNT, previousUpdatedAt, updatedAt },
+      ]);
     });
 
     it("throws NotFound when the account does not exist", async () => {

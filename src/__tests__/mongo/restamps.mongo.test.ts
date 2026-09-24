@@ -15,7 +15,7 @@ interface Session {
 }
 
 interface Restamp {
-  entity: "sharedExpense" | "transaction";
+  entity: "account" | "sharedExpense" | "transaction";
   id: string;
   previousUpdatedAt: string;
   updatedAt: string;
@@ -86,10 +86,18 @@ describe("what a write rewrote besides its own row, against mongod", () => {
     return res.body as Record<string, unknown>;
   };
 
+  const account = async (id: string): Promise<Record<string, unknown>> => {
+    const res = await as(request(app).get(`/accounts/${id}`));
+    expect(res.status).toBe(200);
+    return res.body as Record<string, unknown>;
+  };
+
   const stampOf = async (restamp: Restamp): Promise<string> =>
     (restamp.entity === "sharedExpense"
       ? await expense(restamp.id)
-      : await movement(restamp.id)
+      : restamp.entity === "account"
+        ? await account(restamp.id)
+        : await movement(restamp.id)
     ).updatedAt as string;
 
   // What each row is stamped now, keyed like the answer names them.
@@ -97,7 +105,12 @@ describe("what a write rewrote besides its own row, against mongod", () => {
     expenses: string[],
     movements: string[],
   ): Promise<Map<string, string>> => {
-    const now = new Map<string, string>();
+    const now = new Map<string, string>([
+      [
+        `account:${ACCOUNT_ID}`,
+        (await account(ACCOUNT_ID)).updatedAt as string,
+      ],
+    ]);
     for (const id of expenses) {
       now.set(`sharedExpense:${id}`, (await expense(id)).updatedAt as string);
     }
@@ -237,6 +250,7 @@ describe("what a write rewrote besides its own row, against mongod", () => {
       // Ana's share of the older line fell to 35 000, so 15 000 of her payment moved onto the newer.
       expect(named(res.body.restamped)).toEqual(
         [
+          `account:${ACCOUNT_ID}`,
           `sharedExpense:${olderExpense}`,
           `sharedExpense:${newerExpense}`,
           `transaction:${newer}`,
@@ -412,7 +426,11 @@ describe("what a write rewrote besides its own row, against mongod", () => {
       expect(deleted.status).toBe("applied");
       expect(deleted.result).toBeUndefined();
       expect(named(deleted.restamped)).toEqual(
-        [`sharedExpense:${newerExpense}`, `transaction:${newer}`].sort(),
+        [
+          `account:${ACCOUNT_ID}`,
+          `sharedExpense:${newerExpense}`,
+          `transaction:${newer}`,
+        ].sort(),
       );
       await expectTrue(deleted.restamped, before);
     });
@@ -427,6 +445,7 @@ describe("what a write rewrote besides its own row, against mongod", () => {
       expect(res.status).toBe(200);
       expect(named(res.body.restamped)).toEqual(
         [
+          `account:${ACCOUNT_ID}`,
           `sharedExpense:${olderExpense}`,
           `sharedExpense:${newerExpense}`,
           `transaction:${older}`,

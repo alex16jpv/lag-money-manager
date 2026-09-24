@@ -13,6 +13,7 @@ import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpens
 import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
 import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
+import { noAccountStamps } from "./accountStampsMock";
 
 const userId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
 const otherUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5acff";
@@ -123,7 +124,12 @@ describe("SharedExpenseService", () => {
       expenses,
       groups,
       transactions,
-      new SharedLedgerService(expenses, settlements, transactions),
+      new SharedLedgerService(
+        expenses,
+        settlements,
+        transactions,
+        noAccountStamps(),
+      ),
     );
   });
 

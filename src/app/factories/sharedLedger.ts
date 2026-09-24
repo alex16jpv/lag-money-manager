@@ -6,4 +6,5 @@ export const sharedLedgerService = new SharedLedgerService(
   repositoryFactory.getSharedExpenseRepository(),
   repositoryFactory.getSharedSettlementRepository(),
   repositoryFactory.getTransactionRepository(),
+  repositoryFactory.getAccountRepository(),
 );

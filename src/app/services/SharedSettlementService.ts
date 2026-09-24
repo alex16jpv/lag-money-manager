@@ -162,6 +162,7 @@ export class SharedSettlementService {
         await this.recordMovements(
           { dto, created, collected, refunded, yourLines, timezone },
           session,
+          journal,
         );
       }
       return {
@@ -199,6 +200,7 @@ export class SharedSettlementService {
       timezone: string;
     },
     session: TxSession,
+    journal: RestampJournal,
   ): Promise<void> {
     const { dto, created, collected, refunded, yourLines, timezone } = input;
     const accountId = dto.accountId as string;
@@ -218,6 +220,7 @@ export class SharedSettlementService {
         },
         timezone,
         session,
+        journal,
       );
     }
 
@@ -243,6 +246,7 @@ export class SharedSettlementService {
         },
         timezone,
         session,
+        journal,
       );
     }
 
@@ -258,6 +262,7 @@ export class SharedSettlementService {
         },
         timezone,
         session,
+        journal,
       );
     }
   }
@@ -280,7 +285,7 @@ export class SharedSettlementService {
         session,
       );
       for (const movement of movements) {
-        await this.transactions.reverseWithin(movement, session);
+        await this.transactions.reverseWithin(movement, session, journal);
       }
       const deleted = await this.repo.delete(id, session, expectedUpdatedAt);
       await this.ledger.recompute(

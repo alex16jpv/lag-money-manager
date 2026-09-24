@@ -28,7 +28,7 @@ export class RestampJournal {
     if (row.updatedAt === undefined) {
       throw new ApiError(
         "InternalServerError",
-        `A ${entity} this write rewrites was read without its updatedAt`,
+        `The ${entity} ${row.id} this write rewrites was read without its updatedAt`,
       );
     }
     this.before.set(key, { entity, id: row.id, updatedAt: row.updatedAt });
