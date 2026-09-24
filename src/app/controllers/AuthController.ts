@@ -1,6 +1,7 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 
 import repositoryFactory from "../factories/RepositoryFactory";
+import { attemptedEmail } from "../middlewares/loginAttempt";
 import { AuthService } from "../services/AuthService";
 import { CategoryService } from "../services/CategoryService";
 
@@ -15,6 +16,22 @@ const authService = new AuthService(
 );
 
 export class AuthController {
+  static recognizeDevice = async (
+    req: Request,
+    _res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    const email = attemptedEmail(req);
+    if (email) {
+      const device = await authService.recognizedDevice(
+        (req.body as { deviceToken?: unknown } | undefined)?.deviceToken,
+        email,
+      );
+      if (device) req.recognizedDevice = device;
+    }
+    next();
+  };
+
   static register = async (req: Request, res: Response) => {
     const result = await authService.register(
       req.body,

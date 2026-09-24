@@ -45,7 +45,8 @@ misconfiguration instead of a skipped check.
 | ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `API_SECRET`             | —       | Shared secret expected in the `x-api-secret` header. **See the warning below.**                                                                                                                                                                                                                                                                  |
 | `RATE_LIMIT_MAX`         | `1000`  | Per-container brake per 15-minute window, **not a global ceiling**: the store is in memory, so each Lambda container counts on its own (see `deployment.md`). Keyed by **user** once authenticated, and on the public routes by the client IP the gateway states in `x-client-ip` (`req.ip` there is the frontend's server, shared by everyone). |
-| `AUTH_RATE_LIMIT_MAX`    | `10`    | Per-email limit for `/auth/login` per 15-minute window (MongoDB-backed, shared across instances). Only failed attempts burn it, so it is the budget of an attack aimed at one account.                                                                                                                                                           |
+| `AUTH_RATE_LIMIT_MAX`    | `10`    | Failed `/auth/login` and `/auth/register` attempts per 15-minute window, counted per recognized device or, without a device token, per email and IP (MongoDB-backed, shared across instances). Only failed attempts burn it. Also the cap of `currentPassword` guesses per user.                                                                    |
+| `AUTH_EMAIL_RATE_LIMIT_MAX` | `50` | Failed `/auth/login` and `/auth/register` attempts per email per hour from devices without a valid device token, across every IP: the cap of an attack that rotates addresses. It cannot touch a device that already signed in (`docs/modules/auth.md`, Rate Limiting).                                                                |
 | `AUTH_IP_RATE_LIMIT_MAX` | `60`    | Per-IP limit for `/auth/login` and `/auth/register` per 15-minute window. Higher than the per-email one on purpose: a carrier NAT puts thousands of unrelated users behind a single address.                                                                                                                                                     |
 | `REFRESH_RATE_LIMIT_MAX` | `60`    | Separate, higher limit for `POST /auth/refresh` (a legitimate device refreshes every ~15 min).                                                                                                                                                                                                                                                   |
 
@@ -107,7 +108,7 @@ MONGO_URI=mongodb://localhost:27017/lag_money?replicaSet=rs0&directConnection=tr
 
 # Everything else has a sane default (PORT=3000, JWT_EXPIRATION=15m,
 # REFRESH_TOKEN_EXPIRATION=30d, BCRYPT_SALT_ROUNDS=12, LOG_LEVEL=info,
-# RATE_LIMIT_MAX=1000, AUTH_RATE_LIMIT_MAX=10, AUTH_IP_RATE_LIMIT_MAX=60,
+# RATE_LIMIT_MAX=1000, AUTH_RATE_LIMIT_MAX=10, AUTH_EMAIL_RATE_LIMIT_MAX=50, AUTH_IP_RATE_LIMIT_MAX=60,
 # REFRESH_RATE_LIMIT_MAX=60).
 
 # Do NOT set API_SECRET locally: with it, every request needs the

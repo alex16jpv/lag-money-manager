@@ -21,7 +21,9 @@ Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the
 | `src/app/dtos/UserDTO.ts`                                                    | `CreateUserDTO`, `UserResponseDTO` (shared with Users module)                 |
 | `src/app/validation/schemas.ts`                                              | `registerSchema`, `loginSchema`, `refreshSchema`                              |
 | `src/app/middlewares/authMiddleware.ts`                                      | Access-token verification; populates `req.user` (`AuthPayload`)               |
-| `src/app/middlewares/authRateLimitMiddleware.ts`                             | Per-IP and per-email rate limiting for the auth endpoints                     |
+| `src/app/services/deviceToken.ts`                                            | Signing and reading the device token that login and register answer           |
+| `src/app/middlewares/loginAttempt.ts`                                        | The email an attempt is for, and the device recognized for it                 |
+| `src/app/middlewares/authRateLimitMiddleware.ts`                             | The persisted counter behind every auth rate limit                            |
 | `src/app/middlewares/clientIp.ts`                                            | The client address the limiters count against                                 |
 | `src/domain/repositories/refreshSession/IRefreshSessionRepository.ts`        | Session store contract (`RefreshSession`, `SessionSummary`)                   |
 | `src/infrastructure/repositories/refreshSession/RefreshSessionRepository.ts` | Mongoose implementation (atomic `rotate`, family revocation)                  |
@@ -321,23 +323,35 @@ sequenceDiagram
 | `JWT_EXPIRATION`           | Access-token lifetime (default: `15m`)                                         |
 | `REFRESH_TOKEN_EXPIRATION` | Refresh-token / session-family lifetime (default: `30d`)                       |
 | `BCRYPT_SALT_ROUNDS`       | Password hashing complexity (default: `12`)                                    |
-| `AUTH_RATE_LIMIT_MAX`      | Failed login attempts per email per 15-minute window (default: `10`)           |
+| `AUTH_RATE_LIMIT_MAX`      | Failed login attempts per recognized device, or per email and client IP, per 15-minute window (default: `10`) |
+| `AUTH_EMAIL_RATE_LIMIT_MAX` | Failed login attempts per email per hour from unrecognized devices (default: `50`) |
 | `AUTH_IP_RATE_LIMIT_MAX`   | Login and register attempts per client IP per 15-minute window (default: `60`) |
 | `REFRESH_RATE_LIMIT_MAX`   | Refresh and logout attempts per 15-minute window (default: `60`)               |
 
 ## Rate Limiting
 
-`authRateLimit` applies a 15-minute window per endpoint:
+`authRateLimit` keeps one fixed window per key:
 
-| Endpoint                        | Key                     | Cap                                              |
-| ------------------------------- | ----------------------- | ------------------------------------------------ |
-| `POST /auth/register`           | Client IP **and** email | `AUTH_IP_RATE_LIMIT_MAX` / `AUTH_RATE_LIMIT_MAX` |
-| `POST /auth/login`              | Client IP **and** email | `AUTH_IP_RATE_LIMIT_MAX` / `AUTH_RATE_LIMIT_MAX` |
-| `POST /auth/refresh`, `/logout` | Client IP               | `REFRESH_RATE_LIMIT_MAX`                         |
+| Endpoint                        | Key                                                   | Cap and window                            |
+| ------------------------------- | ----------------------------------------------------- | ----------------------------------------- |
+| `POST /auth/login`, `/register` | Client IP                                             | `AUTH_IP_RATE_LIMIT_MAX` per 15 min       |
+| `POST /auth/login`, `/register` | Recognized device (`login-device:<device id>`)        | `AUTH_RATE_LIMIT_MAX` per 15 min          |
+| `POST /auth/login`, `/register` | Otherwise email and client IP (`login-email-ip:<email>:<ip>`) | `AUTH_RATE_LIMIT_MAX` per 15 min  |
+| `POST /auth/login`, `/register` | Otherwise email (`login-email:<email>`)               | `AUTH_EMAIL_RATE_LIMIT_MAX` per hour      |
+| `POST /auth/refresh`, `/logout` | Client IP                                             | `REFRESH_RATE_LIMIT_MAX` per 15 min       |
 
-Login is limited on two dimensions because a distributed attack on one account rotates IPs. Only **failed** logins burn the per-email budget (`refundOnSuccess`), so real logins cost nothing; but anyone's failed attempts count, so enough of them against an address lock it for the rest of the window, its owner included (the refund only helps below the cap). How to stop that is still open (T-176). Register shares that same per-email counter (`login-email:<email>`), because registering with a deleted account's email tests its password: a failed register and a failed login spend one budget between them.
+Only **failed** attempts burn the account budgets (`refundOnSuccess`), so real logins cost nothing. Register spends the same ones, because registering with a deleted account's email tests its password: a failed register and a failed login spend one budget between them.
 
-The two caps are deliberately different. The per-email one is the budget of an attack aimed at a single account, so `10` is right. The per-IP one is shared by everyone behind that address — a carrier NAT holds thousands of unrelated users — so it is a volume brake, not a per-person allowance, and it defaults to `60`.
+**Nobody can lock another person out of a device they already use** (T-176, owner's decision of 2026-09-24). Until then the only account budget was one counter per email: ten wrong passwords from anyone locked the owner out for the window, and repeating it every fifteen minutes locked them out for good. The fix is a device token, the "device cookie" OWASP recommends against lockout attacks:
+
+- Every login and register answers a `deviceToken`: an HS256 JWT signed with `REFRESH_SECRET ?? JWT_SECRET`, audience `device`, a random `jti` (the device id), the user's `tokenVersion`, a `sub` that is the SHA-256 of the normalized email, and a one-year lifetime (`src/app/services/deviceToken.ts`). It proves only that this device once signed in to that email; it opens nothing, so it is not a session and survives logout. The web client keeps it in an httpOnly cookie and sends it back as `deviceToken` on the next login or register. Each success answers a new one, which the client keeps instead; the old one stays valid until it expires or is revoked.
+- **Recognizing** a device (`AuthService.recognizedDevice`, run once per request by `AuthController.recognizeDevice` before the limiters) takes a valid signature, the email the attempt is for, and a `tokenVersion` equal to the account's, which costs one indexed read. A password or email change and **Log out everywhere** bump `tokenVersion`, so they revoke every device token issued before; a deleted account recognizes none.
+- An attempt from a recognized device counts only against that device (`AUTH_RATE_LIMIT_MAX` per 15 minutes). Someone else's failures never touch that budget. A stolen token, or one kept by somebody who once knew the password, is worth that budget of guesses, outside the per-email cap, until the owner changes the password or logs out everywhere.
+- Every other attempt counts twice: per email and client IP, so an attacker behind one address runs out of guesses without affecting anybody else; and per email across all addresses, so an attack that rotates addresses is capped at `AUTH_EMAIL_RATE_LIMIT_MAX` guesses an hour. Only that last one can still stop the real owner, and only on a device the account does not recognize, while the attack lasts.
+
+A token for another email, a forged one, an expired one or a revoked one counts as no token. The limiters run in a chain, and one that refuses does not give back what the earlier ones counted: an owner who keeps retrying from an unrecognized device while the per-email cap is full also spends their own email-and-IP budget, and may wait up to fifteen minutes more after the attack stops. `PUT` and `DELETE /users/:id` with `currentPassword` spend a counter per user (`current-password:<id>`) with `AUTH_RATE_LIMIT_MAX`: reaching them takes that user's own session, so no stranger can lock them.
+
+The per-IP cap is shared by everyone behind that address — a carrier NAT holds thousands of unrelated users — so it is a volume brake, not a per-person allowance, and it defaults to `60`.
 
 "Client IP" is `clientIp` (`src/app/middlewares/clientIp.ts`), not `req.ip`. Behind the Lambda Function URL `req.ip` is the caller of the API, which for the web client is the frontend's server, one address for every user of the app: keying on it gave all logins a single shared budget. The frontend states the real address in `x-client-ip`, believed only on a request that carried a valid `x-api-secret` (the mark `gatewaySecretMiddleware` leaves), validated with `net.isIP` and normalized with `ipKeyGenerator`. A caller that sends no such header, a direct client among them, is still limited by `req.ip`. See `docs/guides/deployment.md` for the whole chain.
 

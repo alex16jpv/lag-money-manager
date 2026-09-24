@@ -218,6 +218,7 @@ jest.mock("../../shared/constants", () => ({
     CORS_ORIGIN: "http://localhost:5173",
     RATE_LIMIT_MAX: 100000,
     AUTH_RATE_LIMIT_MAX: 100000,
+    AUTH_EMAIL_RATE_LIMIT_MAX: 100000,
     LOG_LEVEL: "info",
     NODE_ENV: "test",
   },

@@ -4,6 +4,8 @@ import { ENVIRONMENT } from "../../shared/constants";
 import { AuthController } from "../controllers/AuthController";
 import { authMiddleware } from "../middlewares/authMiddleware";
 import { authRateLimit } from "../middlewares/authRateLimitMiddleware";
+import { clientIp } from "../middlewares/clientIp";
+import { attemptedEmail } from "../middlewares/loginAttempt";
 import {
   idParamSchema,
   loginSchema,
@@ -15,27 +17,48 @@ import { validate } from "../validation/validate";
 const router = Router();
 
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
+const EMAIL_WINDOW_MS = 60 * 60 * 1000;
+
 // A carrier NAT puts thousands of unrelated users behind one address, so the per-IP budget cannot be the per-account one.
 const loginLimiter = authRateLimit({
   keyPrefix: "login",
   max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
-// A distributed attack on ONE account rotates IPs, so the target email needs its own counter; register shares it.
-const loginEmailLimiter = authRateLimit({
-  keyPrefix: "login-email",
+
+// Only failed attempts burn these budgets (refundOnSuccess), so real logins cost nothing.
+const deviceLimiter = authRateLimit({
+  keyPrefix: "login-device",
   max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
-  // Only failed logins burn the per-account budget: no lockout-DoS, no cost for real logins.
   refundOnSuccess: true,
-  // Runs before Zod: normalize the same way the schema will.
+  keyFrom: (req) => req.recognizedDevice ?? null,
+});
+const emailIpLimiter = authRateLimit({
+  keyPrefix: "login-email-ip",
+  max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
+  windowMs: AUTH_WINDOW_MS,
+  refundOnSuccess: true,
   keyFrom: (req) => {
-    const email = (req.body as { email?: unknown } | undefined)?.email;
-    return typeof email === "string" && email
-      ? email.trim().toLowerCase()
-      : null;
+    const email = attemptedEmail(req);
+    if (!email || req.recognizedDevice) return null;
+    return `${email}:${clientIp(req) || "unknown"}`;
   },
 });
+const emailLimiter = authRateLimit({
+  keyPrefix: "login-email",
+  max: ENVIRONMENT.AUTH_EMAIL_RATE_LIMIT_MAX,
+  windowMs: EMAIL_WINDOW_MS,
+  refundOnSuccess: true,
+  keyFrom: (req) => (req.recognizedDevice ? null : attemptedEmail(req)),
+});
+const accountLimiters = [
+  AuthController.recognizeDevice,
+  deviceLimiter,
+  emailIpLimiter,
+  emailLimiter,
+];
+
 const registerLimiter = authRateLimit({
   keyPrefix: "register",
   max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
@@ -96,8 +119,9 @@ const refreshLimiter = authRateLimit({
  *       429:
  *         description: >
  *           Too many attempts from this client IP, or too many failed ones
- *           against this email, counted with the failed logins (code
- *           RATE_LIMITED)
+ *           for this email — from this device if `deviceToken` recognizes
+ *           it, otherwise from this IP or in total — counted with the
+ *           failed logins (code RATE_LIMITED)
  *         content:
  *           application/json:
  *             schema:
@@ -106,7 +130,7 @@ const refreshLimiter = authRateLimit({
 router.post(
   "/register",
   registerLimiter,
-  loginEmailLimiter,
+  ...accountLimiters,
   validate(registerSchema),
   AuthController.register,
 );
@@ -118,9 +142,12 @@ router.post(
  *     tags: [Auth]
  *     summary: Login and obtain a JWT token
  *     description: >
- *       Returns a short-lived access token (~15 min) plus a refresh token.
- *       Rate-limited per IP and per email; the per-email counter only burns
- *       on failed attempts (successful logins are refunded).
+ *       Returns a short-lived access token (~15 min), a refresh token and a
+ *       `deviceToken`. Rate-limited per IP, and failed attempts per account:
+ *       send the `deviceToken` of this device's last login or register and
+ *       they count against this device alone, so nobody else's failures can
+ *       lock it out; without one they count per email and IP and per email in
+ *       total. Successful logins are refunded.
  *     security: []
  *     requestBody:
  *       required: true
@@ -148,7 +175,10 @@ router.post(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       429:
- *         description: Too many attempts (code RATE_LIMITED)
+ *         description: >
+ *           Too many attempts from this client IP, or too many failed ones
+ *           for this email — from this device if `deviceToken` recognizes
+ *           it, otherwise from this IP or in total (code RATE_LIMITED)
  *         content:
  *           application/json:
  *             schema:
@@ -157,7 +187,7 @@ router.post(
 router.post(
   "/login",
   loginLimiter,
-  loginEmailLimiter,
+  ...accountLimiters,
   validate(loginSchema),
   AuthController.login,
 );
