@@ -10,20 +10,20 @@ and `MONGO_DATABASE` variables no longer exist).
 
 ## Required
 
-| Variable      | Description                                                                                      | How to obtain                        |
-| ------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------ |
-| `JWT_SECRET`  | Secret for signing access tokens (and refresh tokens unless `REFRESH_SECRET` is set). 32+ chars in production. | `openssl rand -hex 32`               |
-| `CORS_ORIGIN` | Comma-separated list of allowed CORS origins                                                     | Your frontend URL(s)                 |
-| `MONGO_URI`   | MongoDB connection URI. Must point at a **replica set** — balance adjustments run inside multi-document transactions. | See [MongoDB](#mongodb) below        |
+| Variable      | Description                                                                                                           | How to obtain                 |
+| ------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| `JWT_SECRET`  | Secret for signing access tokens (and refresh tokens unless `REFRESH_SECRET` is set). 32+ chars in production.        | `openssl rand -hex 32`        |
+| `CORS_ORIGIN` | Comma-separated list of allowed CORS origins                                                                          | Your frontend URL(s)          |
+| `MONGO_URI`   | MongoDB connection URI. Must point at a **replica set** — balance adjustments run inside multi-document transactions. | See [MongoDB](#mongodb) below |
 
 ## Application
 
-| Variable    | Default       | Description                                                        |
-| ----------- | ------------- | ------------------------------------------------------------------ |
-| `PORT`      | `3000`        | HTTP server port                                                   |
-| `NODE_ENV`  | `development` | `development`, `production` or `test`                              |
-| `LOG_LEVEL` | `info`        | Pino level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`      |
-| `DB_TYPE`   | `MONGO`       | Database backend. Only `MONGO` is supported.                       |
+| Variable    | Default       | Description                                                    |
+| ----------- | ------------- | -------------------------------------------------------------- |
+| `PORT`      | `3000`        | HTTP server port                                               |
+| `NODE_ENV`  | `development` | `development`, `production` or `test`                          |
+| `LOG_LEVEL` | `info`        | Pino level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
+| `DB_TYPE`   | `MONGO`       | Database backend. Only `MONGO` is supported.                   |
 
 `NODE_ENV=production` also turns on HTTPS redirection, stops serving Swagger at
 `/api-docs`, disables `autoIndex` (indexes are created by the
@@ -32,22 +32,22 @@ misconfiguration instead of a skipped check.
 
 ## Authentication
 
-| Variable                   | Default | Description                                                                             |
-| -------------------------- | ------- | --------------------------------------------------------------------------------------- |
-| `JWT_EXPIRATION`           | `15m`   | Access token lifetime. Short by design; renew with `POST /auth/refresh`.                 |
-| `REFRESH_TOKEN_EXPIRATION` | `30d`   | Refresh token lifetime, and the absolute cap of a rotation family (rotation never extends it). |
+| Variable                   | Default | Description                                                                                                                               |
+| -------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `JWT_EXPIRATION`           | `15m`   | Access token lifetime. Short by design; renew with `POST /auth/refresh`.                                                                  |
+| `REFRESH_TOKEN_EXPIRATION` | `30d`   | Refresh token lifetime, and the absolute cap of a rotation family (rotation never extends it).                                            |
 | `REFRESH_SECRET`           | —       | Optional separate secret for refresh tokens; falls back to `JWT_SECRET`. Lets you rotate the access secret without killing every session. |
-| `BCRYPT_SALT_ROUNDS`       | `12`    | bcrypt cost (4–20). Higher = slower and more resistant to offline cracking.              |
+| `BCRYPT_SALT_ROUNDS`       | `12`    | bcrypt cost (4–20). Higher = slower and more resistant to offline cracking.                                                               |
 
 ## Security and rate limiting
 
-| Variable                 | Default | Description                                                                              |
-| ------------------------ | ------- | ----------------------------------------------------------------------------------------- |
-| `API_SECRET`             | —       | Shared secret expected in the `x-api-secret` header. **See the warning below.**            |
+| Variable                 | Default | Description                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `API_SECRET`             | —       | Shared secret expected in the `x-api-secret` header. **See the warning below.**                                                                                                                                                                                                                                                                  |
 | `RATE_LIMIT_MAX`         | `1000`  | Per-container brake per 15-minute window, **not a global ceiling**: the store is in memory, so each Lambda container counts on its own (see `deployment.md`). Keyed by **user** once authenticated, and on the public routes by the client IP the gateway states in `x-client-ip` (`req.ip` there is the frontend's server, shared by everyone). |
-| `AUTH_RATE_LIMIT_MAX`    | `10`    | Per-email limit for `/auth/login` per 15-minute window (MongoDB-backed, shared across instances). Only failed attempts burn it, so it is the budget of an attack aimed at one account. |
-| `AUTH_IP_RATE_LIMIT_MAX` | `60`    | Per-IP limit for `/auth/login` and `/auth/register` per 15-minute window. Higher than the per-email one on purpose: a carrier NAT puts thousands of unrelated users behind a single address. |
-| `REFRESH_RATE_LIMIT_MAX` | `60`    | Separate, higher limit for `POST /auth/refresh` (a legitimate device refreshes every ~15 min). |
+| `AUTH_RATE_LIMIT_MAX`    | `10`    | Per-email limit for `/auth/login` per 15-minute window (MongoDB-backed, shared across instances). Only failed attempts burn it, so it is the budget of an attack aimed at one account.                                                                                                                                                           |
+| `AUTH_IP_RATE_LIMIT_MAX` | `60`    | Per-IP limit for `/auth/login` and `/auth/register` per 15-minute window. Higher than the per-email one on purpose: a carrier NAT puts thousands of unrelated users behind a single address.                                                                                                                                                     |
+| `REFRESH_RATE_LIMIT_MAX` | `60`    | Separate, higher limit for `POST /auth/refresh` (a legitimate device refreshes every ~15 min).                                                                                                                                                                                                                                                   |
 
 > **`API_SECRET` is all-or-nothing.** When it is set, **every** request must
 > carry a matching `x-api-secret` header or it gets **403 Forbidden** —
@@ -60,9 +60,9 @@ misconfiguration instead of a skipped check.
 
 ## MongoDB
 
-| Variable    | Description                                                                          |
-| ----------- | ------------------------------------------------------------------------------------ |
-| `MONGO_URI` | Full connection URI, including the database name.                                     |
+| Variable    | Description                                       |
+| ----------- | ------------------------------------------------- |
+| `MONGO_URI` | Full connection URI, including the database name. |
 
 Money is stored as integer cents and balance adjustments run inside MongoDB
 transactions, so the URI **must** point at a replica set:

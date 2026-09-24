@@ -12,27 +12,27 @@ Beyond name/email/password, the profile carries three settings that shape the re
 
 ## Files and Responsibilities
 
-| File                                                    | Role                                                                                    |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `src/app/routes/userRoutes.ts`                          | Route definitions (`GET /users/:id`, `PUT /users/:id`, `DELETE /users/:id`)              |
-| `src/app/controllers/UserController.ts`                 | Thin HTTP handler, delegates to UserService                                              |
-| `src/app/services/UserService.ts`                       | Self-access enforcement, re-authentication on credential changes, currency lock, password stripping |
-| `src/app/dtos/UserDTO.ts`                               | `CreateUserDTO`, `UpdateUserDTO`, `UserResponseDTO`                                      |
-| `src/app/validation/schemas.ts`                         | `updateUserSchema`, `idParamSchema`                                                      |
-| `src/domain/entities/User.ts`                           | User domain entity (`tokenVersion`, `timezone`, `currency`, `locale`, `lastLoginAt`)               |
-| `src/domain/repositories/user/IUserRepository.ts`       | Repository interface (adds `getByEmail`, `recordLogin`, `updateWithTokenBump`, `reactivate`, …) |
-| `src/infrastructure/repositories/user/UserRepository.ts` | Mongoose implementation (soft delete, atomic token-version bumps)                        |
-| `src/infrastructure/models/UserModel.ts`                | Mongoose model (unique lowercase `email`)                                                |
+| File                                                     | Role                                                                                                |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `src/app/routes/userRoutes.ts`                           | Route definitions (`GET /users/:id`, `PUT /users/:id`, `DELETE /users/:id`)                         |
+| `src/app/controllers/UserController.ts`                  | Thin HTTP handler, delegates to UserService                                                         |
+| `src/app/services/UserService.ts`                        | Self-access enforcement, re-authentication on credential changes, currency lock, password stripping |
+| `src/app/dtos/UserDTO.ts`                                | `CreateUserDTO`, `UpdateUserDTO`, `UserResponseDTO`                                                 |
+| `src/app/validation/schemas.ts`                          | `updateUserSchema`, `deleteUserSchema`, `idParamSchema`                                             |
+| `src/domain/entities/User.ts`                            | User domain entity (`tokenVersion`, `timezone`, `currency`, `locale`, `lastLoginAt`)                |
+| `src/domain/repositories/user/IUserRepository.ts`        | Repository interface (adds `getByEmail`, `recordLogin`, `updateWithTokenBump`, `reactivate`, …)     |
+| `src/infrastructure/repositories/user/UserRepository.ts` | Mongoose implementation (soft delete, atomic token-version bumps)                                   |
+| `src/infrastructure/models/UserModel.ts`                 | Mongoose model (unique lowercase `email`)                                                           |
 
 ## Public API
 
 ### Endpoint Authorization Matrix
 
-| Endpoint            | Auth Required          | Self-Access Enforced | Notes                                                                     |
-| ------------------- | ---------------------- | -------------------- | ------------------------------------------------------------------------- |
-| `GET /users/:id`    | Yes (access token)     | Yes                  | `id` must match the authenticated user's ID, otherwise **404**.           |
-| `PUT /users/:id`    | Yes (access token)     | Yes                  | Partial updates. Credential changes need `currentPassword`.               |
-| `DELETE /users/:id` | Yes (access token)     | Yes                  | Soft delete; responds `200` with a message.                               |
+| Endpoint            | Auth Required      | Self-Access Enforced | Notes                                                                |
+| ------------------- | ------------------ | -------------------- | -------------------------------------------------------------------- |
+| `GET /users/:id`    | Yes (access token) | Yes                  | `id` must match the authenticated user's ID, otherwise **404**.      |
+| `PUT /users/:id`    | Yes (access token) | Yes                  | Partial updates. Credential changes need `currentPassword`.          |
+| `DELETE /users/:id` | Yes (access token) | Yes                  | Soft delete; needs `currentPassword`; responds `200` with a message. |
 
 > There is **no `GET /users`** endpoint — listing users was removed. Self-access failures return `404 User not found`, not `403`, so a user id cannot be confirmed by probing.
 
@@ -52,7 +52,11 @@ Changing the email to one belonging to another account (soft-deleted included) c
 
 ### `DELETE /users/:id`
 
-**Soft delete.** Sets `deletedAt` and bumps `tokenVersion`; the account and its financial history are kept, and registering again with the same email reactivates it. Responds `200` with a message. There are no hard deletes.
+**Requires `currentPassword`** in the body (`{ "currentPassword": "…" }`), for the same reason as a credential change: a hijacked 15-minute access token must not be able to delete the account, and a deleted account is one step from being taken over by whoever registers its email. A wrong one answers `401 CURRENT_PASSWORD_INVALID` and nothing is touched.
+
+**Password guesses are limited per user.** Every `PUT` or `DELETE /users/:id` that carries `currentPassword` spends a `current-password:<userId>` counter with the login's per-email cap (`AUTH_RATE_LIMIT_MAX` per 15 minutes, refunded on success): a stolen token gets the same budget of guesses as the login, not the API's general one. Past it, `429 RATE_LIMITED`.
+
+**Soft delete.** Sets `deletedAt` and bumps `tokenVersion`; the account and its financial history are kept, and registering again with the same email **and the password it had** reactivates it. Responds `200` with a message. There are no hard deletes.
 
 ## Internal Flow
 
@@ -129,21 +133,21 @@ sequenceDiagram
 
 ## Error States
 
-| Error / code                | Status | Condition                                                            |
-| --------------------------- | ------ | -------------------------------------------------------------------- |
-| `VALIDATION`                | 400    | Invalid input, or `currentPassword` missing while changing email/password |
-| `BadRequest`                | 400    | User ID in body doesn't match URL param                               |
-| `CURRENCY_LOCKED`           | 400    | Changing `currency` while the user already has accounts               |
-| `Unauthorized`              | 401    | Missing, invalid or expired access token                              |
-| `CURRENT_PASSWORD_INVALID`  | 401    | `currentPassword` is wrong                                            |
-| `NotFound`                  | 404    | User does not exist, **or the id is not the authenticated user's**    |
-| `DUPLICATE`                 | 409    | Email already used by another account (unique index)                  |
+| Error / code               | Status | Condition                                                                             |
+| -------------------------- | ------ | ------------------------------------------------------------------------------------- |
+| `VALIDATION`               | 400    | Invalid input, or `currentPassword` missing while changing email/password or deleting |
+| `BadRequest`               | 400    | User ID in body doesn't match URL param                                               |
+| `CURRENCY_LOCKED`          | 400    | Changing `currency` while the user already has accounts                               |
+| `Unauthorized`             | 401    | Missing, invalid or expired access token                                              |
+| `CURRENT_PASSWORD_INVALID` | 401    | `currentPassword` is wrong (credential change or delete)                              |
+| `NotFound`                 | 404    | User does not exist, **or the id is not the authenticated user's**                    |
+| `DUPLICATE`                | 409    | Email already used by another account (unique index)                                  |
 
 ## Soft Delete and Reactivation
 
 `UserRepository.delete()` sets `deletedAt` and increments `tokenVersion` — it never removes the document. Every read path filters on `deletedAt: null`, so a deleted user disappears from the API while their accounts, transactions, categories, and budgets stay intact.
 
-`AuthService.register()` looks up soft-deleted accounts by email first: registering with that email calls `reactivate()`, which clears `deletedAt`, applies the new name/password (and timezone, if sent), bumps `tokenVersion` again, and returns `user.reactivated: true`. The original `currency` is preserved, because the restored history is denominated in it.
+`AuthService.register()` looks up soft-deleted accounts by email first. Only when the password sent matches the one the account had (the owner's decision of 2026-09-23, T-153) does it call `reactivate()`, which clears `deletedAt`, applies the new name (and timezone and locale, if sent), bumps `tokenVersion` again, and returns `user.reactivated: true`; any other password answers `409 EMAIL_TAKEN`, exactly like a live account, so a recycled email or someone who deleted the account through a stolen session never gets the history. The original `currency` is preserved, because the restored history is denominated in it.
 
 ## How to Extend
 

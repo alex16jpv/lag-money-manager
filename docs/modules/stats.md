@@ -12,14 +12,14 @@ The module owns no data of its own: it is a thin service over one MongoDB aggreg
 
 ## Files and Responsibilities
 
-| File                                                              | Role                                                                     |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `src/app/routes/statsRoutes.ts`                                   | Route definition with OpenAPI docs (`GET /stats/spending`)                |
-| `src/app/controllers/StatsController.ts`                          | Resolves the user's timezone and applies the query defaults               |
-| `src/app/services/StatsService.ts`                                | Delegates to the repository and converts the grand total from cents       |
-| `src/app/validation/schemas.ts`                                   | `spendingStatsSchema`                                                     |
-| `src/domain/repositories/transaction/ITransactionRepository.ts`   | `SpendingQuery`, `SpendingBucket`, `SpendingResult` contracts             |
-| `src/infrastructure/repositories/transaction/TransactionRepository.ts` | `aggregateSpending()` — the `$match` / `$facet` pipeline             |
+| File                                                                   | Role                                                                |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `src/app/routes/statsRoutes.ts`                                        | Route definition with OpenAPI docs (`GET /stats/spending`)          |
+| `src/app/controllers/StatsController.ts`                               | Resolves the user's timezone and applies the query defaults         |
+| `src/app/services/StatsService.ts`                                     | Delegates to the repository and converts the grand total from cents |
+| `src/app/validation/schemas.ts`                                        | `spendingStatsSchema`                                               |
+| `src/domain/repositories/transaction/ITransactionRepository.ts`        | `SpendingQuery`, `SpendingBucket`, `SpendingResult` contracts       |
+| `src/infrastructure/repositories/transaction/TransactionRepository.ts` | `aggregateSpending()` — the `$match` / `$facet` pipeline            |
 
 ## Public API
 
@@ -27,14 +27,14 @@ The module owns no data of its own: it is a thin service over one MongoDB aggreg
 
 Aggregate spending for the authenticated user.
 
-| Parameter | Type   | Required | Description                                                                 |
-| --------- | ------ | -------- | --------------------------------------------------------------------------- |
-| `groupBy` | enum   | No       | `category` (default), `day`, `month`, `account`, or `tag`                   |
-| `splitBy` | enum   | No       | `category`. Adds `splits` inside each bucket. Only with `month` or `account`, and only with `from` and `to` |
-| `categoryIds` | string | No   | Comma-separated category ids, at most 20: aggregates only those             |
-| `type`    | enum   | No       | `INCOME`, `EXPENSE` (default), `TRANSFER`, or `ADJUSTMENT`                  |
-| `from`    | string | No       | Start of the range, **inclusive** (ISO 8601, offsets accepted)              |
-| `to`      | string | No       | End of the range, **exclusive** — the range is half-open `[from, to)`       |
+| Parameter     | Type   | Required | Description                                                                                                 |
+| ------------- | ------ | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `groupBy`     | enum   | No       | `category` (default), `day`, `month`, `account`, or `tag`                                                   |
+| `splitBy`     | enum   | No       | `category`. Adds `splits` inside each bucket. Only with `month` or `account`, and only with `from` and `to` |
+| `categoryIds` | string | No       | Comma-separated category ids, at most 20: aggregates only those                                             |
+| `type`        | enum   | No       | `INCOME`, `EXPENSE` (default), `TRANSFER`, or `ADJUSTMENT`                                                  |
+| `from`        | string | No       | Start of the range, **inclusive** (ISO 8601, offsets accepted)                                              |
+| `to`          | string | No       | End of the range, **exclusive** — the range is half-open `[from, to)`                                       |
 
 `from` must be before or equal to `to`, otherwise `400 VALIDATION`. Both bounds are optional; omitting them aggregates the user's whole history.
 
@@ -76,25 +76,25 @@ With `groupBy=month&splitBy=category`, each bucket also carries its composition:
 }
 ```
 
-| Field    | Meaning                                                                       |
-| -------- | ----------------------------------------------------------------------------- |
-| `key`    | Category id, `YYYY-MM-DD` day, `YYYY-MM` month, account id, or tag — depending on `groupBy` |
-| `splits` | Only when `splitBy` was asked for: the same shape, one per category. Splits never overlap, so they add up to the bucket's own `total` |
-| `splitBy` (top level) | The second dimension asked for, or `null`                        |
-| `total`  | Sum of what counts as yours in the bucket, as a decimal                        |
-| `count`  | Number of transactions in the bucket                                           |
-| `avg`    | `total / count`, rounded to the cent                                           |
-| `total` (top level) | Grand total, computed **without** the tag unwind (never double-counted) |
+| Field                 | Meaning                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `key`                 | Category id, `YYYY-MM-DD` day, `YYYY-MM` month, account id, or tag — depending on `groupBy`                                           |
+| `splits`              | Only when `splitBy` was asked for: the same shape, one per category. Splits never overlap, so they add up to the bucket's own `total` |
+| `splitBy` (top level) | The second dimension asked for, or `null`                                                                                             |
+| `total`               | Sum of what counts as yours in the bucket, as a decimal                                                                               |
+| `count`               | Number of transactions in the bucket                                                                                                  |
+| `avg`                 | `total / count`, rounded to the cent                                                                                                  |
+| `total` (top level)   | Grand total, computed **without** the tag unwind (never double-counted)                                                               |
 
 ## Grouping Semantics
 
-| `groupBy`  | Bucket key                                          | Ordering                                        | Fallback bucket  |
-| ---------- | --------------------------------------------------- | ----------------------------------------------- | ---------------- |
-| `category` | `categoryId`                                        | `total` descending, key ascending on a tie      | `uncategorized`  |
-| `day`      | The transaction's frozen `dayKey`                   | Key ascending                                   | —                |
-| `month`    | The first 7 characters of that same `dayKey`        | Key ascending                                   | —                |
-| `account`  | `fromAccountId`, or `toAccountId` for `INCOME`      | `total` descending, key ascending on a tie      | `unassigned`     |
-| `tag`      | One bucket per tag (the transaction is unwound)     | `total` descending, key ascending on a tie      | `untagged`       |
+| `groupBy`  | Bucket key                                      | Ordering                                   | Fallback bucket |
+| ---------- | ----------------------------------------------- | ------------------------------------------ | --------------- |
+| `category` | `categoryId`                                    | `total` descending, key ascending on a tie | `uncategorized` |
+| `day`      | The transaction's frozen `dayKey`               | Key ascending                              | —               |
+| `month`    | The first 7 characters of that same `dayKey`    | Key ascending                              | —               |
+| `account`  | `fromAccountId`, or `toAccountId` for `INCOME`  | `total` descending, key ascending on a tie | `unassigned`    |
+| `tag`      | One bucket per tag (the transaction is unwound) | `total` descending, key ascending on a tie | `untagged`      |
 
 - **`day` and `month`** are time series: they come back ascending and **skip the days or months with no transactions**. The client fills the gaps — the API does not emit zero rows.
 - **`month`** is cut from the frozen accounting day, not recomputed from the instant, so a month and its own days can never disagree about which window a row belongs to.
@@ -180,14 +180,14 @@ None specific to this module.
 
 ## Error States
 
-| Error             | Status | Condition                                                            |
-| ----------------- | ------ | -------------------------------------------------------------------- |
-| `ValidationError` | 400    | Invalid `groupBy` / `type` enum value                                |
-| `ValidationError` | 400    | `from` or `to` is not a valid ISO 8601 date                          |
-| `ValidationError` | 400    | `from` is later than `to`                                            |
-| `ValidationError` | 400    | `categoryIds` is empty, holds something that is not a uuid, or names more than 20 |
+| Error             | Status | Condition                                                                              |
+| ----------------- | ------ | -------------------------------------------------------------------------------------- |
+| `ValidationError` | 400    | Invalid `groupBy` / `type` enum value                                                  |
+| `ValidationError` | 400    | `from` or `to` is not a valid ISO 8601 date                                            |
+| `ValidationError` | 400    | `from` is later than `to`                                                              |
+| `ValidationError` | 400    | `categoryIds` is empty, holds something that is not a uuid, or names more than 20      |
 | `ValidationError` | 400    | `splitBy=category` over any grouping but `month` and `account`, or with no `from`/`to` |
-| `Unauthorized`    | 401    | Missing, invalid or expired access token                             |
+| `Unauthorized`    | 401    | Missing, invalid or expired access token                                               |
 
 The endpoint never 404s: an empty result set is a `200` with `buckets: []` and `total: 0`.
 
@@ -206,4 +206,3 @@ The pipeline sums the stored **integer cents** of `countsAsYours`, falling back 
 ## Why This Endpoint Stays
 
 The web client derives its own spending buckets from the offline mirror, so its screens no longer call this endpoint on every render. It is still the reference that derivation is checked against — the parity fixtures come from here — and the answer for any grouping or range the mirror cannot hold. See `sync.md`, "What the offline client still needs outside this module".
-

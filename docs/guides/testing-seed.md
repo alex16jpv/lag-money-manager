@@ -12,12 +12,12 @@ database in the same state.
 
 ## Credentials
 
-| | |
-| --- | --- |
-| Name | `John Doe` (the neutral example name the owner chose; the front uses the same one) |
-| Email | `seed@ledgerflow.test` |
-| Password | `LedgerFlow!2026` |
-| Timezone / currency / locale | `America/Bogota` · `COP` · `en` |
+|                              |                                                                                    |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| Name                         | `John Doe` (the neutral example name the owner chose; the front uses the same one) |
+| Email                        | `seed@ledgerflow.test`                                                             |
+| Password                     | `LedgerFlow!2026`                                                                  |
+| Timezone / currency / locale | `America/Bogota` · `COP` · `en`                                                    |
 
 ## What it creates
 
@@ -97,15 +97,15 @@ records it.
 
 The month's spending totals are load-bearing, since the designs display them:
 
-| Category | Total |
-| --- | --- |
-| Food | 412 000 |
-| Lifestyle | 356 000 |
-| Transport | 185 500 |
-| Bills | 186 200 |
-| Coffee | 98 400 |
-| Uncategorised (the quick-adds) | 47 900 |
-| **Month** | **1 286 000** |
+| Category                       | Total         |
+| ------------------------------ | ------------- |
+| Food                           | 412 000       |
+| Lifestyle                      | 356 000       |
+| Transport                      | 185 500       |
+| Bills                          | 186 200       |
+| Coffee                         | 98 400        |
+| Uncategorised (the quick-adds) | 47 900        |
+| **Month**                      | **1 286 000** |
 
 > The design brief quotes ≈1 284 300 for the month, but the sum of its own
 > per-category figures is 1 286 000. The per-category numbers were taken as

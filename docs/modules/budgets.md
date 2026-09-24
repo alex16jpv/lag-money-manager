@@ -15,18 +15,18 @@ Budgets are archived, never hard-deleted, and can be restored. All budgets are u
 
 ## Files and Responsibilities
 
-| File                                                     | Role                                                                                   |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `src/app/routes/budgetRoutes.ts`                         | Route definitions with OpenAPI docs (CRUD at `/budgets` + amount overrides)             |
-| `src/app/controllers/BudgetController.ts`                | Thin HTTP handler; resolves `reference` + the user's timezone into a `ViewContext`       |
-| `src/app/services/BudgetService.ts`                      | Business logic: period resolution, spend aggregation, overlap rules, overrides          |
-| `src/app/dtos/BudgetDTO.ts`                              | `CreateBudgetDTO`, `UpdateBudgetDTO`, `BudgetView` (the response shape)                  |
-| `src/app/validation/schemas.ts`                          | `createBudgetSchema`, `updateBudgetSchema`, `getBudgetsSchema`, `budgetIdParamSchema`, `budgetAmountOverrideSchema` |
-| `src/shared/budgetPeriod.ts`                             | `resolvePeriod()` — turns a period type + reference into `{ from, to, key }`             |
-| `src/domain/entities/Budget.ts`                          | Budget domain entity (`lifetimeFloor()`, `amountForPeriod()`)                            |
-| `src/domain/repositories/budget/IBudgetRepository.ts`    | Repository interface (`BudgetFilters`, `findOverlapping`, override mutators)             |
-| `src/infrastructure/repositories/budget/BudgetRepository.ts` | Mongoose implementation (cents ↔ decimal conversion, `$set`/`$unset` on override keys) |
-| `src/infrastructure/models/BudgetModel.ts`               | Mongoose model and indexes                                                              |
+| File                                                         | Role                                                                                                                |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `src/app/routes/budgetRoutes.ts`                             | Route definitions with OpenAPI docs (CRUD at `/budgets` + amount overrides)                                         |
+| `src/app/controllers/BudgetController.ts`                    | Thin HTTP handler; resolves `reference` + the user's timezone into a `ViewContext`                                  |
+| `src/app/services/BudgetService.ts`                          | Business logic: period resolution, spend aggregation, overlap rules, overrides                                      |
+| `src/app/dtos/BudgetDTO.ts`                                  | `CreateBudgetDTO`, `UpdateBudgetDTO`, `BudgetView` (the response shape)                                             |
+| `src/app/validation/schemas.ts`                              | `createBudgetSchema`, `updateBudgetSchema`, `getBudgetsSchema`, `budgetIdParamSchema`, `budgetAmountOverrideSchema` |
+| `src/shared/budgetPeriod.ts`                                 | `resolvePeriod()` — turns a period type + reference into `{ from, to, key }`                                        |
+| `src/domain/entities/Budget.ts`                              | Budget domain entity (`lifetimeFloor()`, `amountForPeriod()`)                                                       |
+| `src/domain/repositories/budget/IBudgetRepository.ts`        | Repository interface (`BudgetFilters`, `findOverlapping`, override mutators)                                        |
+| `src/infrastructure/repositories/budget/BudgetRepository.ts` | Mongoose implementation (cents ↔ decimal conversion, `$set`/`$unset` on override keys)                              |
+| `src/infrastructure/models/BudgetModel.ts`                   | Mongoose model and indexes                                                                                          |
 
 ## Public API
 
@@ -36,14 +36,14 @@ Every route accepts an optional `reference` query parameter (ISO 8601, offsets a
 
 List budgets as **views** for the reference period (paginated, offset + cursor).
 
-| Parameter         | Type    | Description                                                     |
-| ----------------- | ------- | --------------------------------------------------------------- |
-| `reference`       | string  | Any instant inside the period to resolve (default: now)         |
-| `includeArchived` | enum    | `"true"` also returns archived budgets                          |
-| `includeExpired`  | enum    | `"true"` also returns expired CUSTOM budgets                    |
-| `limit`           | number  | 1–100, default 20                                               |
-| `offset`          | number  | Items to skip (offset pagination)                               |
-| `cursor`          | string  | Last ID of the previous page (overrides `offset`)               |
+| Parameter         | Type   | Description                                             |
+| ----------------- | ------ | ------------------------------------------------------- |
+| `reference`       | string | Any instant inside the period to resolve (default: now) |
+| `includeArchived` | enum   | `"true"` also returns archived budgets                  |
+| `includeExpired`  | enum   | `"true"` also returns expired CUSTOM budgets            |
+| `limit`           | number | 1–100, default 20                                       |
+| `offset`          | number | Items to skip (offset pagination)                       |
+| `cursor`          | string | Last ID of the previous page (overrides `offset`)       |
 
 Excluded by default: archived budgets, expired CUSTOM budgets, and budgets whose reference period ends at or before their `effectiveFrom` floor.
 
@@ -77,7 +77,6 @@ Create a budget.
 Responds `201` with the view resolved for the reference period.
 
 **Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. An id the user already owns replays with **200** and the stored budget **whatever the payload says now** — the row may have been edited from another device between a lost response and the retry, and a 409 there would make the client mint a second id and duplicate it. An id that belongs to **another user** is rejected with **409 `ID_TAKEN`**, worded so the caller cannot tell it exists; the foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
-
 
 ### `GET /budgets/:id`
 
@@ -116,33 +115,33 @@ Drops the override for the period containing `reference`, so the period falls ba
 
 ### Response shape (`BudgetView`)
 
-| Field                 | Meaning                                                                     |
-| --------------------- | --------------------------------------------------------------------------- |
-| `categoryIds`         | Tracked categories; `[]` means global                                       |
-| `archivedCategoryIds` | Subset of `categoryIds` the user archived — the budget still tracks them     |
-| `currency`            | ISO 4217 code stamped at creation                                           |
-| `periodKey`           | Stable key of the resolved period instance (e.g. `"2026-08"`)               |
-| `periodFrom` / `periodTo` | The half-open window `[from, to)` the spend was aggregated over          |
-| `baseAmount`          | The budget's base amount                                                    |
-| `amount`              | Resolved for this period: `override ?? baseAmount`                          |
-| `spent`               | Live aggregation of what counts as yours in the window                      |
-| `hasOverride`         | `true` when `amount` comes from a per-period override                       |
-| `expired`             | CUSTOM only: the fixed window already ended relative to `reference`         |
-| `effectiveFrom`       | The lifetime floor (`effectiveFrom ?? createdAt`, capped by a CUSTOM start) |
-| `archivedAt`          | Non-null once archived                                                      |
+| Field                     | Meaning                                                                     |
+| ------------------------- | --------------------------------------------------------------------------- |
+| `categoryIds`             | Tracked categories; `[]` means global                                       |
+| `archivedCategoryIds`     | Subset of `categoryIds` the user archived — the budget still tracks them    |
+| `currency`                | ISO 4217 code stamped at creation                                           |
+| `periodKey`               | Stable key of the resolved period instance (e.g. `"2026-08"`)               |
+| `periodFrom` / `periodTo` | The half-open window `[from, to)` the spend was aggregated over             |
+| `baseAmount`              | The budget's base amount                                                    |
+| `amount`                  | Resolved for this period: `override ?? baseAmount`                          |
+| `spent`                   | Live aggregation of what counts as yours in the window                      |
+| `hasOverride`             | `true` when `amount` comes from a per-period override                       |
+| `expired`                 | CUSTOM only: the fixed window already ended relative to `reference`         |
+| `effectiveFrom`           | The lifetime floor (`effectiveFrom ?? createdAt`, capped by a CUSTOM start) |
+| `archivedAt`              | Non-null once archived                                                      |
 
 ## Period Types
 
 Windows are half-open `[from, to)` and computed in the **user's IANA timezone**, so a month starts at their local midnight, not UTC's. `spent` then aggregates the transactions whose frozen accounting day (`dayKey`, see `transactions.md`) falls inside the **local days** that window covers, so a past period's `spent` no longer changes when the account moves to another timezone.
 
-| Type        | Window                                                         | Period key example  | Expires |
-| ----------- | -------------------------------------------------------------- | ------------------- | ------- |
-| `WEEKLY`    | ISO week containing `reference`                                | `2026-W35`          | No      |
-| `BIWEEKLY`  | 2-week window on a global grid anchored to the week of 2024-01-01 | `2026-BW35`      | No      |
-| `MONTHLY`   | Calendar month                                                 | `2026-08`           | No      |
-| `QUARTERLY` | Calendar quarter                                               | `2026-Q3`           | No      |
-| `YEARLY`    | Calendar year                                                  | `2026`              | No      |
-| `CUSTOM`    | The explicit `periodStartDate` → `periodEndDate` window        | `1767225600000_1769904000000` (epoch millis) | Yes |
+| Type        | Window                                                            | Period key example                           | Expires |
+| ----------- | ----------------------------------------------------------------- | -------------------------------------------- | ------- |
+| `WEEKLY`    | ISO week containing `reference`                                   | `2026-W35`                                   | No      |
+| `BIWEEKLY`  | 2-week window on a global grid anchored to the week of 2024-01-01 | `2026-BW35`                                  | No      |
+| `MONTHLY`   | Calendar month                                                    | `2026-08`                                    | No      |
+| `QUARTERLY` | Calendar quarter                                                  | `2026-Q3`                                    | No      |
+| `YEARLY`    | Calendar year                                                     | `2026`                                       | No      |
+| `CUSTOM`    | The explicit `periodStartDate` → `periodEndDate` window           | `1767225600000_1769904000000` (epoch millis) | Yes     |
 
 Recurring types roll forward forever: there is always a "current" instance. `CUSTOM` is a one-shot window — once `reference` reaches `periodEndDate` the budget is `expired` and drops out of the default listing until `includeExpired=true`.
 
@@ -240,22 +239,22 @@ None specific to this module.
 
 ## Error States
 
-| Error / code                | Status | Condition                                                                      |
-| --------------------------- | ------ | ------------------------------------------------------------------------------ |
-| `ValidationError`           | 400    | Invalid body or query (bad color, >20 categories, amount with >2 decimals, …)   |
-| `BadRequest`                | 400    | `CUSTOM` without both dates, or `startDate >= endDate`                          |
-| `BadRequest`                | 400    | `periodStartDate` / `periodEndDate` sent for a non-CUSTOM budget                |
-| `BUDGET_PERIOD_OVERLAP`     | 400    | A budget for this type + period type already covers one of the categories (`CUSTOM`: only when the date windows intersect) |
-| `AMOUNT_PRECISION`          | 400    | `amount`, on create, update or a period override, with more decimals than the currency has — none at all in a `ZeroDecimalCurrency`. Judged on the amount the request carries, never on one already stored (T-67) |
-| `CATEGORY_ARCHIVED`         | 400    | Assigning an archived category (keeping one the budget already had is allowed)  |
-| `CATEGORY_TYPE_MISMATCH`    | 400    | Category type differs from the budget type                                      |
-| `RESOURCE_ARCHIVED`         | 400    | Writing to (or overriding the amount of) an archived budget                     |
-| `Unauthorized`              | 401    | Missing, invalid or expired access token                                        |
-| `NotFound`                  | 404    | Budget missing **or owned by another user** (uniform, so ids can't be probed)   |
-| `NotFound`                  | 404    | A referenced category is missing or not owned                                   |
-| `DUPLICATE`                 | 409    | A concurrent create lost the race to the unique partial index (`CUSTOM`: identical window) |
-| `ID_TAKEN`                  | 409    | The client-minted `id` belongs to another user (the user's own id always replays with 200) |
-| `STALE_UPDATE`              | 409    | `If-Match` no longer matches the stored version (`current` carries the budget view) |
+| Error / code             | Status | Condition                                                                                                                                                                                                         |
+| ------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ValidationError`        | 400    | Invalid body or query (bad color, >20 categories, amount with >2 decimals, …)                                                                                                                                     |
+| `BadRequest`             | 400    | `CUSTOM` without both dates, or `startDate >= endDate`                                                                                                                                                            |
+| `BadRequest`             | 400    | `periodStartDate` / `periodEndDate` sent for a non-CUSTOM budget                                                                                                                                                  |
+| `BUDGET_PERIOD_OVERLAP`  | 400    | A budget for this type + period type already covers one of the categories (`CUSTOM`: only when the date windows intersect)                                                                                        |
+| `AMOUNT_PRECISION`       | 400    | `amount`, on create, update or a period override, with more decimals than the currency has — none at all in a `ZeroDecimalCurrency`. Judged on the amount the request carries, never on one already stored (T-67) |
+| `CATEGORY_ARCHIVED`      | 400    | Assigning an archived category (keeping one the budget already had is allowed)                                                                                                                                    |
+| `CATEGORY_TYPE_MISMATCH` | 400    | Category type differs from the budget type                                                                                                                                                                        |
+| `RESOURCE_ARCHIVED`      | 400    | Writing to (or overriding the amount of) an archived budget                                                                                                                                                       |
+| `Unauthorized`           | 401    | Missing, invalid or expired access token                                                                                                                                                                          |
+| `NotFound`               | 404    | Budget missing **or owned by another user** (uniform, so ids can't be probed)                                                                                                                                     |
+| `NotFound`               | 404    | A referenced category is missing or not owned                                                                                                                                                                     |
+| `DUPLICATE`              | 409    | A concurrent create lost the race to the unique partial index (`CUSTOM`: identical window)                                                                                                                        |
+| `ID_TAKEN`               | 409    | The client-minted `id` belongs to another user (the user's own id always replays with 200)                                                                                                                        |
+| `STALE_UPDATE`           | 409    | `If-Match` no longer matches the stored version (`current` carries the budget view)                                                                                                                               |
 
 ## Optimistic concurrency (`If-Match`)
 

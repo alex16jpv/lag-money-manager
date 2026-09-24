@@ -58,15 +58,15 @@ Deleting an account withdraws what it shared, waiting or joined, so it leaves st
 
 What ends a live invitation, and what each one ends:
 
-| Event                                                   | Waiting | Joined                                                       | Where                                                    |
-| ------------------------------------------------------- | ------- | ------------------------------------------------------------ | -------------------------------------------------------- |
-| `DELETE /shared-groups/{id}/invitations/{invitationId}` | ✓       | ✓ (stop sharing)                                             | This module                                              |
-| The group is archived                                   | ✓       | — (it stays with whoever joined, read-only)                  | `SharedGroupService.deleteGroup`, same transaction       |
-| The person is taken out of the group                    | ✓       | ✓                                                            | `SharedGroupService.removeParticipant`, same transaction |
-| Their contact is archived                               | ✓       | ✓                                                            | `ContactService.deleteContact`, same transaction         |
-| Their contact's email changes, or is cleared            | ✓       | —                                                            | `ContactService.updateContact`, same transaction         |
-| They leave (`POST /invitations/{id}/leave`)             | —       | ✓ (`LEFT`)                                                   | This module                                              |
-| Either account is deleted                               | ✓       | ✓ (`WITHDRAWN` for the owner's, `LEFT` for the joiner's)     | `UserService.deleteUser`                                 |
+| Event                                                   | Waiting | Joined                                                   | Where                                                    |
+| ------------------------------------------------------- | ------- | -------------------------------------------------------- | -------------------------------------------------------- |
+| `DELETE /shared-groups/{id}/invitations/{invitationId}` | ✓       | ✓ (stop sharing)                                         | This module                                              |
+| The group is archived                                   | ✓       | — (it stays with whoever joined, read-only)              | `SharedGroupService.deleteGroup`, same transaction       |
+| The person is taken out of the group                    | ✓       | ✓                                                        | `SharedGroupService.removeParticipant`, same transaction |
+| Their contact is archived                               | ✓       | ✓                                                        | `ContactService.deleteContact`, same transaction         |
+| Their contact's email changes, or is cleared            | ✓       | —                                                        | `ContactService.updateContact`, same transaction         |
+| They leave (`POST /invitations/{id}/leave`)             | —       | ✓ (`LEFT`)                                               | This module                                              |
+| Either account is deleted                               | ✓       | ✓ (`WITHDRAWN` for the owner's, `LEFT` for the joiner's) | `UserService.deleteUser`                                 |
 
 Restoring a group or a contact brings none of them back: inviting again is how somebody comes back.
 

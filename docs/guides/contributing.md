@@ -104,23 +104,23 @@ Common types:
 
 `src/config/swagger.ts` builds the spec from three sources, and only one of them is hand-written:
 
-| Part                          | Source                                                                          | Hand-written?                                   |
-| ----------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------- |
-| **Request bodies**            | Generated from the Zod schemas with `z.toJSONSchema(..., { target: "openapi-3.0", io: "input" })` | **No** — never hand-write one                   |
-| **Response views**            | Mirrors of the entities/DTOs the API serializes, in `swagger.ts`                 | Yes                                             |
-| **Paths, params, responses**  | `@openapi` JSDoc blocks above each route in `src/app/routes/*.ts`                | Yes                                             |
+| Part                         | Source                                                                                            | Hand-written?                 |
+| ---------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------- |
+| **Request bodies**           | Generated from the Zod schemas with `z.toJSONSchema(..., { target: "openapi-3.0", io: "input" })` | **No** — never hand-write one |
+| **Response views**           | Mirrors of the entities/DTOs the API serializes, in `swagger.ts`                                  | Yes                           |
+| **Paths, params, responses** | `@openapi` JSDoc blocks above each route in `src/app/routes/*.ts`                                 | Yes                           |
 
 Enum values in the response views come from `src/shared/constants.ts` (`enumOf(...)`), so they cannot drift from the code either.
 
 ### What that means when you change a shape
 
-| Change                             | Zod schema (`schemas.ts`) | `swagger.ts`                        | Route JSDoc                       |
-| ---------------------------------- | ------------------------- | ------------------------------------ | --------------------------------- |
-| Add/remove a **request** field     | Yes — the only edit       | No (regenerated)                     | Only if the description changes    |
-| Change a request field's rules     | Yes — the only edit       | No (regenerated)                     | No                                 |
-| Add a **new endpoint**             | Yes, if validated         | Add the request body to `requestBodies` if it takes one | Yes — a new `@openapi` block       |
-| Change a **response** shape        | No (DTOs/entities)        | Yes — update the response view       | Only if the `$ref` changes         |
-| Add an enum value                  | No (derived from constants) | No (derived from constants)        | No                                 |
+| Change                         | Zod schema (`schemas.ts`)   | `swagger.ts`                                            | Route JSDoc                     |
+| ------------------------------ | --------------------------- | ------------------------------------------------------- | ------------------------------- |
+| Add/remove a **request** field | Yes — the only edit         | No (regenerated)                                        | Only if the description changes |
+| Change a request field's rules | Yes — the only edit         | No (regenerated)                                        | No                              |
+| Add a **new endpoint**         | Yes, if validated           | Add the request body to `requestBodies` if it takes one | Yes — a new `@openapi` block    |
+| Change a **response** shape    | No (DTOs/entities)          | Yes — update the response view                          | Only if the `$ref` changes      |
+| Add an enum value              | No (derived from constants) | No (derived from constants)                             | No                              |
 
 **Verify** with `npm run start:dev` and `/api-docs`. Note that Swagger UI is only mounted when `NODE_ENV !== "production"`, so `/api-docs` does not exist on the deployed API.
 
@@ -128,7 +128,7 @@ Enum values in the response views come from `src/shared/constants.ts` (`enumOf(.
 
 These are the recurring ones; `docs/agent-context.md` has the full set.
 
-- **Layers.** Domain (`src/domain/`) holds entities and repository *interfaces* and imports nothing from `app/` or `infrastructure/`. Mongoose models and the concrete repositories live in `src/infrastructure/`. Services depend on the interface, never on a model.
+- **Layers.** Domain (`src/domain/`) holds entities and repository _interfaces_ and imports nothing from `app/` or `infrastructure/`. Mongoose models and the concrete repositories live in `src/infrastructure/`. Services depend on the interface, never on a model.
 - **Validation.** Every endpoint gets a Zod schema in `src/app/validation/schemas.ts` and `validate(schema)` in the route. `validate` replaces `req.body`/`req.params` with the parsed values, so anything not declared in the schema never reaches a service — do not read undeclared fields off the request.
 - **Repository access.** Controllers get repositories from `repositoryFactory.get<Entity>Repository()` and pass them into the service constructor. No `new SomeRepository()` outside the provider.
 - **Pagination.** List endpoints return `buildPaginatedResult(...)` from `src/shared/pagination.ts` — `{ data, pagination: { limit, offset, total, hasMore, nextCursor } }`. Do not hand-roll that envelope.

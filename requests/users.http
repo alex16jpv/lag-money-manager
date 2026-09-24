@@ -121,7 +121,24 @@ Content-Type: application/json
 GET {{baseUrl}}/users
 Authorization: Bearer {{token}}
 
-### Delete (soft) — revoca refresh tokens; el email puede REACTIVARSE
-### registrándose de nuevo con él (ver auth.http)
+### Delete SIN currentPassword (400) — un token de 15 min no basta para borrar
+DELETE {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Delete con currentPassword INCORRECTA (401 CURRENT_PASSWORD_INVALID)
+DELETE {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "currentPassword": "wrong" }
+
+### Delete (soft) — requiere currentPassword; revoca refresh tokens. El email
+### se REACTIVA registrándose de nuevo con él y la MISMA password (ver auth.http)
 # DELETE {{baseUrl}}/users/{{userId}}
 # Authorization: Bearer {{token}}
+# Content-Type: application/json
+#
+# { "currentPassword": "{{password}}" }

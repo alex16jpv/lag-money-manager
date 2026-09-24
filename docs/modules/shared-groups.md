@@ -90,13 +90,13 @@ The usual shape: reads resolve archived groups, `DELETE` archives and is idempot
 
 The same body, once written and once only worked out. `applyToExistingExpenses` off — the default — puts the new people in what you add from now on and in none of what is there. On:
 
-| The expense                    | What happens                                                            |
-| ------------------------------ | ----------------------------------------------------------------------- |
-| Follows the group's default    | Split again with the new default, everybody included                    |
-| Carries its own `EQUAL`        | Re-divided: the mode itself says what a new head is worth               |
-| Carries its own `FIXED_REST`   | The newcomer joins the unpinned rest                                    |
-| Carries its own `PERCENT`      | **Left alone**: a percentage for somebody who was not there is invented |
-| Carries its own `EXACT`        | **Left alone**, for the same reason                                     |
+| The expense                  | What happens                                                            |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| Follows the group's default  | Split again with the new default, everybody included                    |
+| Carries its own `EQUAL`      | Re-divided: the mode itself says what a new head is worth               |
+| Carries its own `FIXED_REST` | The newcomer joins the unpinned rest                                    |
+| Carries its own `PERCENT`    | **Left alone**: a percentage for somebody who was not there is invented |
+| Carries its own `EXACT`      | **Left alone**, for the same reason                                     |
 
 The answer counts those under `expenses.untouched`, so the screen can say it rather than leave it to be discovered. The alternative — giving the newcomer a zero share there — would put a row that owes nothing in the group's people list; the exact answer for an expense somebody was not at is that expense's own split.
 
@@ -114,7 +114,7 @@ The listing is **newest first, keyset over `(date, _id)`**: ids are minted when 
 
 A create takes `description`, `date`, `amount`, an optional `paidByContactId` (null is you) and an optional `split`.
 
-**Or it takes `transactionId`, and then the expense is a movement of yours.** The amount, the date and the description come from that transaction, so none of the three may be sent with it, and neither may a `paidByContactId` other than null: a movement of yours is a line you paid. The transaction has to be a live `EXPENSE` of the caller's, in the group's currency, and not already in a group (`400 TRANSACTION_ALREADY_SHARED`, `400 TRANSACTION_NOT_SPLITTABLE`, `400 CURRENCY_MISMATCH`, `404` for anything else). The expense and the link are written in **one database transaction**, and the transaction is read inside it, so two requests cannot both take the same movement. From then on its amount, date and description are edited on the transaction: restating one here is `400 SHARED_EXPENSE_LINKED`, and `DELETE` on the expense leaves the movement in place, whole and free. No `split` inherits the group's default and leaves `customSplit` false; a `split` sets it true. `PUT` either saves a split (`split`) or goes back to the group's (`useGroupSplit: true`) — never both — and changing the amount or the payer resolves the shares again rather than leaving figures that no longer add up. **Any edit that changes what somebody owes, or the order it is owed in — a split, an amount, a payer, a date — imputes the payments of everybody on the line, before and after, over it again, in the same database transaction**, whether or not the line is a movement of yours (until T-145 a line somebody else fronted kept a `collected` the new figures no longer matched). Each of these writes answers the expense as that imputation left it, plus `restamped`: the other expenses and movements it rewrote, with their stamps before and after (`docs/modules/sync.md`, *Rows a write rewrote besides its own*). Adding people to a group, archiving it, writing off and undoing a write-off answer `restamped` too.
+**Or it takes `transactionId`, and then the expense is a movement of yours.** The amount, the date and the description come from that transaction, so none of the three may be sent with it, and neither may a `paidByContactId` other than null: a movement of yours is a line you paid. The transaction has to be a live `EXPENSE` of the caller's, in the group's currency, and not already in a group (`400 TRANSACTION_ALREADY_SHARED`, `400 TRANSACTION_NOT_SPLITTABLE`, `400 CURRENCY_MISMATCH`, `404` for anything else). The expense and the link are written in **one database transaction**, and the transaction is read inside it, so two requests cannot both take the same movement. From then on its amount, date and description are edited on the transaction: restating one here is `400 SHARED_EXPENSE_LINKED`, and `DELETE` on the expense leaves the movement in place, whole and free. No `split` inherits the group's default and leaves `customSplit` false; a `split` sets it true. `PUT` either saves a split (`split`) or goes back to the group's (`useGroupSplit: true`) — never both — and changing the amount or the payer resolves the shares again rather than leaving figures that no longer add up. **Any edit that changes what somebody owes, or the order it is owed in — a split, an amount, a payer, a date — imputes the payments of everybody on the line, before and after, over it again, in the same database transaction**, whether or not the line is a movement of yours (until T-145 a line somebody else fronted kept a `collected` the new figures no longer matched). Each of these writes answers the expense as that imputation left it, plus `restamped`: the other expenses and movements it rewrote, with their stamps before and after (`docs/modules/sync.md`, _Rows a write rewrote besides its own_). Adding people to a group, archiving it, writing off and undoing a write-off answer `restamped` too.
 
 **One case a caller has to know about:** an expense carrying its own `EXACT` split states amounts, so a new `amount` on its own makes them stop adding up and the write is `400 SPLIT_INVALID`. The request has to restate the split alongside the new amount. Rescaling what somebody typed by hand would be the server quietly deciding what they meant, which is worse than an error that says the shares no longer add up.
 
@@ -124,15 +124,15 @@ Every route under `/shared-groups/{id}/expenses/{expenseId}` checks that the exp
 
 ## Storage
 
-| Collection      | Index                                                   | Why                                                                |
-| --------------- | ------------------------------------------------------- | ------------------------------------------------------------------ |
-| `SharedGroup`   | `{ userId, _id }`                                       | Every read is user-scoped; the listing's keyset runs over `_id`    |
-| `SharedGroup`   | `{ userId, name }` unique, active only, name collation  | One active group name per user, case folded                        |
-| `SharedGroup`   | `{ userId, "participants.contactId" }`                  | "Which groups is this contact in", without scanning the user's     |
-| `SharedGroup`   | `{ userId, updatedAt, _id }`                            | The keyset the offline change feed scans                           |
-| `SharedExpense` | `{ userId, groupId, deletedAt, date, _id }`             | The group's list in date order, its cursor, and the totals aggregation |
-| `SharedExpense` | `{ userId, "split.shares.contactId" }`                  | Whether a contact holds a share, without scanning the group        |
-| `SharedExpense` | `{ userId, updatedAt, _id }`                            | The keyset the offline change feed scans                           |
+| Collection      | Index                                                  | Why                                                                    |
+| --------------- | ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `SharedGroup`   | `{ userId, _id }`                                      | Every read is user-scoped; the listing's keyset runs over `_id`        |
+| `SharedGroup`   | `{ userId, name }` unique, active only, name collation | One active group name per user, case folded                            |
+| `SharedGroup`   | `{ userId, "participants.contactId" }`                 | "Which groups is this contact in", without scanning the user's         |
+| `SharedGroup`   | `{ userId, updatedAt, _id }`                           | The keyset the offline change feed scans                               |
+| `SharedExpense` | `{ userId, groupId, deletedAt, date, _id }`            | The group's list in date order, its cursor, and the totals aggregation |
+| `SharedExpense` | `{ userId, "split.shares.contactId" }`                 | Whether a contact holds a share, without scanning the group            |
+| `SharedExpense` | `{ userId, updatedAt, _id }`                           | The keyset the offline change feed scans                               |
 
 Money is stored as integer cents, shares included; `percent` is not money and is stored as given, with the arithmetic rounding it to whole basis points.
 

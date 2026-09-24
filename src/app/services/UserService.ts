@@ -1,5 +1,6 @@
 import bcryptjs from "bcryptjs";
 
+import { User } from "../../domain/entities/User";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
@@ -10,6 +11,23 @@ import {
   UpdateUserDTO,
   UserResponseDTO,
 } from "../dtos/UserDTO";
+
+async function assertCurrentPassword(
+  user: User,
+  candidate: string | undefined,
+): Promise<void> {
+  const ok =
+    !!candidate &&
+    !!user.password &&
+    (await bcryptjs.compare(candidate, user.password));
+  if (!ok) {
+    throw new ApiError(
+      "Unauthorized",
+      "Current password is incorrect",
+      "CURRENT_PASSWORD_INVALID",
+    );
+  }
+}
 
 export class UserService {
   constructor(
@@ -65,17 +83,7 @@ export class UserService {
       if (!existing) {
         throw new ApiError("NotFound", "User not found");
       }
-      const currentOk =
-        !!dto.currentPassword &&
-        !!existing.password &&
-        (await bcryptjs.compare(dto.currentPassword, existing.password));
-      if (!currentOk) {
-        throw new ApiError(
-          "Unauthorized",
-          "Current password is incorrect",
-          "CURRENT_PASSWORD_INVALID",
-        );
-      }
+      await assertCurrentPassword(existing, dto.currentPassword);
 
       const { currentPassword: _ignored, ...fields } = dto;
       const securedDto = {
@@ -99,14 +107,19 @@ export class UserService {
     return toUserResponse(updated);
   }
 
-  async deleteUser(id: string, userId: string): Promise<void> {
+  async deleteUser(
+    id: string,
+    userId: string,
+    currentPassword: string,
+  ): Promise<void> {
     if (id !== userId) {
       throw new ApiError("NotFound", "User not found");
     }
-    const existing = await this.repo.getById(id);
+    const existing = await this.repo.getByIdWithPassword(id);
     if (!existing) {
       throw new ApiError("NotFound", "User not found");
     }
+    await assertCurrentPassword(existing, currentPassword);
     await this.repo.delete(id);
     const now = new Date();
     await this.invitationRepo.withdrawAll(

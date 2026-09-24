@@ -4,12 +4,12 @@ Reusable AI agent prompts for common tasks in this project.
 
 ## Available Prompts
 
-| Prompt                    | File                                 | When to Use                                                  | Expected Input                    | Expected Output                                                         |
-| ------------------------- | ------------------------------------ | ------------------------------------------------------------ | --------------------------------- | ----------------------------------------------------------------------- |
-| **Scan for Improvements** | `docs/prompts/scan-improvements.md`  | Technical debt audit, code review, before major releases     | Point agent at project root       | Structured Markdown report with issues, violations, and recommendations |
-| **Add a New Feature**     | `docs/prompts/add-feature.md`        | Implementing new functionality                               | Feature description in plain text | New files created, existing files modified, docs updated                |
-| **Q&A and Docs Update**   | `docs/prompts/qa-and-docs-update.md` | Answering questions about the codebase while fixing doc gaps | A specific question               | Answer with file references, plus updated documentation                 |
-| **Fix Audit Issues**      | `docs/prompts/fix-audit-issues.md`   | Fixing specific problems from a technical audit report       | Path to the audit report + issue IDs | Fixed code, updated tests, modified file summary per issue           |
+| Prompt                    | File                                 | When to Use                                                  | Expected Input                       | Expected Output                                                         |
+| ------------------------- | ------------------------------------ | ------------------------------------------------------------ | ------------------------------------ | ----------------------------------------------------------------------- |
+| **Scan for Improvements** | `docs/prompts/scan-improvements.md`  | Technical debt audit, code review, before major releases     | Point agent at project root          | Structured Markdown report with issues, violations, and recommendations |
+| **Add a New Feature**     | `docs/prompts/add-feature.md`        | Implementing new functionality                               | Feature description in plain text    | New files created, existing files modified, docs updated                |
+| **Q&A and Docs Update**   | `docs/prompts/qa-and-docs-update.md` | Answering questions about the codebase while fixing doc gaps | A specific question                  | Answer with file references, plus updated documentation                 |
+| **Fix Audit Issues**      | `docs/prompts/fix-audit-issues.md`   | Fixing specific problems from a technical audit report       | Path to the audit report + issue IDs | Fixed code, updated tests, modified file summary per issue              |
 
 ## How to Use
 

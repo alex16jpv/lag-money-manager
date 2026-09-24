@@ -1082,6 +1082,11 @@ export const idParamSchema = z.object({
   }),
 });
 
+export const deleteUserSchema = z.object({
+  params: idParamSchema.shape.params,
+  body: z.object({ currentPassword: z.string().min(1).max(128) }),
+});
+
 export const loginSchema = z.object({
   body: z.object({
     email: emailField,

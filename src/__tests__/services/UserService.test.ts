@@ -209,21 +209,26 @@ describe("UserService", () => {
   });
 
   describe("deleteUser", () => {
+    const withPassword = new User({
+      ...mockUser,
+      password: bcryptjs.hashSync("oldpassword", 4),
+    });
+
     it("should delete the authenticated user", async () => {
-      repo.getById.mockResolvedValue(mockUser);
+      repo.getByIdWithPassword.mockResolvedValue(withPassword);
       repo.delete.mockResolvedValue();
 
-      await service.deleteUser(testUserId, testUserId);
+      await service.deleteUser(testUserId, testUserId, "oldpassword");
 
-      expect(repo.getById).toHaveBeenCalledWith(testUserId);
+      expect(repo.getByIdWithPassword).toHaveBeenCalledWith(testUserId);
       expect(repo.delete).toHaveBeenCalledWith(testUserId);
     });
 
     it("ends what it shared and what it joined, so nobody keeps reading a deleted account", async () => {
-      repo.getById.mockResolvedValue(mockUser);
+      repo.getByIdWithPassword.mockResolvedValue(withPassword);
       repo.delete.mockResolvedValue();
 
-      await service.deleteUser(testUserId, testUserId);
+      await service.deleteUser(testUserId, testUserId, "oldpassword");
 
       expect(invitations.withdrawAll).toHaveBeenCalledWith(
         { userId: testUserId, statuses: ["PENDING", "ACCEPTED"] },
@@ -235,18 +240,36 @@ describe("UserService", () => {
       );
     });
 
+    it("refuses a delete whose currentPassword is wrong [T-153]", async () => {
+      repo.getByIdWithPassword.mockResolvedValue(withPassword);
+
+      await expect(
+        service.deleteUser(testUserId, testUserId, "guess"),
+      ).rejects.toMatchObject({
+        statusCode: 401,
+        code: "CURRENT_PASSWORD_INVALID",
+      });
+      expect(repo.delete).not.toHaveBeenCalled();
+      expect(invitations.withdrawAll).not.toHaveBeenCalled();
+      expect(invitations.leaveAll).not.toHaveBeenCalled();
+    });
+
     it("should throw Forbidden when deleting another user", async () => {
       await expect(
-        service.deleteUser("019576a0-d7b6-7d6d-af6a-000000000000", testUserId),
+        service.deleteUser(
+          "019576a0-d7b6-7d6d-af6a-000000000000",
+          testUserId,
+          "oldpassword",
+        ),
       ).rejects.toThrow("User not found");
     });
 
     it("should throw NotFound when user does not exist", async () => {
-      repo.getById.mockResolvedValue(null);
+      repo.getByIdWithPassword.mockResolvedValue(null);
 
-      await expect(service.deleteUser(testUserId, testUserId)).rejects.toThrow(
-        "User not found",
-      );
+      await expect(
+        service.deleteUser(testUserId, testUserId, "oldpassword"),
+      ).rejects.toThrow("User not found");
     });
   });
 
@@ -260,12 +283,17 @@ describe("UserService", () => {
     });
 
     it("should propagate repository error on delete failure", async () => {
-      repo.getById.mockResolvedValue(mockUser);
+      repo.getByIdWithPassword.mockResolvedValue(
+        new User({
+          ...mockUser,
+          password: bcryptjs.hashSync("oldpassword", 4),
+        }),
+      );
       repo.delete.mockRejectedValue(new Error("DB delete failed"));
 
-      await expect(service.deleteUser(testUserId, testUserId)).rejects.toThrow(
-        "DB delete failed",
-      );
+      await expect(
+        service.deleteUser(testUserId, testUserId, "oldpassword"),
+      ).rejects.toThrow("DB delete failed");
     });
   });
 

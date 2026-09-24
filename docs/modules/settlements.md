@@ -12,15 +12,15 @@ So a payment is never a figure somebody types onto a line. It is money, and wher
 
 ## Files and Responsibilities
 
-| File                                                                             | Role                                                                     |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `src/app/routes/sharedSettlementRoutes.ts`                                       | The four routes, with their OpenAPI blocks                               |
-| `src/app/controllers/SharedSettlementController.ts`                              | Thin HTTP handler                                                        |
-| `src/app/services/SharedSettlementService.ts`                                    | One settle-up: what it covers, and the movements it writes               |
-| `src/app/services/SharedLedgerService.ts`                                        | **The imputation**, and what it leaves on every movement                 |
-| `src/shared/sharedImputation.ts`                                                 | `impute()` — oldest line first, in one place for the server and the phone |
-| `src/domain/entities/SharedSettlement.ts`                                        | The entity                                                               |
-| `src/infrastructure/models/SharedSettlementModel.ts`                             | Document and indexes                                                     |
+| File                                                 | Role                                                                      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------- |
+| `src/app/routes/sharedSettlementRoutes.ts`           | The four routes, with their OpenAPI blocks                                |
+| `src/app/controllers/SharedSettlementController.ts`  | Thin HTTP handler                                                         |
+| `src/app/services/SharedSettlementService.ts`        | One settle-up: what it covers, and the movements it writes                |
+| `src/app/services/SharedLedgerService.ts`            | **The imputation**, and what it leaves on every movement                  |
+| `src/shared/sharedImputation.ts`                     | `impute()` — oldest line first, in one place for the server and the phone |
+| `src/domain/entities/SharedSettlement.ts`            | The entity                                                                |
+| `src/infrastructure/models/SharedSettlementModel.ts` | Document and indexes                                                      |
 
 ## One payment, two halves
 
@@ -35,11 +35,11 @@ The counterparty is a **contact** or the **block of guests of one expense** (`ex
 
 ## What each half writes in your ledger
 
-| Half | In the shared layer | In your ledger |
-| --- | --- | --- |
-| `collected` | Covers what they owe you, oldest line first | **One `SETTLEMENT` movement** into `accountId`. Not income: no category, out of Stats and of the budgets — the shape `ADJUSTMENT` already has |
-| `paid`, over lines they fronted | Covers what you owe them, oldest line first | **One ordinary `EXPENSE` per line**, with that line's description, **dated that line**, in the category you give |
-| `paid`, beyond that | **Gives back** what they paid ahead, and comes off what they had given you | **One `SETTLEMENT` movement** out of `accountId`. You never spent it, so it carries no category either |
+| Half                            | In the shared layer                                                        | In your ledger                                                                                                                                |
+| ------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `collected`                     | Covers what they owe you, oldest line first                                | **One `SETTLEMENT` movement** into `accountId`. Not income: no category, out of Stats and of the budgets — the shape `ADJUSTMENT` already has |
+| `paid`, over lines they fronted | Covers what you owe them, oldest line first                                | **One ordinary `EXPENSE` per line**, with that line's description, **dated that line**, in the category you give                              |
+| `paid`, beyond that             | **Gives back** what they paid ahead, and comes off what they had given you | **One `SETTLEMENT` movement** out of `accountId`. You never spent it, so it carries no category either                                        |
 
 **Paying somebody back is not one movement.** The shared layer carries no categories — they are private and never travel — so the request states one in `categoryId`, or one per line in `categories`. An expense per line is more rows and the right figures: it lands in the month the money was spent, under the category it belongs to.
 
@@ -55,28 +55,28 @@ Two limits worth knowing. The guard is checked inside the write's own database t
 
 `collected` on each share of an expense is **the imputation, never a typed figure**: every write that touches a split or a payment computes it again from the live payments. What that leaves on the movement you fronted is `amount − what came back`, written on it as `countsAsYours` with a line of history — see [transactions.md](transactions.md#what-counts-as-yours-countsasyours). **It falls in the month the expense happened**, not on the day of the payment, so a month you had already closed can change; the history is what explains it.
 
-Recording a payment and undoing one both answer **`restamped`** as well: the lines whose `collected` moved and the movements whose figure or history moved with them, each with its `updatedAt` before and after (T-145; `docs/modules/sync.md`, *Rows a write rewrote besides its own*). Deleting a payment reverses **every movement it recorded** and imputes what is left over the lines that are still open. The same happens to whoever else is involved whenever a line changes: a new amount, a new **date** (which is what orders the imputation), a split saved, people added to the group, or the line deleted.
+Recording a payment and undoing one both answer **`restamped`** as well: the lines whose `collected` moved and the movements whose figure or history moved with them, each with its `updatedAt` before and after (T-145; `docs/modules/sync.md`, _Rows a write rewrote besides its own_). Deleting a payment reverses **every movement it recorded** and imputes what is left over the lines that are still open. The same happens to whoever else is involved whenever a line changes: a new amount, a new **date** (which is what orders the imputation), a split saved, people added to the group, or the line deleted.
 
 **A block of guests cannot be left behind.** It lives in one expense, so if it has paid, that expense does not go until those payments are undone: `400 GUEST_BLOCK_HAS_PAYMENTS` on both doors. A person has other lines to re-impute onto and a name to give the money back to; a block has neither. The movements themselves cannot be edited or deleted on their own (`400 SETTLEMENT_MOVEMENT_LOCKED`): their money belongs to the payment, and the payment is the door.
 
 ## Public API
 
-| Route | What it does |
-| --- | --- |
-| `GET /settlements` | Newest first, keyset over `(date, _id)`; `contactId` or `expenseId` narrows it to one counterparty |
-| `POST /settlements` | One settle-up. Answers the payment **and what it covered**, line by line, plus what was refunded |
-| `GET /settlements/{id}` | One payment |
-| `DELETE /settlements/{id}` | Undoes it, movements included. Idempotent |
+| Route                      | What it does                                                                                       |
+| -------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET /settlements`         | Newest first, keyset over `(date, _id)`; `contactId` or `expenseId` narrows it to one counterparty |
+| `POST /settlements`        | One settle-up. Answers the payment **and what it covered**, line by line, plus what was refunded   |
+| `GET /settlements/{id}`    | One payment                                                                                        |
+| `DELETE /settlements/{id}` | Undoes it, movements included. Idempotent                                                          |
 
 ## Storage
 
-| Collection         | Index                                              | Why                                                            |
-| ------------------ | -------------------------------------------------- | -------------------------------------------------------------- |
-| `SharedSettlement` | `{ userId, "counterparty.contactId", deletedAt }`  | Everything settled with one person, which is what an imputation reads |
-| `SharedSettlement` | `{ userId, "counterparty.expenseId", deletedAt }`  | The same for a block of guests                                  |
-| `SharedSettlement` | `{ userId, deletedAt, date, _id }`                 | The listing and its keyset                                      |
-| `SharedSettlement` | `{ userId, updatedAt, _id }`                       | The keyset the offline change feed scans                        |
-| `Transaction`      | `{ userId, sharedSettlementId }`, partial          | The movements one settle-up recorded, so undoing it reverses exactly those |
+| Collection         | Index                                             | Why                                                                        |
+| ------------------ | ------------------------------------------------- | -------------------------------------------------------------------------- |
+| `SharedSettlement` | `{ userId, "counterparty.contactId", deletedAt }` | Everything settled with one person, which is what an imputation reads      |
+| `SharedSettlement` | `{ userId, "counterparty.expenseId", deletedAt }` | The same for a block of guests                                             |
+| `SharedSettlement` | `{ userId, deletedAt, date, _id }`                | The listing and its keyset                                                 |
+| `SharedSettlement` | `{ userId, updatedAt, _id }`                      | The keyset the offline change feed scans                                   |
+| `Transaction`      | `{ userId, sharedSettlementId }`, partial         | The movements one settle-up recorded, so undoing it reverses exactly those |
 
 Money is integer cents here too. **The payment carries no account and no category**: those are yours, and a shared group is seen by everybody in it. What travels is that it was paid.
 

@@ -20,17 +20,17 @@ Accounts are **archived**, not deleted: `DELETE` sets `archivedAt` and `POST /ac
 
 ## Files and Responsibilities
 
-| File                                                          | Role                                                                           |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `src/app/routes/accountRoutes.ts`                             | Route definitions with OpenAPI docs (CRUD at `/accounts` + restore and default) |
-| `src/app/controllers/AccountController.ts`                    | Thin HTTP handler, delegates to AccountService                                  |
-| `src/app/services/AccountService.ts`                          | Business logic: ownership checks, archive/restore, default handling, per-user cap |
-| `src/app/dtos/AccountDTO.ts`                                  | `CreateAccountDTO`, `UpdateAccountDTO`                                          |
-| `src/app/validation/schemas.ts`                               | `createAccountSchema`, `updateAccountSchema`, `paginationQuerySchema`           |
-| `src/domain/entities/Account.ts`                              | Account domain entity                                                           |
-| `src/domain/repositories/account/IAccountRepository.ts`       | Repository interface                                                            |
-| `src/infrastructure/repositories/account/AccountRepository.ts` | Mongoose implementation (cents ↔ decimal, atomic `incrementBalance`)            |
-| `src/infrastructure/models/AccountModel.ts`                   | Mongoose model and indexes                                                      |
+| File                                                           | Role                                                                              |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `src/app/routes/accountRoutes.ts`                              | Route definitions with OpenAPI docs (CRUD at `/accounts` + restore and default)   |
+| `src/app/controllers/AccountController.ts`                     | Thin HTTP handler, delegates to AccountService                                    |
+| `src/app/services/AccountService.ts`                           | Business logic: ownership checks, archive/restore, default handling, per-user cap |
+| `src/app/dtos/AccountDTO.ts`                                   | `CreateAccountDTO`, `UpdateAccountDTO`                                            |
+| `src/app/validation/schemas.ts`                                | `createAccountSchema`, `updateAccountSchema`, `paginationQuerySchema`             |
+| `src/domain/entities/Account.ts`                               | Account domain entity                                                             |
+| `src/domain/repositories/account/IAccountRepository.ts`        | Repository interface                                                              |
+| `src/infrastructure/repositories/account/AccountRepository.ts` | Mongoose implementation (cents ↔ decimal, atomic `incrementBalance`)              |
+| `src/infrastructure/models/AccountModel.ts`                    | Mongoose model and indexes                                                        |
 
 ## Public API
 
@@ -38,13 +38,13 @@ Accounts are **archived**, not deleted: `DELETE` sets `archivedAt` and `POST /ac
 
 Get all accounts for the authenticated user (paginated, offset + cursor).
 
-| Parameter         | Type   | Description                                                      |
-| ----------------- | ------ | ---------------------------------------------------------------- |
-| `limit`           | number | 1–100, default 20                                                |
-| `offset`          | number | Items to skip (offset pagination)                                |
-| `cursor`          | string | Last ID of the previous page (overrides `offset`)                |
-| `ids`             | string | Comma-separated list of account UUIDs (1–100)                    |
-| `includeArchived` | enum   | `"true"` also returns archived accounts (hidden by default)      |
+| Parameter         | Type   | Description                                                 |
+| ----------------- | ------ | ----------------------------------------------------------- |
+| `limit`           | number | 1–100, default 20                                           |
+| `offset`          | number | Items to skip (offset pagination)                           |
+| `cursor`          | string | Last ID of the previous page (overrides `offset`)           |
+| `ids`             | string | Comma-separated list of account UUIDs (1–100)               |
+| `includeArchived` | enum   | `"true"` also returns archived accounts (hidden by default) |
 
 > A `cursor` has to name a row the caller owns. One that names none is `400 INVALID_CURSOR`, never a silent page one — that fallback used to restart the list from the top and make an infinite scroll repeat itself. `hasMore` is read from one row past the page, so a last page that is exactly `limit` long says `hasMore: false` and `nextCursor: null`.
 
@@ -126,20 +126,20 @@ None specific to this module.
 
 ## Error States
 
-| Error / code                       | Status | Condition                                                       |
-| ---------------------------------- | ------ | --------------------------------------------------------------- |
-| `ValidationError`                  | 400    | Invalid input (bad type, missing name, unknown color, …)         |
-| `BadRequest`                       | 400    | ID mismatch between URL param and body                           |
-| `ACCOUNT_LIMIT_REACHED`            | 400    | The user already has 100 accounts                                |
-| `RESOURCE_ARCHIVED`                | 400    | Updating an archived account                                     |
-| `ACCOUNT_FIELD_NOT_FOR_TYPE`       | 400    | A debt amount on a type that has no such field, or a type change that would orphan one |
-| `AMOUNT_PRECISION`                 | 400    | `balance`, `creditLimit` or `borrowedAmount` with more decimals than the currency has |
-| `DEFAULT_ACCOUNT_ARCHIVE_BLOCKED`  | 400    | Archiving the default account                                    |
-| `Unauthorized`                     | 401    | Missing, invalid or expired access token                         |
-| `NotFound`                         | 404    | Account missing **or owned by another user**                     |
-| `DUPLICATE`                        | 409    | An active account already uses this name (case-insensitive)      |
-| `ID_TAKEN`                         | 409    | The client-minted `id` belongs to another user (the user's own id always replays with 200) |
-| `STALE_UPDATE`                     | 409    | `If-Match` no longer matches the stored version (`current` carries the server's copy) |
+| Error / code                      | Status | Condition                                                                                  |
+| --------------------------------- | ------ | ------------------------------------------------------------------------------------------ |
+| `ValidationError`                 | 400    | Invalid input (bad type, missing name, unknown color, …)                                   |
+| `BadRequest`                      | 400    | ID mismatch between URL param and body                                                     |
+| `ACCOUNT_LIMIT_REACHED`           | 400    | The user already has 100 accounts                                                          |
+| `RESOURCE_ARCHIVED`               | 400    | Updating an archived account                                                               |
+| `ACCOUNT_FIELD_NOT_FOR_TYPE`      | 400    | A debt amount on a type that has no such field, or a type change that would orphan one     |
+| `AMOUNT_PRECISION`                | 400    | `balance`, `creditLimit` or `borrowedAmount` with more decimals than the currency has      |
+| `DEFAULT_ACCOUNT_ARCHIVE_BLOCKED` | 400    | Archiving the default account                                                              |
+| `Unauthorized`                    | 401    | Missing, invalid or expired access token                                                   |
+| `NotFound`                        | 404    | Account missing **or owned by another user**                                               |
+| `DUPLICATE`                       | 409    | An active account already uses this name (case-insensitive)                                |
+| `ID_TAKEN`                        | 409    | The client-minted `id` belongs to another user (the user's own id always replays with 200) |
+| `STALE_UPDATE`                    | 409    | `If-Match` no longer matches the stored version (`current` carries the server's copy)      |
 
 > Foreign accounts return **404, not 403** — the response is uniform for "missing" and "not yours" so account ids cannot be probed.
 
@@ -219,7 +219,7 @@ still adds up and undoing either one is deleting it.
 name, so by the time you restore, another account may hold it — and then restore
 answers **409 `DUPLICATE`** while `PUT` refuses the archived row with
 **400 `RESOURCE_ARCHIVED`**. Without a way to rename on the way out, the only
-escape was to go and rename the *other* account first.
+escape was to go and rename the _other_ account first.
 
 The rename happens in the same write that clears `archivedAt`, so the unique
 index judges the final state and nobody can take the name in between.

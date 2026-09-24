@@ -714,17 +714,29 @@ describe("Integration Tests", () => {
   });
 
   describe("DELETE /users/:id", () => {
-    it("should delete own user", async () => {
+    it("should delete own user with the current password", async () => {
+      mockUserRepo.getByIdWithPassword.mockResolvedValue(testUser);
       mockUserRepo.delete.mockResolvedValue();
 
       const res = await request(app)
         .delete("/users/019576a0-d7b6-7d6d-af6a-2b7545f5ac70")
-        .set("Authorization", `Bearer ${token}`);
+        .set("Authorization", `Bearer ${token}`)
+        .send({ currentPassword: "password123" });
 
       expect(res.status).toBe(200);
       expect(mockUserRepo.delete).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
       );
+    });
+
+    it("refuses a delete with no currentPassword [T-153]", async () => {
+      const res = await request(app)
+        .delete("/users/019576a0-d7b6-7d6d-af6a-2b7545f5ac70")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+      expect(mockUserRepo.delete).not.toHaveBeenCalled();
     });
   });
 

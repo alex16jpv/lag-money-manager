@@ -100,12 +100,12 @@ describe("AuthService", () => {
   });
 
   describe("register", () => {
-    it("reactivates a soft-deleted account instead of creating a new one [R2-09]", async () => {
+    it("reactivates a soft-deleted account with the password it had [R2-09, T-153]", async () => {
       const deletedUser = new User({
         id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
         name: "Old Name",
         email: "john@example.com",
-        password: "old-hash",
+        password: bcryptjs.hashSync("newpassword123", 4),
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -133,6 +133,112 @@ describe("AuthService", () => {
       // Register opens a session directly [R2-39].
       expect(typeof result.accessToken).toBe("string");
       expect(typeof result.refreshToken).toBe("string");
+    });
+
+    it("refuses to reactivate a soft-deleted account with any other password [T-153]", async () => {
+      repo.getDeletedByEmail.mockResolvedValue(
+        new User({
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          name: "Victim",
+          email: "john@example.com",
+          password: bcryptjs.hashSync("the-old-one", 4),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      );
+
+      await expect(
+        service.register({
+          name: "Attacker",
+          email: "john@example.com",
+          password: "newpassword123",
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
+      expect(repo.reactivate).not.toHaveBeenCalled();
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it("reactivates with the stored hash, so no second bcrypt runs [T-153]", async () => {
+      const storedHash = bcryptjs.hashSync("newpassword123", 4);
+      const deletedUser = new User({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        name: "Old Name",
+        email: "john@example.com",
+        password: storedHash,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      repo.getDeletedByEmail.mockResolvedValue(deletedUser);
+      repo.reactivate.mockResolvedValue(deletedUser);
+      const hash = jest.spyOn(bcryptjs, "hash");
+
+      await service.register({
+        name: "John",
+        email: "john@example.com",
+        password: "newpassword123",
+      });
+
+      expect(repo.reactivate.mock.calls[0][1].password).toBe(storedHash);
+      expect(hash).not.toHaveBeenCalled();
+      hash.mockRestore();
+    });
+
+    it("answers EMAIL_TAKEN when a concurrent register reactivated it first", async () => {
+      repo.getDeletedByEmail.mockResolvedValue(
+        new User({
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+          name: "Ana",
+          email: "john@example.com",
+          password: bcryptjs.hashSync("newpassword123", 4),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      );
+      repo.reactivate.mockRejectedValue(
+        new ApiError("NotFound", "User not found"),
+      );
+
+      await expect(
+        service.register({
+          name: "John",
+          email: "john@example.com",
+          password: "newpassword123",
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
+    });
+
+    it("lets any other create failure through untouched", async () => {
+      const failure = new Error("connection reset");
+      repo.create.mockRejectedValue(failure);
+
+      await expect(
+        service.register({
+          name: "John",
+          email: "john@example.com",
+          password: "newpassword123",
+        }),
+      ).rejects.toBe(failure);
+    });
+
+    it("answers EMAIL_TAKEN for the email of a live account [T-153]", async () => {
+      repo.create.mockRejectedValue(
+        Object.assign(new Error("E11000 duplicate key"), {
+          name: "MongoServerError",
+          code: 11000,
+          keyPattern: { email: 1 },
+          keyValue: { email: "john@example.com" },
+        }),
+      );
+
+      await expect(
+        service.register({
+          name: "John",
+          email: "john@example.com",
+          password: "newpassword123",
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
+      expect(categoryService.seedDefaultCategories).not.toHaveBeenCalled();
     });
 
     it("should hash the password and create a user", async () => {

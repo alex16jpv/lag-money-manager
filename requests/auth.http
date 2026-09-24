@@ -23,7 +23,8 @@ Content-Type: application/json
 }
 
 ### Register con email de una cuenta borrada (soft delete) — REACTIVA la cuenta
-### con todo su historial; la respuesta trae user.reactivated: true.
+### con todo su historial SOLO con la password que tenía; la respuesta trae
+### user.reactivated: true. Con otra password: 409 EMAIL_TAKEN, como una viva.
 # (mismo request de arriba tras un DELETE /users/:id)
 
 ### Login (éxito) — captura accessToken y refreshToken
