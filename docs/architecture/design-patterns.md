@@ -410,7 +410,7 @@ A single API call can touch several documents that must move together — creati
 ```typescript
 // src/app/services/TransactionService.ts
 return await withTransaction(async (session) => {
-  await this.adjustBalances(transaction, 1, session);
+  await this.moveBalances([{ transaction, direction: 1 }], session, journal);
   const created = await this.transactionRepo.create(transaction, session);
   if (idempotency) {
     await this.idempotencyRepo.record(/* ... */, session);
@@ -424,4 +424,4 @@ return await withTransaction(async (session) => {
 - Requires a replica set. Local development uses the single-node `rs0` from `docker-compose.yml`; `MONGO_URI` needs `directConnection=true` to talk to it
 - The callback may be retried on a transient conflict, so it must be idempotent — do not put non-database side effects (emails, external calls) inside it
 - Every write in the callback must forward the `session`; one that forgets silently escapes the transaction
-- Throwing inside the callback aborts the whole unit — that is how `adjustBalances` refuses to let a missed `$inc` desync a balance
+- Throwing inside the callback aborts the whole unit — that is how `moveBalances` refuses to let a missed `$inc` desync a balance

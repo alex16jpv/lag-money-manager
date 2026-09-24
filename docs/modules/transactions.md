@@ -276,7 +276,7 @@ sequenceDiagram
 
     rect rgb(240, 240, 240)
         Note over SVC,DB: withTransaction() — one MongoDB session
-        SVC->>SVC: adjustBalances(transaction, direction=+1)
+        SVC->>SVC: moveBalances([{ transaction, direction: +1 }])
 
         alt EXPENSE
             SVC->>ACCT_REPO: getById(fromAccountId)
@@ -317,8 +317,8 @@ sequenceDiagram
     Note over SVC: 2. Merge: new Transaction({ ...existing, ...dto }) + assertValid()
     Note over SVC: 3. monetaryChanged = type, amount, fromAccountId or toAccountId differs
     alt monetaryChanged
-        SVC->>ACCT: adjustBalances(existing, -1)
-        SVC->>ACCT: adjustBalances(updated, +1)
+        SVC->>ACCT: moveBalances([{ existing, -1 }, { updated, +1 }])
+        Note over ACCT: one $inc per account, by the net of both
     else Non-monetary edit (description, tags, note, category, ...)
         Note over SVC: Balances untouched — this is what lets a<br/>transaction on an archived account still be edited
     end
@@ -497,11 +497,11 @@ exactly:
 
 ## Balance Adjustment Logic
 
-The `adjustBalances()` private method in `TransactionService` modifies account balances whenever a transaction is created, updated, or deleted. It always runs inside a MongoDB session opened by `withTransaction()`.
+The `moveBalances()` private method in `TransactionService` modifies account balances whenever a transaction is created, updated, or deleted. It always runs inside a MongoDB session opened by `withTransaction()`.
 
 ### Direction Parameter
 
-The method accepts a `direction` parameter of `1` or `-1`:
+The method takes a list of moves, each a transaction with a `direction` of `1` or `-1`:
 
 | Operation              | Direction      | Effect                                                                                                |
 | ---------------------- | -------------- | ----------------------------------------------------------------------------------------------------- |

@@ -19,7 +19,7 @@ Hiding an account, category or budget without removing it: `archivedAt` is stamp
 Express middleware that verifies JWT tokens (HS256, algorithm pinned) on protected routes. Extracts `userId`, `email` and `timezone` from the token and attaches them to `req.user`. Defined in `src/app/middlewares/authMiddleware.ts`.
 
 **Balance Adjustment**
-The process of updating account balances when transactions are created, updated, or deleted. Handled by `TransactionService.adjustBalances()`, always inside a **Unit of Work** so the ledger and the balances commit together. Applies the delta with an atomic `$inc`; if the `$inc` matches no account the whole transaction aborts rather than silently desyncing the balance.
+The process of updating account balances when transactions are created, updated, or deleted. Handled by `TransactionService.moveBalances()`, which nets every move of a write per account, always inside a **Unit of Work** so the ledger and the balances commit together. Applies the delta with an atomic `$inc`; if the `$inc` matches no account the whole transaction aborts rather than silently desyncing the balance.
 
 **Cents (integer cents)**
 How money is stored. Amounts and balances are persisted as integer cents (`balance`, `openingBalance`, `amount`) and exposed to the API as decimals; `toCents()`/`fromCents()` in `src/shared/money.ts` convert at the repository boundary. Integers keep `$inc` exact — floats accumulate rounding error. `MAX_AMOUNT` (1,000,000,000) caps a single amount so accumulated balances stay far from the limit of exact integer arithmetic in JavaScript.

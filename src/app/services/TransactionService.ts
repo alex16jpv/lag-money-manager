@@ -197,18 +197,31 @@ export class TransactionService {
 
   // Written inside somebody else's transaction: a settle-up's movements land or fail with it.
   async recordWithin(
-    dto: CreateTransactionDTO,
+    dtos: CreateTransactionDTO[],
     timezone: string,
     session: TxSession,
     journal: RestampJournal,
-  ): Promise<Transaction> {
-    const transaction = new Transaction({
-      ...dto,
-      dayKey: dayKeyOf(new Date(dto.date), timezone),
-    });
-    transaction.assertValid();
-    await this.assertCategoryUsable(transaction);
-    return this.applyAndCreate(transaction, session, journal);
+  ): Promise<Transaction[]> {
+    const transactions: Transaction[] = [];
+    for (const dto of dtos) {
+      const transaction = new Transaction({
+        ...dto,
+        dayKey: dayKeyOf(new Date(dto.date), timezone),
+      });
+      transaction.assertValid();
+      await this.assertCategoryUsable(transaction);
+      transactions.push(transaction);
+    }
+    await this.moveBalances(
+      transactions.map((transaction) => ({ transaction, direction: 1 })),
+      session,
+      journal,
+    );
+    const created: Transaction[] = [];
+    for (const transaction of transactions) {
+      created.push(await this.transactionRepo.create(transaction, session));
+    }
+    return created;
   }
 
   // The movement is the only write of the caller's transaction, so what it rewrote is the answer's.
@@ -218,7 +231,18 @@ export class TransactionService {
     session: TxSession,
   ): Promise<WithRestamps<Transaction>> {
     const journal = new RestampJournal();
-    const recorded = await this.recordWithin(dto, timezone, session, journal);
+    const [recorded] = await this.recordWithin(
+      [dto],
+      timezone,
+      session,
+      journal,
+    );
+    if (!recorded) {
+      throw new ApiError(
+        "InternalServerError",
+        "The movement was not recorded",
+      );
+    }
     return Object.assign(recorded, {
       restamped: await this.ledger.restampsOf(dto.userId, journal, session),
     });
@@ -254,14 +278,20 @@ export class TransactionService {
     );
   }
 
-  /** Reverses what a movement did to the balances and drops it, inside the caller's transaction. */
+  // One net per account, so undoing a payment does not depend on the order its movements come back in.
   async reverseWithin(
-    transaction: Transaction,
+    transactions: Transaction[],
     session: TxSession,
     journal: RestampJournal,
   ): Promise<void> {
-    await this.moveBalances([{ transaction, direction: -1 }], session, journal);
-    await this.transactionRepo.delete(transaction.id, session);
+    await this.moveBalances(
+      transactions.map((transaction) => ({ transaction, direction: -1 })),
+      session,
+      journal,
+    );
+    for (const transaction of transactions) {
+      await this.transactionRepo.delete(transaction.id, session);
+    }
   }
 
   private async applyAndCreate(

@@ -479,7 +479,11 @@ export class TransactionService {
     await this.assertCategoryUsable(transaction);
 
     return await withTransaction(async (session) => {
-      await this.adjustBalances(transaction, 1, session);
+      await this.moveBalances(
+        [{ transaction, direction: 1 }],
+        session,
+        journal,
+      );
       const created = await this.transactionRepo.create(transaction, session);
       if (idempotency) {
         await this.idempotencyRepo.record(/* ..., session */);
@@ -490,58 +494,38 @@ export class TransactionService {
 }
 ```
 
-The heart of the module is `adjustBalances()`:
+The heart of the module is `moveBalances()`, which nets every move of one write per account and
+writes each account once (the full version, with the account checks, is in `TransactionService.ts`):
 
 ```typescript
-private async adjustBalances(
-  transaction: Transaction,
-  direction: 1 | -1,
+private async moveBalances(
+  moves: BalanceMove[],
   session: TxSession,
+  journal: RestampJournal,
 ): Promise<void> {
-  const { type, amount, fromAccountId, toAccountId } = transaction;
-
-  const adjustAccount = async (accountId: string, sign: number): Promise<void> => {
-    // Only check existence/ownership on apply; reversals must work even if the
-    // account was archived meanwhile.
-    if (direction === 1) {
-      const account = await this.accountRepo.getById(accountId, session);
-      // 404 for foreign accounts too: ids must not be probeable.
-      if (!account || account.userId !== transaction.userId) {
-        throw new ApiError("NotFound",
-          sign < 0 ? "Source account not found" : "Destination account not found");
+  const net = new Map<string, number>();
+  const applied = new Map<string, Account>();
+  for (const { transaction, direction } of moves) {
+    for (const [accountId, sign] of sidesOf(transaction)) {
+      // Existence, ownership, currency and the type rules: only when money is applied.
+      if (direction === 1) {
+        applied.set(accountId, await this.assertAccountTakes(transaction, accountId, sign, session));
       }
-      // Mono-currency mode: the transaction carries its account's currency.
-      if (account.currency && transaction.currency &&
-          transaction.currency !== account.currency) {
-        throw new ApiError("BadRequest",
-          "Transfers between accounts with different currencies are not supported yet",
-          "CURRENCY_MISMATCH");
-      }
-      transaction.currency = transaction.currency ?? account.currency;
+      net.set(accountId, (net.get(accountId) ?? 0) + toCents(transaction.amount) * sign * direction);
     }
-
-    const applied = await this.accountRepo.incrementBalance(
-      accountId, amount * sign * direction, session,
-    );
-    if (!applied) {
-      // Aborts the Mongo transaction: a silently skipped increment would
-      // desync the stored balance from the ledger.
-      throw new ApiError("InternalServerError", "Account missing during balance adjustment");
-    }
-  };
-
-  if (type === "EXPENSE" && fromAccountId) await adjustAccount(fromAccountId, -1);
-  if (type === "INCOME" && toAccountId) await adjustAccount(toAccountId, 1);
-  if (type === "TRANSFER" || type === "ADJUSTMENT") {
-    if (fromAccountId) await adjustAccount(fromAccountId, -1);
-    if (toAccountId) await adjustAccount(toAccountId, 1);
+  }
+  for (const [accountId, cents] of net) {
+    if (cents === 0) continue;
+    // A LOAN with a positive net goes through the capped $inc; everything else through incrementBalance.
+    await this.incrementAccount(accountId, cents, applied.get(accountId), session, journal);
   }
 }
 ```
 
 **Key decisions:**
 
-- `direction`: `1` applies (create), `-1` reverses (update/delete)
+- `direction`: `1` applies (create), `-1` reverses (update/delete); an update passes both, so a
+  loan is capped on where it ends and not on the reversal half-way through (T-156)
 - The balance is moved with an **atomic `$inc`** (`incrementBalance`, which converts the delta to
   cents), never read-modify-write — two concurrent transactions would otherwise lose an update
 - Everything runs inside `withTransaction`, so the ledger row and both balances commit together or
@@ -700,12 +684,10 @@ export const createTransactionSchema = z.object({
         error: `Invalid transaction type. Available: ...`,
       }),
       amount: moneyAmount,
-      date: z
-        .string()
-        .datetime({
-          offset: true,
-          message: "Date must be a valid ISO 8601 date",
-        }),
+      date: z.string().datetime({
+        offset: true,
+        message: "Date must be a valid ISO 8601 date",
+      }),
       categoryId: z
         .string()
         .uuid("categoryId must be a valid UUID")
@@ -820,7 +802,7 @@ graph LR
     end
 
     subgraph "Business Layer — src/app"
-        S["TransactionService.ts<br/>adjustBalances() in withTransaction"]
+        S["TransactionService.ts<br/>moveBalances() in withTransaction"]
         DTO["TransactionDTO.ts"]
         F["RepositoryFactory"]
     end
@@ -879,14 +861,14 @@ Every error body carries a stable `code`. Clients branch on `code`, never on `me
 | Unknown or foreign pagination cursor               | Repository                | 400    | `INVALID_CURSOR`               |
 | Assigning an archived category                     | Service                   | 400    | `CATEGORY_ARCHIVED`            |
 | Category type ≠ transaction type                   | Service                   | 400    | `CATEGORY_TYPE_MISMATCH`       |
-| Accounts with different currencies                 | Service (adjustBalances)  | 400    | `CURRENCY_MISMATCH`            |
+| Accounts with different currencies                 | Service (moveBalances)    | 400    | `CURRENCY_MISMATCH`            |
 | Quick-add with no account and no default           | Service                   | 400    | `NO_DEFAULT_ACCOUNT`           |
 | Malformed `Idempotency-Key` header                 | Controller                | 400    | `IDEMPOTENCY_KEY_INVALID`      |
 | ID mismatch (URL vs body)                          | Service                   | 400    | —                              |
 | Missing/invalid JWT                                | `authMiddleware`          | 401    | —                              |
 | `API_SECRET` set and `x-api-secret` missing        | `gatewaySecretMiddleware` | 403    | —                              |
 | Transaction not found **or owned by another user** | Service                   | 404    | —                              |
-| Source/destination account not found or foreign    | Service (adjustBalances)  | 404    | —                              |
+| Source/destination account not found or foreign    | Service (moveBalances)    | 404    | —                              |
 | Idempotent replay whose original was deleted       | Service                   | 409    | `IDEMPOTENCY_ORIGINAL_DELETED` |
 | Duplicate key (Mongo 11000)                        | Error middleware          | 409    | `DUPLICATE`                    |
 | Same `Idempotency-Key`, different payload          | Service                   | 422    | `IDEMPOTENCY_PAYLOAD_MISMATCH` |
@@ -998,7 +980,7 @@ gate that must pass before handing work back.
 
 ## 7. What NOT to Do
 
-- **Do NOT adjust account balances in the controller** — all balance logic is in `TransactionService.adjustBalances()`
+- **Do NOT adjust account balances in the controller** — all balance logic is in `TransactionService.moveBalances()`
 - **Do NOT read a balance, add to it, and write it back** — use `incrementBalance` (`$inc`), or concurrent transactions will lose updates
 - **Do NOT write a balance change outside `withTransaction`** — the ledger row and the balances must commit together
 - **Do NOT skip balance reversal on update/delete** — this causes balance drift
