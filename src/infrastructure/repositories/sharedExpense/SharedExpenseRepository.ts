@@ -290,6 +290,7 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
     userId: string,
     groupId: string,
     contactId: string,
+    session?: TxSession,
   ): Promise<number> {
     return SharedExpenseModel.countDocuments({
       userId,
@@ -299,7 +300,7 @@ export class SharedExpenseRepository implements ISharedExpenseRepository {
         { "split.shares.contactId": contactId },
         { paidByContactId: contactId },
       ],
-    });
+    }).session(session ?? null);
   }
 
   /** Adds up one field of the shares that are yours, or of the shares that are not. */

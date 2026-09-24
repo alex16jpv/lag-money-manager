@@ -530,7 +530,7 @@ In both directions, if the `$inc` itself matches no document the service throws 
 | Archived account during reversal            | `-1`      | Proceeds normally (no ownership/currency re-check) |
 | Increment matched no account                | any       | `InternalServerError` (500), transaction aborted   |
 
-> Balance adjustments **are** wrapped in a MongoDB transaction (`shared/unitOfWork.ts`), which requires a replica set. The commit is bounded to `maxCommitTimeMS: 10_000` — the driver's default retry loop can run ~120s, longer than the Lambda timeout, so the request fails cleanly instead of hanging. Because `withTransaction` may retry on transient conflicts, the wrapped work must stay idempotent.
+> Balance adjustments **are** wrapped in a MongoDB transaction (`shared/unitOfWork.ts`), which requires a replica set. The whole transaction — every attempt and the commit — is bounded to `timeoutMS: 10_000`: the driver's own retry loop can run up to 120 s, and `maxCommitTimeMS`, used before, bounded only the commit and left that loop unbounded, so a burst of conflicts could outlive the Lambda. Because `withTransaction` may retry on transient conflicts, the wrapped work must stay idempotent.
 
 ## Idempotency
 

@@ -369,6 +369,9 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getSharedExpenseRepository: () => mockSharedExpenseRepo,
     getSharedSettlementRepository: () => mockSharedSettlementRepo,
     getSharedInvitationRepository: () => mockSharedInvitationRepo,
+    getSharedCounterpartyRepository: () => ({
+      claim: jest.fn().mockResolvedValue(undefined),
+    }),
     getTransactionRepository: () => mockTransactionRepo,
     getIdempotencyRepository: () => mockIdempotencyRepo,
     getBudgetRepository: () => mockBudgetRepo,

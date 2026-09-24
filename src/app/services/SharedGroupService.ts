@@ -417,9 +417,31 @@ export class SharedGroupService {
             new Date(),
             session,
           );
-          const open = openByParty(
-            await this.expenseRepo.listByGroup(userId, id, session),
+          const expenses = await this.expenseRepo.listByGroup(
+            userId,
+            id,
+            session,
           );
+          // Everybody in it, so a payment or a new line at the same moment runs after this, or before.
+          await this.ledger.claim(
+            userId,
+            [
+              ...group.participants.flatMap(({ contactId }) =>
+                contactId
+                  ? [
+                      {
+                        kind: SETTLEMENT_PARTIES.CONTACT,
+                        contactId,
+                        expenseId: null,
+                      },
+                    ]
+                  : [],
+              ),
+              ...expenses.flatMap(counterpartiesOf),
+            ],
+            session,
+          );
+          const open = openByParty(expenses);
           const given = new Set(group.writeOffs.map(counterpartyKey));
           const fresh = [...open.keys()]
             .filter((key) => !given.has(key))
@@ -484,6 +506,7 @@ export class SharedGroupService {
               restamped: [],
             });
           }
+          await this.ledger.claim(userId, [party], session);
           const open = openByParty(
             await this.expenseRepo.listByGroup(userId, id, session),
           );
@@ -537,6 +560,7 @@ export class SharedGroupService {
             });
           }
           const key = counterpartyKey(entry);
+          await this.ledger.claim(userId, [entry], session);
           const open = openByParty(
             await this.expenseRepo.listByGroup(userId, id, session),
           );
@@ -972,23 +996,30 @@ export class SharedGroupService {
         "PARTICIPANT_NOT_IN_GROUP",
       );
     }
-    const shares = await this.expenseRepo.countSharesOfContact(
-      userId,
-      id,
-      contactId,
-    );
-    if (shares > 0) {
-      throw new ApiError(
-        "BadRequest",
-        "That person has a share of an expense here; settle it or write it off instead",
-        "PARTICIPANT_IN_USE",
-      );
-    }
 
     const updated = await guardedWrite(
       expectedUpdatedAt,
       () =>
         withTransaction(async (session) => {
+          // Counted inside the write, and against a line given to them at the same moment.
+          await this.ledger.claim(
+            userId,
+            [{ kind: SETTLEMENT_PARTIES.CONTACT, contactId, expenseId: null }],
+            session,
+          );
+          const shares = await this.expenseRepo.countSharesOfContact(
+            userId,
+            id,
+            contactId,
+            session,
+          );
+          if (shares > 0) {
+            throw new ApiError(
+              "BadRequest",
+              "That person has a share of an expense here; settle it or write it off instead",
+              "PARTICIPANT_IN_USE",
+            );
+          }
           const written = await this.repo.update(
             id,
             {

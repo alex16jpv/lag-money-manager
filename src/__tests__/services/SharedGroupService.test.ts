@@ -15,6 +15,7 @@ import { ITransactionRepository } from "../../domain/repositories/transaction/IT
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { MAX_GROUP_PARTICIPANTS } from "../../shared/constants";
 import { noAccountStamps } from "./accountStampsMock";
+import { counterpartyClaims } from "./counterpartyClaimsMock";
 import { mockInvitationRepo } from "./invitationRepoMock";
 
 const userId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
@@ -156,6 +157,7 @@ describe("SharedGroupService", () => {
   let contacts: jest.Mocked<IContactRepository>;
   let transactions: jest.Mocked<ITransactionRepository>;
   let invitations: ReturnType<typeof mockInvitationRepo>;
+  let claims: ReturnType<typeof counterpartyClaims>;
 
   beforeEach(() => {
     invitations = mockInvitationRepo();
@@ -175,6 +177,7 @@ describe("SharedGroupService", () => {
         settlements,
         transactions,
         noAccountStamps(),
+        (claims = counterpartyClaims()),
       ),
       invitations,
     );
@@ -464,6 +467,22 @@ describe("SharedGroupService", () => {
       ).rejects.toMatchObject({ code: "PARTICIPANT_IN_USE" });
     });
 
+    it("counts their lines inside the write, against a line given to them at that moment", async () => {
+      await service.removeParticipant(groupId, ana, userId);
+
+      expect(claims.claim).toHaveBeenCalledWith(
+        userId,
+        [`contact:${ana}`],
+        expect.anything(),
+      );
+      expect(expenses.countSharesOfContact).toHaveBeenCalledWith(
+        userId,
+        groupId,
+        ana,
+        expect.anything(),
+      );
+    });
+
     it("refuses somebody who is not in the group", async () => {
       await expect(
         service.removeParticipant(groupId, carla, userId),
@@ -551,6 +570,49 @@ describe("SharedGroupService", () => {
           reason: "WRITE_OFF",
           countsAsYours: 90000,
         }),
+        expect.anything(),
+      );
+    });
+
+    it("claims that person, so a payment at the same moment runs before or after it", async () => {
+      owing(4500000);
+
+      await service.writeOff(groupId, { contactId: ana }, userId);
+
+      expect(claims.claim).toHaveBeenCalledWith(
+        userId,
+        [`contact:${ana}`],
+        expect.anything(),
+      );
+    });
+
+    it("claims that person when it is undone, too", async () => {
+      owing(4500000);
+      await service.writeOff(groupId, { contactId: ana }, userId);
+      const given = (groups.update.mock.calls[0]?.[1] as SharedGroup).writeOffs;
+      groups.getByIdIncludingArchived.mockResolvedValue(
+        makeGroup({ writeOffs: given }),
+      );
+      claims.claim.mockClear();
+
+      await service.undoWriteOff(groupId, ana, userId);
+
+      expect(claims.claim).toHaveBeenCalledWith(
+        userId,
+        [`contact:${ana}`],
+        expect.anything(),
+      );
+    });
+
+    it("claims everybody in the group when it is archived", async () => {
+      owing(4500000);
+      groups.delete.mockResolvedValue(makeGroup({ archivedAt: new Date() }));
+
+      await service.deleteGroup(groupId, userId);
+
+      expect(claims.claim).toHaveBeenCalledWith(
+        userId,
+        [`contact:${ana}`],
         expect.anything(),
       );
     });

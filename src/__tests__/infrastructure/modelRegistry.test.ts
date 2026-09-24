@@ -11,6 +11,7 @@ jest.mock("../../shared/constants", () => ({
     SHARED_EXPENSE: "SharedExpense",
     SHARED_SETTLEMENT: "SharedSettlement",
     SHARED_INVITATION: "SharedInvitation",
+    SHARED_COUNTERPARTY: "SharedCounterparty",
   },
   ACCOUNT_TYPES: { CASH: "CASH", ACCOUNT: "ACCOUNT", OTHER: "OTHER" },
   COLORS: { RED: "RED", GREEN: "GREEN" },

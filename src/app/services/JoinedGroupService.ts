@@ -20,6 +20,7 @@ import {
 } from "../../shared/clientMintedId";
 import {
   INVITATION_STATUSES,
+  SETTLEMENT_PARTIES,
   SHARE_PARTIES,
   TRANSACTION_TYPES,
 } from "../../shared/constants";
@@ -33,6 +34,7 @@ import {
 } from "../../shared/syncCursor";
 import { TxSession, withTransaction } from "../../shared/unitOfWork";
 import { WithRestamps } from "./restamps";
+import { SharedLedgerService } from "./SharedLedgerService";
 import { TransactionService } from "./TransactionService";
 
 export interface AddToLedgerDTO {
@@ -74,6 +76,7 @@ export class JoinedGroupService {
     private users: IUserRepository,
     private transactions: ITransactionRepository,
     private transactionService: TransactionService,
+    private ledger: SharedLedgerService,
   ) {}
 
   private async views(
@@ -301,6 +304,18 @@ export class JoinedGroupService {
         if (!share || toCents(share.amount) <= 0) {
           throw notPaid("You have no part in this line");
         }
+        // Undoing the owner's payment at the same moment runs after this, or before.
+        await this.ledger.claim(
+          expense.userId,
+          [
+            {
+              kind: SETTLEMENT_PARTIES.CONTACT,
+              contactId: membership.contactId,
+              expenseId: null,
+            },
+          ],
+          session,
+        );
         if (toCents(share.collected) < toCents(share.amount)) {
           throw notPaid("Your part of this line is not marked paid yet");
         }

@@ -102,6 +102,7 @@ export interface ISharedExpenseRepository extends IRepository<SharedExpense> {
     userId: string,
     groupId: string,
     contactId: string,
+    session?: TxSession,
   ): Promise<number>;
   // One aggregation for a whole page of groups; a group with no expenses is absent.
   totalsByGroup(userId: string, groupIds: string[]): Promise<GroupTotals[]>;

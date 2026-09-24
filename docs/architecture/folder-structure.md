@@ -39,8 +39,15 @@ lag-money-manager/
 │   │       ├── account/           # IAccountRepository.ts
 │   │       ├── budget/            # IBudgetRepository.ts
 │   │       ├── category/          # ICategoryRepository.ts
+│   │       ├── contact/           # IContactRepository.ts
 │   │       ├── idempotency/       # IIdempotencyRepository.ts
 │   │       ├── refreshSession/    # IRefreshSessionRepository.ts
+│   │       ├── sharedCounterparty/ # ISharedCounterpartyRepository.ts
+│   │       ├── sharedExpense/     # ISharedExpenseRepository.ts
+│   │       ├── sharedGroup/       # ISharedGroupRepository.ts
+│   │       ├── sharedInvitation/  # ISharedInvitationRepository.ts
+│   │       ├── sharedSettlement/  # ISharedSettlementRepository.ts
+│   │       ├── syncOp/            # ISyncOpRepository.ts
 │   │       ├── transaction/       # ITransactionRepository.ts
 │   │       └── user/              # IUserRepository.ts
 │   ├── infrastructure/            # Persistence layer (Mongoose-specific)
@@ -246,7 +253,7 @@ Persistence layer. Everything that knows about MongoDB lives here.
 
 ### `src/infrastructure/models/`
 
-Mongoose schema and model definitions, including the infrastructure-only collections (`IdempotencyKeyModel`, `RateLimitModel`, `RefreshSessionModel`) that have no domain entity.
+Mongoose schema and model definitions, including the infrastructure-only collections (`IdempotencyKeyModel`, `RateLimitModel`, `RefreshSessionModel`, `SharedCounterpartyModel`) that have no domain entity.
 
 - **What belongs here:** One model per collection, exporting the model and its `I[Entity]Document` interface
 - **Naming:** `PascalCase` with `Model` suffix: `TransactionModel.ts`

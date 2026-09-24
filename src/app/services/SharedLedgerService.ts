@@ -5,6 +5,7 @@ import {
 import { SettlementCounterparty } from "../../domain/entities/SharedSettlement";
 import { Transaction } from "../../domain/entities/Transaction";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { ISharedCounterpartyRepository } from "../../domain/repositories/sharedCounterparty/ISharedCounterpartyRepository";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
 import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
@@ -103,6 +104,7 @@ export class SharedLedgerService {
     private settlementRepo: ISharedSettlementRepository,
     private transactionRepo: ITransactionRepository,
     private accountRepo: IAccountRepository,
+    private counterpartyRepo: ISharedCounterpartyRepository,
   ) {}
 
   async recompute(
@@ -116,6 +118,7 @@ export class SharedLedgerService {
     for (const party of counterparties) {
       unique.set(counterpartyKey(party), party);
     }
+    await this.claim(userId, [...unique.values()], session);
 
     const changes: ShareChange[] = [];
     const surplus = new Map<string, Surplus>();
@@ -240,6 +243,19 @@ export class SharedLedgerService {
       }
     }
     return { changes, surplus, stamped };
+  }
+
+  /** Two writes with one person otherwise touch different rows, read the same payments and never conflict. */
+  async claim(
+    userId: string,
+    parties: SettlementCounterparty[],
+    session: TxSession,
+  ): Promise<void> {
+    await this.counterpartyRepo.claim(
+      userId,
+      [...new Set(parties.map(counterpartyKey))],
+      session,
+    );
   }
 
   // The expense and the movement are one fact: neither may state what the other does not.

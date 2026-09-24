@@ -14,6 +14,7 @@ import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/IS
 import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { noAccountStamps } from "./accountStampsMock";
+import { counterpartyClaims } from "./counterpartyClaimsMock";
 
 const userId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
 const otherUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5acff";
@@ -129,6 +130,7 @@ describe("SharedExpenseService", () => {
         settlements,
         transactions,
         noAccountStamps(),
+        counterpartyClaims(),
       ),
     );
   });

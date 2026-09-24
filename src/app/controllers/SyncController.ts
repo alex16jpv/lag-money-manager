@@ -12,8 +12,8 @@ import { AuthPayload } from "../middlewares/authMiddleware";
 import { AccountService } from "../services/AccountService";
 import { BudgetService } from "../services/BudgetService";
 import { CategoryService } from "../services/CategoryService";
-import { JoinedGroupService } from "../services/JoinedGroupService";
 import { ContactService } from "../services/ContactService";
+import { JoinedGroupService } from "../services/JoinedGroupService";
 import { SharedExpenseService } from "../services/SharedExpenseService";
 import { SharedGroupService } from "../services/SharedGroupService";
 import { SharedSettlementService } from "../services/SharedSettlementService";
@@ -57,6 +57,7 @@ const syncService = new SyncService(
       categoryRepository,
       sharedLedgerService,
     ),
+    sharedLedgerService,
   ),
 );
 

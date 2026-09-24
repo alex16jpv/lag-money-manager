@@ -3,6 +3,7 @@ jest.mock("../../shared/unitOfWork", () => ({
 }));
 
 import { JoinedGroupService } from "../../app/services/JoinedGroupService";
+import { SharedLedgerService } from "../../app/services/SharedLedgerService";
 import { TransactionService } from "../../app/services/TransactionService";
 import { Contact } from "../../domain/entities/Contact";
 import {
@@ -130,6 +131,7 @@ describe("JoinedGroupService", () => {
   let users: jest.Mocked<IUserRepository>;
   let transactions: jest.Mocked<ITransactionRepository>;
   let recordAnswered: jest.Mock;
+  let ledger: SharedLedgerService;
   let service: JoinedGroupService;
 
   beforeEach(() => {
@@ -180,6 +182,9 @@ describe("JoinedGroupService", () => {
         restamped: [],
       }),
     );
+    ledger = {
+      claim: jest.fn().mockResolvedValue(undefined),
+    } as unknown as SharedLedgerService;
     service = new JoinedGroupService(
       invitations,
       groups,
@@ -188,6 +193,7 @@ describe("JoinedGroupService", () => {
       users,
       transactions,
       { recordAnswered } as unknown as TransactionService,
+      ledger,
     );
   });
 
@@ -346,6 +352,22 @@ describe("JoinedGroupService", () => {
           importedFromExpenseId: expenseId,
         },
         "America/Bogota",
+        expect.anything(),
+      );
+    });
+
+    it("meets the owner undoing that payment at the same moment, on the owner's side", async () => {
+      await service.addToLedger(
+        groupId,
+        expenseId,
+        dto,
+        meId,
+        "America/Bogota",
+      );
+
+      expect(ledger.claim).toHaveBeenCalledWith(
+        ownerId,
+        [{ kind: "CONTACT", contactId: myContact, expenseId: null }],
         expect.anything(),
       );
     });
