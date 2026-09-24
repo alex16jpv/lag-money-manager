@@ -20,7 +20,7 @@ import {
 } from "../../shared/constants";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { ApiError } from "../../shared/errors";
-import { assertAmountPrecision } from "../../shared/money";
+import { assertAmountPrecision, fromCents, toCents } from "../../shared/money";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { TxSession, withTransaction } from "../../shared/unitOfWork";
 import { CreateSharedSettlementDTO } from "../dtos/SharedSettlementDTO";
@@ -158,7 +158,10 @@ export class SharedSettlementService {
 
       const covered = this.coverageOf(changes);
       const yourLines = covered.filter((line) => line.direction === "PAID");
-      const refunded = paid - yourLines.reduce((sum, l) => sum + l.amount, 0);
+      const refunded = fromCents(
+        toCents(paid) -
+          yourLines.reduce((sum, line) => sum + toCents(line.amount), 0),
+      );
       if (!outsideApp) {
         await this.recordMovements(
           { dto, created, collected, refunded, yourLines, timezone },
@@ -177,12 +180,16 @@ export class SharedSettlementService {
 
   private coverageOf(changes: ShareChange[]): SettlementCoverage[] {
     return changes
-      .filter((change) => change.after > change.before)
       .map((change) => ({
+        change,
+        moved: toCents(change.after) - toCents(change.before),
+      }))
+      .filter(({ moved }) => moved > 0)
+      .map(({ change, moved }) => ({
         expenseId: change.expenseId,
         description: change.description,
         date: change.date,
-        amount: change.after - change.before,
+        amount: fromCents(moved),
         direction:
           change.party === SHARE_PARTIES.USER
             ? ("PAID" as const)

@@ -1020,6 +1020,28 @@ describe("TransactionService", () => {
       );
     });
 
+    it("carries what came back in cents, so a figure with them does not drift [T-157]", async () => {
+      const withCents = new Transaction({
+        ...split,
+        amount: 100,
+        countsAsYours: 0.01,
+      });
+      txRepo.getById.mockResolvedValue(withCents);
+      txRepo.update.mockImplementation(
+        async (_id, patch) =>
+          new Transaction({ ...withCents, ...(patch as object) }),
+      );
+
+      const saved = await service.updateTransaction(
+        TX_ID,
+        { amount: 101 },
+        USER,
+        TZ,
+      );
+
+      expect(saved.countsAsYours).toBe(1.01);
+    });
+
     it("refuses a new amount when the split states exact figures", async () => {
       sharedExpenseRepo.getById.mockResolvedValue(expense("EXACT"));
 

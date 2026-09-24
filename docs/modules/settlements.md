@@ -80,7 +80,7 @@ Recording a payment and undoing one both answer **`restamped`** as well: the lin
 | `SharedSettlement` | `{ userId, updatedAt, _id }`                      | The keyset the offline change feed scans                                   |
 | `Transaction`      | `{ userId, sharedSettlementId }`, partial         | The movements one settle-up recorded, so undoing it reverses exactly those |
 
-Money is integer cents here too. **The payment carries no account and no category**: those are yours, and a shared group is seen by everybody in it. What travels is that it was paid.
+Money is integer cents here too, and so is the arithmetic: what each line covered and what goes back as a refund are subtracted in whole cents before they are converted (T-157). **The payment carries no account and no category**: those are yours, and a shared group is seen by everybody in it. What travels is that it was paid.
 
 **An imputation is bounded by one counterparty, not by one group.** It reads every live expense where they hold a share — one indexed query, across every group — and every payment with them, and rewrites only the shares that moved. So it never has to look at anybody else's lines, but it **is** linear in how much history you have with that person, and it runs once per counterparty of the line being written: recording an expense in a group of ten people is ten of those reads. That is the ceiling this design has; the alternative, a stored running total per person, is a figure to keep in step, which is the thing this feature refuses to do anywhere else.
 

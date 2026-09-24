@@ -754,6 +754,166 @@ describe("paying and being paid, against mongod", () => {
     });
   });
 
+  describe("in a currency with cents [T-157]", () => {
+    let usd: Session;
+    const USD_ACCOUNT = "019576a0-d7b6-7d6d-af6a-2b7545500011";
+    const USD_CATEGORY = "019576a0-d7b6-7d6d-af6a-2b7545500012";
+    const DAY = "2026-08-25T18:00:00.000Z";
+    const asUsd = (req: request.Test): request.Test =>
+      req.set("Authorization", `Bearer ${usd.token}`);
+
+    const groupWith = async (
+      name: string,
+    ): Promise<{ contactId: string; groupId: string }> => {
+      const contact = await asUsd(
+        request(app).post("/contacts").send({ name }),
+      ).expect(201);
+      const group = await asUsd(
+        request(app)
+          .post("/shared-groups")
+          .send({ name: `With ${name}`, contactIds: [contact.body.id] }),
+      ).expect(201);
+      return { contactId: contact.body.id, groupId: group.body.id };
+    };
+
+    const theyPaid = async (
+      groupId: string,
+      contactId: string,
+    ): Promise<request.Response> =>
+      asUsd(
+        request(app).post(`/shared-groups/${groupId}/expenses`).send({
+          description: "Coffee",
+          date: "2026-08-12T18:00:00.000Z",
+          amount: 0.6,
+          paidByContactId: contactId,
+        }),
+      ).expect(201);
+
+    const youPaid = async (groupId: string): Promise<request.Response> => {
+      const spent = await asUsd(
+        request(app).post("/transactions").send({
+          type: "EXPENSE",
+          amount: 0.6,
+          date: "2026-08-12T18:00:00.000Z",
+          description: "Lunch",
+          categoryId: USD_CATEGORY,
+          fromAccountId: USD_ACCOUNT,
+        }),
+      ).expect(201);
+      return asUsd(
+        request(app)
+          .post(`/shared-groups/${groupId}/expenses`)
+          .send({ transactionId: spent.body.id }),
+      ).expect(201);
+    };
+
+    const settleUsd = (body: Record<string, unknown>): request.Test =>
+      asUsd(
+        request(app)
+          .post("/settlements")
+          .send({ date: DAY, accountId: USD_ACCOUNT, ...body }),
+      );
+
+    const recorded = async (settlementId: string): Promise<unknown[][]> =>
+      (
+        await TransactionModel.find({
+          userId: usd.userId,
+          sharedSettlementId: settlementId,
+        }).lean()
+      )
+        .map((one) => [one.type, one.amount])
+        .sort();
+
+    beforeAll(async () => {
+      const registered = await request(app).post("/auth/register").send({
+        name: "Dollars",
+        email: "dollars@settlements.test",
+        password: "Offline!2026",
+        currency: "USD",
+      });
+      expect(registered.status).toBe(201);
+      usd = {
+        token: registered.body.accessToken,
+        userId: registered.body.user.id,
+      };
+      await asUsd(
+        request(app).post("/accounts").send({
+          id: USD_ACCOUNT,
+          name: "Checking",
+          type: "ACCOUNT",
+          balance: 100,
+        }),
+      ).expect(201);
+      await asUsd(
+        request(app)
+          .post("/categories")
+          .send({ id: USD_CATEGORY, name: "Dinners", type: "EXPENSE" }),
+      ).expect(201);
+    });
+
+    it("pays a share in two goes without a refund of nothing", async () => {
+      const { contactId, groupId } = await groupWith("Bea");
+      const coffee = await theyPaid(groupId, contactId);
+      const pay = (paid: number): request.Test =>
+        settleUsd({ contactId, paid, categoryId: USD_CATEGORY });
+
+      await pay(0.1).expect(201);
+      const second = await pay(0.2).expect(201);
+
+      expect(second.body.refunded).toBe(0);
+      expect(second.body.covered).toEqual([
+        expect.objectContaining({
+          expenseId: coffee.body.id,
+          amount: 0.2,
+          direction: "PAID",
+        }),
+      ]);
+      expect(await recorded(second.body.settlement.id)).toEqual([
+        ["EXPENSE", 20],
+      ]);
+    });
+
+    it("is collected in two goes to the exact cent", async () => {
+      const { contactId, groupId } = await groupWith("Cara");
+      const lunch = await youPaid(groupId);
+      const collect = (collected: number): request.Test =>
+        settleUsd({ contactId, collected });
+
+      await collect(0.1).expect(201);
+      const second = await collect(0.2).expect(201);
+
+      expect(second.body.covered).toEqual([
+        expect.objectContaining({
+          expenseId: lunch.body.id,
+          amount: 0.2,
+          direction: "COLLECTED",
+        }),
+      ]);
+      expect(await recorded(second.body.settlement.id)).toEqual([
+        ["SETTLEMENT", 20],
+      ]);
+    });
+
+    it("still hands back what they paid ahead, to the cent", async () => {
+      const { contactId, groupId } = await groupWith("Dani");
+      await youPaid(groupId);
+      await settleUsd({ contactId, collected: 0.35 }).expect(201);
+      await theyPaid(groupId, contactId);
+
+      const paid = await settleUsd({
+        contactId,
+        paid: 0.35,
+        categoryId: USD_CATEGORY,
+      }).expect(201);
+
+      expect(paid.body.refunded).toBe(0.05);
+      expect(await recorded(paid.body.settlement.id)).toEqual([
+        ["EXPENSE", 30],
+        ["SETTLEMENT", 5],
+      ]);
+    });
+  });
+
   async function dropSettlementsAndExpenses(): Promise<void> {
     const settlements = await as(request(app).get("/settlements?limit=100"));
     for (const one of settlements.body.data ?? []) {
