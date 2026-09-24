@@ -9,6 +9,7 @@ import {
 } from "../../domain/entities/SharedGroup";
 import { DomainValidationError } from "../../domain/errors";
 import { SHARE_PARTIES, SPLIT_MODES, SplitMode } from "../../shared/constants";
+import { fromCents, toCents } from "../../shared/money";
 import { resolveShares, SplitRow } from "../../shared/splitShares";
 import { SplitDTO, SplitShareDTO } from "../dtos/SharedExpenseDTO";
 import { DefaultSplitDTO } from "../dtos/SharedGroupDTO";
@@ -362,15 +363,15 @@ export function assertDefaultSplit(
 export function sharesByParticipant(
   expenses: { split: SharedSplit }[],
 ): Map<string | null, number> {
-  const totals = new Map<string | null, number>();
+  const cents = new Map<string | null, number>();
   for (const expense of expenses) {
     for (const share of expense.split.shares) {
       if (share.party === SHARE_PARTIES.GUESTS) continue;
       const key = share.party === SHARE_PARTIES.USER ? null : share.contactId;
-      totals.set(key, (totals.get(key) ?? 0) + share.amount);
+      cents.set(key, (cents.get(key) ?? 0) + toCents(share.amount));
     }
   }
-  return totals;
+  return new Map([...cents].map(([key, total]) => [key, fromCents(total)]));
 }
 
 // Largest remainder, so what is left still adds up to exactly 100.

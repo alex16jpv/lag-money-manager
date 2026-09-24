@@ -462,14 +462,17 @@ export class TransactionService {
       // A new amount carries whatever came back with it, so a payment is not undone by an edit.
       const amountChanged =
         dto.amount !== undefined && dto.amount !== existing.amount;
-      const cameBack = existing.amount - existing.countsAsYours;
+      const cameBack =
+        toCents(existing.amount) - toCents(existing.countsAsYours);
       const updated = new Transaction({
         ...existing,
         ...dto,
         ...(amountChanged
           ? {
               // The ledger has the last word; this only has to be a figure the entity accepts.
-              countsAsYours: Math.max(0, (dto.amount as number) - cameBack),
+              countsAsYours: fromCents(
+                Math.max(0, toCents(dto.amount as number) - cameBack),
+              ),
             }
           : {}),
       });
