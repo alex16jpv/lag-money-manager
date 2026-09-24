@@ -61,8 +61,9 @@ deseos: es el mínimo. Si algo no aplica, dilo explícitamente y por qué.
 - **No agrupes features en un commit.** Un commit por ítem (§6).
 - **No borres datos del usuario** sin confirmación explícita, ni siquiera en
   desarrollo.
-- **Nunca `git push` y nunca despliegues.** El dueño empuja y abre cada pull request:
-  di en qué rama quedó el trabajo y para ahí. Leer del remoto (`fetch`, `pull`) es libre.
+- **Con el trabajo terminado, empuja tu rama y abre el pull request**, y dale al dueño
+  su enlace. Nunca empujes a `main`, nunca mezcles un pull request (mezclar es del
+  dueño) y nunca despliegues. Leer del remoto (`fetch`, `pull`) es libre.
 - **Nunca toques la base de datos del dueño.** La `MONGO_URI` del `.env` apunta a su
   Atlas; para trabajar se pasa por delante la URI del Mongo de Docker.
 
