@@ -81,7 +81,10 @@ export class Transaction {
   // an inconsistent shape.
   assertValid(): void {
     if (!(this.amount > 0)) {
-      throw new DomainValidationError("Amount must be greater than 0", "amount");
+      throw new DomainValidationError(
+        "Amount must be greater than 0",
+        "amount",
+      );
     }
     if (this.date.getTime() > Date.now() + 24 * 60 * 60 * 1000) {
       throw new DomainValidationError(
@@ -191,7 +194,7 @@ export interface ITransactionDocument {
   pendingDetails: boolean;
   source?: string;
   currency: string;
-  revisions?: { at: Date; amount: number; /* ... */ }[];
+  revisions?: { at: Date; amount: number /* ... */ }[];
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -200,7 +203,11 @@ export interface ITransactionDocument {
 const TransactionSchema = new Schema<ITransactionDocument>(
   {
     _id: { type: String, required: true },
-    type: { type: String, required: true, enum: Object.keys(TRANSACTION_TYPES) },
+    type: {
+      type: String,
+      required: true,
+      enum: Object.keys(TRANSACTION_TYPES),
+    },
     amount: { type: Number, required: true },
     date: { type: Date, required: true },
     tags: { type: [String], default: [] },
@@ -291,7 +298,10 @@ export interface ITransactionRepository extends IRepository<Transaction> {
     filters?: TransactionFilters,
   ): Promise<PaginatedResult<Transaction>>;
 
-  aggregateSpending(userId: string, query: SpendingQuery): Promise<SpendingResult>;
+  aggregateSpending(
+    userId: string,
+    query: SpendingQuery,
+  ): Promise<SpendingResult>;
   listTags(userId: string): Promise<string[]>;
   countByCategory(userId: string, categoryId: string): Promise<number>;
   sumAmountsByCategory(/* ... */): Promise<Record<string, number>>;
@@ -341,7 +351,9 @@ export class TransactionRepository implements ITransactionRepository {
     });
   }
 
-  private toStorage(transaction: Partial<Transaction>): Record<string, unknown> {
+  private toStorage(
+    transaction: Partial<Transaction>,
+  ): Record<string, unknown> {
     const doc: Record<string, unknown> = { ...transaction };
     if (transaction.amount !== undefined) {
       doc.amount = toCents(transaction.amount);
@@ -383,7 +395,11 @@ const [docs, total] = await Promise.all([
   TransactionModel.countDocuments(baseFilter),
 ]);
 
-return buildPaginatedResult(docs.map((doc) => this.toEntity(doc)), total, pagination);
+return buildPaginatedResult(
+  docs.map((doc) => this.toEntity(doc)),
+  total,
+  pagination,
+);
 ```
 
 `buildPaginatedResult` (`src/shared/pagination.ts`) produces the response envelope every listing
@@ -573,7 +589,10 @@ import { ApiError } from "../../shared/errors";
 import { extractPagination } from "../../shared/pagination";
 import { hashPayload } from "../../shared/requestHash";
 import repositoryFactory from "../factories/RepositoryFactory";
-import { IdempotencyMeta, TransactionService } from "../services/TransactionService";
+import {
+  IdempotencyMeta,
+  TransactionService,
+} from "../services/TransactionService";
 
 const transactionService = new TransactionService(
   repositoryFactory.getTransactionRepository(),
@@ -665,7 +684,9 @@ const moneyAmount = z
 const normalizedTags = z
   .array(z.string().min(1).max(50))
   .max(30)
-  .transform((tags) => [...new Set(tags.map((t) => t.trim().toLowerCase()).filter(Boolean))])
+  .transform((tags) => [
+    ...new Set(tags.map((t) => t.trim().toLowerCase()).filter(Boolean)),
+  ])
   .optional();
 ```
 
@@ -675,10 +696,21 @@ The create schema uses `superRefine` for type-dependent validation:
 export const createTransactionSchema = z.object({
   body: z
     .object({
-      type: z.enum(transactionTypeValues, { error: `Invalid transaction type. Available: ...` }),
+      type: z.enum(transactionTypeValues, {
+        error: `Invalid transaction type. Available: ...`,
+      }),
       amount: moneyAmount,
-      date: z.string().datetime({ offset: true, message: "Date must be a valid ISO 8601 date" }),
-      categoryId: z.string().uuid("categoryId must be a valid UUID").optional().nullable(),
+      date: z
+        .string()
+        .datetime({
+          offset: true,
+          message: "Date must be a valid ISO 8601 date",
+        }),
+      categoryId: z
+        .string()
+        .uuid("categoryId must be a valid UUID")
+        .optional()
+        .nullable(),
       description: z.string().max(255).optional().nullable(),
       fromAccountId: z.string().uuid(/* ... */).optional().nullable(),
       toAccountId: z.string().uuid(/* ... */).optional().nullable(),
@@ -686,8 +718,12 @@ export const createTransactionSchema = z.object({
       note: z.string().max(1000).optional().nullable(),
     })
     .superRefine((data, ctx) => {
-      if (data.type === "EXPENSE" && !data.fromAccountId) { ctx.addIssue({ /* ... */ }); }
-      if (data.type === "INCOME" && !data.toAccountId) { ctx.addIssue({ /* ... */ }); }
+      if (data.type === "EXPENSE" && !data.fromAccountId) {
+        ctx.addIssue({/* ... */});
+      }
+      if (data.type === "INCOME" && !data.toAccountId) {
+        ctx.addIssue({/* ... */});
+      }
       if (data.type === "ADJUSTMENT") {
         // exactly one side, and no categoryId
       }
@@ -726,13 +762,37 @@ Each route carries a JSDoc `@openapi` block for Swagger, then the validation mid
 ```typescript
 const router = Router();
 
-router.get("/", validate(getTransactionsSchema), TransactionController.getAllTransactions);
-router.post("/", validate(createTransactionSchema), TransactionController.createTransaction);
-router.post("/quick", validate(quickAddTransactionSchema), TransactionController.quickAddTransaction);
+router.get(
+  "/",
+  validate(getTransactionsSchema),
+  TransactionController.getAllTransactions,
+);
+router.post(
+  "/",
+  validate(createTransactionSchema),
+  TransactionController.createTransaction,
+);
+router.post(
+  "/quick",
+  validate(quickAddTransactionSchema),
+  TransactionController.quickAddTransaction,
+);
 router.get("/tags", TransactionController.getTags);
-router.get("/:id", validate(idParamSchema), TransactionController.getTransactionById);
-router.put("/:id", validate(updateTransactionSchema), TransactionController.updateTransaction);
-router.delete("/:id", validate(idParamSchema), TransactionController.deleteTransaction);
+router.get(
+  "/:id",
+  validate(idParamSchema),
+  TransactionController.getTransactionById,
+);
+router.put(
+  "/:id",
+  validate(updateTransactionSchema),
+  TransactionController.updateTransaction,
+);
+router.delete(
+  "/:id",
+  validate(idParamSchema),
+  TransactionController.deleteTransaction,
+);
 
 export default router;
 ```
@@ -812,25 +872,25 @@ Validation happens in three places, each with a distinct job:
 
 Every error body carries a stable `code`. Clients branch on `code`, never on `message`.
 
-| Scenario                                      | Where                    | Status | `code`                          |
-| --------------------------------------------- | ------------------------ | ------ | ------------------------------- |
-| Invalid request data                          | Validation middleware    | 400    | `VALIDATION`                    |
-| Date more than 24h in the future              | Entity `assertValid()`   | 400    | `FUTURE_DATE`                   |
-| Unknown or foreign pagination cursor          | Repository               | 400    | `INVALID_CURSOR`                |
-| Assigning an archived category                | Service                  | 400    | `CATEGORY_ARCHIVED`             |
-| Category type ≠ transaction type              | Service                  | 400    | `CATEGORY_TYPE_MISMATCH`        |
-| Accounts with different currencies            | Service (adjustBalances) | 400    | `CURRENCY_MISMATCH`             |
-| Quick-add with no account and no default      | Service                  | 400    | `NO_DEFAULT_ACCOUNT`            |
-| Malformed `Idempotency-Key` header            | Controller               | 400    | `IDEMPOTENCY_KEY_INVALID`       |
-| ID mismatch (URL vs body)                     | Service                  | 400    | —                               |
-| Missing/invalid JWT                           | `authMiddleware`         | 401    | —                               |
-| `API_SECRET` set and `x-api-secret` missing   | `gatewaySecretMiddleware`| 403    | —                               |
-| Transaction not found **or owned by another user** | Service             | 404    | —                               |
-| Source/destination account not found or foreign | Service (adjustBalances) | 404  | —                               |
-| Idempotent replay whose original was deleted  | Service                  | 409    | `IDEMPOTENCY_ORIGINAL_DELETED`  |
-| Duplicate key (Mongo 11000)                   | Error middleware         | 409    | `DUPLICATE`                     |
-| Same `Idempotency-Key`, different payload     | Service                  | 422    | `IDEMPOTENCY_PAYLOAD_MISMATCH`  |
-| MongoDB unreachable                           | Error middleware         | 503    | `DB_UNAVAILABLE`                |
+| Scenario                                           | Where                     | Status | `code`                         |
+| -------------------------------------------------- | ------------------------- | ------ | ------------------------------ |
+| Invalid request data                               | Validation middleware     | 400    | `VALIDATION`                   |
+| Date more than 24h in the future                   | Entity `assertValid()`    | 400    | `FUTURE_DATE`                  |
+| Unknown or foreign pagination cursor               | Repository                | 400    | `INVALID_CURSOR`               |
+| Assigning an archived category                     | Service                   | 400    | `CATEGORY_ARCHIVED`            |
+| Category type ≠ transaction type                   | Service                   | 400    | `CATEGORY_TYPE_MISMATCH`       |
+| Accounts with different currencies                 | Service (adjustBalances)  | 400    | `CURRENCY_MISMATCH`            |
+| Quick-add with no account and no default           | Service                   | 400    | `NO_DEFAULT_ACCOUNT`           |
+| Malformed `Idempotency-Key` header                 | Controller                | 400    | `IDEMPOTENCY_KEY_INVALID`      |
+| ID mismatch (URL vs body)                          | Service                   | 400    | —                              |
+| Missing/invalid JWT                                | `authMiddleware`          | 401    | —                              |
+| `API_SECRET` set and `x-api-secret` missing        | `gatewaySecretMiddleware` | 403    | —                              |
+| Transaction not found **or owned by another user** | Service                   | 404    | —                              |
+| Source/destination account not found or foreign    | Service (adjustBalances)  | 404    | —                              |
+| Idempotent replay whose original was deleted       | Service                   | 409    | `IDEMPOTENCY_ORIGINAL_DELETED` |
+| Duplicate key (Mongo 11000)                        | Error middleware          | 409    | `DUPLICATE`                    |
+| Same `Idempotency-Key`, different payload          | Service                   | 422    | `IDEMPOTENCY_PAYLOAD_MISMATCH` |
+| MongoDB unreachable                                | Error middleware          | 503    | `DB_UNAVAILABLE`               |
 
 ---
 
@@ -844,9 +904,19 @@ The test file demonstrates the project's unit-test conventions:
 
 ```typescript
 jest.mock("../../shared/constants", () => ({
-  ENVIRONMENT: { PORT: 3000, DB_TYPE: "MONGO", JWT_SECRET: "test", NODE_ENV: "test", /* ... */ },
+  ENVIRONMENT: {
+    PORT: 3000,
+    DB_TYPE: "MONGO",
+    JWT_SECRET: "test",
+    NODE_ENV: "test" /* ... */,
+  },
   DB_TYPES: { MONGO: "MONGO" },
-  TRANSACTION_TYPES: { INCOME: "INCOME", EXPENSE: "EXPENSE", TRANSFER: "TRANSFER", ADJUSTMENT: "ADJUSTMENT" },
+  TRANSACTION_TYPES: {
+    INCOME: "INCOME",
+    EXPENSE: "EXPENSE",
+    TRANSFER: "TRANSFER",
+    ADJUSTMENT: "ADJUSTMENT",
+  },
   // ... CATEGORY_TYPES, MODEL_NAMES
 }));
 ```
@@ -856,7 +926,9 @@ jest.mock("../../shared/constants", () => ({
 
 ```typescript
 jest.mock("../../shared/unitOfWork", () => ({
-  withTransaction: jest.fn((fn: (session: unknown) => unknown) => fn("test-session")),
+  withTransaction: jest.fn((fn: (session: unknown) => unknown) =>
+    fn("test-session"),
+  ),
 }));
 ```
 
@@ -884,16 +956,26 @@ const createMockTransactionRepo = (): jest.Mocked<ITransactionRepository> => ({
 it("debits the source account for an EXPENSE (atomic increment)", async () => {
   acctRepo.getById.mockResolvedValue(account());
   const dto: CreateTransactionDTO = {
-    type: "EXPENSE", amount: 100, date: new Date("2026-03-28"),
-    fromAccountId: ACC_A, userId: USER,
+    type: "EXPENSE",
+    amount: 100,
+    date: new Date("2026-03-28"),
+    fromAccountId: ACC_A,
+    userId: USER,
   };
   txRepo.create.mockResolvedValue(new Transaction({ id: TX_ID, ...dto }));
 
   await service.createTransaction(dto);
 
   expect(acctRepo.incrementBalance).toHaveBeenCalledTimes(1);
-  expect(acctRepo.incrementBalance).toHaveBeenCalledWith(ACC_A, -100, "test-session");
-  expect(txRepo.create).toHaveBeenCalledWith(expect.any(Transaction), "test-session");
+  expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
+    ACC_A,
+    -100,
+    "test-session",
+  );
+  expect(txRepo.create).toHaveBeenCalledWith(
+    expect.any(Transaction),
+    "test-session",
+  );
 });
 ```
 

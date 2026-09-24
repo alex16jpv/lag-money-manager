@@ -61,6 +61,7 @@ const requestBodies = {
   LoginInput: bodyOf(v.loginSchema),
   RefreshInput: bodyOf(v.refreshSchema),
   UpdateUserInput: bodyOf(v.updateUserSchema),
+  DeleteUserInput: bodyOf(v.deleteUserSchema),
   CreateAccountInput: bodyOf(v.createAccountSchema),
   UpdateAccountInput: bodyOf(v.updateAccountSchema),
   CreateCategoryInput: bodyOf(v.createCategorySchema),

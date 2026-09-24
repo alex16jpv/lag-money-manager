@@ -107,7 +107,7 @@ Server to overwrite [cluster0.abcde.mongodb.net]:
 
 You type the host — just the host, the same string the `server` line shows, never
 the whole URI. The script already knows where it is pointing; retyping it is not
-how it finds out, it is how *you* stop and read. That is worth the seconds on a
+how it finds out, it is how _you_ stop and read. That is worth the seconds on a
 real server and is not worth them locally, which is why only one of the two asks
 for it.
 
@@ -115,7 +115,7 @@ It asks for the host rather than the database name because the name is the same
 on your laptop and in production, and so confirms nothing.
 
 **A restore destroys data.** Every collection carried by the archive is dropped
-and rewritten in the target. A collection that exists there and is *not* in the
+and rewritten in the target. A collection that exists there and is _not_ in the
 archive is left alone — a restore is not a reset of the whole database. If you
 interrupt it, it stops, and says plainly that the target is now half-written and
 unusable until you run the restore through to the end.
@@ -145,19 +145,19 @@ password.
 
 ## Options
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `MONGO_URI` | *(required)* | Server to act on. For a backup the database is what to copy; for a restore it is where to put it, and may be left out. |
-| `BACKUP_DIR` | `<repo>/backups` | Where archives are written. Refuses a directory git would commit. |
-| `MONGO_TOOLS_IMAGE` | `mongo:8` | Image providing `mongodump` and `mongorestore`. |
+| Variable            | Default          | What it does                                                                                                           |
+| ------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `MONGO_URI`         | _(required)_     | Server to act on. For a backup the database is what to copy; for a restore it is where to put it, and may be left out. |
+| `BACKUP_DIR`        | `<repo>/backups` | Where archives are written. Refuses a directory git would commit.                                                      |
+| `MONGO_TOOLS_IMAGE` | `mongo:8`        | Image providing `mongodump` and `mongorestore`.                                                                        |
 
 ## When something goes wrong
 
-| What you see | What it means |
-| --- | --- |
-| `mongodump reported 0 collections` | The database in the URI is empty or misspelled. Nothing was written. |
-| `the dry run resolved 0 collections` | The archive carries nothing to restore. Nothing was written. |
-| `the archive carries several` | You renamed the target, but the archive holds more than one database. Drop the database from the URI. |
-| `is not a usable database name` | The URI's path is not a plain database name — often a trailing `/`, or options without a `?`. |
+| What you see                                  | What it means                                                                                                                                                    |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mongodump reported 0 collections`            | The database in the URI is empty or misspelled. Nothing was written.                                                                                             |
+| `the dry run resolved 0 collections`          | The archive carries nothing to restore. Nothing was written.                                                                                                     |
+| `the archive carries several`                 | You renamed the target, but the archive holds more than one database. Drop the database from the URI.                                                            |
+| `is not a usable database name`               | The URI's path is not a plain database name — often a trailing `/`, or options without a `?`.                                                                    |
 | `server selection error … connection refused` | The server is unreachable. `mongodump` retries for about 30 seconds when the connection is refused outright, and longer when the address simply does not answer. |
-| `image 'mongo:8' is not available locally` | `docker pull mongo:8`. |
+| `image 'mongo:8' is not available locally`    | `docker pull mongo:8`.                                                                                                                                           |

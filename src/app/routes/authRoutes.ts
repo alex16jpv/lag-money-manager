@@ -21,7 +21,7 @@ const loginLimiter = authRateLimit({
   max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
-// A distributed attack on ONE account rotates IPs, so the target email needs its own counter.
+// A distributed attack on ONE account rotates IPs, so the target email needs its own counter; register shares it.
 const loginEmailLimiter = authRateLimit({
   keyPrefix: "login-email",
   max: ENVIRONMENT.AUTH_RATE_LIMIT_MAX,
@@ -57,10 +57,12 @@ const refreshLimiter = authRateLimit({
  *     description: >
  *       Register acts as login: the response already carries the token pair,
  *       no follow-up login call is needed. Emails are normalized (trim +
- *       lowercase). Registering with the email of a soft-deleted account
- *       reactivates that account with its full financial history (the
- *       response's `user.reactivated` is `true` and the original currency is
- *       kept — the `currency` sent in that register is ignored). On a 500 the
+ *       lowercase). Registering with the email and the password of a
+ *       soft-deleted account reactivates that account with its full financial
+ *       history (the response's `user.reactivated` is `true` and the original
+ *       currency is kept — the `currency` sent in that register is ignored);
+ *       with any other password it answers 409 EMAIL_TAKEN, like a live
+ *       account. On a 500 the
  *       user may still have been created: try login before retrying register.
  *     security: []
  *     requestBody:
@@ -84,15 +86,18 @@ const refreshLimiter = authRateLimit({
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
  *         description: >
- *           Email is already registered (code DUPLICATE from the unique
- *           index, or EMAIL_TAKEN when a concurrent register reactivated the
- *           same soft-deleted account)
+ *           Email is already registered (code EMAIL_TAKEN): a live account,
+ *           a soft-deleted one registered with a different password, or a
+ *           concurrent register that reactivated it first
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       429:
- *         description: Too many attempts from this client IP (code RATE_LIMITED)
+ *         description: >
+ *           Too many attempts from this client IP, or too many failed ones
+ *           against this email, counted with the failed logins (code
+ *           RATE_LIMITED)
  *         content:
  *           application/json:
  *             schema:
@@ -101,6 +106,7 @@ const refreshLimiter = authRateLimit({
 router.post(
   "/register",
   registerLimiter,
+  loginEmailLimiter,
   validate(registerSchema),
   AuthController.register,
 );

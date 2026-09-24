@@ -40,13 +40,13 @@ cp -r dist build/lambda-package/dist
 Two steps that look like boilerplate but are not:
 
 - **`--prefix` does not imply the manifest.** `npm ci` reads `package.json` and
-  `package-lock.json` from *inside* the prefix directory, so they have to be
+  `package-lock.json` from _inside_ the prefix directory, so they have to be
   copied there first. Without them it fails with `npm error code EUSAGE` —
   "can only install with an existing package-lock.json" — which reads like a
   problem with the repo lockfile rather than a missing copy.
 - **`rm -rf` before the `cp`.** `cp -r dist <dir>/dist` only does what you mean
   when the target is absent; if a `dist/` from an earlier run is already there,
-  it copies *into* it and leaves `build/lambda-package/dist/dist`. The zip is
+  it copies _into_ it and leaves `build/lambda-package/dist/dist`. The zip is
   then built with the handler one level too deep, and Lambda answers with a
   module-not-found at invoke time, not at deploy time.
 
@@ -83,44 +83,40 @@ aws --version   # ~/.local/bin must be on your PATH
 
 All options below use the same **least-privilege policy** — it only allows touching this one Lambda function and the keepalive EventBridge rule, so the blast radius of a leaked credential is minimal (adjust the function/rule names if yours differ):
 
-   ```json
-   {
-     "Version": "2012-10-17",
-     "Statement": [
-       {
-         "Sid": "DeployLambda",
-         "Effect": "Allow",
-         "Action": [
-           "lambda:GetFunction",
-           "lambda:GetFunctionConfiguration",
-           "lambda:UpdateFunctionCode",
-           "lambda:UpdateFunctionConfiguration",
-           "lambda:AddPermission",
-           "lambda:InvokeFunction"
-         ],
-         "Resource": "arn:aws:lambda:*:*:function:<your-function-name>*"
-       },
-       {
-         "Sid": "KeepaliveRule",
-         "Effect": "Allow",
-         "Action": [
-           "events:PutRule",
-           "events:PutTargets",
-           "events:DescribeRule"
-         ],
-         "Resource": "arn:aws:events:*:*:rule/lag-money-manager-keepalive*"
-       }
-     ]
-   }
-   ```
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DeployLambda",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:AddPermission",
+        "lambda:InvokeFunction"
+      ],
+      "Resource": "arn:aws:lambda:*:*:function:<your-function-name>*"
+    },
+    {
+      "Sid": "KeepaliveRule",
+      "Effect": "Allow",
+      "Action": ["events:PutRule", "events:PutTargets", "events:DescribeRule"],
+      "Resource": "arn:aws:events:*:*:rule/lag-money-manager-keepalive*"
+    }
+  ]
+}
+```
 
-   Optionally attach the AWS-managed `CloudWatchLogsReadOnlyAccess` policy too, so you can read Lambda logs from the CLI when debugging.
+Optionally attach the AWS-managed `CloudWatchLogsReadOnlyAccess` policy too, so you can read Lambda logs from the CLI when debugging.
 
 ##### Option A — dedicated IAM user with access keys (recommended, the currently used setup)
 
-1. Console → *IAM → Users → Create user*, name it e.g. `lag-deploy`. No console access needed.
-2. On the permissions step choose *Attach policies directly* → *Create policy* → JSON → paste the policy above. **Replace `<your-function-name>` with the real function name** (an `AccessDeniedException` on deploy usually means this placeholder was left in, or the name does not match).
-3. *Security credentials → Create access key → Command Line Interface (CLI)* → on the "Alternatives recommended" notice, tick the confirmation and continue → copy the **Access Key ID** and **Secret Access Key** (the secret is shown only once; if you lose it, delete the key and create a new one).
+1. Console → _IAM → Users → Create user_, name it e.g. `lag-deploy`. No console access needed.
+2. On the permissions step choose _Attach policies directly_ → _Create policy_ → JSON → paste the policy above. **Replace `<your-function-name>` with the real function name** (an `AccessDeniedException` on deploy usually means this placeholder was left in, or the name does not match).
+3. _Security credentials → Create access key → Command Line Interface (CLI)_ → on the "Alternatives recommended" notice, tick the confirmation and continue → copy the **Access Key ID** and **Secret Access Key** (the secret is shown only once; if you lose it, delete the key and create a new one).
 4. Configure the profile (run it in a regular terminal so the secret is typed interactively, never stored in shell history or logs):
 
    ```bash
@@ -131,7 +127,7 @@ All options below use the same **least-privilege policy** — it only allows tou
    # Output format: press Enter
    ```
 
-The keys land in `~/.aws/credentials` (kept `600` by the CLI). Rotate them occasionally (*IAM → user → Security credentials*); with this policy a leaked key can only touch this function and the keepalive rule — nothing else in the account.
+The keys land in `~/.aws/credentials` (kept `600` by the CLI). Rotate them occasionally (_IAM → user → Security credentials_); with this policy a leaked key can only touch this function and the keepalive rule — nothing else in the account.
 
 ##### Option B — `aws login` with a dedicated IAM user (temporary credentials)
 
@@ -156,10 +152,10 @@ Sessions are temporary; when one expires, the deploy scripts re-run `aws login` 
 
 Temporary credentials, nothing sensitive on disk. One-time setup:
 
-1. **Enable IAM Identity Center**: console → *IAM Identity Center* → *Enable*. Note the **AWS access portal URL** (`https://<something>.awsapps.com/start`).
-2. **Create your user**: *IAM Identity Center → Users → Add user*, accept the invitation email (+ MFA, recommended).
-3. **Create a permission set**: *Permission sets → Create → Custom permission set → Inline policy* → paste the policy above.
-4. **Assign it**: *AWS accounts* → your account → *Assign users* → your user + the permission set.
+1. **Enable IAM Identity Center**: console → _IAM Identity Center_ → _Enable_. Note the **AWS access portal URL** (`https://<something>.awsapps.com/start`).
+2. **Create your user**: _IAM Identity Center → Users → Add user_, accept the invitation email (+ MFA, recommended).
+3. **Create a permission set**: _Permission sets → Create → Custom permission set → Inline policy_ → paste the policy above.
+4. **Assign it**: _AWS accounts_ → your account → _Assign users_ → your user + the permission set.
 5. Configure the profile:
 
    ```bash
@@ -186,14 +182,14 @@ Copy the template into `.env.deploy` (gitignored) and fill it in:
 cp .env.deploy.example .env.deploy
 ```
 
-  | Variable               | Description                                                                 |
-  | ---------------------- | --------------------------------------------------------------------------- |
-  | `AWS_PROFILE`          | Named CLI profile created in step 2                                           |
-  | `AWS_REGION`           | Region where the function lives                                               |
-  | `LAMBDA_FUNCTION_NAME` | Exact function name from the Lambda console                                   |
-  | `MONGO_URI`            | **Required.** The **production** database — see [The production MONGO_URI](#the-production-mongo-uri) |
-  | `KEEPALIVE_RULE_NAME`  | Optional. EventBridge rule name for keepalive                                 |
-  | `KEEPALIVE_SCHEDULE`   | Optional. Defaults to `rate(1 day)`                                           |
+| Variable               | Description                                                                                           |
+| ---------------------- | ----------------------------------------------------------------------------------------------------- |
+| `AWS_PROFILE`          | Named CLI profile created in step 2                                                                   |
+| `AWS_REGION`           | Region where the function lives                                                                       |
+| `LAMBDA_FUNCTION_NAME` | Exact function name from the Lambda console                                                           |
+| `MONGO_URI`            | **Required.** The **production** database — see [The production MONGO_URI](#the-production-mongo-uri) |
+| `KEEPALIVE_RULE_NAME`  | Optional. EventBridge rule name for keepalive                                                         |
+| `KEEPALIVE_SCHEDULE`   | Optional. Defaults to `rate(1 day)`                                                                   |
 
 > **Quote any value containing `&`, `#` or spaces** — the connection URI
 > especially. The file is `source`d, so bash reads it as code: an unquoted `&`
@@ -243,13 +239,13 @@ NODE_ENV=production MONGO_URI=<production uri> npm run db:sync-indexes
 
 That strictness is deliberate: several correctness guarantees live in the database, not in application code, so shipping onto an unindexed database silently disables them.
 
-| Index | What it enforces | What its absence costs |
-| ----- | ---------------- | ---------------------- |
-| `users.email` unique | One account per email | The same email registers over and over — `register` deliberately has no application-level check, so the index is the only guard |
-| `accounts.userId` unique, partial on `isDefault` | One default account per user | Two defaults; quick-add picks an arbitrary one |
-| `budgets` unique, partial on `archivedAt` | No overlapping budgets per category and period | Duplicate budgets double-counting the same spending |
-| `categories.(userId, name)` unique, collation `es` strength 2 | Case-insensitive unique names | "Comida" and "comida" coexist |
-| TTL on `ratelimits.expiresAt`, `idempotencykeys.createdAt`, `refreshsessions.expiresAt` | Automatic expiry | The collections grow forever — refresh sessions gain a document per login *and* per rotation |
+| Index                                                                                   | What it enforces                               | What its absence costs                                                                                                          |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `users.email` unique                                                                    | One account per email                          | The same email registers over and over — `register` deliberately has no application-level check, so the index is the only guard |
+| `accounts.userId` unique, partial on `isDefault`                                        | One default account per user                   | Two defaults; quick-add picks an arbitrary one                                                                                  |
+| `budgets` unique, partial on `archivedAt`                                               | No overlapping budgets per category and period | Duplicate budgets double-counting the same spending                                                                             |
+| `categories.(userId, name)` unique, collation `es` strength 2                           | Case-insensitive unique names                  | "Comida" and "comida" coexist                                                                                                   |
+| TTL on `ratelimits.expiresAt`, `idempotencykeys.createdAt`, `refreshsessions.expiresAt` | Automatic expiry                               | The collections grow forever — refresh sessions gain a document per login _and_ per rotation                                    |
 
 An index build fails when existing data already violates it (duplicate emails, say). The deploy stops with the driver's `E11000` naming the offending index and value: fix the data, then deploy again.
 
@@ -277,16 +273,16 @@ mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net/lag_money?retryWrites=tru
 
 What the URI must satisfy, whichever form you use:
 
-| Requirement | Why |
-| ----------- | --- |
+| Requirement                                                  | Why                                                                                                                                                                  |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **The database name goes before the `?`** (`/lag_money?...`) | Atlas copies the string without one. With no database in the path the driver silently uses one called **`test`** — everything appears to work, in the wrong database |
-| **Keep `replicaSet=...`** (standard form only) | Balance updates run in multi-document transactions, which require a replica set. The SRV form discovers it on its own |
-| **Never add `directConnection=true`** | That is a local single-node workaround. Against Atlas it disables replica-set discovery and breaks transactions |
-| **URL-encode the password** | `@ : / ? # [ ] %` must be percent-encoded. An unencoded `@` splits the URI and surfaces as a confusing authentication error |
-| `retryWrites=true&w=majority` | Retries transient write failures and confirms writes against a majority of the replica set |
+| **Keep `replicaSet=...`** (standard form only)               | Balance updates run in multi-document transactions, which require a replica set. The SRV form discovers it on its own                                                |
+| **Never add `directConnection=true`**                        | That is a local single-node workaround. Against Atlas it disables replica-set discovery and breaks transactions                                                      |
+| **URL-encode the password**                                  | `@ : / ? # [ ] %` must be percent-encoded. An unencoded `@` splits the URI and surfaces as a confusing authentication error                                          |
+| `retryWrites=true&w=majority`                                | Retries transient write failures and confirms writes against a majority of the replica set                                                                           |
 
-The credentials are the **database user** created under Atlas's *Database
-Access*, not your Atlas account login. The cluster's *Network Access* list must
+The credentials are the **database user** created under Atlas's _Database
+Access_, not your Atlas account login. The cluster's _Network Access_ list must
 also allow the connecting IP — the deploy machine when syncing indexes, and the
 Lambda's egress address at runtime.
 
@@ -299,12 +295,12 @@ Lambda's egress address at runtime.
 
 ### Required production configuration
 
-| Variable      | Why it matters in production                                                                                                            |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `MONGO_URI`   | Must point at a **replica set** — transactions fail otherwise                                                                             |
-| `API_SECRET`  | Must be set: with `NODE_ENV=production` a missing value makes every request fail with a 500 "Server misconfiguration" (fail-closed)        |
-| `JWT_SECRET`  | Required by the env schema; the process refuses to start without it                                                                       |
-| `CORS_ORIGIN` | Required; comma-separated list of allowed origins                                                                                         |
+| Variable      | Why it matters in production                                                                                                        |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `MONGO_URI`   | Must point at a **replica set** — transactions fail otherwise                                                                       |
+| `API_SECRET`  | Must be set: with `NODE_ENV=production` a missing value makes every request fail with a 500 "Server misconfiguration" (fail-closed) |
+| `JWT_SECRET`  | Required by the env schema; the process refuses to start without it                                                                 |
+| `CORS_ORIGIN` | Required; comma-separated list of allowed origins                                                                                   |
 
 Once `API_SECRET` is set, **every** request must carry the `x-api-secret` header — including `GET /`, `GET /health/db` and `/auth/*`. Requests without it (or with a wrong value) get `403 Access denied`. See `src/app/middlewares/gatewaySecretMiddleware.ts`.
 
@@ -394,12 +390,12 @@ server {
 
 Pool options are set in code (`src/config/mongoConnection.ts`), not through the URI:
 
-| Option                      | Value                                    | Rationale                                                                                                     |
-| --------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `maxPoolSize`               | `5` on Lambda, `10` elsewhere            | Atlas M0 caps ~500 connections cluster-wide; the driver default of 100 per process exhausts it with a handful of warm Lambda instances |
-| `serverSelectionTimeoutMS`  | `5000`                                   | Failures surface in ~5s with the real error                                                                    |
-| `bufferCommands`            | `false` (global)                         | No 10s "buffering timed out" masking a connection error                                                        |
-| `autoIndex`                 | on except `NODE_ENV=production`          | Production indexes come from `npm run db:sync-indexes`                                                         |
+| Option                     | Value                           | Rationale                                                                                                                              |
+| -------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `maxPoolSize`              | `5` on Lambda, `10` elsewhere   | Atlas M0 caps ~500 connections cluster-wide; the driver default of 100 per process exhausts it with a handful of warm Lambda instances |
+| `serverSelectionTimeoutMS` | `5000`                          | Failures surface in ~5s with the real error                                                                                            |
+| `bufferCommands`           | `false` (global)                | No 10s "buffering timed out" masking a connection error                                                                                |
+| `autoIndex`                | on except `NODE_ENV=production` | Production indexes come from `npm run db:sync-indexes`                                                                                 |
 
 Lambda detection is based on `AWS_LAMBDA_FUNCTION_NAME`, which the runtime sets. Raising throughput means editing that file, not the URI — a `maxPoolSize` query parameter in `MONGO_URI` is overridden by the explicit connect option.
 
@@ -459,10 +455,10 @@ readinessProbe:
 
 Two layers, both with a 15-minute window. **Only one of them is a ceiling** — see below the table:
 
-| Layer                                                | Applies to                                    | Limit                                          | Store                                                              |
-| ---------------------------------------------------- | --------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------ |
-| Global limiter (`express-rate-limit`, `src/app.ts`)  | Every mounted route, `/` and `/health/db` too | `RATE_LIMIT_MAX` per user, or per client IP where there is no session (default `1000`) | In-memory — **per Lambda instance**, so it is a brake, not a ceiling |
-| Auth limiter (`authRateLimitMiddleware.ts`)          | `/auth/login`, `/auth/register`, `/auth/refresh` | `AUTH_IP_RATE_LIMIT_MAX` per IP (default `60`) and `AUTH_RATE_LIMIT_MAX` per email on login (default `10`); refresh uses `REFRESH_RATE_LIMIT_MAX` (default `60`) | MongoDB (`RateLimitModel`), so the limit holds across instances     |
+| Layer                                               | Applies to                                       | Limit                                                                                                                                                            | Store                                                                |
+| --------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Global limiter (`express-rate-limit`, `src/app.ts`) | Every mounted route, `/` and `/health/db` too    | `RATE_LIMIT_MAX` per user, or per client IP where there is no session (default `1000`)                                                                           | In-memory — **per Lambda instance**, so it is a brake, not a ceiling |
+| Auth limiter (`authRateLimitMiddleware.ts`)         | `/auth/login`, `/auth/register`, `/auth/refresh` | `AUTH_IP_RATE_LIMIT_MAX` per IP (default `60`) and `AUTH_RATE_LIMIT_MAX` per email on login (default `10`); refresh uses `REFRESH_RATE_LIMIT_MAX` (default `60`) | MongoDB (`RateLimitModel`), so the limit holds across instances      |
 
 Login is limited on two dimensions: per IP and per target email. The per-email counter is refunded on success, so only failed logins burn that budget. Over-limit responses are `429` with `code: "RATE_LIMITED"` and a `Retry-After` header; the store failing open is deliberate — a Mongo error must not lock everyone out of login.
 

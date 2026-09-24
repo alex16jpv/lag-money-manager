@@ -69,7 +69,13 @@
       "path": "docs/architecture/decisions/001-dual-database-support.md",
       "title": "ADR-001: Dual Database Support (superseded)",
       "description": "Historical record of the dual-database decision, superseded: the project is MongoDB-only and the repository/factory seam is kept only for testing.",
-      "tags": ["architecture", "decisions", "database", "repository", "superseded"],
+      "tags": [
+        "architecture",
+        "decisions",
+        "database",
+        "repository",
+        "superseded"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },
@@ -141,7 +147,15 @@
       "path": "docs/guides/deployment.md",
       "title": "Production Deployment Guide",
       "description": "AWS Lambda deploy scripts and credentials, MongoDB Atlas requirements, index sync, rate limiting, HTTPS, and the production environment checklist.",
-      "tags": ["guide", "deployment", "production", "lambda", "aws", "atlas", "security"],
+      "tags": [
+        "guide",
+        "deployment",
+        "production",
+        "lambda",
+        "aws",
+        "atlas",
+        "security"
+      ],
       "audience": "both",
       "mustReadFirst": false
     },

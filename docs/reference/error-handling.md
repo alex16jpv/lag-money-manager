@@ -270,64 +270,64 @@ Every branch also records the code and message on `res.locals.errorCode` / `res.
 
 Codes raised by the services and middleware. Anything not listed here has no `code`: the status alone carries the meaning.
 
-| Code                              | Status | Raised when                                                              |
-| --------------------------------- | ------ | ------------------------------------------------------------------------ |
-| `VALIDATION`                      | 400    | Zod schema rejection, or a domain invariant with no specific code        |
-| `INVALID_ID`                      | 400    | Mongoose `CastError`                                                     |
-| `INVALID_CURSOR`                  | 400    | Pagination cursor that names no row of the caller's                      |
-| `FUTURE_DATE`                     | 400    | Transaction date more than 24h in the future                             |
-| `CURRENCY_MISMATCH`               | 400    | Transfer between accounts of different currencies (mono-currency mode)   |
-| `CURRENCY_LOCKED`                 | 400    | Changing the user currency once accounts exist                           |
-| `CATEGORY_ARCHIVED`               | 400    | Assigning an archived category to a transaction                          |
-| `CATEGORY_TYPE_MISMATCH`          | 400    | Category type doesn't match the transaction type                         |
-| `CATEGORY_TYPE_LOCKED`            | 400    | Changing a category's type when it is already in use                     |
-| `RESOURCE_ARCHIVED`               | 400    | Updating an archived account, category or budget                         |
-| `DEFAULT_ACCOUNT_ARCHIVE_BLOCKED` | 400    | Archiving the default account before another is made default             |
-| `NO_DEFAULT_ACCOUNT`              | 400    | Quick-add with no account id and no default account set                  |
-| `ACCOUNT_LIMIT_REACHED`           | 400    | Per-user account cap                                                     |
-| `ACCOUNT_FIELD_NOT_FOR_TYPE`      | 400    | A debt amount on an account type that has no such field, or a type change that would orphan one |
+| Code                              | Status | Raised when                                                                                                                                                                                                    |
+| --------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VALIDATION`                      | 400    | Zod schema rejection, or a domain invariant with no specific code                                                                                                                                              |
+| `INVALID_ID`                      | 400    | Mongoose `CastError`                                                                                                                                                                                           |
+| `INVALID_CURSOR`                  | 400    | Pagination cursor that names no row of the caller's                                                                                                                                                            |
+| `FUTURE_DATE`                     | 400    | Transaction date more than 24h in the future                                                                                                                                                                   |
+| `CURRENCY_MISMATCH`               | 400    | Transfer between accounts of different currencies (mono-currency mode)                                                                                                                                         |
+| `CURRENCY_LOCKED`                 | 400    | Changing the user currency once accounts exist                                                                                                                                                                 |
+| `CATEGORY_ARCHIVED`               | 400    | Assigning an archived category to a transaction                                                                                                                                                                |
+| `CATEGORY_TYPE_MISMATCH`          | 400    | Category type doesn't match the transaction type                                                                                                                                                               |
+| `CATEGORY_TYPE_LOCKED`            | 400    | Changing a category's type when it is already in use                                                                                                                                                           |
+| `RESOURCE_ARCHIVED`               | 400    | Updating an archived account, category or budget                                                                                                                                                               |
+| `DEFAULT_ACCOUNT_ARCHIVE_BLOCKED` | 400    | Archiving the default account before another is made default                                                                                                                                                   |
+| `NO_DEFAULT_ACCOUNT`              | 400    | Quick-add with no account id and no default account set                                                                                                                                                        |
+| `ACCOUNT_LIMIT_REACHED`           | 400    | Per-user account cap                                                                                                                                                                                           |
+| `ACCOUNT_FIELD_NOT_FOR_TYPE`      | 400    | A debt amount on an account type that has no such field, or a type change that would orphan one                                                                                                                |
 | `INCOME_ON_CARD_OR_LOAN`          | 400    | An income landing on one of the `IncomeRefusedAccountType` types the contract publishes: money arriving there is a payment, not income (an OVERDRAFT takes income: its positive balance is its ordinary state) |
-| `LOAN_OVERPAID`                   | 400    | A movement, or an account write, that would leave a LOAN above zero: a loan cannot be paid more than it owes |
-| `AMOUNT_PRECISION`                | 400    | An amount with more decimals than the owner's currency has — none at all when it is one of the `ZeroDecimalCurrency` codes the contract publishes |
-| `CATEGORY_LIMIT_REACHED`          | 400    | Per-user category cap                                                    |
-| `CONTACT_LIMIT_REACHED`           | 400    | Per-user contact cap (`SharedLimits.maxContactsPerUser`)                 |
-| `PARTICIPANT_LIMIT_REACHED`       | 400    | People in one shared group, the owner included (`SharedLimits.maxParticipantsPerGroup`) |
-| `PARTICIPANT_ALREADY_IN_GROUP`    | 400    | Adding somebody the shared group already has                             |
-| `PARTICIPANT_NOT_IN_GROUP`        | 400    | A split, or a payer, naming somebody who is not in the shared group      |
-| `PARTICIPANT_IN_USE`              | 400    | Taking somebody out of a shared group while they hold a share of an expense |
-| `SPLIT_INVALID`                   | 400    | Figures that cannot describe a split: they do not add up to the expense, the percentages are not 100, a mode is missing its figures, or a percentage group is missing its new percentages |
-| `SHARED_EXPENSE_LINKED`           | 400    | Restating the amount, the date, the description or the payer of a shared expense that is a movement of yours: those come from the transaction |
-| `TRANSACTION_ALREADY_SHARED`      | 400    | Splitting a movement that is already an expense of a shared group       |
-| `TRANSACTION_NOT_SPLITTABLE`      | 400    | Splitting a movement that is not an expense, or turning a split one into another type |
-| `SETTLEMENT_OVER_PAID`            | 400    | Paying somebody back more than you owe them and more than they have paid ahead |
-| `SETTLEMENT_MOVEMENT_LOCKED`      | 400    | Editing the money of a movement a settle-up recorded, or deleting it: undo the payment instead |
-| `GUEST_BLOCK_HAS_PAYMENTS`        | 400    | Deleting an expense whose block of guests has paid: the block lives in that expense and its money would have nowhere to go |
-| `CONTACT_HAS_NO_EMAIL`            | 400    | Inviting a contact who has no email: an invitation is addressed to one |
-| `INVITATION_TO_SELF`              | 400    | Inviting a contact whose email is your own, or answering an invitation you sent |
-| `INVITATION_LIMIT_REACHED`        | 400    | More invitations waiting at once than one user may have (`SharedLimits.maxPendingInvitationsPerUser`) |
-| `INVITATION_UNAVAILABLE`          | 400    | Answering an invitation that was withdrawn, whose group was archived or whose person was taken out, or whose 30 days passed; or leaving a group the owner already stopped sharing |
-| `SHARED_LINE_NOT_PAID`            | 400    | Add to my ledger on a line somebody other than the owner paid, one you have no part in, or one whose part the owner has not marked paid|
-| `SHARED_LINE_IN_LEDGER`           | 400    | Add to my ledger on a line whose part is already in your ledger                                                             |
-| `BUDGET_PERIOD_OVERLAP`           | 400    | New budget period overlaps an existing one for the same scope            |
-| `IDEMPOTENCY_KEY_INVALID`         | 400    | `Idempotency-Key` outside `[A-Za-z0-9_-]{1,200}`                         |
-| `MALFORMED_JSON`                  | 400    | Body that is not valid JSON (body-parser `entity.parse.failed`)          |
-| `BAD_REQUEST`                     | 400    | A body-parser failure with no code of its own; also a `/sync` operation rejected with no more specific code |
-| `REQUEST_ABORTED`                 | 400    | The client hung up before the body arrived (body-parser `request.aborted`) |
-| `UNSUPPORTED_ENCODING`            | 415    | Body in a content encoding the server does not read                      |
-| `PAYLOAD_TOO_LARGE`               | 413    | Body over the size limit                                                 |
-| `CURRENT_PASSWORD_INVALID`        | 401    | Password change with the wrong current password                          |
-| `REFRESH_INVALID`                 | 401    | Refresh token missing, malformed or expired                              |
-| `REFRESH_REVOKED`                 | 401    | Refresh token belongs to a revoked session                               |
-| `NOT_FOUND`                       | 404    | A `/sync` operation whose row is missing or belongs to another user      |
-| `DUPLICATE`                       | 409    | MongoDB duplicate key (11000)                                            |
-| `ID_TAKEN`                        | 409    | A client-minted id that belongs to another user (the caller's own replays with 200) |
-| `STALE_UPDATE`                    | 409    | `If-Match` no longer matches the stored version; `current` carries the server's copy |
-| `EMAIL_TAKEN`                     | 409    | Registration with an email already in use                                |
-| `IDEMPOTENCY_ORIGINAL_DELETED`    | 409    | The transaction created with this key was deleted — retry with a new key |
-| `IDEMPOTENCY_PAYLOAD_MISMATCH`    | 422    | The key was already used with a different payload                        |
-| `RATE_LIMITED`                    | 429    | `/auth` per-key rate limit exceeded                                      |
-| `INTERNAL`                        | 500    | Unhandled error                                                          |
-| `DB_UNAVAILABLE`                  | 503    | MongoDB unreachable — retryable                                          |
+| `LOAN_OVERPAID`                   | 400    | A movement, or an account write, that would leave a LOAN above zero: a loan cannot be paid more than it owes                                                                                                   |
+| `AMOUNT_PRECISION`                | 400    | An amount with more decimals than the owner's currency has — none at all when it is one of the `ZeroDecimalCurrency` codes the contract publishes                                                              |
+| `CATEGORY_LIMIT_REACHED`          | 400    | Per-user category cap                                                                                                                                                                                          |
+| `CONTACT_LIMIT_REACHED`           | 400    | Per-user contact cap (`SharedLimits.maxContactsPerUser`)                                                                                                                                                       |
+| `PARTICIPANT_LIMIT_REACHED`       | 400    | People in one shared group, the owner included (`SharedLimits.maxParticipantsPerGroup`)                                                                                                                        |
+| `PARTICIPANT_ALREADY_IN_GROUP`    | 400    | Adding somebody the shared group already has                                                                                                                                                                   |
+| `PARTICIPANT_NOT_IN_GROUP`        | 400    | A split, or a payer, naming somebody who is not in the shared group                                                                                                                                            |
+| `PARTICIPANT_IN_USE`              | 400    | Taking somebody out of a shared group while they hold a share of an expense                                                                                                                                    |
+| `SPLIT_INVALID`                   | 400    | Figures that cannot describe a split: they do not add up to the expense, the percentages are not 100, a mode is missing its figures, or a percentage group is missing its new percentages                      |
+| `SHARED_EXPENSE_LINKED`           | 400    | Restating the amount, the date, the description or the payer of a shared expense that is a movement of yours: those come from the transaction                                                                  |
+| `TRANSACTION_ALREADY_SHARED`      | 400    | Splitting a movement that is already an expense of a shared group                                                                                                                                              |
+| `TRANSACTION_NOT_SPLITTABLE`      | 400    | Splitting a movement that is not an expense, or turning a split one into another type                                                                                                                          |
+| `SETTLEMENT_OVER_PAID`            | 400    | Paying somebody back more than you owe them and more than they have paid ahead                                                                                                                                 |
+| `SETTLEMENT_MOVEMENT_LOCKED`      | 400    | Editing the money of a movement a settle-up recorded, or deleting it: undo the payment instead                                                                                                                 |
+| `GUEST_BLOCK_HAS_PAYMENTS`        | 400    | Deleting an expense whose block of guests has paid: the block lives in that expense and its money would have nowhere to go                                                                                     |
+| `CONTACT_HAS_NO_EMAIL`            | 400    | Inviting a contact who has no email: an invitation is addressed to one                                                                                                                                         |
+| `INVITATION_TO_SELF`              | 400    | Inviting a contact whose email is your own, or answering an invitation you sent                                                                                                                                |
+| `INVITATION_LIMIT_REACHED`        | 400    | More invitations waiting at once than one user may have (`SharedLimits.maxPendingInvitationsPerUser`)                                                                                                          |
+| `INVITATION_UNAVAILABLE`          | 400    | Answering an invitation that was withdrawn, whose group was archived or whose person was taken out, or whose 30 days passed; or leaving a group the owner already stopped sharing                              |
+| `SHARED_LINE_NOT_PAID`            | 400    | Add to my ledger on a line somebody other than the owner paid, one you have no part in, or one whose part the owner has not marked paid                                                                        |
+| `SHARED_LINE_IN_LEDGER`           | 400    | Add to my ledger on a line whose part is already in your ledger                                                                                                                                                |
+| `BUDGET_PERIOD_OVERLAP`           | 400    | New budget period overlaps an existing one for the same scope                                                                                                                                                  |
+| `IDEMPOTENCY_KEY_INVALID`         | 400    | `Idempotency-Key` outside `[A-Za-z0-9_-]{1,200}`                                                                                                                                                               |
+| `MALFORMED_JSON`                  | 400    | Body that is not valid JSON (body-parser `entity.parse.failed`)                                                                                                                                                |
+| `BAD_REQUEST`                     | 400    | A body-parser failure with no code of its own; also a `/sync` operation rejected with no more specific code                                                                                                    |
+| `REQUEST_ABORTED`                 | 400    | The client hung up before the body arrived (body-parser `request.aborted`)                                                                                                                                     |
+| `UNSUPPORTED_ENCODING`            | 415    | Body in a content encoding the server does not read                                                                                                                                                            |
+| `PAYLOAD_TOO_LARGE`               | 413    | Body over the size limit                                                                                                                                                                                       |
+| `CURRENT_PASSWORD_INVALID`        | 401    | Password change with the wrong current password                                                                                                                                                                |
+| `REFRESH_INVALID`                 | 401    | Refresh token missing, malformed or expired                                                                                                                                                                    |
+| `REFRESH_REVOKED`                 | 401    | Refresh token belongs to a revoked session                                                                                                                                                                     |
+| `NOT_FOUND`                       | 404    | A `/sync` operation whose row is missing or belongs to another user                                                                                                                                            |
+| `DUPLICATE`                       | 409    | MongoDB duplicate key (11000)                                                                                                                                                                                  |
+| `ID_TAKEN`                        | 409    | A client-minted id that belongs to another user (the caller's own replays with 200)                                                                                                                            |
+| `STALE_UPDATE`                    | 409    | `If-Match` no longer matches the stored version; `current` carries the server's copy                                                                                                                           |
+| `EMAIL_TAKEN`                     | 409    | Registration with an email already in use                                                                                                                                                                      |
+| `IDEMPOTENCY_ORIGINAL_DELETED`    | 409    | The transaction created with this key was deleted — retry with a new key                                                                                                                                       |
+| `IDEMPOTENCY_PAYLOAD_MISMATCH`    | 422    | The key was already used with a different payload                                                                                                                                                              |
+| `RATE_LIMITED`                    | 429    | `/auth` per-key rate limit exceeded                                                                                                                                                                            |
+| `INTERNAL`                        | 500    | Unhandled error                                                                                                                                                                                                |
+| `DB_UNAVAILABLE`                  | 503    | MongoDB unreachable — retryable                                                                                                                                                                                |
 
 ## How to Add a New Error Type
 

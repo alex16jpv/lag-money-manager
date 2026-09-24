@@ -29,21 +29,21 @@ lag-money-manager is a REST API for personal money management. It allows users t
 
 **Stack with versions:**
 
-| Technology    | Version    | Purpose                                     |
-| ------------- | ---------- | ------------------------------------------- |
-| TypeScript    | 6.x        | Language                                    |
-| Node.js       | 22+        | Runtime (`.nvmrc`, `engines`)               |
-| Express       | 5.x        | HTTP framework                              |
-| Zod           | 4.x        | Request validation                          |
-| Mongoose      | 9.x        | MongoDB ODM                                 |
-| MongoDB       | 8.x        | Database — **replica set required**         |
-| Luxon         | 3.x        | Timezone-aware budget period math           |
-| bcryptjs      | 3.x        | Password hashing                            |
-| jsonwebtoken  | 9.x        | JWT auth (access + rotating refresh tokens) |
-| Pino          | 10.x       | Structured logging                          |
-| Helmet        | 8.x        | Security headers                            |
-| Jest          | 30.x       | Testing framework                           |
-| swagger-jsdoc | 6.x        | OpenAPI documentation                       |
+| Technology    | Version | Purpose                                     |
+| ------------- | ------- | ------------------------------------------- |
+| TypeScript    | 6.x     | Language                                    |
+| Node.js       | 22+     | Runtime (`.nvmrc`, `engines`)               |
+| Express       | 5.x     | HTTP framework                              |
+| Zod           | 4.x     | Request validation                          |
+| Mongoose      | 9.x     | MongoDB ODM                                 |
+| MongoDB       | 8.x     | Database — **replica set required**         |
+| Luxon         | 3.x     | Timezone-aware budget period math           |
+| bcryptjs      | 3.x     | Password hashing                            |
+| jsonwebtoken  | 9.x     | JWT auth (access + rotating refresh tokens) |
+| Pino          | 10.x    | Structured logging                          |
+| Helmet        | 8.x     | Security headers                            |
+| Jest          | 30.x    | Testing framework                           |
+| swagger-jsdoc | 6.x     | OpenAPI documentation                       |
 
 ---
 
@@ -86,15 +86,15 @@ graph TB
 
 **Layer responsibilities:**
 
-| Layer                           | Responsibility                                                                                                   |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| **Middleware**                  | Cross-cutting concerns: request ID, request logging, security headers, CORS, gateway secret, rate limiting, DB readiness, JWT authentication |
+| Layer                           | Responsibility                                                                                                                                      |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Middleware**                  | Cross-cutting concerns: request ID, request logging, security headers, CORS, gateway secret, rate limiting, DB readiness, JWT authentication        |
 | **Validation**                  | Request body/params/query validation using Zod schemas. Returns 400 on failure, and the parsed (whitelisted) values replace `req.body`/`req.params` |
-| **Controller**                  | Thin HTTP handler. Extracts request data, builds filters, delegates to service, formats HTTP response            |
-| **Service**                     | Business logic. Ownership checks, data transformations, cross-entity operations, transaction boundaries (`withTransaction`) |
-| **Repository (Interface)**      | Abstract data access contract in `src/domain`. Defines operations without implementation details                 |
-| **Repository (Implementation)** | Mongoose CRUD in `src/infrastructure`. Maps documents to domain entities and cents to decimal amounts            |
-| **Domain Entity**               | Plain TypeScript classes representing business objects. No framework dependencies; may expose an `assertValid()`  |
+| **Controller**                  | Thin HTTP handler. Extracts request data, builds filters, delegates to service, formats HTTP response                                               |
+| **Service**                     | Business logic. Ownership checks, data transformations, cross-entity operations, transaction boundaries (`withTransaction`)                         |
+| **Repository (Interface)**      | Abstract data access contract in `src/domain`. Defines operations without implementation details                                                    |
+| **Repository (Implementation)** | Mongoose CRUD in `src/infrastructure`. Maps documents to domain entities and cents to decimal amounts                                               |
+| **Domain Entity**               | Plain TypeScript classes representing business objects. No framework dependencies; may expose an `assertValid()`                                    |
 
 **Communication:** All layers communicate via direct synchronous function calls (no event bus or message queues).
 
@@ -169,24 +169,24 @@ graph TB
 
 ### Folder Placement Rules
 
-| File Type                 | Location                                        | Example                                    |
-| ------------------------- | ----------------------------------------------- | ------------------------------------------ |
-| Domain entity             | `src/domain/entities/`                          | `Transaction.ts`                           |
-| Domain error              | `src/domain/errors.ts`                          | `DomainValidationError`                    |
-| Repository interface      | `src/domain/repositories/[entity]/`             | `ITransactionRepository.ts`                |
-| Base repository contract  | `src/domain/repositories/IRepository.ts`        | `IRepository<T>`                           |
-| Mongoose model            | `src/infrastructure/models/`                    | `TransactionModel.ts`                      |
-| Repository implementation | `src/infrastructure/repositories/[entity]/`     | `TransactionRepository.ts`                 |
-| Controller                | `src/app/controllers/`                          | `TransactionController.ts`                 |
-| Service                   | `src/app/services/`                             | `TransactionService.ts`                    |
-| Route                     | `src/app/routes/`                               | `transactionRoutes.ts`                     |
-| DTO / view                | `src/app/dtos/`                                 | `TransactionDTO.ts`, `BudgetDTO.ts`        |
-| Validation schemas        | `src/app/validation/`                           | `schemas.ts`                               |
-| Application middleware    | `src/app/middlewares/`                          | `authMiddleware.ts`                        |
-| Factory / provider        | `src/app/factories/`, `.../providers/`          | `RepositoryFactory.ts`, `mongoProvider.ts` |
-| Shared utility            | `src/shared/`                                   | `pagination.ts`, `money.ts`, `logger.ts`   |
-| Config                    | `src/config/`                                   | `swagger.ts`, `mongoConnection.ts`, `dbHealth.ts` |
-| Tests                     | `src/__tests__/[type]/`                         | `TransactionService.test.ts`               |
+| File Type                 | Location                                    | Example                                           |
+| ------------------------- | ------------------------------------------- | ------------------------------------------------- |
+| Domain entity             | `src/domain/entities/`                      | `Transaction.ts`                                  |
+| Domain error              | `src/domain/errors.ts`                      | `DomainValidationError`                           |
+| Repository interface      | `src/domain/repositories/[entity]/`         | `ITransactionRepository.ts`                       |
+| Base repository contract  | `src/domain/repositories/IRepository.ts`    | `IRepository<T>`                                  |
+| Mongoose model            | `src/infrastructure/models/`                | `TransactionModel.ts`                             |
+| Repository implementation | `src/infrastructure/repositories/[entity]/` | `TransactionRepository.ts`                        |
+| Controller                | `src/app/controllers/`                      | `TransactionController.ts`                        |
+| Service                   | `src/app/services/`                         | `TransactionService.ts`                           |
+| Route                     | `src/app/routes/`                           | `transactionRoutes.ts`                            |
+| DTO / view                | `src/app/dtos/`                             | `TransactionDTO.ts`, `BudgetDTO.ts`               |
+| Validation schemas        | `src/app/validation/`                       | `schemas.ts`                                      |
+| Application middleware    | `src/app/middlewares/`                      | `authMiddleware.ts`                               |
+| Factory / provider        | `src/app/factories/`, `.../providers/`      | `RepositoryFactory.ts`, `mongoProvider.ts`        |
+| Shared utility            | `src/shared/`                               | `pagination.ts`, `money.ts`, `logger.ts`          |
+| Config                    | `src/config/`                               | `swagger.ts`, `mongoConnection.ts`, `dbHealth.ts` |
+| Tests                     | `src/__tests__/[type]/`                     | `TransactionService.test.ts`                      |
 
 > There are no migrations. Collections are created on first write; indexes are declared on the
 > Mongoose schemas and built with `npm run db:sync-indexes` in production (`autoIndex` in dev).
@@ -422,20 +422,20 @@ export interface Update[Entity]DTO {
 
 ### npm scripts (the real list)
 
-| Script                    | What it does                                                      |
-| ------------------------- | ----------------------------------------------------------------- |
-| `npm run start:dev`       | Dev server (nodemon + tsx, watches `src/`)                        |
-| `npm start`               | `NODE_ENV=production node dist/server.js`                         |
-| `npm run build`           | `tsc` → `dist/` (`build:watch` for watch mode)                    |
-| `npm run typecheck`       | `tsc --noEmit` over `src`                                         |
-| `npm run typecheck:tests` | `tsc -p tsconfig.test.json` (tests are type-checked separately)   |
-| `npm run lint`            | ESLint over `src/` (`lint:fix` to autofix, incl. import sorting)  |
-| `npm run format`          | Prettier write (`format:check` to verify)                         |
-| `npm test`                | Jest (`test:watch`, `test:coverage`)                              |
-| **`npm run ci`**          | **The gate:** typecheck (src and tests), lint, format, `fixtures:check`, Jest |
-| `npm run db:sync-indexes` | Builds Mongo indexes from the schemas (production deploy step)    |
-| `npm run docs`            | VitePress dev server for `docs/`                                  |
-| `npm run build:lambda` / `deploy:lambda` / `deploy:keepalive` | Lambda packaging and deploy scripts |
+| Script                                                        | What it does                                                                  |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `npm run start:dev`                                           | Dev server (nodemon + tsx, watches `src/`)                                    |
+| `npm start`                                                   | `NODE_ENV=production node dist/server.js`                                     |
+| `npm run build`                                               | `tsc` → `dist/` (`build:watch` for watch mode)                                |
+| `npm run typecheck`                                           | `tsc --noEmit` over `src`                                                     |
+| `npm run typecheck:tests`                                     | `tsc -p tsconfig.test.json` (tests are type-checked separately)               |
+| `npm run lint`                                                | ESLint over `src/` (`lint:fix` to autofix, incl. import sorting)              |
+| `npm run format`                                              | Prettier write (`format:check` to verify)                                     |
+| `npm test`                                                    | Jest (`test:watch`, `test:coverage`)                                          |
+| **`npm run ci`**                                              | **The gate:** typecheck (src and tests), lint, format, `fixtures:check`, Jest |
+| `npm run db:sync-indexes`                                     | Builds Mongo indexes from the schemas (production deploy step)                |
+| `npm run docs`                                                | VitePress dev server for `docs/`                                              |
+| `npm run build:lambda` / `deploy:lambda` / `deploy:keepalive` | Lambda packaging and deploy scripts                                           |
 
 **Before you hand work back, `npm run ci` must pass** — and `npm run check:all`, which adds
 `npm run test:mongo` behind it, when you touched indexes, transactions or pagination. Nothing runs
@@ -487,16 +487,16 @@ import time, so a missing required variable crashes the process at startup.
 All routes below `/auth` require a `Bearer` access token via `authMiddleware`, and every listed
 route is also behind `gatewaySecretMiddleware`, `dbReadinessMiddleware` and the rate limiter.
 
-| Area             | Endpoints                                                                                                                       |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Root / health    | `GET /`, `GET /health/db`, `GET /api-docs` (Swagger UI, non-production only)                                                     |
-| Auth             | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`; `GET /auth/sessions`; `DELETE /auth/sessions/:id` |
-| Users            | `GET`, `PUT`, `DELETE /users/:id`                                                                                               |
-| Accounts         | `GET`/`POST /accounts`; `GET`/`PUT`/`DELETE /accounts/:id`; `POST /accounts/:id/restore`; `POST /accounts/:id/default`           |
-| Categories       | `GET`/`POST /categories`; `POST /categories/restore-defaults`; `GET`/`PUT`/`DELETE /categories/:id`; `POST /categories/:id/restore` |
-| Transactions     | `GET`/`POST /transactions`; `POST /transactions/quick`; `GET /transactions/tags`; `GET`/`PUT`/`DELETE /transactions/:id`         |
-| Budgets          | `GET`/`POST /budgets`; `GET`/`PUT`/`DELETE /budgets/:id`; `PUT`/`DELETE /budgets/:id/amount` (per-period override)               |
-| Stats            | `GET /stats/spending` (`groupBy` = `category` \| `day` \| `tag`)                                                                 |
+| Area          | Endpoints                                                                                                                                    |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Root / health | `GET /`, `GET /health/db`, `GET /api-docs` (Swagger UI, non-production only)                                                                 |
+| Auth          | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`; `GET /auth/sessions`; `DELETE /auth/sessions/:id` |
+| Users         | `GET`, `PUT`, `DELETE /users/:id`                                                                                                            |
+| Accounts      | `GET`/`POST /accounts`; `GET`/`PUT`/`DELETE /accounts/:id`; `POST /accounts/:id/restore`; `POST /accounts/:id/default`                       |
+| Categories    | `GET`/`POST /categories`; `POST /categories/restore-defaults`; `GET`/`PUT`/`DELETE /categories/:id`; `POST /categories/:id/restore`          |
+| Transactions  | `GET`/`POST /transactions`; `POST /transactions/quick`; `GET /transactions/tags`; `GET`/`PUT`/`DELETE /transactions/:id`                     |
+| Budgets       | `GET`/`POST /budgets`; `GET`/`PUT`/`DELETE /budgets/:id`; `PUT`/`DELETE /budgets/:id/amount` (per-period override)                           |
+| Stats         | `GET /stats/spending` (`groupBy` = `category` \| `day` \| `tag`)                                                                             |
 
 **Feature notes an agent needs before touching any of this:**
 
@@ -566,20 +566,20 @@ route is also behind `gatewaySecretMiddleware`, `dbReadinessMiddleware` and the 
 
 ## 7. Documentation Update Rules
 
-| Change Made                   | Doc to Update                                                     |
-| ----------------------------- | ----------------------------------------------------------------- |
-| New route added               | `docs/modules/[module].md`, `docs/guides/adding-new-features.md`  |
-| New environment variable      | `docs/guides/environment-vars.md`                                 |
-| New design pattern introduced | `docs/architecture/design-patterns.md`                            |
-| New module created            | `docs/modules/[module].md` (create new), `docs/_index.json`       |
-| Error handling changed        | `docs/reference/error-handling.md`                                |
-| New dependency added          | `docs/guides/getting-started.md`, `docs/architecture/overview.md` |
-| New middleware added          | `docs/architecture/request-lifecycle.md`                          |
-| Validation rules changed      | `docs/modules/[module].md`                                        |
-| Folder structure changed      | `docs/architecture/folder-structure.md`                           |
-| New entity/model added        | `docs/modules/[module].md`, `docs/reference/glossary.md`          |
-| Mongoose schema or index changed | `docs/modules/[module].md` (there are no migrations)           |
-| API response format changed   | `docs/modules/[module].md`, `docs/reference/error-handling.md`    |
+| Change Made                      | Doc to Update                                                     |
+| -------------------------------- | ----------------------------------------------------------------- |
+| New route added                  | `docs/modules/[module].md`, `docs/guides/adding-new-features.md`  |
+| New environment variable         | `docs/guides/environment-vars.md`                                 |
+| New design pattern introduced    | `docs/architecture/design-patterns.md`                            |
+| New module created               | `docs/modules/[module].md` (create new), `docs/_index.json`       |
+| Error handling changed           | `docs/reference/error-handling.md`                                |
+| New dependency added             | `docs/guides/getting-started.md`, `docs/architecture/overview.md` |
+| New middleware added             | `docs/architecture/request-lifecycle.md`                          |
+| Validation rules changed         | `docs/modules/[module].md`                                        |
+| Folder structure changed         | `docs/architecture/folder-structure.md`                           |
+| New entity/model added           | `docs/modules/[module].md`, `docs/reference/glossary.md`          |
+| Mongoose schema or index changed | `docs/modules/[module].md` (there are no migrations)              |
+| API response format changed      | `docs/modules/[module].md`, `docs/reference/error-handling.md`    |
 
 ---
 

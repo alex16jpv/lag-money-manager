@@ -33,12 +33,12 @@ Two things set it apart from plain CRUD, and both are deliberate:
 
 The user's contacts, paginated (offset + cursor).
 
-| Parameter         | Type   | Description                                                |
-| ----------------- | ------ | ---------------------------------------------------------- |
-| `limit`           | number | 1–100, default 20                                          |
-| `offset`          | number | Items to skip (offset pagination)                          |
-| `cursor`          | string | Last ID of the previous page (overrides `offset`)          |
-| `ids`             | string | Comma-separated list of contact UUIDs (1–100)              |
+| Parameter         | Type   | Description                                                 |
+| ----------------- | ------ | ----------------------------------------------------------- |
+| `limit`           | number | 1–100, default 20                                           |
+| `offset`          | number | Items to skip (offset pagination)                           |
+| `cursor`          | string | Last ID of the previous page (overrides `offset`)           |
+| `ids`             | string | Comma-separated list of contact UUIDs (1–100)               |
 | `includeArchived` | enum   | `"true"` also returns archived contacts (hidden by default) |
 
 > The list **pages from the first day**, on purpose. A contact list that silently stops at a fixed ceiling is the defect the accounts list already has, and this section is not allowed to repeat it. A `cursor` has to name a row the caller owns; one that names none is `400 INVALID_CURSOR`, never a silent page one.
@@ -79,11 +79,11 @@ Every write accepts `If-Match: <updatedAt ISO>` and answers `409 STALE_UPDATE` w
 
 ## Storage
 
-| Index                            | Why                                                                             |
-| -------------------------------- | ------------------------------------------------------------------------------- |
-| `{ userId: 1, _id: 1 }`          | Every read is user-scoped, and the listing's keyset runs over `_id`             |
-| `{ userId: 1, name: 1 }` unique  | One **active** name per user (`partialFilterExpression: { archivedAt: null }`), with the `es` strength-2 collation that folds case and keeps accents |
-| `{ userId: 1, updatedAt: 1, _id: 1 }` | The keyset the offline change feed scans ([sync.md](sync.md)); archived contacts travel with it, which is how a device learns one is gone |
+| Index                                 | Why                                                                                                                                                  |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{ userId: 1, _id: 1 }`               | Every read is user-scoped, and the listing's keyset runs over `_id`                                                                                  |
+| `{ userId: 1, name: 1 }` unique       | One **active** name per user (`partialFilterExpression: { archivedAt: null }`), with the `es` strength-2 collation that folds case and keeps accents |
+| `{ userId: 1, updatedAt: 1, _id: 1 }` | The keyset the offline change feed scans ([sync.md](sync.md)); archived contacts travel with it, which is how a device learns one is gone            |
 
 `email` carries **no** uniqueness constraint: an invitation names a contact, so two contacts sharing an address is ambiguous to nobody, and refusing it would be a rule the product never asked for.
 

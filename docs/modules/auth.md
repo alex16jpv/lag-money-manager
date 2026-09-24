@@ -75,7 +75,7 @@ Register a new user. **Register also logs in** — the response already carries 
 
 Registration also seeds the user's default categories (failures are logged, never fail the request).
 
-**Reactivation:** registering with the email of a **soft-deleted** account revives it with its full financial history. The response carries `user.reactivated: true`, and the original currency is kept — the `currency` sent in that register is ignored.
+**Reactivation:** registering with the email **and the password** of a **soft-deleted** account revives it with its full financial history. The response carries `user.reactivated: true`, and the original currency is kept — the `currency` sent in that register is ignored. With any other password the answer is `409 EMAIL_TAKEN`, the same as for a live account: the history goes back only to whoever still knows its password (T-153). That makes register a way to test a deleted account's password, so it spends the same per-email budget as a failed login (see Rate Limiting).
 
 Note: the password is never returned.
 
@@ -209,9 +209,11 @@ sequenceDiagram
         CTRL->>SVC: register(dto, userAgent)
         SVC->>SVC: Hash password (bcryptjs)
         SVC->>REPO: getDeletedByEmail(email)
-        alt Soft-deleted account exists
+        alt Soft-deleted account, same password
             SVC->>REPO: reactivate(id, { name, password, timezone?, locale? })
             Note over SVC: user.reactivated = true, currency kept
+        else Soft-deleted account, other password
+            SVC->>CTRL: 409 EMAIL_TAKEN
         else New user
             SVC->>REPO: create(user)
             SVC->>SVC: seedDefaultCategories(userId) — failures logged only
@@ -329,11 +331,11 @@ sequenceDiagram
 
 | Endpoint                        | Key                     | Cap                                              |
 | ------------------------------- | ----------------------- | ------------------------------------------------ |
-| `POST /auth/register`           | Client IP               | `AUTH_IP_RATE_LIMIT_MAX`                         |
+| `POST /auth/register`           | Client IP **and** email | `AUTH_IP_RATE_LIMIT_MAX` / `AUTH_RATE_LIMIT_MAX` |
 | `POST /auth/login`              | Client IP **and** email | `AUTH_IP_RATE_LIMIT_MAX` / `AUTH_RATE_LIMIT_MAX` |
 | `POST /auth/refresh`, `/logout` | Client IP               | `REFRESH_RATE_LIMIT_MAX`                         |
 
-Login is limited on two dimensions because a distributed attack on one account rotates IPs. Only **failed** logins burn the per-email budget (`refundOnSuccess`), so a third party cannot lock a victim out by spamming their address.
+Login is limited on two dimensions because a distributed attack on one account rotates IPs. Only **failed** logins burn the per-email budget (`refundOnSuccess`), so real logins cost nothing; but anyone's failed attempts count, so enough of them against an address lock it for the rest of the window, its owner included (the refund only helps below the cap). How to stop that is still open (T-176). Register shares that same per-email counter (`login-email:<email>`), because registering with a deleted account's email tests its password: a failed register and a failed login spend one budget between them.
 
 The two caps are deliberately different. The per-email one is the budget of an attack aimed at a single account, so `10` is right. The per-IP one is shared by everyone behind that address — a carrier NAT holds thousands of unrelated users — so it is a volume brake, not a per-person allowance, and it defaults to `60`.
 
@@ -349,8 +351,7 @@ The two caps are deliberately different. The per-email one is the budget of an a
 | `REFRESH_REVOKED` | 401    | Reuse of a rotated token whose successor is already spent; a rotated token presented past its re-issue limit; a family already ended by a logout or `DELETE /auth/sessions/:id`; or a token that predates a logout-all / credential change |
 | `Unauthorized`    | 401    | Missing or malformed `Authorization` header, or an invalid/expired access token                                                                                                                                                            |
 | `NotFound`        | 404    | `DELETE /auth/sessions/:id` for a family that is not the user's                                                                                                                                                                            |
-| `EMAIL_TAKEN`     | 409    | A concurrent register reactivated the same soft-deleted account                                                                                                                                                                            |
-| `DUPLICATE`       | 409    | Email already registered (unique index on `email`)                                                                                                                                                                                         |
+| `EMAIL_TAKEN`     | 409    | Register with the email of a live account, of a soft-deleted one with a different password, or one a concurrent register just reactivated                                                                                                  |
 | `RATE_LIMITED`    | 429    | Too many attempts in the window                                                                                                                                                                                                            |
 
 > On a `500` during register the user may still have been created — clients should try login before retrying register.

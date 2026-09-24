@@ -23,7 +23,7 @@ A full module consists of all layers from route to database. Create these files 
 
 Refer to the sections below for each file.
 
-> **Layer rule:** `src/domain/` holds entities and repository *interfaces* and imports nothing from `app/` or `infrastructure/`. Mongoose models and the concrete repositories live in `src/infrastructure/`. Names carry no `Mongo` suffix — MongoDB is the only backend.
+> **Layer rule:** `src/domain/` holds entities and repository _interfaces_ and imports nothing from `app/` or `infrastructure/`. Mongoose models and the concrete repositories live in `src/infrastructure/`. Names carry no `Mongo` suffix — MongoDB is the only backend.
 
 ---
 

@@ -27,7 +27,7 @@ export class UserController {
   static deleteUser = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     const id = req.params.id as string;
-    await userService.deleteUser(id, userId);
+    await userService.deleteUser(id, userId, req.body.currentPassword);
     res.status(200).json({ message: "User deleted successfully" });
   };
 }

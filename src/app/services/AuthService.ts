@@ -24,6 +24,14 @@ type LostAnswer =
   | { kind: "spent" }
   | { kind: "replay" };
 
+const emailTaken = () =>
+  new ApiError("Conflict", "Email is already registered", "EMAIL_TAKEN");
+
+function isDuplicateEmailError(err: unknown): boolean {
+  const e = err as { code?: number; keyPattern?: Record<string, unknown> };
+  return e?.code === 11000 && !!e.keyPattern && "email" in e.keyPattern;
+}
+
 const REFRESH_TOKEN_TYPE = "refresh";
 
 // The rotated row is an alias of its successor until someone uses it: ten pairs is alias enough.
@@ -113,18 +121,19 @@ export class AuthService {
     dto: CreateUserDTO,
     userAgent?: string,
   ): Promise<AuthTokens & { user: UserResponseDTO }> {
-    const hashedPassword = await bcryptjs.hash(
-      dto.password,
-      ENVIRONMENT.BCRYPT_SALT_ROUNDS,
-    );
-
-    // Owner decision (R2-09): registering with a soft-deleted email reactivates that account.
+    // Owner decisions R2-09 and T-153: a soft-deleted account comes back only with the password it had.
     const deleted = await this.repo.getDeletedByEmail(dto.email);
     if (deleted) {
+      if (
+        !deleted.password ||
+        !(await bcryptjs.compare(dto.password, deleted.password))
+      ) {
+        throw emailTaken();
+      }
       try {
         const reactivated = await this.repo.reactivate(deleted.id, {
           name: dto.name,
-          password: hashedPassword,
+          password: deleted.password,
           ...(dto.timezone ? { timezone: dto.timezone } : {}),
           ...(dto.locale ? { locale: dto.locale } : {}),
         });
@@ -136,19 +145,25 @@ export class AuthService {
       } catch (err) {
         // Concurrent register already reactivated it: surface as a conflict.
         if (err instanceof ApiError && err.statusCode === 404) {
-          throw new ApiError(
-            "Conflict",
-            "Email is already registered",
-            "EMAIL_TAKEN",
-          );
+          throw emailTaken();
         }
         throw err;
       }
     }
 
+    const hashedPassword = await bcryptjs.hash(
+      dto.password,
+      ENVIRONMENT.BCRYPT_SALT_ROUNDS,
+    );
     const user = new User({ ...dto, password: hashedPassword });
 
-    const created = await this.repo.create(user);
+    let created: User;
+    try {
+      created = await this.repo.create(user);
+    } catch (err) {
+      if (isDuplicateEmailError(err)) throw emailTaken();
+      throw err;
+    }
 
     try {
       await this.categoryService.seedDefaultCategories(created.id);
