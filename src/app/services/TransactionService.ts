@@ -1,3 +1,4 @@
+import { Account } from "../../domain/entities/Account";
 import { Transaction } from "../../domain/entities/Transaction";
 import { DomainValidationError } from "../../domain/errors";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
@@ -12,6 +13,7 @@ import { assertFresh } from "../../shared/concurrency";
 import { dayKeyOf } from "../../shared/dayKey";
 import { ErrorCode } from "../../shared/errorCodes";
 import { ApiError } from "../../shared/errors";
+import { fromCents, toCents } from "../../shared/money";
 import {
   PaginatedResult,
   PaginationParams,
@@ -33,6 +35,20 @@ function isDuplicateKeyError(err: unknown): boolean {
     err !== null &&
     (err as { code?: number }).code === 11000
   );
+}
+
+interface BalanceMove {
+  transaction: Transaction;
+  direction: 1 | -1;
+}
+
+// An expense only leaves its account and an income only lands on its own; the rest name each side they use.
+function sidesOf(transaction: Transaction): [string, 1 | -1][] {
+  const { type, fromAccountId, toAccountId } = transaction;
+  const sides: [string, 1 | -1][] = [];
+  if (type !== "INCOME" && fromAccountId) sides.push([fromAccountId, -1]);
+  if (type !== "EXPENSE" && toAccountId) sides.push([toAccountId, 1]);
+  return sides;
 }
 
 // Scope in the stored key keeps future idempotent operations from colliding.
@@ -181,18 +197,31 @@ export class TransactionService {
 
   // Written inside somebody else's transaction: a settle-up's movements land or fail with it.
   async recordWithin(
-    dto: CreateTransactionDTO,
+    dtos: CreateTransactionDTO[],
     timezone: string,
     session: TxSession,
     journal: RestampJournal,
-  ): Promise<Transaction> {
-    const transaction = new Transaction({
-      ...dto,
-      dayKey: dayKeyOf(new Date(dto.date), timezone),
-    });
-    transaction.assertValid();
-    await this.assertCategoryUsable(transaction);
-    return this.applyAndCreate(transaction, session, journal);
+  ): Promise<Transaction[]> {
+    const transactions: Transaction[] = [];
+    for (const dto of dtos) {
+      const transaction = new Transaction({
+        ...dto,
+        dayKey: dayKeyOf(new Date(dto.date), timezone),
+      });
+      transaction.assertValid();
+      await this.assertCategoryUsable(transaction);
+      transactions.push(transaction);
+    }
+    await this.moveBalances(
+      transactions.map((transaction) => ({ transaction, direction: 1 })),
+      session,
+      journal,
+    );
+    const created: Transaction[] = [];
+    for (const transaction of transactions) {
+      created.push(await this.transactionRepo.create(transaction, session));
+    }
+    return created;
   }
 
   // The movement is the only write of the caller's transaction, so what it rewrote is the answer's.
@@ -202,7 +231,18 @@ export class TransactionService {
     session: TxSession,
   ): Promise<WithRestamps<Transaction>> {
     const journal = new RestampJournal();
-    const recorded = await this.recordWithin(dto, timezone, session, journal);
+    const [recorded] = await this.recordWithin(
+      [dto],
+      timezone,
+      session,
+      journal,
+    );
+    if (!recorded) {
+      throw new ApiError(
+        "InternalServerError",
+        "The movement was not recorded",
+      );
+    }
     return Object.assign(recorded, {
       restamped: await this.ledger.restampsOf(dto.userId, journal, session),
     });
@@ -238,14 +278,20 @@ export class TransactionService {
     );
   }
 
-  /** Reverses what a movement did to the balances and drops it, inside the caller's transaction. */
+  // One net per account, so undoing a payment does not depend on the order its movements come back in.
   async reverseWithin(
-    transaction: Transaction,
+    transactions: Transaction[],
     session: TxSession,
     journal: RestampJournal,
   ): Promise<void> {
-    await this.adjustBalances(transaction, -1, session, journal);
-    await this.transactionRepo.delete(transaction.id, session);
+    await this.moveBalances(
+      transactions.map((transaction) => ({ transaction, direction: -1 })),
+      session,
+      journal,
+    );
+    for (const transaction of transactions) {
+      await this.transactionRepo.delete(transaction.id, session);
+    }
   }
 
   private async applyAndCreate(
@@ -253,7 +299,7 @@ export class TransactionService {
     session: TxSession,
     journal: RestampJournal,
   ): Promise<Transaction> {
-    await this.adjustBalances(transaction, 1, session, journal);
+    await this.moveBalances([{ transaction, direction: 1 }], session, journal);
     return this.transactionRepo.create(transaction, session);
   }
 
@@ -439,8 +485,14 @@ export class TransactionService {
         updated.fromAccountId !== existing.fromAccountId ||
         updated.toAccountId !== existing.toAccountId;
       if (monetaryChanged) {
-        await this.adjustBalances(existing, -1, session, journal);
-        await this.adjustBalances(updated, 1, session, journal);
+        await this.moveBalances(
+          [
+            { transaction: existing, direction: -1 },
+            { transaction: updated, direction: 1 },
+          ],
+          session,
+          journal,
+        );
       }
 
       // R2-27: the day only moves when the date does, or an unrelated edit re-books a past expense.
@@ -512,7 +564,11 @@ export class TransactionService {
         );
       }
 
-      await this.adjustBalances(transaction, -1, session, journal);
+      await this.moveBalances(
+        [{ transaction, direction: -1 }],
+        session,
+        journal,
+      );
       // The group's expense is this movement seen from the other side: one cannot outlive the other.
       if (transaction.sharedExpenseId) {
         await this.ledger.dropExpenseOf(
@@ -558,119 +614,135 @@ export class TransactionService {
     }
   }
 
-  private async adjustBalances(
-    transaction: Transaction,
-    direction: 1 | -1,
+  // Each account moves once, by the net of every move: a LOAN is capped on where it ends, not on a step.
+  private async moveBalances(
+    moves: BalanceMove[],
     session: TxSession,
     journal: RestampJournal,
   ): Promise<void> {
-    const { type, amount, fromAccountId, toAccountId } = transaction;
-
-    const adjustAccount = async (
-      accountId: string,
-      sign: number,
-    ): Promise<void> => {
-      // Existence is only checked on apply: a reversal must work on an account archived meanwhile.
-      if (direction === 1) {
-        const account = await this.accountRepo.getById(accountId, session);
-        if (!account) {
-          throw new ApiError(
-            "NotFound",
-            sign < 0
-              ? "Source account not found"
-              : "Destination account not found",
-          );
-        }
-        // 404 for foreign accounts too: ids must not be probeable (R2-25a).
-        if (account.userId !== transaction.userId) {
-          throw new ApiError(
-            "NotFound",
-            sign < 0
-              ? "Source account not found"
-              : "Destination account not found",
-          );
-        }
-        // Mono-currency: the transaction carries its account's currency.
-        if (
-          account.currency &&
-          transaction.currency &&
-          transaction.currency !== account.currency
-        ) {
-          throw new ApiError(
-            "BadRequest",
-            "Transfers between accounts with different currencies are not supported yet",
-            "CURRENCY_MISMATCH",
-          );
-        }
-        transaction.currency = transaction.currency ?? account.currency;
-        // The currency is only known once the account is read, and a reversal replays a validated amount.
+    const net = new Map<string, number>();
+    const applied = new Map<string, Account>();
+    for (const { transaction, direction } of moves) {
+      for (const [accountId, sign] of sidesOf(transaction)) {
         if (direction === 1) {
-          transaction.assertValidPrecision();
-        }
-        const refusal = refuseMovement(
-          type,
-          account.type,
-          sign < 0 ? "from" : "to",
-        );
-        if (refusal) {
-          throw new ApiError("BadRequest", refusal.message, refusal.code);
-        }
-        if (account.type === "LOAN" && sign > 0) {
-          journal.note("account", account);
-          const outcome = await this.accountRepo.incrementBalanceCapped(
+          applied.set(
             accountId,
-            amount * sign * direction,
-            0,
-            session,
+            await this.assertAccountTakes(
+              transaction,
+              accountId,
+              sign,
+              session,
+            ),
           );
-          if (outcome === "over") {
-            throw new ApiError(
-              "BadRequest",
-              "A loan cannot be paid more than it still owes",
-              "LOAN_OVERPAID",
-            );
-          }
-          if (outcome === "missing") {
-            throw new ApiError(
-              "InternalServerError",
-              "Account missing during balance adjustment",
-            );
-          }
-          return;
         }
+        net.set(
+          accountId,
+          (net.get(accountId) ?? 0) +
+            toCents(transaction.amount) * sign * direction,
+        );
       }
-
-      const before = await this.accountRepo.incrementBalance(
+    }
+    for (const [accountId, cents] of net) {
+      if (cents === 0) continue;
+      await this.incrementAccount(
         accountId,
-        amount * sign * direction,
+        cents,
+        applied.get(accountId),
+        session,
+        journal,
+      );
+    }
+  }
+
+  private async assertAccountTakes(
+    transaction: Transaction,
+    accountId: string,
+    sign: 1 | -1,
+    session: TxSession,
+  ): Promise<Account> {
+    const account = await this.accountRepo.getById(accountId, session);
+    // 404 for foreign accounts too: ids must not be probeable (R2-25a).
+    if (!account || account.userId !== transaction.userId) {
+      throw new ApiError(
+        "NotFound",
+        sign < 0 ? "Source account not found" : "Destination account not found",
+      );
+    }
+    // Mono-currency: the transaction carries its account's currency.
+    if (
+      account.currency &&
+      transaction.currency &&
+      transaction.currency !== account.currency
+    ) {
+      throw new ApiError(
+        "BadRequest",
+        "Transfers between accounts with different currencies are not supported yet",
+        "CURRENCY_MISMATCH",
+      );
+    }
+    transaction.currency = transaction.currency ?? account.currency;
+    // The currency is only known once the account is read, and a reversal replays a validated amount.
+    transaction.assertValidPrecision();
+    const refusal = refuseMovement(
+      transaction.type,
+      account.type,
+      sign < 0 ? "from" : "to",
+    );
+    if (refusal) {
+      throw new ApiError("BadRequest", refusal.message, refusal.code);
+    }
+    return account;
+  }
+
+  private async incrementAccount(
+    accountId: string,
+    cents: number,
+    applied: Account | undefined,
+    session: TxSession,
+    journal: RestampJournal,
+  ): Promise<void> {
+    const delta = fromCents(cents);
+    const target =
+      cents > 0
+        ? (applied ??
+          (await this.accountRepo.getByIdIncludingArchived(accountId, session)))
+        : undefined;
+    if (target?.type === "LOAN") {
+      journal.note("account", target);
+      const outcome = await this.accountRepo.incrementBalanceCapped(
+        accountId,
+        delta,
+        0,
         session,
       );
-      if (!before) {
-        // Aborts the Mongo transaction: a skipped increment would desync the balance from the ledger.
+      if (outcome === "over") {
+        throw new ApiError(
+          "BadRequest",
+          "A loan cannot end above zero: it cannot be paid more than it still owes",
+          "LOAN_OVERPAID",
+        );
+      }
+      if (outcome === "missing") {
         throw new ApiError(
           "InternalServerError",
           "Account missing during balance adjustment",
         );
       }
-      journal.note("account", { id: accountId, ...before });
-    };
-
-    if (type === "EXPENSE" && fromAccountId) {
-      await adjustAccount(fromAccountId, -1);
+      return;
     }
 
-    if (type === "INCOME" && toAccountId) {
-      await adjustAccount(toAccountId, 1);
+    const before = await this.accountRepo.incrementBalance(
+      accountId,
+      delta,
+      session,
+    );
+    if (!before) {
+      // Aborts the Mongo transaction: a skipped increment would desync the balance from the ledger.
+      throw new ApiError(
+        "InternalServerError",
+        "Account missing during balance adjustment",
+      );
     }
-
-    // The three that name their own side: a transfer both, the other two exactly one.
-    if (type === "TRANSFER" || type === "ADJUSTMENT" || type === "SETTLEMENT") {
-      if (fromAccountId) {
-        await adjustAccount(fromAccountId, -1);
-      }
-      if (toAccountId) {
-        await adjustAccount(toAccountId, 1);
-      }
-    }
+    journal.note("account", { id: accountId, ...before });
   }
 }

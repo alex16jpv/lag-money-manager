@@ -466,7 +466,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/TransactionWithRestamps'
  *       400:
- *         description: Validation error. Codes include SPLIT_INVALID and TRANSACTION_NOT_SPLITTABLE (a movement in a shared group), FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN (an income moved onto an account type listed in `IncomeRefusedAccountType`), AMOUNT_PRECISION (only when the edit carries an amount) and LOAN_OVERPAID (a movement that would leave a LOAN above zero), the first and the last checked again whenever the edit moves money, CATEGORY_ARCHIVED (assigning an archived category; keeping the one it already had is allowed), CATEGORY_TYPE_MISMATCH.
+ *         description: Validation error. Codes include SPLIT_INVALID and TRANSACTION_NOT_SPLITTABLE (a movement in a shared group), FUTURE_DATE, CURRENCY_MISMATCH, INCOME_ON_CARD_OR_LOAN (an income moved onto an account type listed in `IncomeRefusedAccountType`), AMOUNT_PRECISION (only when the edit carries an amount) and LOAN_OVERPAID (an edit that would leave a LOAN above zero, judged on where the loan ends, so lowering or moving what was borrowed from it trips it too), the first and the last checked again whenever the edit moves money, CATEGORY_ARCHIVED (assigning an archived category; keeping the one it already had is allowed), CATEGORY_TYPE_MISMATCH.
  *         content:
  *           application/json:
  *             schema:
@@ -518,7 +518,7 @@ router.put(
  *             schema:
  *               $ref: '#/components/schemas/MessageWithRestamps'
  *       400:
- *         description: Invalid ID format
+ *         description: Invalid ID format. Codes include SETTLEMENT_MOVEMENT_LOCKED (a settle-up recorded it; undo the payment instead) and LOAN_OVERPAID (money it took out of a LOAN has since been paid back, so deleting it would leave the loan above zero; lower the payment first)
  *       401:
  *         description: Unauthorized
  *       404:

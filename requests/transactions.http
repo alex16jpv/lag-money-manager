@@ -513,3 +513,26 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "type": "ADJUSTMENT", "amount": 9000, "date": "{{date}}", "toAccountId": "{{loanId}}" }
+
+### Un interés de 200 que sale del préstamo (201; ahora debe 8.600)
+# @name loanInterest
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "EXPENSE", "amount": 200, "date": "{{date}}", "fromAccountId": "{{loanId}}" }
+
+###
+
+@loanInterestId = {{loanInterest.response.body.id}}
+
+### Saldarlo entero (201; el préstamo queda en 0)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "TRANSFER", "amount": 8600, "date": "{{date}}", "fromAccountId": "{{accAId}}", "toAccountId": "{{loanId}}" }
+
+### Borrar el interés ya saldado lo dejaría en +200 (400 LOAN_OVERPAID, T-156)
+DELETE {{baseUrl}}/transactions/{{loanInterestId}}
+Authorization: Bearer {{token}}

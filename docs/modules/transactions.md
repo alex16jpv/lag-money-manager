@@ -276,7 +276,7 @@ sequenceDiagram
 
     rect rgb(240, 240, 240)
         Note over SVC,DB: withTransaction() — one MongoDB session
-        SVC->>SVC: adjustBalances(transaction, direction=+1)
+        SVC->>SVC: moveBalances([{ transaction, direction: +1 }])
 
         alt EXPENSE
             SVC->>ACCT_REPO: getById(fromAccountId)
@@ -317,8 +317,8 @@ sequenceDiagram
     Note over SVC: 2. Merge: new Transaction({ ...existing, ...dto }) + assertValid()
     Note over SVC: 3. monetaryChanged = type, amount, fromAccountId or toAccountId differs
     alt monetaryChanged
-        SVC->>ACCT: adjustBalances(existing, -1)
-        SVC->>ACCT: adjustBalances(updated, +1)
+        SVC->>ACCT: moveBalances([{ existing, -1 }, { updated, +1 }])
+        Note over ACCT: one $inc per account, by the net of both
     else Non-monetary edit (description, tags, note, category, ...)
         Note over SVC: Balances untouched — this is what lets a<br/>transaction on an archived account still be edited
     end
@@ -457,9 +457,10 @@ Two consequences worth stating, because both were asked:
 
 `shared/transactionRules.ts` holds the static half — the pair (movement, account type, side) —
 as a pure function, so the grid above is one function and not a condition scattered over the
-service. The LOAN cap is not static: it depends on the balance the movement would leave, so it
+service. The LOAN cap is not static: it depends on the balance the write would leave, so it
 is a **conditional `$inc`** (`AccountRepository.incrementBalanceCapped`) that the database
-decides inside the same transaction. Reading the balance to compare it in the service would
+decides inside the same transaction, on the **net** the whole write leaves on the loan (see
+_Balance Adjustment Logic_). Reading the balance to compare it in the service would
 break house rule 1 and lose to any concurrent payment.
 
 The static half is also **published**, not only enforced (T-103): `INCOME_REFUSED_ON` is the enum of
@@ -472,28 +473,35 @@ that schema rather than spelling the types out again. What this buys, exactly: c
 on this side fires — the grid above and the sentence the server sends the user are prose, and prose
 still has to be changed by hand.
 
-Both are checked only on **forward** adjustments (`direction = +1`), so a reversal is never refused
-and nothing already stored is rewritten by this task. What that means for a row that already has a
-refused shape, exactly:
+The static half is checked only on **forward** adjustments (`direction = +1`), so a reversal is never
+refused for its shape and nothing already stored is rewritten. **The LOAN cap is not about shape**: it
+holds on every write that leaves a loan higher than it found it, a delete or an edit included (T-156).
+Borrowing 200 of interest on a loan of 1,000, paying 1,200 and then deleting the interest would leave
+the loan at +200 — money of its own on a debt — so the delete is refused with `LOAN_OVERPAID`, and so
+is lowering the interest or moving it to another account. The way out is the order that keeps the loan
+honest: lower the payment first, then delete what was borrowed. Undoing a settle-up paid from a loan
+paid off since is refused the same way. What that means for a row that already has a refused shape,
+exactly:
 
-- **Deleting it always works**, and so does editing anything that does not move money — a note, a
-  date, a category — because the service only reverses and re-applies when the money changed.
+- **Deleting it works**, save the loan case above, and so does editing anything that does not move
+  money — a note, a date, a category — because the service only reverses and re-applies when the
+  money changed.
 - **An `INCOME` on a card**: changing its amount is refused unless the same request also changes the
   type or the account, which is the edit that makes it legal. That is deliberate — the row cannot be
   kept in a shape the product refuses — but it means "fix the amount" alone is not a path.
-- **A `LOAN` already above zero** (data from before this rule, or an account created that way):
-  editing a movement that enters it is impossible, because the reversal leaves it positive and any
-  forward amount then trips `LOAN_OVERPAID`. Deleting it, or moving it to another account, is the way
-  out. `AccountService` refuses to create or leave a loan above zero, so no new account can land
+- **A `LOAN` already above zero** (data from before this rule, or from before T-156): any write that
+  would take it higher is refused, and every one that brings it down works — lowering or deleting a
+  payment into it, or borrowing more from it. The cap is on the net, so a legacy loan does not lock
+  the movements that would repair it. `AccountService` refuses to create or leave a loan above zero, so no new account can land
   there.
 
 ## Balance Adjustment Logic
 
-The `adjustBalances()` private method in `TransactionService` modifies account balances whenever a transaction is created, updated, or deleted. It always runs inside a MongoDB session opened by `withTransaction()`.
+The `moveBalances()` private method in `TransactionService` modifies account balances whenever a transaction is created, updated, or deleted. It always runs inside a MongoDB session opened by `withTransaction()`.
 
 ### Direction Parameter
 
-The method accepts a `direction` parameter of `1` or `-1`:
+The method takes a list of moves, each a transaction with a `direction` of `1` or `-1`:
 
 | Operation              | Direction      | Effect                                                                                                |
 | ---------------------- | -------------- | ----------------------------------------------------------------------------------------------------- |
@@ -501,7 +509,7 @@ The method accepts a `direction` parameter of `1` or `-1`:
 | **Delete** transaction | `-1`           | Reverse balance changes (restore previous balance)                                                    |
 | **Update** transaction | `-1` then `+1` | Reverse old transaction's adjustments, then apply new ones — **only when the money movement changed** |
 
-The applied delta is `amount × sign × direction`, written with an atomic `$inc` via `AccountRepository.incrementBalance()`, where `sign` is `-1` for the source account (`fromAccountId`) and `+1` for the destination account (`toAccountId`).
+Each move contributes `amount × sign × direction` in cents to its account, where `sign` is `-1` for the source account (`fromAccountId`) and `+1` for the destination account (`toAccountId`). The contributions of the whole write are **summed per account and written once**, with an atomic `$inc` via `AccountRepository.incrementBalance()`; an account the write nets to zero on is not written at all. A positive net on a `LOAN` goes through `incrementBalanceCapped()` with a ceiling of zero instead, so the cap judges where the loan ends and not the reversal half-way through an edit: lowering an interest of 200 to 150 on a loan at −100 leaves it at −50 and is accepted, although reversing the 200 alone would have passed zero (T-156).
 
 ### Account Validation
 
@@ -519,16 +527,16 @@ In both directions, if the `$inc` itself matches no document the service throws 
 
 ### Failure Modes
 
-| Scenario                                    | Direction | Behavior                                           |
-| ------------------------------------------- | --------- | -------------------------------------------------- |
-| Source account not found                    | `+1`      | `NotFound` (404)                                   |
-| Destination account not found               | `+1`      | `NotFound` (404)                                   |
-| Either account belongs to another user      | `+1`      | `NotFound` (404) — uniform with "missing"          |
-| Currency of the account differs             | `+1`      | `400 CURRENCY_MISMATCH`                            |
-| Income landing on a card or a loan          | `+1`      | `400 INCOME_ON_CARD_OR_LOAN`                       |
-| Movement that would leave a LOAN above zero | `+1`      | `400 LOAN_OVERPAID`, transaction aborted           |
-| Archived account during reversal            | `-1`      | Proceeds normally (no ownership/currency re-check) |
-| Increment matched no account                | any       | `InternalServerError` (500), transaction aborted   |
+| Scenario                                 | Direction | Behavior                                           |
+| ---------------------------------------- | --------- | -------------------------------------------------- |
+| Source account not found                 | `+1`      | `NotFound` (404)                                   |
+| Destination account not found            | `+1`      | `NotFound` (404)                                   |
+| Either account belongs to another user   | `+1`      | `NotFound` (404) — uniform with "missing"          |
+| Currency of the account differs          | `+1`      | `400 CURRENCY_MISMATCH`                            |
+| Income landing on a card or a loan       | `+1`      | `400 INCOME_ON_CARD_OR_LOAN`                       |
+| Write that would leave a LOAN above zero | any       | `400 LOAN_OVERPAID`, transaction aborted           |
+| Archived account during reversal         | `-1`      | Proceeds normally (no ownership/currency re-check) |
+| Increment matched no account             | any       | `InternalServerError` (500), transaction aborted   |
 
 > Balance adjustments **are** wrapped in a MongoDB transaction (`shared/unitOfWork.ts`), which requires a replica set. The whole transaction — every attempt and the commit — is bounded to `timeoutMS: 10_000`: the driver's own retry loop can run up to 120 s, and `maxCommitTimeMS`, used before, bounded only the commit and left that loop unbounded, so a burst of conflicts could outlive the Lambda. Because `withTransaction` may retry on transient conflicts, the wrapped work must stay idempotent.
 

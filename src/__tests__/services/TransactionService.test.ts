@@ -632,7 +632,7 @@ describe("TransactionService", () => {
   });
 
   describe("updateTransaction", () => {
-    it("reverses the old effect and applies the new one", async () => {
+    it("moves the account once, by the difference between the old effect and the new [T-156]", async () => {
       const existing = new Transaction({
         id: TX_ID,
         type: "EXPENSE",
@@ -649,17 +649,69 @@ describe("TransactionService", () => {
 
       await service.updateTransaction(TX_ID, { amount: 175 }, USER, TZ);
 
-      // reverse old (+100 back), then apply new (-175)
+      expect(acctRepo.incrementBalance).toHaveBeenCalledTimes(1);
       expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
         ACC_A,
+        -75,
+        "test-session",
+      );
+    });
+
+    it("leaves alone an account the edit nets to zero on, and moves only the other [T-156]", async () => {
+      const existing = new Transaction({
+        id: TX_ID,
+        type: "EXPENSE",
+        amount: 100,
+        date: new Date("2026-03-28"),
+        fromAccountId: ACC_A,
+        userId: USER,
+      });
+      txRepo.getById.mockResolvedValue(existing);
+      acctRepo.getById.mockImplementation(async (id) => account({ id }));
+      txRepo.update.mockImplementation(
+        async (_id, patch) => new Transaction({ ...existing, ...patch }),
+      );
+
+      await service.updateTransaction(
+        TX_ID,
+        { type: "TRANSFER", toAccountId: ACC_B },
+        USER,
+        TZ,
+      );
+
+      expect(acctRepo.incrementBalance).toHaveBeenCalledTimes(1);
+      expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
+        ACC_B,
         100,
         "test-session",
       );
-      expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
+    });
+
+    it("caps an edit that takes money off a loan's debt on where the loan ends [T-156]", async () => {
+      const existing = new Transaction({
+        id: TX_ID,
+        type: "EXPENSE",
+        amount: 200,
+        date: new Date("2026-03-28"),
+        fromAccountId: ACC_A,
+        userId: USER,
+      });
+      txRepo.getById.mockResolvedValue(existing);
+      acctRepo.getById.mockResolvedValue(account({ type: "LOAN", balance: 0 }));
+      acctRepo.incrementBalanceCapped.mockResolvedValue("over");
+
+      await expect(
+        service.updateTransaction(TX_ID, { amount: 150 }, USER, TZ),
+      ).rejects.toMatchObject({ code: "LOAN_OVERPAID" });
+
+      expect(acctRepo.incrementBalanceCapped).toHaveBeenCalledWith(
         ACC_A,
-        -175,
+        50,
+        0,
         "test-session",
       );
+      expect(acctRepo.incrementBalance).not.toHaveBeenCalled();
+      expect(txRepo.update).not.toHaveBeenCalled();
     });
 
     // T-67: precision is a rule about the amount being written, not about the one already stored.
@@ -1047,6 +1099,67 @@ describe("TransactionService", () => {
         TX_ID,
         "test-session",
         undefined,
+      );
+    });
+
+    it("refuses to delete what was borrowed from a loan when it would leave the loan above zero [T-156]", async () => {
+      txRepo.getById.mockResolvedValue(
+        new Transaction({
+          id: TX_ID,
+          type: "EXPENSE",
+          amount: 200,
+          date: new Date("2026-03-28"),
+          fromAccountId: ACC_A,
+          userId: USER,
+        }),
+      );
+      acctRepo.getByIdIncludingArchived.mockResolvedValue(
+        account({ type: "LOAN", balance: 0, archivedAt: new Date() }),
+      );
+      acctRepo.incrementBalanceCapped.mockResolvedValue("over");
+
+      await expect(
+        service.deleteTransaction(TX_ID, USER),
+      ).rejects.toMatchObject({ code: "LOAN_OVERPAID" });
+
+      expect(acctRepo.getByIdIncludingArchived).toHaveBeenCalledWith(
+        ACC_A,
+        "test-session",
+      );
+      expect(acctRepo.incrementBalanceCapped).toHaveBeenCalledWith(
+        ACC_A,
+        200,
+        0,
+        "test-session",
+      );
+      expect(txRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it("never caps a reversal that takes a loan further into debt [T-156]", async () => {
+      txRepo.getById.mockResolvedValue(
+        new Transaction({
+          id: TX_ID,
+          type: "TRANSFER",
+          amount: 300,
+          date: new Date("2026-03-28"),
+          fromAccountId: ACC_B,
+          toAccountId: ACC_A,
+          userId: USER,
+        }),
+      );
+      acctRepo.getByIdIncludingArchived.mockResolvedValue(
+        account({ id: ACC_B }),
+      );
+      txRepo.delete.mockResolvedValue();
+
+      await service.deleteTransaction(TX_ID, USER);
+
+      expect(acctRepo.incrementBalanceCapped).not.toHaveBeenCalled();
+      expect(acctRepo.getByIdIncludingArchived).toHaveBeenCalledTimes(1);
+      expect(acctRepo.incrementBalance).toHaveBeenCalledWith(
+        ACC_A,
+        -300,
+        "test-session",
       );
     });
 

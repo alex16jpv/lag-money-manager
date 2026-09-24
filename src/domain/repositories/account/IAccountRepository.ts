@@ -47,8 +47,11 @@ export interface IAccountRepository extends IRepository<Account> {
     cursor: ChangeCursor | undefined,
     limit: number,
   ): Promise<Account[]>;
-  // Unlike getById, also resolves archived accounts (read paths only).
-  getByIdIncludingArchived(id: string): Promise<Account | null>;
+  // Unlike getById, also resolves archived accounts: a reversal must reach one archived meanwhile.
+  getByIdIncludingArchived(
+    id: string,
+    session?: TxSession,
+  ): Promise<Account | null>;
 
   // The ACTIVE row holding this name, matched as the unique index does; null when it is free.
   findActiveByName(userId: string, name: string): Promise<Account | null>;

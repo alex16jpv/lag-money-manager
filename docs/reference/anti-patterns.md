@@ -377,7 +377,7 @@ These writes are one logical operation. Interrupted halfway, the account balance
 ```typescript
 // GOOD — one atomic unit, session forwarded to every write
 return await withTransaction(async (session) => {
-  await this.adjustBalances(transaction, 1, session);
+  await this.moveBalances([{ transaction, direction: 1 }], session, journal);
   const created = await this.transactionRepo.create(transaction, session);
   if (idempotency) {
     await this.idempotencyRepo.record(/* ... */, session);

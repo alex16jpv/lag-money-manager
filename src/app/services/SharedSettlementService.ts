@@ -24,6 +24,7 @@ import { assertAmountPrecision } from "../../shared/money";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
 import { TxSession, withTransaction } from "../../shared/unitOfWork";
 import { CreateSharedSettlementDTO } from "../dtos/SharedSettlementDTO";
+import { CreateTransactionDTO } from "../dtos/TransactionDTO";
 import { Restamp, RestampJournal, WithRestamps } from "./restamps";
 import {
   counterpartyKey,
@@ -208,20 +209,16 @@ export class SharedSettlementService {
       (dto.categories ?? []).map((one) => [one.expenseId, one.categoryId]),
     );
 
+    const movements: CreateTransactionDTO[] = [];
     if (collected > 0) {
-      await this.transactions.recordWithin(
-        {
-          type: TRANSACTION_TYPES.SETTLEMENT,
-          amount: collected,
-          date: created.date,
-          toAccountId: accountId,
-          userId: dto.userId,
-          sharedSettlementId: created.id,
-        },
-        timezone,
-        session,
-        journal,
-      );
+      movements.push({
+        type: TRANSACTION_TYPES.SETTLEMENT,
+        amount: collected,
+        date: created.date,
+        toAccountId: accountId,
+        userId: dto.userId,
+        sharedSettlementId: created.id,
+      });
     }
 
     for (const line of yourLines) {
@@ -233,38 +230,30 @@ export class SharedSettlementService {
           "VALIDATION",
         );
       }
-      await this.transactions.recordWithin(
-        {
-          type: TRANSACTION_TYPES.EXPENSE,
-          amount: line.amount,
-          date: line.date,
-          description: line.description,
-          categoryId,
-          fromAccountId: accountId,
-          userId: dto.userId,
-          sharedSettlementId: created.id,
-        },
-        timezone,
-        session,
-        journal,
-      );
+      movements.push({
+        type: TRANSACTION_TYPES.EXPENSE,
+        amount: line.amount,
+        date: line.date,
+        description: line.description,
+        categoryId,
+        fromAccountId: accountId,
+        userId: dto.userId,
+        sharedSettlementId: created.id,
+      });
     }
 
     if (refunded > 0) {
-      await this.transactions.recordWithin(
-        {
-          type: TRANSACTION_TYPES.SETTLEMENT,
-          amount: refunded,
-          date: created.date,
-          fromAccountId: accountId,
-          userId: dto.userId,
-          sharedSettlementId: created.id,
-        },
-        timezone,
-        session,
-        journal,
-      );
+      movements.push({
+        type: TRANSACTION_TYPES.SETTLEMENT,
+        amount: refunded,
+        date: created.date,
+        fromAccountId: accountId,
+        userId: dto.userId,
+        sharedSettlementId: created.id,
+      });
     }
+
+    await this.transactions.recordWithin(movements, timezone, session, journal);
   }
 
   /** Undoing a payment reverses what it recorded and imputes the rest over what is open again. */
@@ -284,9 +273,7 @@ export class SharedSettlementService {
         id,
         session,
       );
-      for (const movement of movements) {
-        await this.transactions.reverseWithin(movement, session, journal);
-      }
+      await this.transactions.reverseWithin(movements, session, journal);
       const deleted = await this.repo.delete(id, session, expectedUpdatedAt);
       await this.ledger.recompute(
         userId,

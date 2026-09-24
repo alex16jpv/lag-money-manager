@@ -107,7 +107,7 @@ export class Transaction {
    * because the currency is stamped from the account, which the service only
    * reads later. `assertValid` does NOT call it (T-67): precision is a rule
    * about the amount being written, and a row stored before the rule tightened
-   * must stay editable in everything but its amount — `adjustBalances` asserts
+   * must stay editable in everything but its amount — `moveBalances` asserts
    * it whenever money is applied forward, which is every path that writes one.
    */
   assertValidPrecision(): void {
