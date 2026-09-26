@@ -29,7 +29,8 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
   never disagree about which window a row belongs to: they read the same frozen day.
 - **An account bucket is the account the money left** (`fromAccountId`), except
   for INCOME and for an increase-only ADJUSTMENT, which have no `fromAccountId`
-  and are keyed by the one they reached. A quick-add left the default account.
+  and are keyed by the one they reached. A quick expense or transfer left the
+  default account; a quick income reached it.
 - **`categoryIds` filters before anything else.** It is what a budget of several
   categories sends, and it drops every row with no category — the quick-adds included.
 - **`splitBy` adds a second dimension inside each bucket** (`splits`), so per
@@ -81,6 +82,10 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
   than is open now. It moves no figure: what left the account was counted as
   yours the day it left.
 - **`pending.transactionIds` is a set.** No order is part of the contract.
+- **`pending` sums one figure per direction**: `expense` is the EXPENSE rows
+  awaiting review and `income` the INCOME ones, each gross. A transfer awaiting
+  review counts in `count` and in neither sum: which way it moved depends on
+  the account you look from.
 - **`lists` are the opposite: there the order IS the contract.** Each one is the
   first page of `GET /transactions` under its `sort` and `order`, and two rows with
   the same amount are separated by their id, in the direction the page runs. A
@@ -134,19 +139,19 @@ Three fields of the shared layer are worth spelling out:
 - ADJUSTMENT moves a balance but is excluded from spending unless asked for by name.
 - TRANSFER moves two balances and is not spending, but it can carry a category.
 - An archived category keeps its totals; archiving is not deleting.
-- Quick-adds count as spending under `uncategorized`, and are the pending summary.
+- Quick-adds count under `uncategorized` in their own type, and are the pending tray: its sums are one per direction, and the quick transfer is in neither.
 - Tag buckets double-count a transaction with two tags: their sum exceeds the total.
 - With no `type`, the server means EXPENSE + INCOME + TRANSFER: everything but ADJUSTMENT and SETTLEMENT.
 - `type: TRANSFER` is a spending query like any other: it groups transfers by their category.
 - A transfer with no category lands in `uncategorized`, beside the ones that have one.
-- An account bucket is the account the money left; a quick-add leaves the default one, and a transfer is keyed by its origin, never by both ends.
+- An account bucket is the account the money left; a quick expense or transfer leaves the default one, a quick income reaches it, and a transfer is keyed by its origin, never by both ends.
 - A month bucket is the first seven characters of the frozen day, so months and days agree.
 - A category filter drops the quick-adds with it: they have no category to match.
 - A LISTING has no opinion about spending: with no `type` it shows the transfer and the adjustment too.
 - Two rows with the same amount are ordered by id, in the direction the page runs.
 - A backdated row lands by its own date, not by when it was written: id order is not date order.
 
-18 transactions · 5 accounts · 6 categories · 7 budgets · 10 spending queries · 6 ordered lists · reference `2026-08-20T12:00:00-05:00`
+20 transactions · 5 accounts · 6 categories · 7 budgets · 10 spending queries · 6 ordered lists · reference `2026-08-20T12:00:00-05:00`
 
 ### `eur-madrid.json` — EUR · Europe/Madrid · two decimals and the spring DST jump
 

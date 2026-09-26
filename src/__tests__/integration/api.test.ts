@@ -1407,7 +1407,7 @@ describe("Integration Tests", () => {
           hasMore: true,
           nextCursor: null,
         },
-        summary: { totalAmount: 47_900 },
+        summary: { expense: 27_900, income: 1_200_000 },
       });
 
       const res = await request(app)
@@ -1415,7 +1415,7 @@ describe("Integration Tests", () => {
         .set("Authorization", `Bearer ${token}`);
 
       expect(res.status).toBe(200);
-      expect(res.body.summary).toEqual({ totalAmount: 47_900 });
+      expect(res.body.summary).toEqual({ expense: 27_900, income: 1_200_000 });
       expect(res.body.pagination.total).toBe(3);
     });
 

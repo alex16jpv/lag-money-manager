@@ -172,8 +172,9 @@ Content-Type: application/json
 { "items": [ { "id": "{{txId}}", "description": "a" }, { "id": "{{txId}}", "description": "b" } ] }
 
 ### Bandeja + total en una sola petición (Inicio y la bandeja del diseño)
-### includeSummary añade summary.totalAmount sobre TODO el conjunto filtrado,
-### no sobre la página: con limit=1 devuelve el conteo y la suma sin traer filas.
+### includeSummary añade summary.expense y summary.income sobre TODO el conjunto
+### filtrado, no sobre la página: con limit=1 devuelve el conteo y las dos sumas
+### sin traer filas. Transferencias, ajustes y settlements no cuentan en ninguna.
 GET {{baseUrl}}/transactions?pendingDetails=true&includeSummary=true&limit=1
 Authorization: Bearer {{token}}
 

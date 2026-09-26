@@ -16,8 +16,13 @@ import {
   TransactionFilters,
   TransactionPage,
   TransactionRevision,
+  TransactionSummary,
 } from "../../../domain/repositories/transaction/ITransactionRepository";
-import { TYPES_OUTSIDE_SPENDING } from "../../../shared/constants";
+import {
+  TRANSACTION_TYPES,
+  TransactionType,
+  TYPES_OUTSIDE_SPENDING,
+} from "../../../shared/constants";
 import { dayKeyOf, lastDayKeyOf } from "../../../shared/dayKey";
 import { ApiError } from "../../../shared/errors";
 import { fromCents, toCents } from "../../../shared/money";
@@ -68,6 +73,10 @@ const storedEntry = (entry: SharedHistoryEntry): Record<string, unknown> => ({
 
 /** Null on rows written before the field existed, and their whole amount was theirs. */
 const COUNTS_AS_YOURS = { $ifNull: ["$countsAsYours", "$amount"] };
+
+const amountOfType = (type: TransactionType): Record<string, unknown> => ({
+  $cond: [{ $eq: ["$type", type] }, "$amount", 0],
+});
 
 // Stored only while the movement is in a group: the index that finds it is partial over `$exists`.
 const SHARED_LINK_FIELDS = [
@@ -198,9 +207,15 @@ export class TransactionRepository implements ITransactionRepository {
       TransactionModel.countDocuments(baseFilter),
       // Deliberately without the cursor: the sum describes the filtered set, not the current page.
       withSummary
-        ? TransactionModel.aggregate<{ totalAmount: number }>([
+        ? TransactionModel.aggregate<TransactionSummary>([
             { $match: baseFilter },
-            { $group: { _id: null, totalAmount: { $sum: "$amount" } } },
+            {
+              $group: {
+                _id: null,
+                expense: { $sum: amountOfType(TRANSACTION_TYPES.EXPENSE) },
+                income: { $sum: amountOfType(TRANSACTION_TYPES.INCOME) },
+              },
+            },
           ])
         : Promise.resolve(null),
     ]);
@@ -214,7 +229,10 @@ export class TransactionRepository implements ITransactionRepository {
     // An empty match aggregates to no rows at all, which is a total of zero.
     return {
       ...page,
-      summary: { totalAmount: fromCents(summary[0]?.totalAmount ?? 0) },
+      summary: {
+        expense: fromCents(summary[0]?.expense ?? 0),
+        income: fromCents(summary[0]?.income ?? 0),
+      },
     };
   }
 
