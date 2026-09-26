@@ -48,6 +48,22 @@ describe("offline parity fixtures", () => {
     expect(1000 - 10.1 + 1500 - 7.77 - 100 - 3.45).not.toBe(2378.68);
   });
 
+  it("sums the review tray per direction, with the transfer in neither", () => {
+    const bogota = fixtures.find((f) => f.id === "cop-bogota");
+    const waiting = bogota?.transactions.filter((t) => t.pendingDetails) ?? [];
+
+    expect([...new Set(waiting.map((t) => t.type))].sort()).toEqual([
+      "EXPENSE",
+      "INCOME",
+      "TRANSFER",
+    ]);
+    expect(bogota?.expected.pending).toMatchObject({
+      count: 4,
+      expense: 32_500,
+      income: 45_000,
+    });
+  });
+
   // No scenario may hold a tie, so the rule both sides agreed on has nowhere else to show.
   describe("the tiebreaks, which no scenario is allowed to carry", () => {
     const row = (

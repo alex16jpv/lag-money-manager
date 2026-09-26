@@ -542,7 +542,7 @@ describe("what counts as yours, against mongod", () => {
         ),
       );
       // The list is what moved through the accounts, and that was the whole dinner.
-      expect(list.body.summary.totalAmount).toBe(DINNER);
+      expect(list.body.summary).toEqual({ expense: DINNER, income: 0 });
       expect(list.body.data[0].amount).toBe(DINNER);
       expect(list.body.data[0].countsAsYours).toBe(60_000);
     });

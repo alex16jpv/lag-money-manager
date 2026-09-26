@@ -169,11 +169,14 @@ describe("offline parity fixtures", () => {
         pendingDetails: true,
         includeSummary: true,
       })) as Awaited<ReturnType<typeof transactions.getAllTransactions>> & {
-        summary?: { totalAmount: number };
+        summary?: { expense: number; income: number };
       };
 
       expect(page.pagination.total).toBe(fixture.expected.pending.count);
-      expect(page.summary?.totalAmount).toBe(fixture.expected.pending.total);
+      expect(page.summary).toEqual({
+        expense: fixture.expected.pending.expense,
+        income: fixture.expected.pending.income,
+      });
       expect([...page.data.map((t) => t.id)].sort()).toEqual(
         [...fixture.expected.pending.transactionIds].sort(),
       );

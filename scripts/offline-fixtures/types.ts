@@ -66,7 +66,7 @@ export interface ScenarioTransaction {
   from?: string;
   to?: string;
   tags?: string[];
-  /** Quick-add: no category, `pendingDetails`, charged to the default account. */
+  /** Quick-add: no category, `pendingDetails`, and the default account on the side left unnamed. */
   quick?: boolean;
   deleted?: boolean;
   /** Why this row is in the fixture. Travels to the JSON. */
@@ -462,7 +462,12 @@ export interface Fixture {
   settlements: FixtureSettlement[];
   expected: {
     balances: { key: string; accountId: string; balance: number }[];
-    pending: { count: number; total: number; transactionIds: string[] };
+    pending: {
+      count: number;
+      expense: number;
+      income: number;
+      transactionIds: string[];
+    };
     spending: ExpectedSpending[];
     lists: ExpectedList[];
     budgets: { reference: string; views: ExpectedBudgetView[] };

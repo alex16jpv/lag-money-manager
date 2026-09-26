@@ -49,7 +49,7 @@ and out of the budget period that already counted it.
 **The amount is what left the account. What counts as yours is what left it minus what has come back.** They are the same figure on every movement except an expense split with other people, and the difference is the whole point of the shared feature: you paid $120,000 for dinner, half of it is Ana's, and until she pays you the whole $120,000 is still money you spent.
 
 - It is **stored, not derived on read**. The alternative is every aggregation joining the shared collections to work out a figure it needs per row, and an offline mirror that cannot reproduce them.
-- **Stats and the budgets measure it** — `aggregateSpending`, `sumAmountsByCategory` and `sumAmounts` all sum `countsAsYours`. **The listing does not**: a row's amount, a day's total and `summary.totalAmount` stay gross, because a list of movements is what moved through the accounts. The two figures are different on purpose and the transaction's detail is where the difference is explained.
+- **Stats and the budgets measure it** — `aggregateSpending`, `sumAmountsByCategory` and `sumAmounts` all sum `countsAsYours`. **The listing does not**: a row's amount, a day's total and the `summary` figures stay gross, because a list of movements is what moved through the accounts. The two figures are different on purpose and the transaction's detail is where the difference is explained.
 - Rows written before the field existed have no `countsAsYours`, and **their whole amount is theirs** — every aggregation reads `$ifNull: ["$countsAsYours", "$amount"]`. That is the meaning of an absent field, not a migration waiting to happen: the field arrived with splitting, so a row without it was never split.
 - A new amount on a movement carries the figure with it (`amount − what came back`), so an edit can never undo a payment.
 - **What lowers it is a payment**, and only in the month the expense happened ([settlements.md](settlements.md)).
@@ -150,13 +150,18 @@ malformed) but nothing is stored against it: the request sets fields to given
 values, so retrying it lands on the same state. It is idempotent by
 construction rather than by bookkeeping.
 
-`?includeSummary=true` adds `summary.totalAmount`: the sum of `amount` over the
-whole filtered set, on the same terms as the count. It costs one extra
-aggregation, so it is opt-in rather than charged to every listing. It is a plain
-sum, so filter by `type` when the set could mix income and expenses — the review
-inbox (`?pendingDetails=true`) cannot, since quick-adds are always expenses. The
-screens that read "3 to review · $47,900" get both numbers from a single
-`limit=1` request.
+`?includeSummary=true` adds `summary.expense` and `summary.income`: the sum of
+`amount` over the `EXPENSE` rows and over the `INCOME` rows of the whole filtered
+set, on the same terms as the count. It costs one extra aggregation, so it is
+opt-in rather than charged to every listing. Transfers, adjustments and
+settlements count in neither: which way they moved depends on the account you
+look from — a transfer leaves one of yours and enters another — so adding them
+to either side, or netting them, would say something false about a set that
+mixes them. There used to be one `totalAmount` that summed every row whatever its
+type; once the review inbox (`?pendingDetails=true`) could hold an income or a
+transfer, that figure stopped meaning anything (T-106). The screens that read
+"3 to review · −$27,900 · +$1,200,000" get the count and both figures from a
+single `limit=1` request.
 
 `pagination.total` counts **every transaction matching the filters**, independent of the
 page or cursor position — the count and the page are issued with the same filter, minus

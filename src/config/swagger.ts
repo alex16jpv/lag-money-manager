@@ -822,7 +822,7 @@ const responseViews = {
           "what has come back. **This is the figure Stats and the budgets " +
           "measure**, and it is the amount itself unless the movement is an " +
           "expense of a shared group. The list, its day totals and " +
-          "`summary.totalAmount` stay gross: they are what moved through the " +
+          "`summary` stay gross: they are what moved through the " +
           "accounts.",
       },
       sharedExpenseId: {
@@ -1414,9 +1414,22 @@ const options: swaggerJsdoc.Options = {
             summary: {
               type: "object",
               description:
-                "Only when includeSummary=true. Sums the whole filtered set, not the page.",
-              properties: { totalAmount: money },
-              required: ["totalAmount"],
+                "Only when includeSummary=true. Sums the whole filtered set, not " +
+                "the page, one figure per direction: what left in expenses and " +
+                "what came in as income. Transfers, adjustments and settlements " +
+                "count in neither, because which way they moved depends on the " +
+                "account you look from.",
+              properties: {
+                expense: {
+                  ...money,
+                  description: "The amounts of the EXPENSE rows in the set.",
+                },
+                income: {
+                  ...money,
+                  description: "The amounts of the INCOME rows in the set.",
+                },
+              },
+              required: ["expense", "income"],
             },
           },
         },

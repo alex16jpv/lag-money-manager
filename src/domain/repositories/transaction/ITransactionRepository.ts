@@ -22,13 +22,19 @@ import { IRepository } from "../IRepository";
 export type ChangedTransaction = Transaction & { deletedAt: Date | null };
 
 /**
- * A page of transactions, plus the summary when it was asked for. The sum
- * covers everything matching the filters, not the page — the screens that show
- * "3 to review · $47,900" need the total of the set, and computing it is an
- * extra aggregation, so it is opt-in rather than paid for on every listing.
+ * A page of transactions, plus the summary when it was asked for. The sums
+ * cover everything matching the filters, not the page — the screens that show
+ * "3 to review · −$27,900 · +$1,200,000" need the totals of the set, and
+ * computing them is an extra aggregation, so it is opt-in rather than paid for
+ * on every listing.
  */
 export interface TransactionPage extends PaginatedResult<Transaction> {
-  summary?: { totalAmount: number };
+  summary?: TransactionSummary;
+}
+
+export interface TransactionSummary {
+  expense: number;
+  income: number;
 }
 
 export interface TransactionFilters {
@@ -45,7 +51,7 @@ export interface TransactionFilters {
   timezone?: string;
   tag?: string;
   uncategorized?: boolean;
-  // Opt-in: adds the sum over the whole filtered set (one extra aggregation).
+  // Opt-in: adds the expense and income sums over the whole filtered set (one extra aggregation).
   includeSummary?: boolean;
 }
 

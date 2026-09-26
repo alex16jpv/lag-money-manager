@@ -8,12 +8,12 @@
     "ADJUSTMENT moves a balance but is excluded from spending unless asked for by name.",
     "TRANSFER moves two balances and is not spending, but it can carry a category.",
     "An archived category keeps its totals; archiving is not deleting.",
-    "Quick-adds count as spending under `uncategorized`, and are the pending summary.",
+    "Quick-adds count under `uncategorized` in their own type, and are the pending tray: its sums are one per direction, and the quick transfer is in neither.",
     "Tag buckets double-count a transaction with two tags: their sum exceeds the total.",
     "With no `type`, the server means EXPENSE + INCOME + TRANSFER: everything but ADJUSTMENT and SETTLEMENT.",
     "`type: TRANSFER` is a spending query like any other: it groups transfers by their category.",
     "A transfer with no category lands in `uncategorized`, beside the ones that have one.",
-    "An account bucket is the account the money left; a quick-add leaves the default one, and a transfer is keyed by its origin, never by both ends.",
+    "An account bucket is the account the money left; a quick expense or transfer leaves the default one, a quick income reaches it, and a transfer is keyed by its origin, never by both ends.",
     "A month bucket is the first seven characters of the frozen day, so months and days agree.",
     "A category filter drops the quick-adds with it: they have no category to match.",
     "A LISTING has no opinion about spending: with no `type` it shows the transfer and the adjustment too.",
@@ -468,6 +468,42 @@
       "pendingDetails": false,
       "deletedAt": null,
       "note": "04:30Z on 2026-09-01: inside August for the user, outside it in UTC."
+    },
+    {
+      "key": "quick-payback",
+      "id": "01930001-0000-7000-8000-0000000t0019",
+      "type": "INCOME",
+      "amount": 45000,
+      "date": "2026-08-27T09:15:00-05:00",
+      "dayKey": "2026-08-27",
+      "description": null,
+      "categoryId": null,
+      "fromAccountId": null,
+      "toAccountId": "01930001-0000-7000-8000-0000000a0001",
+      "tags": [],
+      "currency": "COP",
+      "source": "QUICK",
+      "pendingDetails": true,
+      "deletedAt": null,
+      "note": "A quick income: it reaches the default account, and the tray sums it apart from the expenses."
+    },
+    {
+      "key": "quick-to-savings",
+      "id": "01930001-0000-7000-8000-0000000t0020",
+      "type": "TRANSFER",
+      "amount": 100000,
+      "date": "2026-08-29T08:00:00-05:00",
+      "dayKey": "2026-08-29",
+      "description": null,
+      "categoryId": null,
+      "fromAccountId": "01930001-0000-7000-8000-0000000a0001",
+      "toAccountId": "01930001-0000-7000-8000-0000000a0004",
+      "tags": [],
+      "currency": "COP",
+      "source": "QUICK",
+      "pendingDetails": true,
+      "deletedAt": null,
+      "note": "A transfer whose follow-up failed: it waits for review, counts in the tray, and is in neither of its sums."
     }
   ],
   "budgets": [
@@ -607,7 +643,7 @@
       {
         "key": "bank",
         "accountId": "01930001-0000-7000-8000-0000000a0001",
-        "balance": 3971100
+        "balance": 3916100
       },
       {
         "key": "cash",
@@ -622,7 +658,7 @@
       {
         "key": "savings",
         "accountId": "01930001-0000-7000-8000-0000000a0004",
-        "balance": 5500000
+        "balance": 5600000
       },
       {
         "key": "closed",
@@ -631,11 +667,14 @@
       }
     ],
     "pending": {
-      "count": 2,
-      "total": 32500,
+      "count": 4,
+      "expense": 32500,
+      "income": 45000,
       "transactionIds": [
         "01930001-0000-7000-8000-0000000t0013",
-        "01930001-0000-7000-8000-0000000t0014"
+        "01930001-0000-7000-8000-0000000t0014",
+        "01930001-0000-7000-8000-0000000t0019",
+        "01930001-0000-7000-8000-0000000t0020"
       ]
     },
     "spending": [
@@ -835,7 +874,7 @@
           "to": "2026-09-01T00:00:00-05:00",
           "timezone": "America/Bogota"
         },
-        "total": 5341200,
+        "total": 5486200,
         "buckets": [
           {
             "key": "01930001-0000-7000-8000-0000000c0005",
@@ -845,9 +884,9 @@
           },
           {
             "key": "uncategorized",
-            "total": 532500,
-            "count": 3,
-            "avg": 177500
+            "total": 677500,
+            "count": 5,
+            "avg": 135500
           },
           {
             "key": "01930001-0000-7000-8000-0000000c0006",
@@ -893,13 +932,13 @@
           "to": "2026-09-01T00:00:00-05:00",
           "timezone": "America/Bogota"
         },
-        "total": 800000,
+        "total": 900000,
         "buckets": [
           {
             "key": "uncategorized",
-            "total": 500000,
-            "count": 1,
-            "avg": 500000
+            "total": 600000,
+            "count": 2,
+            "avg": 300000
           },
           {
             "key": "01930001-0000-7000-8000-0000000c0006",
@@ -921,13 +960,13 @@
           "to": "2026-09-01T00:00:00-05:00",
           "timezone": "America/Bogota"
         },
-        "total": 800000,
+        "total": 900000,
         "buckets": [
           {
             "key": "01930001-0000-7000-8000-0000000a0001",
-            "total": 800000,
-            "count": 2,
-            "avg": 400000
+            "total": 900000,
+            "count": 3,
+            "avg": 300000
           }
         ],
         "note": "A transfer is the row with two accounts, and it is bucketed by the one the money left."
@@ -1204,7 +1243,9 @@
         },
         "transactionIds": [
           "01930001-0000-7000-8000-0000000t0018",
+          "01930001-0000-7000-8000-0000000t0020",
           "01930001-0000-7000-8000-0000000t0016",
+          "01930001-0000-7000-8000-0000000t0019",
           "01930001-0000-7000-8000-0000000t0014",
           "01930001-0000-7000-8000-0000000t0013",
           "01930001-0000-7000-8000-0000000t0012",
@@ -1360,6 +1401,16 @@
         "key": "last-minute-coffee",
         "transactionId": "01930001-0000-7000-8000-0000000t0018",
         "amount": 4700
+      },
+      {
+        "key": "quick-payback",
+        "transactionId": "01930001-0000-7000-8000-0000000t0019",
+        "amount": 45000
+      },
+      {
+        "key": "quick-to-savings",
+        "transactionId": "01930001-0000-7000-8000-0000000t0020",
+        "amount": 100000
       }
     ],
     "shared": [],

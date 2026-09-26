@@ -122,15 +122,23 @@ export function deriveBalances(
 
 export function derivePending(transactions: FixtureTransaction[]): {
   count: number;
-  total: number;
+  expense: number;
+  income: number;
   transactionIds: string[];
 } {
   const pending = transactions
     .filter((t) => live(t) && t.pendingDetails)
     .sort((a, b) => instant(a.date) - instant(b.date));
+  const sumOf = (type: TransactionType): number =>
+    fromCents(
+      pending
+        .filter((t) => t.type === type)
+        .reduce((acc, t) => acc + toCents(t.amount), 0),
+    );
   return {
     count: pending.length,
-    total: fromCents(pending.reduce((acc, t) => acc + toCents(t.amount), 0)),
+    expense: sumOf("EXPENSE"),
+    income: sumOf("INCOME"),
     transactionIds: pending.map((t) => t.id),
   };
 }

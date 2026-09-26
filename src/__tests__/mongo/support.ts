@@ -292,8 +292,10 @@ export async function seedFixture(fixture: Fixture): Promise<void> {
       await transactions.quickAddTransaction(
         {
           id: t.id,
+          type: t.type,
           amount: t.amount,
           date: new Date(t.date),
+          ...(t.type === "TRANSFER" ? { toAccountId: t.toAccountId } : {}),
           userId,
         } as never,
         fixture.user.timezone,

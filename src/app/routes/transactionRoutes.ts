@@ -112,7 +112,7 @@ const router = Router();
  *       - in: query
  *         name: includeSummary
  *         schema: { type: string, enum: ["true", "false"] }
- *         description: Adds summary.totalAmount, the sum over the whole filtered set (one extra aggregation, so opt-in)
+ *         description: Adds summary.expense and summary.income, the sums of each over the whole filtered set (one extra aggregation, so opt-in)
  *       - in: query
  *         name: tag
  *         schema: { type: string }

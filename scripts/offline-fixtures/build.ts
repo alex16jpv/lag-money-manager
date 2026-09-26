@@ -123,10 +123,17 @@ export function buildFixture(scenario: Scenario, index: number): Fixture {
           .toFormat("yyyy-MM-dd"),
         description: t.description ?? null,
         categoryId: t.quick === true ? null : categoryId(t.category),
-        // The server charges a quick-add to the default account, so the fixture spells out where it landed.
+        // The server fills the missing side of a quick-add with the default account, so the fixture spells out where it landed.
         fromAccountId:
-          t.quick === true ? (defaultAccount?.id ?? null) : accountId(t.from),
-        toAccountId: t.quick === true ? null : accountId(t.to),
+          accountId(t.from) ??
+          (t.quick === true && t.type !== "INCOME"
+            ? (defaultAccount?.id ?? null)
+            : null),
+        toAccountId:
+          accountId(t.to) ??
+          (t.quick === true && t.type === "INCOME"
+            ? (defaultAccount?.id ?? null)
+            : null),
         tags: t.tags ?? [],
         currency: user.currency,
         source: t.quick === true ? "QUICK" : "MANUAL",
@@ -672,7 +679,8 @@ function readme(fixtures: Fixture[]): string {
     "  never disagree about which window a row belongs to: they read the same frozen day.",
     "- **An account bucket is the account the money left** (`fromAccountId`), except",
     "  for INCOME and for an increase-only ADJUSTMENT, which have no `fromAccountId`",
-    "  and are keyed by the one they reached. A quick-add left the default account.",
+    "  and are keyed by the one they reached. A quick expense or transfer left the",
+    "  default account; a quick income reached it.",
     "- **`categoryIds` filters before anything else.** It is what a budget of several",
     "  categories sends, and it drops every row with no category — the quick-adds included.",
     "- **`splitBy` adds a second dimension inside each bucket** (`splits`), so per",
@@ -724,6 +732,10 @@ function readme(fixtures: Fixture[]): string {
     "  than is open now. It moves no figure: what left the account was counted as",
     "  yours the day it left.",
     "- **`pending.transactionIds` is a set.** No order is part of the contract.",
+    "- **`pending` sums one figure per direction**: `expense` is the EXPENSE rows",
+    "  awaiting review and `income` the INCOME ones, each gross. A transfer awaiting",
+    "  review counts in `count` and in neither sum: which way it moved depends on",
+    "  the account you look from.",
     "- **`lists` are the opposite: there the order IS the contract.** Each one is the",
     "  first page of `GET /transactions` under its `sort` and `order`, and two rows with",
     "  the same amount are separated by their id, in the direction the page runs. A",

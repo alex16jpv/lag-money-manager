@@ -319,7 +319,8 @@
     ],
     "pending": {
       "count": 1,
-      "total": 8.25,
+      "expense": 8.25,
+      "income": 0,
       "transactionIds": [
         "01930004-0000-7000-8000-0000000t0007"
       ]
