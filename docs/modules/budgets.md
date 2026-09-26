@@ -47,7 +47,7 @@ List budgets as **views** for the reference period (paginated, offset + cursor).
 
 Excluded by default: archived budgets, expired CUSTOM budgets, and budgets whose reference period ends at or before their `effectiveFrom` floor.
 
-> The `expired` / lifetime filters run **after** pagination, so a page can hold fewer than `limit` items while `pagination.hasMore` is still `true`. Follow `hasMore` / `nextCursor`, never `data.length`.
+> All three filters run **inside the query**, and the count uses the same filter, so `data`, `pagination.total` and `hasMore` count the same rows: only the last page is short. The service hands the repository a `window` — the `reference` instant and, per recurring period type, the exclusive end of the window `reference` falls into in the user's zone (`recurringWindowEnds`). A recurring budget lists when its floor (`effectiveFrom ?? createdAt`) is before its type's end; a CUSTOM one when `includeExpired` is set or its `periodEndDate` is after `reference`. CUSTOM needs no floor check: its floor is at most `periodStartDate`, which validation keeps before `periodEndDate`. Until T-161 these filters ran after the page was read, and a page could come back empty with `hasMore: true`.
 
 > A `cursor` has to name a row the caller owns. One that names none is `400 INVALID_CURSOR`, never a silent page one — that fallback used to restart the list from the top and make an infinite scroll repeat itself. `hasMore` is read from one row past the page, so a last page that is exactly `limit` long says `hasMore: false` and `nextCursor: null`.
 
@@ -151,7 +151,7 @@ Recurring types roll forward forever: there is always a "current" instance. `CUS
 
 A budget does not exist before its floor. `Budget.lifetimeFloor()` returns `effectiveFrom ?? createdAt`, except that a `CUSTOM` budget whose `periodStartDate` precedes that floor uses the window start instead — an explicitly backdated CUSTOM window must still list.
 
-`GET /budgets` drops any budget whose resolved `periodTo` is at or before its floor, so browsing months before the budget existed shows nothing rather than a phantom limit.
+`GET /budgets` leaves out, in its query, any budget whose resolved `periodTo` is at or before its floor, so browsing months before the budget existed shows nothing rather than a phantom limit.
 
 ## How `spent` Is Computed
 
@@ -178,7 +178,10 @@ sequenceDiagram
     VAL->>CTRL: Validated query
     CTRL->>CTRL: timezone = token claim ?? user record ?? default
     CTRL->>SVC: getBudgets(userId, pagination, filters, { reference, timezone })
-    SVC->>REPO: getAllByUserId(userId, pagination, filters)
+    SVC->>PER: recurringWindowEnds(reference, timezone)
+    PER->>SVC: exclusive end per recurring period type
+    SVC->>REPO: getAllByUserId(userId, pagination, { ...filters, window })
+    REPO->>REPO: Leave out archived, expired CUSTOM and pre-floor budgets, then page and count
     REPO->>SVC: Budget[] (page)
     loop per budget
         SVC->>PER: resolvePeriod(periodDef, reference, timezone)
@@ -191,7 +194,6 @@ sequenceDiagram
         SVC->>TX: sumAmounts(userId, from, to, type)
     end
     SVC->>SVC: Build views (amount = override ?? base, spent, expired, ...)
-    SVC->>SVC: Drop pre-floor and expired budgets
     SVC->>CTRL: PaginatedResult<BudgetView>
     CTRL->>C: 200 + views
 ```

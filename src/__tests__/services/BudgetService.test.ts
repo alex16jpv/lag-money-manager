@@ -333,18 +333,28 @@ describe("BudgetService", () => {
         },
       });
 
-    it("hides a budget for references before it existed", async () => {
-      // Created in October; reference (CTX) is August.
-      list([makeBudget({ createdAt: new Date("2026-10-05T00:00:00Z") })]);
+    // T-161: judged in the query, so the page and its total count the same rows.
+    it("asks the query for where each recurring window of the reference ends, in the user's zone", async () => {
+      list([]);
 
-      const result = await service.getBudgets(
+      await service.getBudgets(USER, { limit: 20, offset: 0 }, {}, CTX);
+
+      expect(budgetRepo.getAllByUserId).toHaveBeenCalledWith(
         USER,
         { limit: 20, offset: 0 },
-        {},
-        CTX,
+        {
+          window: {
+            reference: CTX.reference,
+            ends: {
+              WEEKLY: new Date("2026-08-17T05:00:00Z"),
+              BIWEEKLY: new Date("2026-08-24T05:00:00Z"),
+              MONTHLY: new Date("2026-09-01T05:00:00Z"),
+              QUARTERLY: new Date("2026-10-01T05:00:00Z"),
+              YEARLY: new Date("2027-01-01T05:00:00Z"),
+            },
+          },
+        },
       );
-
-      expect(result.data).toHaveLength(0);
     });
 
     it("a backdated effectiveFrom overrides createdAt", async () => {
@@ -701,23 +711,30 @@ describe("BudgetService", () => {
         },
       });
 
-    it("hides an expired CUSTOM budget from the default listing", async () => {
-      list([expiredCustom(), makeBudget()]);
+    it("passes includeExpired on to the query with the reference it is judged at", async () => {
+      list([]);
 
-      const result = await service.getBudgets(
+      await service.getBudgets(
         USER,
         { limit: 20, offset: 0 },
-        {},
+        { includeExpired: true, includeArchived: true },
         CTX,
       );
 
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].periodType).toBe("MONTHLY");
-      expect(result.data[0].expired).toBe(false);
+      expect(budgetRepo.getAllByUserId).toHaveBeenCalledWith(
+        USER,
+        { limit: 20, offset: 0 },
+        expect.objectContaining({
+          includeExpired: true,
+          includeArchived: true,
+          window: expect.objectContaining({ reference: CTX.reference }),
+        }),
+      );
     });
 
-    it("lists it flagged when includeExpired=true", async () => {
-      list([expiredCustom()]);
+    // T-161: dropping rows after the page left `data: []` beside `total: 4, hasMore: true`.
+    it("answers every row of the page it was given, flagged, never fewer", async () => {
+      list([expiredCustom(), makeBudget()]);
 
       const result = await service.getBudgets(
         USER,
@@ -726,8 +743,11 @@ describe("BudgetService", () => {
         CTX,
       );
 
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].expired).toBe(true);
+      expect(result.data.map((view) => [view.id, view.expired])).toEqual([
+        ["bc", true],
+        ["b1", false],
+      ]);
+      expect(result.pagination.total).toBe(2);
     });
 
     it("a CUSTOM budget backdated before its creation still lists (retro window)", async () => {

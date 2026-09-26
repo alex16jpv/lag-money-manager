@@ -9,6 +9,8 @@ export interface BudgetPeriodDef {
   endDate?: Date; // CUSTOM only
 }
 
+export type RecurringPeriodType = Exclude<BudgetPeriodType, "CUSTOM">;
+
 export interface ResolvedPeriod {
   from: Date;
   to: Date; // exclusive
@@ -71,6 +73,22 @@ export function resolvePeriod(
     from: start.toJSDate(),
     to: end.toJSDate(),
     key: periodKey(period.type, start),
+  };
+}
+
+// Exclusive end of the window `reference` falls into, for every recurring period type.
+export function recurringWindowEnds(
+  reference: Date,
+  timezone: string,
+): Record<RecurringPeriodType, Date> {
+  const end = (type: RecurringPeriodType): Date =>
+    resolvePeriod({ type }, reference, timezone).to;
+  return {
+    WEEKLY: end("WEEKLY"),
+    BIWEEKLY: end("BIWEEKLY"),
+    MONTHLY: end("MONTHLY"),
+    QUARTERLY: end("QUARTERLY"),
+    YEARLY: end("YEARLY"),
   };
 }
 
