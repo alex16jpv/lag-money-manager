@@ -1,3 +1,4 @@
+import { RecurringPeriodType } from "../../../shared/budgetPeriod";
 import { BudgetPeriodType, BudgetType } from "../../../shared/constants";
 import { PaginatedResult, PaginationParams } from "../../../shared/pagination";
 import { ChangeCursor } from "../../../shared/syncCursor";
@@ -6,8 +7,15 @@ import { IRepository } from "../IRepository";
 
 export interface BudgetFilters {
   includeArchived?: boolean;
-  // View-level: expiry depends on the reference date, the repo ignores it.
   includeExpired?: boolean;
+  // Without it the query judges neither expiry nor the lifetime floor.
+  window?: BudgetListingWindow;
+}
+
+// The reference instant a listing is judged at, and where its window ends for each recurring type.
+export interface BudgetListingWindow {
+  reference: Date;
+  ends: Record<RecurringPeriodType, Date>;
 }
 
 // What a create, update or restore would leave active, as the overlap rule judges it.

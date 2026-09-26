@@ -7,7 +7,7 @@ import {
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
-import { resolvePeriod } from "../../shared/budgetPeriod";
+import { recurringWindowEnds, resolvePeriod } from "../../shared/budgetPeriod";
 import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { assertFresh, guardedWrite } from "../../shared/concurrency";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
@@ -40,15 +40,14 @@ export class BudgetService {
     filters: BudgetFilters,
     ctx: ViewContext,
   ): Promise<PaginatedResult<BudgetView>> {
-    const result = await this.repo.getAllByUserId(userId, pagination, filters);
-    const views = await this.toViews(userId, result.data, ctx);
-    // A budget does not exist before its floor, and an expired CUSTOM one-shot leaves the listing.
-    const data = views.filter((view, i) => {
-      if (view.periodTo.getTime() <= result.data[i].lifetimeFloor().getTime()) {
-        return false;
-      }
-      return filters.includeExpired || !view.expired;
+    const result = await this.repo.getAllByUserId(userId, pagination, {
+      ...filters,
+      window: {
+        reference: ctx.reference,
+        ends: recurringWindowEnds(ctx.reference, ctx.timezone),
+      },
     });
+    const data = await this.toViews(userId, result.data, ctx);
     return { data, pagination: result.pagination };
   }
 

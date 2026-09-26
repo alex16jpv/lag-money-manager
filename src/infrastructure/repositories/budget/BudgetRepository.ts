@@ -104,10 +104,7 @@ export class BudgetRepository implements IBudgetRepository {
     filters?: BudgetFilters,
   ): Promise<PaginatedResult<Budget>> {
     const { limit, offset, cursor } = pagination;
-    const baseFilter: Record<string, unknown> = { userId };
-    if (!filters?.includeArchived) {
-      baseFilter.archivedAt = null;
-    }
+    const baseFilter = this.listingFilter(userId, filters);
     const filter = cursor
       ? await idCursorFilter(BudgetModel, baseFilter, cursor)
       : baseFilter;
@@ -117,15 +114,39 @@ export class BudgetRepository implements IBudgetRepository {
         .skip(cursor ? 0 : offset)
         .limit(pageQueryLimit(limit))
         .lean(),
-      BudgetModel.countDocuments(
-        filters?.includeArchived ? { userId } : { userId, archivedAt: null },
-      ),
+      BudgetModel.countDocuments(baseFilter),
     ]);
     return buildPaginatedResult(
       docs.map((doc) => this.toEntity(doc)),
       total,
       pagination,
     );
+  }
+
+  private listingFilter(
+    userId: string,
+    filters?: BudgetFilters,
+  ): Record<string, unknown> {
+    const filter: Record<string, unknown> = { userId };
+    if (!filters?.includeArchived) {
+      filter.archivedAt = null;
+    }
+    const window = filters?.window;
+    if (window) {
+      filter.$or = [
+        filters.includeExpired
+          ? { periodType: "CUSTOM" }
+          : { periodType: "CUSTOM", periodEndDate: { $gt: window.reference } },
+        ...Object.entries(window.ends).map(([periodType, end]) => ({
+          periodType,
+          $or: [
+            { effectiveFrom: { $lt: end } },
+            { effectiveFrom: null, createdAt: { $lt: end } },
+          ],
+        })),
+      ];
+    }
+    return filter;
   }
 
   async create(budget: Partial<Budget>): Promise<Budget> {

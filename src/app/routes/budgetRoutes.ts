@@ -24,9 +24,9 @@ const router = Router();
  *       `spent` in it. The period is the one containing `reference` (default: now) in the
  *       user's timezone. Excluded by default: archived budgets, expired CUSTOM budgets
  *       (their fixed window already ended; recurring period types never expire), and
- *       budgets whose reference period predates their `effectiveFrom`. These filters apply
- *       AFTER pagination, so a page can hold fewer than `limit` items even when
- *       `pagination.hasMore` is true — follow `hasMore`/`nextCursor`, not `data.length`.
+ *       budgets whose reference period predates their `effectiveFrom`. These filters run
+ *       in the query, so `data`, `pagination.total` and `pagination.hasMore` count the
+ *       same rows: only the last page holds fewer than `limit` items.
  *     parameters:
  *       - in: query
  *         name: reference
