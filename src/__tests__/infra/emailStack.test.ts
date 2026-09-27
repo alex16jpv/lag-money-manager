@@ -27,7 +27,10 @@ type Resource = {
   Properties: Record<string, unknown>;
 };
 type Template = {
-  Parameters: Record<string, { Default?: string | number }>;
+  Parameters: Record<
+    string,
+    { Default?: string | number; AllowedPattern?: string }
+  >;
   Resources: Record<string, Resource>;
 };
 
@@ -324,6 +327,39 @@ describe("the email stack", () => {
     });
   });
 
+  it("lets the budget act on the API's role by its real ARN, path included", () => {
+    const statement = (
+      resource("BudgetActionRole").Properties.Policies as {
+        PolicyDocument: { Statement: { Resource: { "Fn::Sub": string } }[] };
+      }[]
+    )[0]?.PolicyDocument.Statement[0];
+    const values: Record<string, string> = {
+      "AWS::Partition": "aws",
+      "AWS::AccountId": "231016596536",
+      ApiRolePath: "/service-role/",
+      ApiRoleName: "ledgerflow-role-o9zw65c1",
+    };
+    const arn = statement?.Resource["Fn::Sub"].replace(
+      /\$\{([^}]+)\}/g,
+      (_, name: string) => values[name] ?? `<${name}>`,
+    );
+    expect(arn).toBe(
+      "arn:aws:iam::231016596536:role/service-role/ledgerflow-role-o9zw65c1",
+    );
+  });
+
+  it("takes a role path only in the shape IAM writes it", () => {
+    const pattern = new RegExp(
+      `^(?:${template.Parameters.ApiRolePath?.AllowedPattern ?? ""})$`,
+    );
+    for (const path of ["/", "/service-role/", "/a/b/"]) {
+      expect(path).toMatch(pattern);
+    }
+    for (const path of ["", "service-role", "/service-role", "service-role/"]) {
+      expect(path).not.toMatch(pattern);
+    }
+  });
+
   it("keeps the domain identity, unless creating it is what failed", () => {
     expect(resource("EmailIdentity").DeletionPolicy).toBe(
       "RetainExceptOnCreate",
@@ -340,7 +376,10 @@ describe("the email stack", () => {
     const required = Object.entries(template.Parameters)
       .filter(([, p]) => p.Default === undefined)
       .map(([name]) => name);
-    for (const name of [...required, "ApiFunctionName"]) {
+    expect(required).toEqual(
+      expect.arrayContaining(["ApiFunctionName", "ApiRoleName", "ApiRolePath"]),
+    );
+    for (const name of required) {
       expect(command).toContain(`${name}=`);
     }
   });

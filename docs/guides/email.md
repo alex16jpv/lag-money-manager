@@ -30,11 +30,19 @@ updates cost data up to three times a day, 8 to 12 hours apart, so it acts hours
 
 - **An administrator of the AWS account**, in the API's region (`us-east-1`). The `lag-deploy` user of
   the [Deployment guide](./deployment.md) can only update the function, and should stay that way.
-- From the Lambda console, for the API's function (`LAMBDA_FUNCTION_NAME` in `.env.deploy`; it must
-  have run at least once, so that its log group exists — the daily keepalive sees to that):
-  - its **execution role name**: _Configuration → Permissions → Execution role_ (the name, not the
-    ARN);
-  - its **Function URL**: _Configuration → Function URL_.
+- For the API's function (`LAMBDA_FUNCTION_NAME` in `.env.deploy`; it must have run at least once, so
+  that its log group exists — the daily keepalive sees to that), its **execution role** and its
+  **Function URL**. Read them rather than copy them from the console, with the deploy profile:
+
+  ```bash
+  aws lambda get-function-configuration --function-name <function name> --query Role
+  aws lambda get-function-url-config --function-name <function name> --query FunctionUrl
+  ```
+
+  The role's ARN is `arn:aws:iam::<account>:role<path><name>`. **Its path matters**: a role the Lambda
+  console created lives under `/service-role/`, and the budget can only deny the role it names by its
+  exact ARN. With the deploy user the second command needs `lambda:GetFunctionUrlConfig` (the
+  read-only policy of [Checking each step](#checking-each-step)); an administrator profile reads it as is.
 - **An address for the alerts.** Every alarm, pause and budget threshold is emailed there.
 - **An address for the DMARC reports** (step 3). A separate alias is better: the reports are daily XML
   attachments from every large mailbox provider.
@@ -55,8 +63,9 @@ file_ → `infra/email.yaml` from this repository. Name the stack `ledger-flow-e
 
 | Parameter | Value |
 | --- | --- |
-| `ApiFunctionName` | The API's function name (`LAMBDA_FUNCTION_NAME`), if it is not `lag-money-manager` |
-| `ApiRoleName` | The API's execution role name |
+| `ApiFunctionName` | The API's function name (`LAMBDA_FUNCTION_NAME`) |
+| `ApiRoleName` | The name at the end of the role's ARN |
+| `ApiRolePath` | The role's path, between `role` and the name: `/service-role/` for a role the Lambda console created, `/` for one with no path. Required: a wrong one leaves the budget unable to deny the role |
 | `AlertEmail` | The address for the alerts |
 | `WebhookUrl` | **Leave it empty** for now (step 4) |
 | The rest | Keep the defaults: they are the 1 USD a month limits ([Raising the limits](#raising-the-limits)) |
@@ -67,7 +76,8 @@ an administrator profile:
 ```bash
 aws cloudformation deploy --stack-name ledger-flow-email --template-file infra/email.yaml \
   --capabilities CAPABILITY_NAMED_IAM --region us-east-1 --profile <admin profile> \
-  --parameter-overrides ApiFunctionName=<function name> ApiRoleName=<role name> AlertEmail=<address>
+  --parameter-overrides ApiFunctionName=<function name> ApiRoleName=<role name> \
+  ApiRolePath=<role path> AlertEmail=<address>
 ```
 
 Then **confirm the subscription**: AWS emails the alert address ("AWS Notification - Subscription
@@ -259,6 +269,44 @@ Vercel → the web client's project → _Firewall → Configure → New rule_:
 Save and publish it. `/api/auth/refresh` stays out on purpose: a session refreshes on its own, and
 many sessions share one address behind a carrier NAT; the API's own limiter covers it. The routes
 the password reset and the email verification add to the web client join this expression.
+
+## Checking each step
+
+Every step can be checked by reading, without writing anything, so the owner does by hand only what has
+to be manual and a session confirms it landed. This inline policy on the deploy user
+(`ledger-flow-email-read`) is what that reading needs; it writes nothing:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Effect": "Allow", "Action": ["lambda:GetFunctionUrlConfig"],
+      "Resource": "arn:aws:lambda:us-east-1:<account>:function:<function name>" },
+    { "Effect": "Allow", "Action": ["cloudformation:DescribeStacks", "cloudformation:DescribeStackEvents"],
+      "Resource": "arn:aws:cloudformation:us-east-1:<account>:stack/ledger-flow-email/*" },
+    { "Effect": "Allow",
+      "Action": ["ses:GetAccount", "ses:ListEmailIdentities", "ses:GetEmailIdentity",
+                 "ses:GetConfigurationSet", "sns:ListSubscriptionsByTopic", "sns:GetTopicAttributes",
+                 "cloudwatch:DescribeAlarms", "budgets:ViewBudget",
+                 "budgets:DescribeBudgetActionsForBudget", "iam:SimulatePrincipalPolicy"],
+      "Resource": "*" }
+  ]
+}
+```
+
+Every command below runs with `--profile <deploy profile> --region us-east-1`.
+
+| After step | Read | Expect |
+| --- | --- | --- |
+| 1 | `aws sesv2 get-account --query PricingAttributes` | `CurrentPlan` is `NONE` (à la carte), with no `NextPlan` |
+| 2 | `aws cloudformation describe-stacks --stack-name ledger-flow-email` | `CREATE_COMPLETE` (`UPDATE_COMPLETE` after step 4); the outputs carry the DNS records of step 3, `ConfigurationSet`, `EventsTopicArn` and `PauseFunction` |
+| 2 | `aws budgets describe-budget-actions-for-budget --account-id <account> --budget-name ledger-flow-ses` | `Status` is `STANDBY`, and `Roles` is `[<role name>]` |
+| 2 | `aws iam simulate-principal-policy --policy-source-arn <BudgetActionRole ARN> --action-names iam:AttachRolePolicy --resource-arns <the API role's ARN> --context-entries Key=iam:PolicyARN,Values=<ledger-flow-deny-email ARN>,Type=string` | `EvalDecision` is `allowed`: the budget can deny the role it names, path included |
+| 3 | `aws sesv2 get-email-identity --email-identity ledgerflow.alexpiral.com` | `DkimAttributes.Status` and `MailFromAttributes.MailFromDomainStatus` are `SUCCESS` |
+| 4 | `aws sns list-subscriptions-by-topic --topic-arn <EventsTopicArn>` | The HTTPS subscription has a real ARN, not `PendingConfirmation` |
+| 6 | `aws sesv2 get-account` | `ProductionAccessEnabled` and `SendingEnabled` are `true`, `EnforcementStatus` is `HEALTHY`, and `SendQuota` says the quota granted |
+| 8 | `aws lambda get-function-configuration --function-name <function name> --query "keys(Environment.Variables)"` | `EMAIL_PROVIDERS`, `EMAIL_SES_CONFIGURATION_SET`, `EMAIL_SES_EVENTS_TOPIC_ARN` and `TURNSTILE_SECRET` are there. The query prints the names only; the values still travel in the answer, so never drop it |
+| Any | `aws cloudwatch describe-alarms --alarm-name-prefix ledger-flow` | Every alarm `OK` or `INSUFFICIENT_DATA` |
 
 ## When a guard trips
 

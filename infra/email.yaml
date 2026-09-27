@@ -19,7 +19,6 @@ Parameters:
     Description: The API's EMAIL_SES_CONFIGURATION_SET.
   ApiFunctionName:
     Type: String
-    Default: lag-money-manager
     Description: The API's Lambda function. Its log group feeds the cap and unsubscribe alarms.
   ApiRoleName:
     Type: String
@@ -27,6 +26,12 @@ Parameters:
     Description: >-
       Name (not ARN) of the API Lambda's execution role: it gets ses:SendEmail, and the budget
       denies it when the month's spend is reached.
+  ApiRolePath:
+    Type: String
+    AllowedPattern: "/([\\w+=,.@-]+/)*"
+    Description: >-
+      That role's path, what its ARN has between "role" and the name: /service-role/ for a role the
+      Lambda console created, / for one created without a path.
   WebhookUrl:
     Type: String
     Default: ""
@@ -503,7 +508,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: [iam:AttachRolePolicy, iam:DetachRolePolicy]
-                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ApiRoleName}
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role${ApiRolePath}${ApiRoleName}
                 Condition:
                   ArnEquals:
                     iam:PolicyARN: !Ref DenySendPolicy
