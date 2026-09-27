@@ -19,6 +19,8 @@ export interface IEmailDeliveryDocument {
   provider: EmailProviderName | null;
   messageId: string | null;
   failures: EmailDeliveryAttempt[];
+  reportedAt: Date | null;
+  report: string | null;
   createdAt: Date;
 }
 
@@ -49,6 +51,8 @@ const EmailDeliverySchema = new Schema<IEmailDeliveryDocument>(
       ],
       default: [],
     },
+    reportedAt: { type: Date, default: null },
+    report: { type: String, default: null },
     createdAt: { type: Date, required: true, default: () => new Date() },
   },
   { versionKey: false },
@@ -58,6 +62,8 @@ EmailDeliverySchema.index(
   { createdAt: 1 },
   { expireAfterSeconds: EMAIL_DELIVERY_RETENTION_DAYS * 24 * 60 * 60 },
 );
+
+EmailDeliverySchema.index({ provider: 1, messageId: 1 });
 
 export const EmailDeliveryModel = mongoose.model<IEmailDeliveryDocument>(
   "EmailDelivery",

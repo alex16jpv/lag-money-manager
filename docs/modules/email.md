@@ -1,9 +1,9 @@
 # Email Module
 
-> **Status: the sender is built, nothing calls it yet.** This module is the piece every email of the
-> app goes through: the password reset (T-207), the email verification (T-209), the email change
-> (T-221), the security notices (T-211) and, later, the notification channel (T-131). Bounces and
-> complaints are T-223; the AWS guide, alarms and budget are T-224.
+> **Status: the sender and the bounce handling are built, nothing sends yet.** This module is the
+> piece every email of the app goes through: the password reset (T-207), the email verification
+> (T-209), the email change (T-221), the security notices (T-211) and, later, the notification channel
+> (T-131). The AWS guide, alarms and budget are T-224.
 
 ## What This Module Does
 
@@ -16,10 +16,13 @@ about why it did not go. In order, for every send:
    A malformed input (a code that is not six digits, a token that could break a link, a new
    address the strict validation refuses) throws before anything is counted: it is a bug in the
    caller.
-3. **The brakes** (below) are counted, cheapest first. The first one over its limit answers
-   `limited` with the seconds until it frees.
-4. **The provider chain** sends it, each provider with its own timeout.
-5. **The delivery is recorded** in `emaildeliveries`.
+3. **The suppression list** (below): an address that hard-bounced or complained answers
+   `failed / rejected`, before anything is counted.
+4. **The brakes** (below) are counted, all at once. Any one over its limit answers `limited` with
+   the seconds until it frees.
+5. **The provider chain** sends it, each provider with its own timeout.
+6. **The delivery is recorded** in `emaildeliveries`, and moves again when the provider reports
+   what happened to it.
 
 ```ts
 const email = createEmailService();
@@ -37,10 +40,10 @@ something the owner did.
 
 | Outcome                         | Meaning                                                                        |
 | ------------------------------- | ------------------------------------------------------------------------------ |
-| `sent` · `provider, messageId`  | A provider accepted it for delivery. Not proof it arrived: that is T-223       |
+| `sent` · `provider, messageId`  | A provider accepted it for delivery. Not proof it arrived: the record learns that later |
 | `limited` · `retryAfterSeconds` | A brake stopped it. The seconds are the ones of the brake that stopped it      |
 | `failed` · `disabled`           | The switch is off or there is no provider                                      |
-| `failed` · `rejected`           | A provider refused the address itself; another provider was not tried          |
+| `failed` · `rejected`           | The address is suppressed, or a provider refused it; another provider was not tried |
 | `failed` · `unavailable`        | Every provider answered with a refusal, or the brakes could not be counted: nothing went out |
 | `failed` · `unconfirmed`        | A provider timed out or failed without answering: the email **may still arrive** |
 
@@ -53,8 +56,10 @@ What the callers owe to this answer, written down here so each task does not red
 - **Forgot your password? never shows the outcome.** Only an address with an account can fail, so
   the endpoint answers the same whatever happens, and waits at least `email.providerCeilingMs` plus a
   margin so the time does not tell either. `providerCeilingMs` is the number of providers × their
-  timeout; the margin has to cover the brakes (one parallel round of MongoDB hits, and the refunds
-  when one stops the send) and the delivery row.
+  timeout; the margin has to cover the suppression read, the brakes (one parallel round of MongoDB
+  hits, and the refunds when one stops the send) and the delivery row.
+- **`rejected` means the address will not take email**: it bounced for good, it complained, or the
+  provider refused it. Asking again does not help.
 - **Resend in the verification may show it** (`EMAIL_SEND_FAILED`): the address is the person's own.
 - **A security notice never blocks what triggered it.** Send it after the change is committed, and
   whatever the outcome, the change stands; the notice is on the record either way.
@@ -111,7 +116,8 @@ the contract already fixes every value, so a tool would buy nothing.
 - **A recipient failure** (SES `BadRequestException`, Mailpit HTTP 400) stops: another provider would
   refuse the same address. SES `MessageRejected` is not one: outside the sandbox it means the sender
   identity or the content, which is about the account, so the next provider is tried. SES does not
-  refuse a suppressed address at send time either; it comes back later as a bounce (T-223).
+  refuse a suppressed address at send time either; it comes back later as a bounce, and our own
+  list (below) is what stops the next one.
 - **Each provider gets `EMAIL_PROVIDER_TIMEOUT_MS`** (1.5 s). The chain enforces it itself, even on
   a provider that ignores its abort signal, so `providerCeilingMs` is a real ceiling. A provider that accepted
   just after its timeout may make the next one send a second copy; with one provider that cannot happen.
@@ -186,6 +192,103 @@ an environment variable of the Lambda: it changes in the console and applies on 
   worse than a lost limit; here the limit is the spending guarantee, and a missing email is the
   smaller harm.
 
+## Bounces and complaints
+
+`POST /webhooks/email/ses` is where SES reports what became of each email: SES publishes the events
+of its configuration set (`EMAIL_SES_CONFIGURATION_SET`) to an SNS topic, and the topic calls this
+URL. The route is the only one outside the gateway secret, since AWS does not hold it; what stands in
+for it is SNS's signature. **It is not in the OpenAPI document**, like `/` and `/health/db`: that
+document is the front's contract (its types, its error codes and its `endpoints.md` are generated
+from it), and nothing of the front calls this route. This section is its documentation.
+
+**In production, `EMAIL_PROVIDERS` with `ses` and no `EMAIL_SES_EVENTS_TOPIC_ARN` stops the API from
+starting**: sending through SES without receiving its bounces would keep mailing dead addresses and
+wear down the SES account's reputation, with nothing but a log line to show for it.
+
+- **Mounted before every body parser and before the gateway secret**, with `express.raw`: the
+  signature covers the exact text SNS sent, which arrives as `text/plain`. Its own limits: 128 kB per
+  body (an SES event with its headers is a few kB; SNS itself tops at 256 kB) and 120 requests a
+  minute per IP, answered with `429`, which SNS retries.
+- **What makes a message genuine** (the `ISnsInbox` port in `domain/email`, implemented by
+  `SnsInbox`; in the order it is checked, cheapest first, and nothing is fetched before step 4):
+  1. `EMAIL_SES_EVENTS_TOPIC_ARN` is set, and the message's `TopicArn` is exactly it. Anybody can
+     create a topic of their own and have SNS sign for it, so a valid signature alone proves nothing.
+  2. Its `Timestamp` is at most 2 hours old. SNS stops retrying within an hour, so an older message
+     is a replay: without this, a captured bounce could suppress an address again after support
+     lifted it.
+  3. A confirmation carries a `Token` and a `SubscribeURL` on the SNS host of step 4.
+  4. `SigningCertURL` is `https://sns.<region of that topic>.amazonaws.com/<file>.pem`: no port, no
+     credentials, no query, no fragment. The certificate is fetched over TLS from that host (3 s, no
+     redirects), must be in its validity window, and is kept for the life of the instance (at most 8
+     of them, the oldest dropped first).
+  5. The signature (`SignatureVersion` 1 is SHA-1, 2 is SHA-256) verifies over the fields SNS signs,
+     in its order: for a notification `Message`, `MessageId`, `Subject` if present, `Timestamp`,
+     `TopicArn`, `Type`; for a (un)subscribe confirmation `SubscribeURL` and `Token` instead of
+     `Subject`.
+
+  A message that fails is `403` (SNS does not retry a 4xx). Its reason goes on the request's own log
+  line (`code: EMAIL_EVENT_REJECTED`, `errorMessage: <reason>`), so a flood of forged calls is one line
+  each and nothing more. When the certificate host does not answer (a network error or a 5xx), the
+  answer is `503` instead, which SNS retries: a fault on AWS's side must not throw a real bounce away.
+  The `503` body has no `code`: its only reader is SNS, which goes by the status.
+- **Only a verified message reaches the database**: the MongoDB connection is opened after the
+  signature, so a forged call on a cold start costs no connection.
+- **`SubscriptionConfirmation`** is confirmed by visiting its `SubscribeURL`: subscribing the URL to the
+  topic is all the setup the app needs. SNS refusing it (a 4xx: an expired token) is a `403`; SNS not
+  answering, a `503`. **`UnsubscribeConfirmation`** is logged as an error
+  (`EMAIL_EVENTS_UNSUBSCRIBED`): from then on no bounce arrives, and the owner has to know. A
+  subscription confirmed this way can be removed by anyone holding the `UnsubscribeURL` of one of its
+  notifications; that log line is the signal.
+- **What the subscription needs** (T-224's guide): HTTPS to the Function URL + `/webhooks/email/ses`,
+  with **raw message delivery off** (the signature is on SNS's envelope, so a raw body is refused).
+- **A notification carries one SES event**, read by `sesEvents.ts` into the provider-neutral
+  `EmailEvent` (`delivered`, `bounced` or `complained`). A future provider adds its own route and
+  reader, and reuses the rest. Both SES formats are read: `eventType` (event publishing) and
+  `notificationType` (identity notifications).
+
+| SES event                                 | Record becomes | Suppresses the address |
+| ----------------------------------------- | -------------- | ---------------------- |
+| `Delivery`                                | `delivered`    | no                     |
+| `Bounce`, `Permanent` (any subtype)       | `bounced`      | yes                    |
+| `Bounce`, `Transient` or `Undetermined`   | `bounced`      | no: it may work later  |
+| `Complaint`                               | `complained`   | yes                    |
+| `Complaint` with feedback `not-spam`      | —              | no: ignored, it takes a complaint back |
+| `Send`, `Open`, `Click`, `DeliveryDelay`, … | —            | ignored                |
+
+- **The address acted on is the one we sent to** (`mail.destination`), not the one the bounce
+  names: a forward can make the final recipient another address, and suppressing that one would
+  leave ours bouncing.
+- **The record only moves forward** (`sent` → `delivered` → `bounced` → `complained`): SNS delivers at
+  least once and in no promised order, so a repeated or late event never rolls it back. A record
+  that no longer exists (past its 30 days) changes nothing, and the suppression still happens.
+- **A signed event that cannot be read** is logged (`EMAIL_EVENT_UNREADABLE`) and answered `204`: a
+  retry would read the same bytes. A database that fails answers `5xx`, and SNS retries (by default
+  three times in about a minute; T-224's guide sets a longer delivery policy on the subscription).
+
+### The suppression list: `emailsuppressions`
+
+| Field          | Meaning                                                              |
+| -------------- | -------------------------------------------------------------------- |
+| `toHash`       | SHA-256 of the address, unique: one row per address, never the address |
+| `reason`       | `bounce` or `complaint`: the first one, while it stays suppressed    |
+| `provider`, `detail` | Who reported it and how (`Permanent/NoEmail`, `abuse`)         |
+| `suppressedAt` | When it was reported                                                 |
+| `liftedAt`     | `null` while suppressed; set when support lifts it                   |
+
+- **Every send reads it first**, for every provider: the list is ours, so a fallback provider never
+  sends to an address SES already found dead, and it does not depend on SES's own account-level
+  list being on. A suppressed code email is not recorded, like one a brake stops; a suppressed
+  security notice is recorded as `suppressed`, so the notice is still on the record.
+- **It does not expire.** An address that bounced for good stays that way, and each bounce counts
+  against the SES account's reputation. Changing the account's email to another address is the way
+  out for its owner.
+- **Support lifts it**, never the app: `MONGO_URI=<the database> npm run email:unsuppress -- <address>`.
+  Lifting marks the row (`liftedAt`); if the address bounces or complains again, it is suppressed
+  again with the new reason. This is the one manual help support gives (the "nobody recovers
+  accounts by hand" decision is about accounts, not about a mailbox that was full for a week).
+- **A new suppression logs `EMAIL_ADDRESS_SUPPRESSED`** (warn, without the address); the same event
+  arriving again logs nothing.
+
 ## The record: `emaildeliveries`
 
 | Field                     | Meaning                                                                          |
@@ -193,9 +296,10 @@ an environment variable of the Lambda: it changes in the console and applies on 
 | `template`, `budget`      | What was sent and which share it spent                                           |
 | `userId`                  | The account it was for                                                           |
 | `toHash`                  | SHA-256 of the trimmed, lower-cased address. **The address itself is never stored** (see below) |
-| `status`                  | `sent` · `failed` · `limited` · `disabled`. T-223 adds what the provider reports later |
-| `provider`, `messageId`   | Who accepted it and its id there, which T-223's events are matched by            |
+| `status`                  | `sent` · `failed` · `limited` · `disabled` · `suppressed` when it is written; then `delivered` · `bounced` · `complained` as the provider reports |
+| `provider`, `messageId`   | Who accepted it and its id there: the events are matched by the pair (indexed) |
 | `failures`                | `{ provider, error }` for every provider that failed before the answer           |
+| `reportedAt`, `report`    | When the provider's last event happened and what it said (`Permanent/NoEmail`, `abuse`) |
 | `createdAt`               | TTL index: the row is deleted **30 days** later                                  |
 
 **What is recorded:** every email that reached a provider, and every security notice that was
@@ -226,8 +330,19 @@ One line per problem, never the address, never the code:
 | `EMAIL_BRAKES_UNAVAILABLE`    | error | The brakes could not be counted                                      |
 | `EMAIL_REFUND_FAILED`         | error | A counter could not be given back: it over-counts until its window ends |
 | `EMAIL_DELIVERY_NOT_RECORDED` | error | The row could not be written                                         |
+| `EMAIL_RECIPIENT_SUPPRESSED`  | warn  | A send to an address on the suppression list                         |
+| `EMAIL_SUPPRESSIONS_UNAVAILABLE` | error | The suppression list could not be read: nothing was sent          |
+| `EMAIL_ADDRESS_SUPPRESSED`    | warn  | A hard bounce or a complaint put a new address on the list           |
+| `EMAIL_EVENT_UNREADABLE`      | error | A signed event whose content could not be read                       |
+| `EMAIL_EVENTS_SUBSCRIBED`     | info  | The SNS subscription was confirmed                                   |
+| `EMAIL_EVENTS_UNSUBSCRIBED`   | error | The subscription was removed: bounces and complaints stop arriving   |
 
-These are log codes, not API error codes: nothing here reaches a response.
+The webhook's refusals are not lines of their own: they ride on the request log line, as its `code`,
+with the detail in `errorMessage`: `EMAIL_EVENT_REJECTED` (warn, `403`, the reason),
+`EMAIL_EVENTS_CERTIFICATE_UNAVAILABLE` and `EMAIL_EVENTS_SUBSCRIPTION_FAILED` (error, `503`, what did not
+answer).
+
+These are log codes, not API error codes: nothing here reaches a response to the front.
 
 ## Seeing the emails
 

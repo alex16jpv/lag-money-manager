@@ -70,6 +70,14 @@ describe("email environment", () => {
       "links over http in production",
       { NODE_ENV: "production", APP_URL: "http://ledgerflow.alexpiral.com" },
     ],
+    [
+      "SES in production with nowhere for its bounces to arrive",
+      { NODE_ENV: "production", EMAIL_PROVIDERS: "ses" },
+    ],
+    [
+      "an events topic that is not an SNS topic ARN",
+      { EMAIL_SES_EVENTS_TOPIC_ARN: "arn:aws:sqs:us-east-1:123456789012:q" },
+    ],
   ])("refuses to start with %s", async (_label, env) => {
     await expect(environment(env)).rejects.toThrow();
   });
@@ -87,11 +95,24 @@ describe("email environment", () => {
     ).toBe(expected);
   });
 
-  it("accepts SES over https in production", async () => {
+  it("accepts SES over https in production, with its events topic", async () => {
+    const env = await environment({
+      NODE_ENV: "production",
+      EMAIL_PROVIDERS: "ses",
+      EMAIL_SES_EVENTS_TOPIC_ARN:
+        "arn:aws:sns:us-east-1:123456789012:ledger-flow-email-events",
+    });
+    expect(env.EMAIL_PROVIDERS).toEqual(["ses"]);
+    expect(env.EMAIL_SES_EVENTS_TOPIC_ARN).toBe(
+      "arn:aws:sns:us-east-1:123456789012:ledger-flow-email-events",
+    );
+  });
+
+  it("starts in production without the topic while SES is not sending", async () => {
     expect(
-      (await environment({ NODE_ENV: "production", EMAIL_PROVIDERS: "ses" }))
-        .EMAIL_PROVIDERS,
-    ).toEqual(["ses"]);
+      (await environment({ NODE_ENV: "production" }))
+        .EMAIL_SES_EVENTS_TOPIC_ARN,
+    ).toBeUndefined();
   });
 });
 

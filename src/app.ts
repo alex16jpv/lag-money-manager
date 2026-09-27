@@ -15,6 +15,7 @@ import authRoutes from "./app/routes/authRoutes";
 import budgetRoutes from "./app/routes/budgetRoutes";
 import categoryRoutes from "./app/routes/categoryRoutes";
 import contactRoutes from "./app/routes/contactRoutes";
+import emailWebhookRoutes from "./app/routes/emailWebhookRoutes";
 import invitationRoutes from "./app/routes/invitationRoutes";
 import joinedGroupRoutes from "./app/routes/joinedGroupRoutes";
 import sharedGroupRoutes from "./app/routes/sharedGroupRoutes";
@@ -53,6 +54,8 @@ app.use(
     origin: ENVIRONMENT.CORS_ORIGIN.split(",").map((s) => s.trim()),
   }),
 );
+// Signed by the provider, not the gateway: ahead of every body parser and of the gateway secret.
+app.use("/webhooks/email", emailWebhookRoutes);
 // body-parser skips a body another parser already read, so the batch cap has to be mounted first.
 app.use("/sync", express.json({ limit: SYNC_BODY_LIMIT }));
 app.use(express.json({ limit: "10kb" }));

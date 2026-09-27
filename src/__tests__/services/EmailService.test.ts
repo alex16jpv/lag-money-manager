@@ -21,6 +21,10 @@ import {
   NewEmailDelivery,
 } from "../../domain/repositories/emailDelivery/IEmailDeliveryRepository";
 import {
+  IEmailSuppressionRepository,
+  NewEmailSuppression,
+} from "../../domain/repositories/emailSuppression/IEmailSuppressionRepository";
+import {
   CounterWindow,
   IRateCounterRepository,
   RateCount,
@@ -77,6 +81,28 @@ class MemoryDeliveries implements IEmailDeliveryRepository {
     if (this.fail) throw new Error("insert failed");
     this.rows.push(delivery);
   }
+
+  async report(): Promise<void> {}
+}
+
+class MemorySuppressions implements IEmailSuppressionRepository {
+  readonly hashes = new Set<string>();
+  fail = false;
+
+  async isSuppressed(toHash: string): Promise<boolean> {
+    if (this.fail) throw new Error("read failed");
+    return this.hashes.has(toHash);
+  }
+
+  async suppress(suppression: NewEmailSuppression): Promise<boolean> {
+    const added = !this.hashes.has(suppression.toHash);
+    this.hashes.add(suppression.toHash);
+    return added;
+  }
+
+  async lift(toHash: string): Promise<boolean> {
+    return this.hashes.delete(toHash);
+  }
 }
 
 const CONFIG: EmailServiceConfig = {
@@ -109,6 +135,7 @@ describe("EmailService", () => {
   let now: Date;
   let counters: MemoryCounters;
   let deliveries: MemoryDeliveries;
+  let suppressions: MemorySuppressions;
   let sent: { to: string; subject: string; template: string }[];
   let provider: EmailProvider & { send: jest.Mock };
 
@@ -120,6 +147,7 @@ describe("EmailService", () => {
       providers,
       counters,
       deliveries,
+      suppressions,
       {
         ...CONFIG,
         ...config,
@@ -148,6 +176,7 @@ describe("EmailService", () => {
     now = new Date("2026-09-26T12:00:00Z");
     counters = new MemoryCounters(() => now);
     deliveries = new MemoryDeliveries();
+    suppressions = new MemorySuppressions();
     sent = [];
     provider = {
       name: "mailpit",
@@ -184,6 +213,67 @@ describe("EmailService", () => {
       },
     ]);
     expect(JSON.stringify(deliveries.rows)).not.toContain("xample.com");
+  });
+
+  describe("the suppression list", () => {
+    it("refuses an address that bounced or complained, before counting or sending", async () => {
+      suppressions.hashes.add(hashEmailAddress(RECIPIENT.email));
+      await expect(reset(service())).resolves.toEqual({
+        status: "failed",
+        reason: "rejected",
+      });
+      expect(provider.send).not.toHaveBeenCalled();
+      expect(counters.counts.size).toBe(0);
+      expect(deliveries.rows).toEqual([]);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "EMAIL_RECIPIENT_SUPPRESSED" }),
+        expect.any(String),
+      );
+    });
+
+    it("matches the address whatever its case or spacing", async () => {
+      suppressions.hashes.add(hashEmailAddress("ana@example.com"));
+      await expect(
+        reset(service(), "  ANA@example.COM "),
+      ).resolves.toMatchObject({ status: "failed", reason: "rejected" });
+    });
+
+    it("keeps a suppressed security notice on the record", async () => {
+      suppressions.hashes.add(hashEmailAddress(RECIPIENT.email));
+      await service().sendNotice({
+        template: "password-changed",
+        data: FACTS,
+        recipient: RECIPIENT,
+      });
+      expect(deliveries.rows).toEqual([
+        expect.objectContaining({
+          template: "password-changed",
+          status: "suppressed",
+          provider: null,
+        }),
+      ]);
+    });
+
+    it("sends to another address as usual", async () => {
+      suppressions.hashes.add(hashEmailAddress("someone@else.test"));
+      await expect(reset(service())).resolves.toMatchObject({
+        status: "sent",
+      });
+    });
+
+    it("does not send when the list cannot be read", async () => {
+      suppressions.fail = true;
+      await expect(reset(service())).resolves.toEqual({
+        status: "failed",
+        reason: "unavailable",
+      });
+      expect(provider.send).not.toHaveBeenCalled();
+      expect(counters.counts.size).toBe(0);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "EMAIL_SUPPRESSIONS_UNAVAILABLE" }),
+        expect.any(String),
+      );
+    });
   });
 
   describe("the switch", () => {

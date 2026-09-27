@@ -4,6 +4,7 @@ export { BudgetModel } from "./BudgetModel";
 export { CategoryModel } from "./CategoryModel";
 export { ContactModel } from "./ContactModel";
 export { EmailDeliveryModel } from "./EmailDeliveryModel";
+export { EmailSuppressionModel } from "./EmailSuppressionModel";
 export { IdempotencyKeyModel } from "./IdempotencyKeyModel";
 export { RateLimitModel } from "./RateLimitModel";
 export { RefreshSessionModel } from "./RefreshSessionModel";

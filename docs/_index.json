@@ -242,8 +242,8 @@
     {
       "path": "docs/modules/email.md",
       "title": "Email Module",
-      "description": "Email module: the provider chain (SES, Mailpit), the 13 templates copied from the front's contract, the brakes and spending caps, and the emaildeliveries record.",
-      "tags": ["module", "email", "ses", "rate-limit", "templates"],
+      "description": "Email module: the provider chain (SES, Mailpit), the 13 templates copied from the front's contract, the brakes and spending caps, the emaildeliveries record, and the SES bounce and complaint webhook with its suppression list.",
+      "tags": ["module", "email", "ses", "rate-limit", "templates", "webhook", "sns", "suppression"],
       "audience": "both",
       "mustReadFirst": false
     },

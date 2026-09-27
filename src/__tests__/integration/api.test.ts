@@ -378,6 +378,8 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getBudgetRepository: () => mockBudgetRepo,
     getRefreshSessionRepository: () => mockRefreshSessionRepo,
     getSyncOpRepository: () => mockSyncOpRepo,
+    getEmailDeliveryRepository: () => ({}),
+    getEmailSuppressionRepository: () => ({}),
   },
   RepositoryFactory: jest.fn(),
 }));
