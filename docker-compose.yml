@@ -38,6 +38,17 @@ services:
     networks:
       - lag
 
+  # Catches every email of development and the e2e suite (UI and API on :8025); nothing leaves the machine.
+  mailpit:
+    image: axllent/mailpit:v1.31.2
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+    environment:
+      MP_MAX_MESSAGES: 2000
+    networks:
+      - lag
+
 volumes:
   mongo_data:
 

@@ -317,7 +317,8 @@ and each channel decides in its own task how it summarises.
 `inApp` alone), the per-type `channels` in the registry, the preference shape keyed by channel, the
 `notificationdeliveries` collection with its indexes, and the enqueue step in `notify()`, tested with
 a channel that exists only in the tests. With no external channel it enqueues nothing, which is the
-truth. T-131 adds `email` and T-132 `push`: a value in the list, a sender, and the Settings column.
+truth. T-131 adds `email` and T-132 `push`: a value in the list, a sender, and the Settings column. The
+email sender already exists ([Email module](./email.md)), with a share of the caps kept for it.
 
 **What a sender needs that this repository does not have yet.** The back runs as a Lambda: there is
 no process that stays up to drain a queue. The sender is either invoked after the transaction

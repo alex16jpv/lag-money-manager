@@ -63,7 +63,12 @@ when a pull changes an index definition, the old index stays on your local
 database until you run `npm run db:sync-indexes`.
 
 Optionally, `docker compose up -d` also starts **Mongoku**, a lightweight
-MongoDB web UI, on `http://localhost:3100`.
+MongoDB web UI, on `http://localhost:3100`, and **Mailpit**, which catches every
+email the app sends: `docker compose up -d mailpit`, then open
+`http://localhost:8025`. With `EMAIL_PROVIDERS=mailpit` in `.env` (as in
+`.env.example`) the app sends there, and `npm run email:preview` sends it one of
+every email in both languages ([Email module](../modules/email.md)). Nothing
+leaves the machine.
 
 ## 5. Run the Project
 

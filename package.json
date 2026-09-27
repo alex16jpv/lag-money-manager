@@ -30,6 +30,7 @@
     "fixtures:offline": "tsx scripts/offline-fixtures/build.ts",
     "fixtures:check": "tsx scripts/offline-fixtures/build.ts --check",
     "seed:test": "tsx scripts/seed-test.ts",
+    "email:preview": "tsx scripts/email-preview.ts",
     "docs": "vitepress dev docs --host"
   },
   "keywords": [],
@@ -37,6 +38,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1141.0",
     "@codegenie/serverless-express": "^4.17.1",
     "bcryptjs": "^3.0.3",
     "compression": "^1.8.1",
