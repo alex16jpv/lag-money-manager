@@ -237,12 +237,14 @@ Cloudflare dashboard → _Turnstile → Add widget_:
   hostname list, so the widget does not work there: they use the test keys.
 
 Keep the **site key** and the **secret key**. The secret goes in the Lambda as `TURNSTILE_SECRET`
-([Environment Variables](./environment-vars.md)): the API checks every Forgot your password? with it,
-and without it that route answers `503` and sends nothing. The site key goes in the web client's
-project when its password reset (T-208) ships, which adds it to the client's docs. Development and
-the e2e suite use Cloudflare's test keys (site key `1x00000000000000000000AA` and secret
-`1x0000000000000000000000000000000AA` always pass), never these; production refuses to start with a
-test secret.
+([Environment Variables](./environment-vars.md)): the API checks with it every Forgot your password?,
+every Resend of the email's confirmation and every sign-up that sends a captcha, and without it those
+answer `503` and send nothing. The site key goes in Vercel → the web client's project → _Settings →
+Environment Variables_ as `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, for **Production**, and the web client is
+redeployed (it is read at build time): without it, Sign in keeps "Forgot your password?" inactive with
+"(soon)". Development and the e2e suite use Cloudflare's test keys (site key `1x00000000000000000000AA`
+and secret `1x0000000000000000000000000000000AA` always pass), never these; production refuses to start
+with a test secret.
 
 It comes before the next step on purpose: with `EMAIL_PROVIDERS` set and no `TURNSTILE_SECRET`,
 production refuses to start, since the captcha is what keeps strangers from spending the email budget.
@@ -251,8 +253,8 @@ production refuses to start, since the captcha is what keeps strangers from spen
 
 With production access granted, add `EMAIL_PROVIDERS=ses` to the Lambda's environment.
 `EMAIL_SES_EVENTS_TOPIC_ARN` (step 4) and `TURNSTILE_SECRET` (step 7) must already be there: without
-either, production refuses to start. From then on Forgot your password? emails its codes; until the web
-client ships its screens (T-208) nobody reaches it from the app.
+either, production refuses to start. From then on Forgot your password? emails its codes, and a sign-up
+from the web client emails its confirmation once the client sends the captcha with it (T-210).
 
 ## 9. One rate limit on the web client's sign-in
 
@@ -261,14 +263,24 @@ client signs in, so a flood from one address is turned away before it reaches th
 
 Vercel → the web client's project → _Firewall → Configure → New rule_:
 
-- **If** _Request Path_ matches the expression `^/api/auth/(login|register)$` **and** _Method_ equals
-  `POST`;
+- **If** _Request Path_ matches the expression `^/api/auth/(login|register|forgot|reset)$` **and**
+  _Method_ equals `POST`;
 - **Then** _Rate Limit_: fixed window of 60 seconds, 10 requests, keyed on **IP**, answering the
   default `429`.
 
 Save and publish it. `/api/auth/refresh` stays out on purpose: a session refreshes on its own, and
-many sessions share one address behind a carrier NAT; the API's own limiter covers it. The routes
-the password reset and the email verification add to the web client join this expression.
+many sessions share one address behind a carrier NAT; the API's own limiter covers it. `forgot` and
+`reset` are the password reset's (T-208); the routes the email's confirmation adds to the web client
+(T-210) join this expression.
+
+## After the web client confirms emails: invitations wait for it
+
+Not one of the nine steps: it waits until the web client can confirm an email (T-210) and this guide's
+step 8 is done. Then add `EMAIL_VERIFICATION_REQUIRED=true` to the Lambda. From the next invocation,
+inviting, seeing and answering invitations addressed to an email wait until that email is confirmed
+(the owner's decision 3); before that, nobody could confirm one and every invitation would stop.
+Production refuses to start with it and no `EMAIL_PROVIDERS`. Turning it off again (`false`) puts
+invitations back as they were, with no deploy.
 
 ## Checking each step
 

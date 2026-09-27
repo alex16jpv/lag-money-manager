@@ -24,6 +24,10 @@ const mockUserRepo: jest.Mocked<IUserRepository> = {
   getById: jest.fn(),
   getByEmail: jest.fn(),
   getDeletedByEmail: jest.fn().mockResolvedValue(null),
+  markEmailVerified: jest.fn(),
+  getForErasure: jest.fn().mockResolvedValue(null),
+  claimErasure: jest.fn().mockResolvedValue(null),
+  eraseForGood: jest.fn().mockResolvedValue(undefined),
   getByIdWithPassword: jest.fn().mockResolvedValue(null),
   bumpTokenVersion: jest.fn().mockResolvedValue(undefined),
   updateWithTokenBump: jest.fn(),
@@ -218,6 +222,8 @@ const mockAuthCodeRepo = {
   countAttempt: jest.fn().mockResolvedValue(null),
   redeemCode: jest.fn().mockResolvedValue(null),
   redeemToken: jest.fn().mockResolvedValue(null),
+  find: jest.fn().mockResolvedValue(null),
+  findByLiveToken: jest.fn().mockResolvedValue(null),
 };
 
 // --- Mock modules before importing app ---
@@ -240,6 +246,7 @@ jest.mock("../../shared/constants", () => ({
     EMAIL_ADDRESS_INTERVAL_SECONDS: 60,
   },
   TURNSTILE_TEST_SECRET: /^[123]x0{31}AA$/,
+  NOT_ME_TOKEN_FORMAT: /^[A-Za-z0-9_-]{96}$/,
   DB_TYPES: { MONGO: "MONGO" },
   DEBT_ACCOUNT_FIELDS: {
     creditLimit: ["CARD", "OVERDRAFT"],
@@ -699,6 +706,126 @@ describe("Integration Tests", () => {
     });
   });
 
+  describe("POST /auth/register with a captcha [T-209]", () => {
+    it("sends no code without a captcha: the account is made as ever", async () => {
+      mockUserRepo.create.mockResolvedValue(testUser);
+
+      const res = await request(app).post("/auth/register").send({
+        name: "John Doe",
+        email: "john@example.com",
+        password: "password123",
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.user.emailVerified).toBe(false);
+      expect(mockAuthCodeRepo.recordRequest).not.toHaveBeenCalled();
+    });
+
+    it("creates nothing when the captcha sent cannot be checked", async () => {
+      const res = await request(app).post("/auth/register").send({
+        name: "John Doe",
+        email: "john@example.com",
+        password: "password123",
+        captcha: "XXXX.DUMMY.TOKEN.XXXX",
+      });
+
+      expect(res.status).toBe(503);
+      expect(res.body.code).toBe("CAPTCHA_UNAVAILABLE");
+      expect(mockUserRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("POST /auth/email/verify [T-209]", () => {
+    it("needs the session for a code", async () => {
+      const res = await request(app)
+        .post("/auth/email/verify")
+        .send({ code: "123456" });
+
+      expect(res.status).toBe(401);
+    });
+
+    it("takes the link's token with no session, and answers a dead one LINK_INVALID", async () => {
+      const res = await request(app)
+        .post("/auth/email/verify")
+        .send({ token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("LINK_INVALID");
+    });
+
+    it("takes a code or a token, never both", async () => {
+      const res = await request(app)
+        .post("/auth/email/verify")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ code: "123456", token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+    });
+
+    it("answers a code with none sent EMAIL_CODE_EXPIRED", async () => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+
+      const res = await request(app)
+        .post("/auth/email/verify")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ code: "123456" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("EMAIL_CODE_EXPIRED");
+    });
+  });
+
+  describe("POST /auth/email/resend [T-209]", () => {
+    it("needs a session", async () => {
+      const res = await request(app)
+        .post("/auth/email/resend")
+        .send({ captcha: "XXXX.DUMMY.TOKEN.XXXX" });
+
+      expect(res.status).toBe(401);
+    });
+
+    it("needs the captcha, and sends nothing when it cannot be checked", async () => {
+      const missing = await request(app)
+        .post("/auth/email/resend")
+        .set("Authorization", `Bearer ${token}`)
+        .send({});
+      expect(missing.status).toBe(400);
+      expect(missing.body.code).toBe("VALIDATION");
+
+      const unchecked = await request(app)
+        .post("/auth/email/resend")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ captcha: "XXXX.DUMMY.TOKEN.XXXX" });
+      expect(unchecked.status).toBe(503);
+      expect(unchecked.body.code).toBe("CAPTCHA_UNAVAILABLE");
+      expect(mockAuthCodeRepo.recordRequest).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("POST /auth/email/not-me [T-209]", () => {
+    it("takes only the token of the email's link", async () => {
+      const res = await request(app)
+        .post("/auth/email/not-me")
+        .send({ token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+    });
+
+    it("answers a token for no unconfirmed account LINK_INVALID", async () => {
+      const res = await request(app)
+        .post("/auth/email/not-me")
+        .send({
+          token: "A".repeat(96),
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("LINK_INVALID");
+      expect(mockUserRepo.claimErasure).not.toHaveBeenCalled();
+    });
+  });
+
   describe("POST /auth/password/reset [T-207]", () => {
     it("takes the code with its address, or the link's token, never both", async () => {
       const res = await request(app).post("/auth/password/reset").send({
@@ -832,6 +959,21 @@ describe("Integration Tests", () => {
       expect(res.status).toBe(200);
       expect(res.body.name).toBe("John Doe");
       expect(res.body.password).toBeUndefined();
+    });
+
+    it("says whether the email is confirmed, and what its sheet needs [T-209]", async () => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+
+      const res = await request(app)
+        .get("/users/019576a0-d7b6-7d6d-af6a-2b7545f5ac70")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.body.emailVerified).toBe(false);
+      expect(res.body.emailVerification).toEqual({
+        codeLive: false,
+        lastSentAt: null,
+        resendAvailableAt: null,
+      });
     });
 
     it("should return 404 for accessing another user (uniform, no id probing) [R2-25a]", async () => {

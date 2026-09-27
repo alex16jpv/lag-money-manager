@@ -32,6 +32,7 @@ describe("email environment", () => {
     const env = await environment({});
     expect(env.EMAIL_PROVIDERS).toEqual([]);
     expect(env.EMAIL_SENDING_ENABLED).toBe(true);
+    expect(env.EMAIL_VERIFICATION_REQUIRED).toBe(false);
     expect(env.EMAIL_DAILY_CAP).toBe(300);
     expect(env.EMAIL_MONTHLY_CAP).toBe(9000);
     expect(env.EMAIL_PROVIDER_TIMEOUT_MS).toBe(1500);
@@ -91,6 +92,10 @@ describe("email environment", () => {
       },
     ],
     [
+      "invitations waiting for a confirmation nobody can receive, in production",
+      { NODE_ENV: "production", EMAIL_VERIFICATION_REQUIRED: "true" },
+    ],
+    [
       "an events topic that is not an SNS topic ARN",
       { EMAIL_SES_EVENTS_TOPIC_ARN: "arn:aws:sqs:us-east-1:123456789012:q" },
     ],
@@ -133,6 +138,18 @@ describe("email environment", () => {
         })
       ).TURNSTILE_SECRET,
     ).toBe("1x0000000000000000000000000000000AA");
+  });
+
+  it("requires a confirmed email for invitations in production once SES sends [T-209]", async () => {
+    const env = await environment({
+      NODE_ENV: "production",
+      EMAIL_PROVIDERS: "ses",
+      EMAIL_SES_EVENTS_TOPIC_ARN:
+        "arn:aws:sns:us-east-1:123456789012:ledger-flow-email-events",
+      TURNSTILE_SECRET: "0x4AAAAAAAexample-production-secret",
+      EMAIL_VERIFICATION_REQUIRED: "true",
+    });
+    expect(env.EMAIL_VERIFICATION_REQUIRED).toBe(true);
   });
 
   it("starts in production without the topic while SES is not sending", async () => {

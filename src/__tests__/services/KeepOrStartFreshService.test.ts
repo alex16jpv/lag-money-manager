@@ -51,7 +51,7 @@ interface Harness {
     jest.Mock
   >;
   invitations: Record<"withdrawAll" | "leaveAll", jest.Mock>;
-  eraser: { eraseAll: jest.Mock };
+  eraser: { eraseAll: jest.Mock; eraseAccount: jest.Mock };
   categories: { restoreDefaults: jest.Mock };
   calls: string[];
 }
@@ -77,7 +77,10 @@ const build = (): Harness => {
     withdrawAll: jest.fn(track("withdrawAll", 0)),
     leaveAll: jest.fn(track("leaveAll", 0)),
   };
-  const eraser = { eraseAll: jest.fn(track("eraseAll", undefined)) };
+  const eraser = {
+    eraseAll: jest.fn(track("eraseAll", undefined)),
+    eraseAccount: jest.fn(),
+  };
   const categories = { restoreDefaults: jest.fn(track("seed", [])) };
   const service = new KeepOrStartFreshService(
     users as unknown as IUserRepository,

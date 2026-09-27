@@ -13,7 +13,34 @@ Four rules, three of them the owner's (2026-09-22):
 - **A group in another currency cannot be joined.** Each user keeps one currency, so the invited person can only decline, and the inviter is never told why.
 - **The inviter never learns whether an address has an account.** Inviting does not look the address up at all: the answer, its shape and its timing are the same either way, and the row reads `PENDING` until the other person answers. Joining and declining are the invited person's own acts, and those the inviter does see.
 
-**A known risk the owner accepted:** email addresses are not verified in this API, so whoever registers with somebody else's address receives what is sent to it. What an invitation shows before joining is only the group's name and who sent it, and the inviter sees `ACCEPTED` and can stop sharing at any time. It closes the day addresses are verified.
+## An address has to be confirmed
+
+An invitation takes the sender's address to somebody else, and finds the invited person by theirs, so
+**both have to be proven** (the owner's decision 3 of 2026-09-26). It closes the risk accepted on
+2026-09-22, that whoever registered somebody else's address received what was sent to it. With
+`EMAIL_VERIFICATION_REQUIRED` on, until the account's email is confirmed ([auth.md](auth.md#confirming-the-email)):
+
+- **Inviting** answers `403 EMAIL_NOT_VERIFIED`, before anything is looked at. Withdrawing and stopping
+  sharing do not: they only take something back.
+- **Nothing addressed to the email is seen or answered**: `GET /invitations` is `403
+  EMAIL_NOT_VERIFIED`, and so are accept and decline of an invitation this person has not answered —
+  the same for an id that does not exist, so the answer tells nothing. That includes one already seen
+  before the rule: it waits like the rest, and its 30 days keep running.
+- **The change feed looks only by who answered** (`inviteeId`), never by the address.
+- **Groups already joined are not touched**: what this person answered is theirs by `inviteeId`, not by
+  the address, so accepting it again, leaving it and its feed rows work as ever.
+
+**Confirming delivers what waited.** The feed is a keyset over `updatedAt`, and a copy's cursor is
+usually past the invitations that arrived while the address was unconfirmed, or before the email changed
+to it. So the moment an address is confirmed — its code, its link, or a reset — every unanswered
+invitation addressed to it gets a new `updatedAt` (`touchUnansweredFor`, one `updateMany` on the
+`{ email, … }` index), and reaches the feed on the next pull. The senders' feeds receive them again
+unchanged, which costs them nothing.
+
+**The switch.** `EMAIL_VERIFICATION_REQUIRED` is off by default: the web client cannot confirm an email
+until T-210, and production cannot send one until SES is set up (T-206), so turning it on before both
+would stop every invitation for every existing account. Off, invitations work as before T-209, and the
+2026-09-22 risk stays open. Production refuses to start with it on and no `EMAIL_PROVIDERS`.
 
 ## Files and Responsibilities
 
@@ -97,11 +124,11 @@ Withdraws a waiting invitation, or stops sharing with somebody who joined. **Not
 
 ### `GET /invitations`
 
-The invitations waiting for **the email on your profile** and still in time, oldest first, in the invited person's view. The offline client reads them from the change feed instead, which also brings the ones already answered; this listing is its fallback.
+The invitations waiting for **the email on your profile** and still in time, oldest first, in the invited person's view. The offline client reads them from the change feed instead, which also brings the ones already answered; this listing is its fallback. `403 EMAIL_NOT_VERIFIED` while the email is not confirmed ([above](#an-address-has-to-be-confirmed)).
 
 ### `POST /invitations/{id}/accept`, `POST /invitations/{id}/decline`
 
-The invitation has to be addressed to your email, or already answered by you — anything else is a `404`, the same as one that does not exist. Answering your own is `400 INVITATION_TO_SELF`.
+The invitation has to be addressed to your email, or already answered by you — anything else is a `404`, the same as one that does not exist. Answering your own is `400 INVITATION_TO_SELF`. One addressed to your email waits until it is confirmed: `403 EMAIL_NOT_VERIFIED` ([above](#an-address-has-to-be-confirmed)).
 
 - **Accept** refuses a group in another currency (`400 CURRENCY_MISMATCH`), a group you already joined through another contact of the same inviter (`400 PARTICIPANT_ALREADY_IN_GROUP`), and one that can no longer be answered (`400 INVITATION_UNAVAILABLE`). It moves the invitation to `ACCEPTED` **in one transaction** that reads the group, so a group archived or a person taken out a moment before answers `INVITATION_UNAVAILABLE` instead of joining.
 - **Decline** takes any currency.
@@ -119,7 +146,7 @@ The invited person's way out of a group they joined: `Stop sharing` seen from th
 Through the change feed ([sync.md](sync.md)), two sources:
 
 - `invitationsSent` — the inviter's rows, over `(userId, updatedAt, _id)`.
-- `invitationsReceived` — the invited person's, found **by the email on their profile** over `(email, updatedAt, _id)` among the rows nobody has answered, and **by who answered** over `(inviteeId, updatedAt, _id)`. The second keeps an answered invitation reaching them after they change their email. The two scans are merged by id.
+- `invitationsReceived` — the invited person's, found **by the email on their profile** over `(email, updatedAt, _id)` among the rows nobody has answered, and **by who answered** over `(inviteeId, updatedAt, _id)`. The second keeps an answered invitation reaching them after they change their email. The two scans are merged by id. While the email is not confirmed only the second runs ([above](#an-address-has-to-be-confirmed)).
 
 Every event above rewrites the row, so its `updatedAt` moves and both sides learn it on their next pull. There is **no batch operation**: inviting, withdrawing and answering all need a connection, because each is about somebody else and only the server can say whether the invitation still stands.
 

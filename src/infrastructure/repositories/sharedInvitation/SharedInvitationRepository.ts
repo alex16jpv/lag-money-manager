@@ -106,18 +106,20 @@ export class SharedInvitationRepository implements ISharedInvitationRepository {
 
   async receivedChangesSince(
     inviteeId: string,
-    email: string,
+    email: string | null,
     cursor: ChangeCursor | undefined,
     limit: number,
   ): Promise<SharedInvitation[]> {
     const [byEmail, byInvitee] = await Promise.all([
-      SharedInvitationModel.find({
-        ...changesSinceFilter(email, cursor, "email"),
-        inviteeId: { $in: [null, inviteeId] },
-      })
-        .sort(CHANGE_FEED_SORT)
-        .limit(limit)
-        .lean(),
+      email === null
+        ? []
+        : SharedInvitationModel.find({
+            ...changesSinceFilter(email, cursor, "email"),
+            inviteeId: { $in: [null, inviteeId] },
+          })
+            .sort(CHANGE_FEED_SORT)
+            .limit(limit)
+            .lean(),
       SharedInvitationModel.find(
         changesSinceFilter(inviteeId, cursor, "inviteeId"),
       )
@@ -273,6 +275,14 @@ export class SharedInvitationRepository implements ISharedInvitationRepository {
       { session: session ?? undefined },
     );
     return result.modifiedCount;
+  }
+
+  async touchUnansweredFor(email: string, now: Date): Promise<void> {
+    await SharedInvitationModel.updateMany(
+      { email, inviteeId: { $exists: false } },
+      { $set: { updatedAt: now } },
+      { timestamps: false },
+    ).exec();
   }
 
   async refreshGroup(

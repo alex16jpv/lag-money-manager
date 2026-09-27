@@ -257,9 +257,13 @@ export type EmailSuppressionReason = keyof typeof EMAIL_SUPPRESSION_REASONS;
 
 export const AUTH_CODE_PURPOSES = {
   reset: "reset",
+  verify: "verify",
 } as const;
 
 export type AuthCodePurpose = keyof typeof AUTH_CODE_PURPOSES;
+
+// The "It wasn't me" link's token: 72 bytes in base64url (src/app/services/authCodes.ts).
+export const NOT_ME_TOKEN_FORMAT = /^[A-Za-z0-9_-]{96}$/;
 
 // Cloudflare's published test secrets: they pass, fail or report a spent token whatever the token is.
 export const TURNSTILE_TEST_SECRET = /^[123]x0{31}AA$/;
@@ -272,12 +276,17 @@ import { z } from "zod";
 
 import { emailBudgetSlices } from "./emailBudgets";
 
-const envFlag = z
-  .string()
-  .default("true")
-  .transform((value) => value.trim().toLowerCase())
-  .pipe(z.enum(["true", "false", "1", "0"]))
-  .transform((value) => value === "true" || value === "1");
+const envFlagDefaulting = (
+  fallback: "true" | "false",
+): z.ZodType<boolean, string | undefined> =>
+  z
+    .string()
+    .default(fallback)
+    .transform((value) => value.trim().toLowerCase())
+    .pipe(z.enum(["true", "false", "1", "0"]))
+    .transform((value) => value === "true" || value === "1");
+
+const envFlag = envFlagDefaulting("true");
 
 const emailProviderList = z
   .string()
@@ -293,6 +302,7 @@ const emailProviderList = z
 const emailEnvSchema = z.object({
   EMAIL_PROVIDERS: emailProviderList,
   EMAIL_SENDING_ENABLED: envFlag,
+  EMAIL_VERIFICATION_REQUIRED: envFlagDefaulting("false"),
   EMAIL_FROM_NAME: z
     .string()
     .regex(
@@ -406,6 +416,14 @@ const mongoEnvSchema = baseEnvSchema
         path: ["TURNSTILE_SECRET"],
         message:
           "Cloudflare's test secret lets any request through the captcha",
+      });
+    }
+    if (env.EMAIL_VERIFICATION_REQUIRED && env.EMAIL_PROVIDERS.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["EMAIL_VERIFICATION_REQUIRED"],
+        message:
+          "invitations would wait for a confirmation nobody can receive: set EMAIL_PROVIDERS first",
       });
     }
     if (env.EMAIL_PROVIDERS.length > 0 && !env.TURNSTILE_SECRET) {

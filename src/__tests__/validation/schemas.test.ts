@@ -1,4 +1,5 @@
 jest.mock("../../shared/constants", () => ({
+  NOT_ME_TOKEN_FORMAT: /^[A-Za-z0-9_-]{96}$/,
   ENVIRONMENT: {
     PORT: 3000,
     DB_TYPE: "MONGO",
@@ -112,9 +113,11 @@ import {
   idParamSchema,
   keepOrStartFreshSchema,
   loginSchema,
+  notMeSchema,
   paginationQuerySchema,
   quickAddTransactionSchema,
   registerSchema,
+  resendVerificationSchema,
   resetPasswordSchema,
   spendingStatsSchema,
   syncBatchSchema,
@@ -123,6 +126,7 @@ import {
   updateContactSchema,
   updateTransactionSchema,
   updateUserSchema,
+  verifyEmailSchema,
 } from "../../app/validation/schemas";
 
 const validUUID = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
@@ -355,6 +359,65 @@ describe("Validation Schemas", () => {
           body: { ...proof, newPassword: "short" },
         }).success,
       ).toBe(false);
+    });
+  });
+
+  describe("the email's confirmation [T-209]", () => {
+    const register = {
+      name: "Ana",
+      email: "ana@example.com",
+      password: "password123",
+    };
+
+    it("takes a register with or without a captcha, and keeps the token", () => {
+      expect(registerSchema.safeParse({ body: register }).success).toBe(true);
+      expect(
+        registerSchema.parse({ body: { ...register, captcha: "token" } }).body
+          .captcha,
+      ).toBe("token");
+      expect(
+        registerSchema.safeParse({ body: { ...register, captcha: "" } })
+          .success,
+      ).toBe(false);
+    });
+
+    it.each([
+      ["the code", { code: " 004821 " }],
+      ["the link's token", { token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz" }],
+    ])("verifies with %s", (_label, body) => {
+      expect(verifyEmailSchema.safeParse({ body }).success).toBe(true);
+    });
+
+    it.each([
+      ["both", { code: "004821", token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz" }],
+      ["neither", {}],
+      ["a code that is not six digits", { code: "4821" }],
+      ["an address with the code", { code: "004821", email: "a@b.co" }],
+    ])("refuses to verify with %s", (_label, body) => {
+      expect(verifyEmailSchema.safeParse({ body }).success).toBe(false);
+    });
+
+    it("needs the captcha to resend", () => {
+      expect(
+        resendVerificationSchema.safeParse({ body: { captcha: "token" } })
+          .success,
+      ).toBe(true);
+      expect(resendVerificationSchema.safeParse({ body: {} }).success).toBe(
+        false,
+      );
+    });
+
+    it("takes only a token shaped like It wasn't me's", () => {
+      const token = "A".repeat(96);
+      expect(notMeSchema.safeParse({ body: { token } }).success).toBe(true);
+      expect(
+        notMeSchema.safeParse({
+          body: { token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz" },
+        }).success,
+      ).toBe(false);
+      expect(notMeSchema.safeParse({ body: { token, extra: 1 } }).success).toBe(
+        false,
+      );
     });
   });
 

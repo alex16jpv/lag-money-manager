@@ -2,7 +2,7 @@
 
 ## What This Module Does
 
-Handles registration, login, the full refresh-token session lifecycle, and choosing a new password by email (Forgot your password?). Registration, login and the password reset are public; session management requires an access token.
+Handles registration, login, the full refresh-token session lifecycle, choosing a new password by email (Forgot your password?), and confirming the account's email. Registration, login, the password reset and the email's links are public; session management, the code of the confirmation and its Resend require an access token.
 
 Every successful register or login issues a **token pair**:
 
@@ -34,7 +34,8 @@ Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the
 | `src/domain/repositories/authCode/IAuthCodeRepository.ts`                    | Store of emailed codes, one row per address and purpose                      |
 | `src/infrastructure/repositories/authCode/AuthCodeRepository.ts`             | Mongoose implementation (atomic tries and single use)                        |
 | `src/infrastructure/models/AuthCodeModel.ts`                                 | Mongoose model for `authcodes`, with its TTL                                  |
-| `src/app/middlewares/captchaMiddleware.ts`                                   | `requireCaptcha(action)`: the Turnstile check before a route's handler        |
+| `src/app/middlewares/captchaMiddleware.ts`                                   | `requireCaptcha(action)` and `captchaIfSent(action)`: the Turnstile check     |
+| `src/app/services/EmailVerificationService.ts`                               | Confirming the email: the code, the link, Resend, the sheet's state, It wasn't me |
 | `src/domain/captcha/CaptchaVerifier.ts`                                      | The captcha port                                                              |
 | `src/infrastructure/captcha/TurnstileVerifier.ts`                            | Cloudflare Turnstile's `siteverify`                                           |
 
@@ -76,6 +77,7 @@ Register a new user. **Register also logs in** — the response already carries 
     "timezone": "America/Bogota",
     "currency": "COP",
     "locale": "en",
+    "emailVerified": false,
     "lastLoginAt": "2026-08-31T...",
     "keepOrStartFresh": null,
     "createdAt": "2026-08-31T...",
@@ -85,6 +87,8 @@ Register a new user. **Register also logs in** — the response already carries 
 ```
 
 Registration also seeds the user's default categories (failures are logged, never fail the request).
+
+**The confirmation email.** With `captcha` — a Cloudflare Turnstile token for the action `register` — an account whose email is not confirmed is sent `verify-email` right after it is created ([Confirming the email](#confirming-the-email)). A send that fails, is limited or throws does not fail the register: it is logged (`VERIFICATION_NOT_SENT` when it throws) and `GET /users/{id}` shows no live code, so the client offers Send code. **Without `captcha` nothing is sent**, because nothing would stop a script from spending the email budget on any address: the web client of today does not send one, and still registers as before. A `captcha` that Cloudflare refuses is `400 CAPTCHA_INVALID`, and one it cannot check is `503 CAPTCHA_UNAVAILABLE`; in both, nothing is created. The account works before its email is confirmed; only invitations wait for it ([invitations.md](invitations.md#an-address-has-to-be-confirmed)).
 
 **Reactivation:** registering with the email **and the password** of a **soft-deleted** account revives it with its full financial history. The response carries `user.reactivated: true`, and the original currency is kept — the `currency` sent in that register is ignored. With any other password the answer is `409 EMAIL_TAKEN`, the same as for a live account: the history goes back only to whoever still knows its password (T-153). That makes register a way to test a deleted account's password, so it spends the same per-email budget as a failed login (see Rate Limiting).
 
@@ -228,6 +232,68 @@ opens "Keep what's in this account?" (the owner's decision 12): `user.keepOrStar
 account was created and what it held, and the client asks before opening anything. It is answered on
 `POST /users/{id}/keep-or-start-fresh` ([users.md](users.md#keep-whats-in-this-account)).
 
+## Confirming the email
+
+The owner's decisions of 2026-09-26: the account is used as ever before it is confirmed (2), only
+invitations wait for it (3), there is no deadline, for old accounts or new (4), and whoever holds the
+inbox can delete an account that took the address without confirming it (11). Every account from before
+this existed has `emailVerifiedAt: null`: nothing is migrated.
+
+What confirms an address: its **code** (with the account's session), its **link** (without one), or a
+**password reset**, whose code proved the same inbox. Changing the email takes the confirmation away
+([users.md](users.md#put-usersid)).
+
+### `POST /auth/email/verify`
+
+`{ "code" }` with the access token of the account the code went to, or `{ "token" }` from the link
+(`{APP_URL}/{locale}/verify#token=…`) with no session: the token names the account. Anything else is
+`400 VALIDATION`. `200 { "message" }` on success.
+
+- **A code works 24 hours and takes five tries**, counted with the reset's atomic `$inc` guarded by
+  `attempts < 5`. Here the answers can differ, because the account is the caller's own:
+  `EMAIL_CODE_INVALID` for a code that is not the one sent, `EMAIL_CODE_EXPIRED` when no code still works
+  (it expired, it was tried five times, or none was sent).
+- **Confirming is not spent.** Unlike the reset's, the code is only compared, never consumed: confirming
+  twice changes nothing, so an account already confirmed answers `200` to its code and to its link (the
+  spec's "Email confirmed", not a dead link, for whoever typed the code and then taps the link).
+- **A link for an address the account no longer has** is `LINK_INVALID`, like one expired or replaced by
+  a newer code — the latter even once the account is confirmed: only the newest email's link knows its
+  account, for its 24 hours. A code for the old address does not work either: the codes are kept per
+  address hash, and only the row this account asked for counts (another account's earlier row at the
+  same address is ignored, in the code and in `emailVerification`).
+- **Confirming touches the invitations waiting for the address** (`touchUnansweredFor`): they get a new
+  `updatedAt`, so a copy whose cursor is past them still receives them on its next pull
+  ([invitations.md](invitations.md#an-address-has-to-be-confirmed)). The reset does the same when it
+  confirms an address.
+
+### `POST /auth/email/resend`
+
+Send code and Resend code of the sheet. With the access token, `{ "captcha", "deviceToken"? }`:
+`captcha` for the action `verify-email`, `deviceToken` so the limits count this device instead of its IP
+(recognized against the session's email). `202 { "resendAfterSeconds" }` once the email was accepted.
+
+- **Unlike Forgot your password?, a failed send is said** (`EMAIL_SEND_FAILED`): the address is the
+  person's own, so it tells nobody anything. `503` when no provider took it, or one timed out and it may
+  not have gone; `422` when the address does not accept our emails (it bounced or complained before, or
+  the provider refused it). In both, a code that was live before still works.
+- `429 RATE_LIMITED` with `Retry-After`: the email brakes of `verify-email` — one a minute and five a day
+  per address, five a day per account, and the device's or the IP's ([email.md](email.md#brakes)).
+- `409 EMAIL_ALREADY_VERIFIED` when there is nothing to confirm.
+
+Every send (at register, Resend, and a new email on `PUT /users/{id}`) is the same: a new code and link
+replace the live ones only once the email was accepted (`sent`); with `failed / unconfirmed` the newest
+live code is kept next to the new one, as in the reset. Each email of an account never confirmed also
+carries its own **"It wasn't me"** link, which no new code cancels; an account confirmed once gets the
+email without it ([users.md](users.md#it-wasnt-me-an-account-that-used-somebody-elses-address)).
+
+### `POST /auth/email/not-me`
+
+`{ "token" }` from "It wasn't me" (`{APP_URL}/{locale}/not-me#token=…`), no session. Deletes, for good,
+the account that used the address, while it has never confirmed an address and still has that one
+(with no change since the link was sent), and frees the address; `200 { "message" }`. Anything else — confirmed, moved to another address, already gone, or
+a token that is not one — is `LINK_INVALID`. What it erases, in which order, and why the token is signed
+rather than stored: [users.md](users.md#it-wasnt-me-an-account-that-used-somebody-elses-address).
+
 ## Forgot your password? One answer for every address
 
 Anybody can type any address, so nothing the endpoint answers may tell an address with an account from
@@ -259,11 +325,12 @@ one without, a live account from a deleted one, or a send that worked from one t
 
 | Field       | Meaning                                                                                     |
 | ----------- | ------------------------------------------------------------------------------------------- |
-| `purpose`   | `reset` (the verification and the email change of T-209 and T-221 will add theirs)          |
+| `purpose`   | `reset` or `verify` (the email change of T-221 will add its own)                            |
 | `toHash`    | SHA-256 of the normalized address; unique with `purpose`. Never the address                 |
 | `userId`    | The account the request found, `null` when there was none                                   |
 | `codes`     | At most two live codes, each `{ codeHash, tokenHash, expiresAt }`                           |
 | `attempts`  | Tries of a code since the last one was issued                                               |
+| `issuedAt`  | When the newest code went: the sheet's `lastSentAt` and Resend's countdown                  |
 | `expiresAt` | TTL: the row goes when its newest code does                                                  |
 
 - **The code is keyed, the token is not.** `codeHash` is HMAC-SHA256 with `JWT_SECRET` over the address's
@@ -296,8 +363,12 @@ one without, a live account from a deleted one, or a send that worked from one t
 
 ## The captcha
 
-`requireCaptcha(action, verifier)` runs after `validate()`, on the routes that send an email to an address
-anybody can type: today `POST /auth/password/forgot` with the action `forgot-password`. It asks Cloudflare
+`requireCaptcha(action, verifier)` runs after `validate()`, on the routes that send an email: `POST
+/auth/password/forgot` (action `forgot-password`) and `POST /auth/email/resend` (`verify-email`).
+`captchaIfSent(action, verifier)` does the same only when the body has a `captcha`, and marks the request
+(`req.captchaPassed`): `POST /auth/register` (`register`), whose web client of today sends none. There the
+captcha decides whether the confirmation email goes, and the day every client sends it, the route
+switches to `requireCaptcha`. It asks Cloudflare
 Turnstile's `siteverify` (`TurnstileVerifier`, 3 s, no retry) with `TURNSTILE_SECRET`, the token and the
 client's whole address (`clientAddress`: `clientIp` collapses IPv6 to its /56, which is right for a limit
 and wrong for Cloudflare).
@@ -465,6 +536,9 @@ sequenceDiagram
 | `POST /auth/password/forgot`    | Client IP (`forgot:<ip>`), before the captcha         | `AUTH_IP_RATE_LIMIT_MAX` per 15 min       |
 | `POST /auth/password/forgot`    | Then the email's own brakes, for every address        | See [One answer for every address](#forgot-your-password-one-answer-for-every-address) |
 | `POST /auth/password/reset`     | Client IP (`reset:<ip>`)                              | `AUTH_IP_RATE_LIMIT_MAX` per 15 min       |
+| `POST /auth/email/verify`       | Client IP (`verify-email:<ip>`); a code also has its five tries | `AUTH_IP_RATE_LIMIT_MAX` per 15 min |
+| `POST /auth/email/resend`       | Client IP (`resend-verification:<ip>`), before the captcha; then the email's own brakes | `AUTH_IP_RATE_LIMIT_MAX` per 15 min |
+| `POST /auth/email/not-me`       | Client IP (`not-me:<ip>`)                             | `AUTH_IP_RATE_LIMIT_MAX` per 15 min       |
 
 Only **failed** attempts burn the account budgets (`refundOnSuccess`), so real logins cost nothing. Register spends the same ones, because registering with a deleted account's email tests its password: a failed register and a failed login spend one budget between them.
 
@@ -494,7 +568,11 @@ The per-IP cap is shared by everyone behind that address — a carrier NAT holds
 | `EMAIL_TAKEN`     | 409    | Register with the email of a live account, of a soft-deleted one with a different password, or one a concurrent register just reactivated                                                                                                  |
 | `RATE_LIMITED`    | 429    | Too many attempts in the window                                                                                                                                                                                                            |
 | `RESET_CODE_INVALID` | 400 | A reset code that does not work, whatever the reason (see above)                                                                                                                                                                         |
-| `LINK_INVALID`    | 400    | A reset link that was used, expired or replaced                                                                                                                                                                                            |
+| `LINK_INVALID`    | 400    | A reset or confirmation link that was used, expired or replaced, one for an address the account no longer has, or an It wasn't me that no longer applies |
+| `EMAIL_CODE_INVALID` | 400 | Confirming the email with a code that is not the one sent |
+| `EMAIL_CODE_EXPIRED` | 400 | Confirming the email when no code still works: expired, tried five times, or none sent |
+| `EMAIL_ALREADY_VERIFIED` | 409 | Resend when the email is already confirmed |
+| `EMAIL_SEND_FAILED` | 422 / 503 | Resend whose email did not go: the address refuses our email (422), or no provider took it (503) |
 | `CAPTCHA_INVALID` | 400    | Turnstile refused the captcha token                                                                                                                                                                                                        |
 | `CAPTCHA_UNAVAILABLE` | 503 | The captcha could not be checked; nothing was sent                                                                                                                                                                                     |
 
@@ -512,7 +590,7 @@ Access tokens are stateless and are **not** checked against the session store �
 ## How to Extend
 
 - To add OAuth/social login: add methods to `AuthService` that end in `openSession()`, so the session/rotation model stays uniform
-- To send a code for another purpose (the email verification, the email change): add its purpose to `AUTH_CODE_PURPOSES` and reuse `authcodes`, the digests of `authCodes.ts` and, where the answer must not tell addresses apart, `holdBrakes`
+- To send a code for another purpose (the email change): add its purpose to `AUTH_CODE_PURPOSES` and reuse `authcodes`, the digests of `authCodes.ts` and, where the answer must not tell addresses apart, `holdBrakes`; `EmailVerificationService.send` is the shape of a send whose answer may say it failed
 - To put the captcha on another route: add its action to `CaptchaAction` and mount `requireCaptcha(action, verifier)` after `validate()`
 - To make access tokens revocable immediately: check the session store in `authMiddleware` — accept the per-request read it costs
 - Always keep auth routes **before** the global `authMiddleware` in `src/app.ts`

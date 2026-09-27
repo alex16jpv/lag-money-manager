@@ -25,9 +25,10 @@ export interface ISharedInvitationRepository {
     limit: number,
   ): Promise<SharedInvitation[]>;
   // Addressed to the email and unanswered, or answered by this user: never another user's answers.
+  // A null email (not confirmed yet) finds only what this user answered.
   receivedChangesSince(
     inviteeId: string,
-    email: string,
+    email: string | null,
     cursor: ChangeCursor | undefined,
     limit: number,
   ): Promise<SharedInvitation[]>;
@@ -83,6 +84,8 @@ export interface ISharedInvitationRepository {
     now: Date,
   ): Promise<SharedInvitation | null>;
   leaveAll(inviteeId: string, now: Date): Promise<number>;
+  // Gives the unanswered ones addressed to it a new updatedAt, past every cursor.
+  touchUnansweredFor(email: string, now: Date): Promise<void>;
   // The groups this user joined: their accepted, live invitations.
   memberships(
     inviteeId: string,

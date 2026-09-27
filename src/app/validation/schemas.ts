@@ -10,6 +10,7 @@ import {
   MAX_BUDGET_CATEGORIES,
   MAX_EXPENSE_GUESTS,
   MAX_GROUP_PARTICIPANTS,
+  NOT_ME_TOKEN_FORMAT,
   SHARE_PARTIES,
   SPENDING_GROUP_BY,
   SPENDING_SPLIT_BY,
@@ -1108,6 +1109,20 @@ export const refreshSchema = z.object({
   }),
 });
 
+// A Turnstile token: Cloudflare caps them at 2048 characters.
+const captchaField = z.string().min(1, "captcha is required").max(2048);
+
+const emailCodeField = z
+  .string()
+  .trim()
+  .regex(/^\d{6}$/, "code must be the 6 digits of the email");
+
+const linkTokenField = z
+  .string()
+  .min(16)
+  .max(256)
+  .regex(/^[A-Za-z0-9_-]+$/, "token must be the one of the email's link");
+
 export const registerSchema = z.object({
   body: z.object({
     name: z.string().min(1, "Name is required").max(255),
@@ -1117,11 +1132,9 @@ export const registerSchema = z.object({
     currency: currencyField,
     locale: localeField,
     deviceToken: deviceTokenField,
+    captcha: captchaField.optional(),
   }),
 });
-
-// A Turnstile token: Cloudflare caps them at 2048 characters.
-const captchaField = z.string().min(1, "captcha is required").max(2048);
 
 export const forgotPasswordSchema = z.object({
   body: z.object({
@@ -1137,27 +1150,45 @@ export const resetPasswordSchema = z.object({
     z
       .object({
         email: emailField,
-        code: z
-          .string()
-          .trim()
-          .regex(/^\d{6}$/, "code must be the 6 digits of the email"),
+        code: emailCodeField,
         newPassword: newPasswordField,
       })
       .strict(),
     z
       .object({
-        token: z
-          .string()
-          .min(16)
-          .max(256)
-          .regex(
-            /^[A-Za-z0-9_-]+$/,
-            "token must be the one of the email's link",
-          ),
+        token: linkTokenField,
         newPassword: newPasswordField,
       })
       .strict(),
   ]),
+});
+
+// The code needs the session of the account it went to; the link's token names the account on its own.
+export const verifyEmailSchema = z.object({
+  body: z.union([
+    z.object({ code: emailCodeField }).strict(),
+    z.object({ token: linkTokenField }).strict(),
+  ]),
+});
+
+export const resendVerificationSchema = z.object({
+  body: z.object({
+    captcha: captchaField,
+    deviceToken: deviceTokenField,
+  }),
+});
+
+export const notMeSchema = z.object({
+  body: z
+    .object({
+      token: z
+        .string()
+        .regex(
+          NOT_ME_TOKEN_FORMAT,
+          "token must be the one of the email's link",
+        ),
+    })
+    .strict(),
 });
 
 export const keepOrStartFreshSchema = z.object({

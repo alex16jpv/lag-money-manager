@@ -41,6 +41,10 @@ export interface UserProps {
   // Last session open (login/register); impossible to reconstruct later.
   lastLoginAt?: Date | null;
   emailVerifiedAt?: Date | null;
+  // Set by the first confirmation and never cleared, unlike emailVerifiedAt.
+  firstVerifiedAt?: Date | null;
+  // An It wasn't me issued before it no longer works.
+  emailChangedAt?: Date | null;
   keepOrStartFresh?: KeepOrStartFresh | null;
   // When Start fresh last erased the account: a sync cursor from before it names rows that are gone.
   dataResetAt?: Date | null;
@@ -59,6 +63,8 @@ export class User {
   locale: Locale;
   lastLoginAt: Date | null;
   emailVerifiedAt: Date | null;
+  firstVerifiedAt: Date | null;
+  emailChangedAt: Date | null;
   keepOrStartFresh: KeepOrStartFresh | null;
   dataResetAt: Date | null;
   createdAt: Date;
@@ -75,6 +81,8 @@ export class User {
     locale,
     lastLoginAt,
     emailVerifiedAt,
+    firstVerifiedAt,
+    emailChangedAt,
     keepOrStartFresh,
     dataResetAt,
     createdAt,
@@ -90,6 +98,8 @@ export class User {
     this.locale = locale ?? DEFAULT_LOCALE;
     this.lastLoginAt = lastLoginAt ?? null;
     this.emailVerifiedAt = emailVerifiedAt ?? null;
+    this.firstVerifiedAt = firstVerifiedAt ?? null;
+    this.emailChangedAt = emailChangedAt ?? null;
     this.keepOrStartFresh = keepOrStartFresh ?? null;
     this.dataResetAt = dataResetAt ?? null;
     this.createdAt = createdAt ?? new Date();

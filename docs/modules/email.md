@@ -1,10 +1,10 @@
 # Email Module
 
-> **Status: the sender and the bounce handling are built, and the password reset (T-207) is its first
-> caller; nothing sends until `EMAIL_PROVIDERS` names a provider.** This module is the piece every
-> email of the app goes through: the password reset ([auth.md](auth.md)), the email verification
-> (T-209), the email change (T-221), the security notices (T-211) and, later, the notification channel
-> (T-131). Setting SES up in production, with its alarms and budget, is
+> **Status: the sender and the bounce handling are built, and the password reset (T-207) and the
+> email's confirmation (T-209) are its callers; nothing sends until `EMAIL_PROVIDERS` names a provider.**
+> This module is the piece every email of the app goes through: the password reset and the confirmation
+> ([auth.md](auth.md)), the email change (T-221), the security notices (T-211) and, later, the
+> notification channel (T-131). Setting SES up in production, with its alarms and budget, is
 > [Email in Production](../guides/email.md).
 
 ## What This Module Does
@@ -68,7 +68,7 @@ What the callers owe to this answer, written down here so each task does not red
   knows the account (a Resend with a session) has no need to.
 - **`rejected` means the address will not take email**: it bounced for good, it complained, or the
   provider refused it. Asking again does not help.
-- **Resend in the verification may show it** (`EMAIL_SEND_FAILED`): the address is the person's own.
+- **Resend in the verification shows it** (`EMAIL_SEND_FAILED`, [auth.md](auth.md#post-authemailresend)): the address is the person's own.
 - **A security notice never blocks what triggered it.** Send it after the change is committed, and
   whatever the outcome, the change stands; the notice is on the record either way.
 

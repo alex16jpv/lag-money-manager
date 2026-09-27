@@ -28,6 +28,11 @@ jest.mock("../../shared/constants", () => ({
   },
 }));
 
+jest.mock("../../shared/logger", () => ({
+  __esModule: true,
+  default: { error: jest.fn(), warn: jest.fn(), info: jest.fn() },
+}));
+
 import bcryptjs from "bcryptjs";
 
 import { UpdateUserDTO } from "../../app/dtos/UserDTO";
@@ -36,9 +41,11 @@ import { User } from "../../domain/entities/User";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
+import logger from "../../shared/logger";
 import { mockInvitationRepo } from "./invitationRepoMock";
 
 const testUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
+const REQUESTER = { ip: "203.0.113.7", recognizedDevice: null };
 
 const mockUser: User = new User({
   id: testUserId,
@@ -55,6 +62,10 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   getById: jest.fn(),
   getByEmail: jest.fn(),
   getDeletedByEmail: jest.fn().mockResolvedValue(null),
+  markEmailVerified: jest.fn(),
+  getForErasure: jest.fn().mockResolvedValue(null),
+  claimErasure: jest.fn().mockResolvedValue(null),
+  eraseForGood: jest.fn().mockResolvedValue(undefined),
   getByIdWithPassword: jest.fn().mockResolvedValue(null),
   bumpTokenVersion: jest.fn().mockResolvedValue(undefined),
   updateWithTokenBump: jest.fn(),
@@ -75,6 +86,7 @@ describe("UserService", () => {
   let repo: jest.Mocked<IUserRepository>;
   let accountRepo: jest.Mocked<IAccountRepository>;
   let invitations: ReturnType<typeof mockInvitationRepo>;
+  let verification: { status: jest.Mock; send: jest.Mock };
 
   beforeEach(() => {
     repo = createMockRepo();
@@ -82,7 +94,11 @@ describe("UserService", () => {
       countByUserId: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<IAccountRepository>;
     invitations = mockInvitationRepo();
-    service = new UserService(repo, accountRepo, invitations);
+    verification = {
+      status: jest.fn().mockResolvedValue(null),
+      send: jest.fn().mockResolvedValue({ status: "sent" }),
+    };
+    service = new UserService(repo, accountRepo, invitations, verification);
   });
 
   describe("getUserById", () => {
@@ -93,6 +109,22 @@ describe("UserService", () => {
 
       expect(repo.getById).toHaveBeenCalledWith(testUserId);
       expect(result.name).toBe("John Doe");
+    });
+
+    it("carries what the sheet that confirms the email needs [T-209]", async () => {
+      repo.getById.mockResolvedValue(mockUser);
+      const view = {
+        codeLive: true,
+        lastSentAt: new Date("2026-09-27T11:59:00.000Z"),
+        resendAvailableAt: null,
+      };
+      verification.status.mockResolvedValue(view);
+
+      const result = await service.getUserById(testUserId, testUserId);
+
+      expect(verification.status).toHaveBeenCalledWith(mockUser);
+      expect(result.emailVerified).toBe(false);
+      expect(result.emailVerification).toEqual(view);
     });
 
     it("should throw Forbidden when accessing another user", async () => {
@@ -122,6 +154,7 @@ describe("UserService", () => {
         testUserId,
         { name: "Updated Name" },
         testUserId,
+        REQUESTER,
       );
 
       expect(repo.update).toHaveBeenCalledWith(testUserId, {
@@ -139,6 +172,7 @@ describe("UserService", () => {
             name: "Test",
           },
           testUserId,
+          REQUESTER,
         ),
       ).rejects.toThrow("User not found");
     });
@@ -152,6 +186,7 @@ describe("UserService", () => {
             name: "Test",
           },
           testUserId,
+          REQUESTER,
         ),
       ).rejects.toThrow(ApiError);
       await expect(
@@ -162,6 +197,7 @@ describe("UserService", () => {
             name: "Test",
           },
           testUserId,
+          REQUESTER,
         ),
       ).rejects.toThrow("User id does not match");
     });
@@ -181,6 +217,7 @@ describe("UserService", () => {
           currentPassword: "oldpassword",
         },
         testUserId,
+        REQUESTER,
       );
 
       // [M3] credential changes use the atomic $set + $inc(tokenVersion), so no refresh survives.
@@ -208,16 +245,19 @@ describe("UserService", () => {
         testUserId,
         { email: "other@example.com", currentPassword: "oldpassword" },
         testUserId,
+        REQUESTER,
       );
       await service.updateUser(
         testUserId,
         { email: withHash.email, currentPassword: "oldpassword" },
         testUserId,
+        REQUESTER,
       );
       await service.updateUser(
         testUserId,
         { password: "newpassword", currentPassword: "oldpassword" },
         testUserId,
+        REQUESTER,
       );
 
       const [moved, same, password] = repo.updateWithTokenBump.mock.calls.map(
@@ -226,6 +266,64 @@ describe("UserService", () => {
       expect(moved).toMatchObject({ emailVerifiedAt: null });
       expect(same).not.toHaveProperty("emailVerifiedAt");
       expect(password).not.toHaveProperty("emailVerifiedAt");
+    });
+
+    it("asks the new address to confirm itself, and only a new address [T-209]", async () => {
+      const withHash = new User({
+        ...mockUser,
+        password: bcryptjs.hashSync("oldpassword", 4),
+      });
+      const moved = new User({ ...mockUser, email: "other@example.com" });
+      repo.getByIdWithPassword.mockResolvedValue(withHash);
+      repo.updateWithTokenBump.mockResolvedValue(moved);
+
+      await service.updateUser(
+        testUserId,
+        { email: "other@example.com", currentPassword: "oldpassword" },
+        testUserId,
+        REQUESTER,
+      );
+      await service.updateUser(
+        testUserId,
+        { email: withHash.email, currentPassword: "oldpassword" },
+        testUserId,
+        REQUESTER,
+      );
+      await service.updateUser(
+        testUserId,
+        { password: "newpassword", currentPassword: "oldpassword" },
+        testUserId,
+        REQUESTER,
+      );
+
+      expect(verification.send).toHaveBeenCalledTimes(1);
+      expect(verification.send).toHaveBeenCalledWith(moved, REQUESTER);
+    });
+
+    it("keeps the new address when its code could not be sent [T-209]", async () => {
+      repo.getByIdWithPassword.mockResolvedValue(
+        new User({
+          ...mockUser,
+          password: bcryptjs.hashSync("oldpassword", 4),
+        }),
+      );
+      repo.updateWithTokenBump.mockResolvedValue(
+        new User({ ...mockUser, email: "other@example.com" }),
+      );
+      verification.send.mockRejectedValue(new Error("mongo down"));
+
+      const result = await service.updateUser(
+        testUserId,
+        { email: "other@example.com", currentPassword: "oldpassword" },
+        testUserId,
+        REQUESTER,
+      );
+
+      expect(result.email).toBe("other@example.com");
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "VERIFICATION_NOT_SENT" }),
+        expect.any(String),
+      );
     });
 
     it("rejects a credential change with a wrong currentPassword [R2-08]", async () => {
@@ -240,6 +338,7 @@ describe("UserService", () => {
           testUserId,
           { email: "attacker@evil.com", currentPassword: "guess" },
           testUserId,
+          REQUESTER,
         ),
       ).rejects.toThrow("Current password is incorrect");
       expect(repo.update).not.toHaveBeenCalled();
@@ -316,7 +415,7 @@ describe("UserService", () => {
       repo.update.mockRejectedValue(new Error("DB write failed"));
 
       await expect(
-        service.updateUser(testUserId, { name: "New" }, testUserId),
+        service.updateUser(testUserId, { name: "New" }, testUserId, REQUESTER),
       ).rejects.toThrow("DB write failed");
     });
 
@@ -341,7 +440,12 @@ describe("UserService", () => {
       accountRepo.countByUserId.mockResolvedValue(2);
 
       await expect(
-        service.updateUser(testUserId, { currency: "USD" }, testUserId),
+        service.updateUser(
+          testUserId,
+          { currency: "USD" },
+          testUserId,
+          REQUESTER,
+        ),
       ).rejects.toThrow("Currency cannot be changed");
       expect(repo.update).not.toHaveBeenCalled();
     });
@@ -352,7 +456,12 @@ describe("UserService", () => {
       repo.update.mockResolvedValue(mockUser);
 
       await expect(
-        service.updateUser(testUserId, { currency: "USD" }, testUserId),
+        service.updateUser(
+          testUserId,
+          { currency: "USD" },
+          testUserId,
+          REQUESTER,
+        ),
       ).resolves.toBeDefined();
     });
   });

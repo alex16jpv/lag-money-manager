@@ -6,11 +6,15 @@ import { ISharedInvitationRepository } from "../../domain/repositories/sharedInv
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT, INVITATION_STATUSES } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
+import logger from "../../shared/logger";
 import {
+  EmailVerificationView,
   toUserResponse,
   UpdateUserDTO,
   UserResponseDTO,
 } from "../dtos/UserDTO";
+import { EmailRequester } from "./EmailService";
+import { EmailVerificationService } from "./EmailVerificationService";
 
 async function assertCurrentPassword(
   user: User,
@@ -34,9 +38,15 @@ export class UserService {
     private repo: IUserRepository,
     private accountRepo: IAccountRepository,
     private invitationRepo: ISharedInvitationRepository,
+    private verification: Pick<EmailVerificationService, "status" | "send">,
   ) {}
 
-  async getUserById(id: string, userId: string): Promise<UserResponseDTO> {
+  async getUserById(
+    id: string,
+    userId: string,
+  ): Promise<
+    UserResponseDTO & { emailVerification: EmailVerificationView | null }
+  > {
     if (id !== userId) {
       throw new ApiError("NotFound", "User not found");
     }
@@ -44,13 +54,17 @@ export class UserService {
     if (!user) {
       throw new ApiError("NotFound", "User not found");
     }
-    return toUserResponse(user);
+    return {
+      ...toUserResponse(user),
+      emailVerification: await this.verification.status(user),
+    };
   }
 
   async updateUser(
     id: string,
     dto: UpdateUserDTO,
     userId: string,
+    requester: EmailRequester,
   ): Promise<UserResponseDTO> {
     if (id !== userId) {
       throw new ApiError("NotFound", "User not found");
@@ -86,11 +100,12 @@ export class UserService {
       await assertCurrentPassword(existing, dto.currentPassword);
 
       const { currentPassword: _ignored, ...fields } = dto;
+      const movesEmail = !!dto.email && dto.email !== existing.email;
       const securedDto = {
         ...fields,
         // A confirmation proves the old address, never the new one.
-        ...(dto.email && dto.email !== existing.email
-          ? { emailVerifiedAt: null }
+        ...(movesEmail
+          ? { emailVerifiedAt: null, emailChangedAt: new Date() }
           : {}),
         ...(dto.password
           ? {
@@ -103,12 +118,27 @@ export class UserService {
       };
       // Atomic bump: a concurrent logout-all must never lose a revocation.
       const updated = await this.repo.updateWithTokenBump(id, securedDto);
+      if (movesEmail) await this.askToConfirm(updated, requester);
       return toUserResponse(updated);
     }
 
     const { currentPassword: _ignored, ...fields } = dto;
     const updated = await this.repo.update(id, fields);
     return toUserResponse(updated);
+  }
+
+  private async askToConfirm(
+    user: User,
+    requester: EmailRequester,
+  ): Promise<void> {
+    try {
+      await this.verification.send(user, requester);
+    } catch (err) {
+      logger.error(
+        { err, code: "VERIFICATION_NOT_SENT", userId: user.id },
+        "The new address was saved but its confirmation code could not be sent",
+      );
+    }
   }
 
   async deleteUser(

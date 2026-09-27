@@ -28,6 +28,7 @@ import {
   ITransactionRepository,
 } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { ENVIRONMENT } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
 import {
   ChangeCursor,
@@ -83,6 +84,7 @@ export class SyncService {
     private settlements: ISharedSettlementRepository,
     private invitations: ISharedInvitationRepository,
     private joined: Pick<JoinedGroupService, "changes">,
+    private requireConfirmedEmail = ENVIRONMENT.EMAIL_VERIFICATION_REQUIRED,
   ) {}
 
   /**
@@ -135,7 +137,9 @@ export class SyncService {
       user
         ? this.invitations.receivedChangesSince(
             userId,
-            user.email,
+            user.emailVerifiedAt || !this.requireConfirmedEmail
+              ? user.email
+              : null,
             cursor,
             fetch,
           )

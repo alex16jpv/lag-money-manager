@@ -21,6 +21,8 @@ const router = Router();
  *       group's name, its colour and currency, and who sent it. The offline
  *       client reads them from the change feed (`invitationsReceived`), which
  *       also brings the ones already answered; this listing is its fallback.
+ *       Only once your email is confirmed: until then nothing addressed to it
+ *       is shown.
  *     parameters:
  *       - in: query
  *         name: limit
@@ -49,6 +51,13 @@ const router = Router();
  *               $ref: '#/components/schemas/ErrorResponse'
  *       401:
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: >
+ *           Your email is not confirmed yet (code EMAIL_NOT_VERIFIED)
  *         content:
  *           application/json:
  *             schema:
@@ -97,6 +106,15 @@ router.get(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: >
+ *           Your email is not confirmed yet, and the invitation is
+ *           addressed to it rather than one you already answered (code
+ *           EMAIL_NOT_VERIFIED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
  *         description: Invitation not found (uniform for missing and addressed to somebody else)
  *         content:
@@ -140,6 +158,15 @@ router.post(
  *               $ref: '#/components/schemas/ErrorResponse'
  *       401:
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: >
+ *           Your email is not confirmed yet, and the invitation is
+ *           addressed to it rather than one you already answered (code
+ *           EMAIL_NOT_VERIFIED)
  *         content:
  *           application/json:
  *             schema:

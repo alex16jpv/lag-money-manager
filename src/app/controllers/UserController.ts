@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
 
+import { createEmailVerificationService } from "../factories/emailVerificationFactory";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { AuthPayload } from "../middlewares/authMiddleware";
+import { clientIp } from "../middlewares/clientIp";
 import { CategoryService } from "../services/CategoryService";
 import { KeepOrStartFreshService } from "../services/KeepOrStartFreshService";
 import { UserService } from "../services/UserService";
@@ -10,6 +12,7 @@ const userService = new UserService(
   repositoryFactory.getUserRepository(),
   repositoryFactory.getAccountRepository(),
   repositoryFactory.getSharedInvitationRepository(),
+  createEmailVerificationService(),
 );
 const keepOrStartFreshService = new KeepOrStartFreshService(
   repositoryFactory.getUserRepository(),
@@ -32,7 +35,10 @@ export class UserController {
   static updateUser = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     const id = req.params.id as string;
-    const updatedUser = await userService.updateUser(id, req.body, userId);
+    const updatedUser = await userService.updateUser(id, req.body, userId, {
+      ip: clientIp(req),
+      recognizedDevice: null,
+    });
     res.status(200).json(updatedUser);
   };
 

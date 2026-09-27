@@ -240,3 +240,52 @@ POST {{baseUrl}}/auth/password/reset
 Content-Type: application/json
 
 { "token": "pega-aqui-el-token-del-enlace", "newPassword": "{{password}}" }
+
+### ==========================================================
+### CONFIRMAR EL CORREO (T-209) — con Mailpit (docker compose up -d mailpit,
+### EMAIL_PROVIDERS=mailpit): el código y los enlaces se leen en http://localhost:8025
+### ==========================================================
+
+### Register con captcha — además de la sesión, manda verify-email (código, enlace
+### y "No fui yo"). Sin captcha la cuenta se crea igual y no se manda nada.
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Tester",
+  "email": "verify-{{$randomInt 100 999}}@test.com",
+  "password": "{{password}}",
+  "captcha": "XXXX.DUMMY.TOKEN.XXXX"
+}
+
+### Send code / Resend — con sesión y captcha. 202 { resendAfterSeconds };
+### antes de un minuto 429 RATE_LIMITED; ya confirmado 409 EMAIL_ALREADY_VERIFIED;
+### si el correo no sale 503 EMAIL_SEND_FAILED (422 si la dirección no acepta correo)
+POST {{baseUrl}}/auth/email/resend
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "captcha": "XXXX.DUMMY.TOKEN.XXXX", "deviceToken": "{{deviceToken}}" }
+
+### Confirmar con el código (con sesión). Equivocado: 400 EMAIL_CODE_INVALID;
+### vencido o gastado en cinco intentos: 400 EMAIL_CODE_EXPIRED. Ya confirmado: 200.
+### Sustituye 123456 por el código del correo.
+POST {{baseUrl}}/auth/email/verify
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "code": "123456" }
+
+### Confirmar con el enlace (sin sesión): el token es lo que va tras #token= de /verify.
+### Vencido, reemplazado o de otra dirección: 400 LINK_INVALID. Ya confirmado: 200.
+POST {{baseUrl}}/auth/email/verify
+Content-Type: application/json
+
+{ "token": "pega-aqui-el-token-del-enlace" }
+
+### "No fui yo" (sin sesión): el token tras #token= de /not-me. BORRA DE VERDAD la
+### cuenta y libera el correo, solo si nunca se confirmó. Si no: 400 LINK_INVALID.
+POST {{baseUrl}}/auth/email/not-me
+Content-Type: application/json
+
+{ "token": "pega-aqui-el-token-de-no-fui-yo" }

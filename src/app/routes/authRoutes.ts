@@ -1,20 +1,26 @@
-import { Router } from "express";
+import { NextFunction, Request, Response, Router } from "express";
 
 import { ENVIRONMENT } from "../../shared/constants";
 import { AuthController } from "../controllers/AuthController";
 import { createCaptchaVerifier } from "../factories/captchaFactory";
 import { authMiddleware } from "../middlewares/authMiddleware";
 import { authRateLimit } from "../middlewares/authRateLimitMiddleware";
-import { requireCaptcha } from "../middlewares/captchaMiddleware";
+import {
+  captchaIfSent,
+  requireCaptcha,
+} from "../middlewares/captchaMiddleware";
 import { clientIp } from "../middlewares/clientIp";
 import { attemptedEmail } from "../middlewares/loginAttempt";
 import {
   forgotPasswordSchema,
   idParamSchema,
   loginSchema,
+  notMeSchema,
   refreshSchema,
   registerSchema,
+  resendVerificationSchema,
   resetPasswordSchema,
+  verifyEmailSchema,
 } from "../validation/schemas";
 import { validate } from "../validation/validate";
 
@@ -79,7 +85,35 @@ const resetLimiter = authRateLimit({
   max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
+const verifyLimiter = authRateLimit({
+  keyPrefix: "verify-email",
+  max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
+  windowMs: AUTH_WINDOW_MS,
+});
+const resendLimiter = authRateLimit({
+  keyPrefix: "resend-verification",
+  max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
+  windowMs: AUTH_WINDOW_MS,
+});
+const notMeLimiter = authRateLimit({
+  keyPrefix: "not-me",
+  max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
+  windowMs: AUTH_WINDOW_MS,
+});
 const captcha = createCaptchaVerifier();
+
+// Runs after validate(): only a body with a code needs the session.
+const sessionForCode = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void => {
+  if ("code" in (req.body as object)) {
+    authMiddleware(req, res, next);
+    return;
+  }
+  next();
+};
 
 // Refresh is legitimate high-frequency traffic (~15 min per device), so its threshold is higher.
 const refreshLimiter = authRateLimit({
@@ -104,6 +138,13 @@ const refreshLimiter = authRateLimit({
  *       with any other password it answers 409 EMAIL_TAKEN, like a live
  *       account. On a 500 the
  *       user may still have been created: try login before retrying register.
+ *       `captcha` is a Cloudflare Turnstile token issued for the action
+ *       `register`: with it, an account whose email is not confirmed is sent
+ *       `verify-email` (a 6-digit code and a link, 24 hours); without it,
+ *       nothing is sent and `GET /users/{id}` shows no live code, so the
+ *       client offers Send code. A send that fails does not fail the
+ *       register. The account works before its email is confirmed
+ *       (`user.emailVerified`); only invitations wait for it.
  *     security: []
  *     requestBody:
  *       required: true
@@ -119,7 +160,9 @@ const refreshLimiter = authRateLimit({
  *             schema:
  *               $ref: '#/components/schemas/AuthTokens'
  *       400:
- *         description: Validation error (code VALIDATION)
+ *         description: >
+ *           Validation error (code VALIDATION), or Cloudflare refused the
+ *           captcha token (code CAPTCHA_INVALID)
  *         content:
  *           application/json:
  *             schema:
@@ -143,12 +186,21 @@ const refreshLimiter = authRateLimit({
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       503:
+ *         description: >
+ *           A captcha was sent and could not be checked (code
+ *           CAPTCHA_UNAVAILABLE): nothing was created. Try again
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post(
   "/register",
   registerLimiter,
   ...accountLimiters,
   validate(registerSchema),
+  captchaIfSent("register", captcha),
   AuthController.register,
 );
 
@@ -334,6 +386,230 @@ router.post(
   resetLimiter,
   validate(resetPasswordSchema),
   AuthController.resetPassword,
+);
+
+/**
+ * @openapi
+ * /auth/email/verify:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Confirm the account's email with the emailed code or link
+ *     description: >
+ *       Either `{ code }`, with the session (`Authorization`) of the account
+ *       the code went to, or `{ token }` from the email's link
+ *       (`/{locale}/verify#token=…`) with no session: it names the account.
+ *       A code takes five tries and works for 24 hours; asking for another
+ *       cancels it once the new email is accepted. Confirming is not spent:
+ *       an account already confirmed answers 200 for its code and for its
+ *       link, so tapping the link after typing the code reads "Email
+ *       confirmed". A link for an address the account no longer has is
+ *       LINK_INVALID, and so is one replaced by a newer code, even once the
+ *       account is confirmed: only the newest email's link answers 200.
+ *       Confirming ends the wait of the invitations addressed to it: they
+ *       reach the change feed on the next pull.
+ *     security:
+ *       - {}
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/VerifyEmailInput'
+ *     responses:
+ *       200:
+ *         description: The email is confirmed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Message'
+ *       400:
+ *         description: >
+ *           Validation error (code VALIDATION); a code that is not the one
+ *           sent (code EMAIL_CODE_INVALID); no code that still works — it
+ *           expired, it was tried five times, or none was sent (code
+ *           EMAIL_CODE_EXPIRED: send a new one); or a link that no longer
+ *           works — expired, replaced, or for another address (code
+ *           LINK_INVALID)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: A code with a missing, invalid or expired access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: A code for an account that no longer exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: Too many attempts from this IP (code RATE_LIMITED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/email/verify",
+  verifyLimiter,
+  validate(verifyEmailSchema),
+  sessionForCode,
+  AuthController.verifyEmail,
+);
+
+/**
+ * @openapi
+ * /auth/email/resend:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Email a new code to confirm the account's email
+ *     description: >
+ *       Send code and Resend code of the sheet that confirms the email. Sends
+ *       `verify-email` to the account's address, in its language: a 6-digit
+ *       code and a link, both for 24 hours, and "It wasn't me". The new code
+ *       replaces the old one only once its email was accepted; the "It
+ *       wasn't me" of earlier emails keeps working. Unlike Forgot your
+ *       password?, a failed send is said: the address is the account's own.
+ *       `captcha` is a Cloudflare Turnstile token for the action
+ *       `verify-email`; `deviceToken`, from this device's last login or
+ *       register, lets the limits count this device instead of its IP.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ResendVerificationInput'
+ *     responses:
+ *       202:
+ *         description: >
+ *           The email was accepted for delivery. `resendAfterSeconds` is the
+ *           countdown before Resend
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/VerificationCodeSent'
+ *       400:
+ *         description: >
+ *           Validation error (code VALIDATION), or Cloudflare refused the
+ *           captcha token (code CAPTCHA_INVALID)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Missing, invalid or expired access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: The account no longer exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: The email is already confirmed (code EMAIL_ALREADY_VERIFIED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       422:
+ *         description: >
+ *           The address does not accept our emails: it bounced or complained
+ *           before, or the provider refused it (code EMAIL_SEND_FAILED). A
+ *           code that was live before still works
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: >
+ *           Too many requests (code RATE_LIMITED; `Retry-After` in seconds):
+ *           from this IP, from this device or IP in the hour, for this
+ *           account (five a day), or for this address — one a minute and
+ *           five a day
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       503:
+ *         description: >
+ *           The email could not be sent, or may not have gone (code
+ *           EMAIL_SEND_FAILED), or the captcha could not be checked (code
+ *           CAPTCHA_UNAVAILABLE). A code that was live before still works
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/email/resend",
+  authMiddleware,
+  resendLimiter,
+  validate(resendVerificationSchema),
+  requireCaptcha("verify-email", captcha),
+  AuthController.resendVerification,
+);
+
+/**
+ * @openapi
+ * /auth/email/not-me:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Delete, for good, an account that used somebody else's address
+ *     description: >
+ *       "It wasn't me" of `verify-email` (`/{locale}/not-me#token=…`), for
+ *       whoever holds the inbox. It works while the account has never
+ *       confirmed an email — not even an earlier address — and still has the
+ *       address the link went to, with no change of address since, and
+ *       does what the owner's decision 11 says: the account and everything
+ *       in it are erased — not archived, so no register can bring them back
+ *       — its invitations end as when an account is deleted, and the address
+ *       is free for a new account at once. No `account-deleted` is sent.
+ *       Every verification email of such an account carries its own link and
+ *       all of them work until then; a new code does not cancel them. An
+ *       account confirmed once gets `verify-email` without it.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/NotMeInput'
+ *     responses:
+ *       200:
+ *         description: The account is gone and its address is free
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Message'
+ *       400:
+ *         description: >
+ *           Validation error (code VALIDATION), or a link that no longer
+ *           works: the account was confirmed, moved to another address, or is
+ *           already gone (code LINK_INVALID)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: Too many attempts from this IP (code RATE_LIMITED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/email/not-me",
+  notMeLimiter,
+  validate(notMeSchema),
+  AuthController.notMe,
 );
 
 /**

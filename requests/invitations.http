@@ -6,6 +6,9 @@
 ### tiene cuenta: la respuesta es la misma en los dos casos.
 ### Hacen falta dos usuarios: el que invita (@email) y el
 ### invitado (@inviteeEmail), registrado con la misma moneda.
+### Con EMAIL_VERIFICATION_REQUIRED=true los dos tienen que haber
+### confirmado su correo (auth.http, T-209): si no, invitar, ver y
+### contestar invitaciones dan 403 EMAIL_NOT_VERIFIED.
 ### ==========================================================
 @baseUrl = http://localhost:3000
 @email = tester@test.com

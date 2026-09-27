@@ -29,6 +29,7 @@ const inviter = new User({
   email: "john@example.com",
   password: "x",
   currency: "COP",
+  emailVerifiedAt: new Date("2026-09-01T00:00:00.000Z"),
 });
 const invitee = new User({
   id: inviteeId,
@@ -36,6 +37,7 @@ const invitee = new User({
   email: "beto@example.com",
   password: "x",
   currency: "COP",
+  emailVerifiedAt: new Date("2026-09-01T00:00:00.000Z"),
 });
 
 const makeGroup = (props: Partial<SharedGroup> = {}): SharedGroup =>
@@ -503,6 +505,115 @@ describe("SharedInvitationService", () => {
       await expect(
         service.leave(invitationId, inviteeId),
       ).rejects.toMatchObject({ code: "INVITATION_UNAVAILABLE" });
+    });
+  });
+
+  describe("with an email not confirmed [T-209]", () => {
+    const unconfirmed = (user: User): User =>
+      new User({ ...user, emailVerifiedAt: null });
+
+    beforeEach(() => {
+      users.getById.mockImplementation(async (id: string) =>
+        id === inviterId
+          ? unconfirmed(inviter)
+          : id === inviteeId
+            ? unconfirmed(invitee)
+            : null,
+      );
+      service = new SharedInvitationService(
+        repo,
+        groups,
+        contacts,
+        users,
+        true,
+      );
+    });
+
+    it("waits for nothing while confirmation is not required", async () => {
+      service = new SharedInvitationService(
+        repo,
+        groups,
+        contacts,
+        users,
+        false,
+      );
+      repo.getById.mockResolvedValue(makeInvitation());
+
+      await expect(
+        service.invite(groupId, contactId, inviterId),
+      ).resolves.toMatchObject({ status: "PENDING" });
+      repo.listAnswerable.mockResolvedValue({
+        data: [makeInvitation()],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+      await expect(
+        service.listReceived(inviteeId, { limit: 20, offset: 0 }),
+      ).resolves.toMatchObject({ data: [{ id: invitationId }] });
+      await expect(
+        service.decline(invitationId, inviteeId),
+      ).rejects.toMatchObject({ code: "INVITATION_UNAVAILABLE" });
+    });
+
+    it("refuses to invite before looking at the group, the contact or the cap", async () => {
+      await expect(
+        service.invite(groupId, contactId, inviterId),
+      ).rejects.toMatchObject({ statusCode: 403, code: "EMAIL_NOT_VERIFIED" });
+      expect(groups.getByIdIncludingArchived).not.toHaveBeenCalled();
+      expect(repo.openOne).not.toHaveBeenCalled();
+    });
+
+    it("lists nothing addressed to the email", async () => {
+      await expect(
+        service.listReceived(inviteeId, { limit: 20, offset: 0 }),
+      ).rejects.toMatchObject({ statusCode: 403, code: "EMAIL_NOT_VERIFIED" });
+      expect(repo.listAnswerable).not.toHaveBeenCalled();
+    });
+
+    it.each(["accept", "decline"] as const)(
+      "refuses to %s one that waits for the email, and says the same for an id that does not exist",
+      async (answer) => {
+        repo.getById.mockResolvedValue(makeInvitation());
+        await expect(
+          service[answer](invitationId, inviteeId),
+        ).rejects.toMatchObject({ code: "EMAIL_NOT_VERIFIED" });
+
+        repo.getById.mockResolvedValue(null);
+        await expect(
+          service[answer](invitationId, inviteeId),
+        ).rejects.toMatchObject({ code: "EMAIL_NOT_VERIFIED" });
+        expect(repo.answer).not.toHaveBeenCalled();
+      },
+    );
+
+    it("keeps what this person already answered: groups joined are not touched", async () => {
+      repo.getById.mockResolvedValue(
+        makeInvitation({ status: "ACCEPTED", inviteeId }),
+      );
+      await expect(
+        service.accept(invitationId, inviteeId),
+      ).resolves.toMatchObject({ status: "ACCEPTED" });
+
+      repo.leave.mockResolvedValue(
+        makeInvitation({ status: "LEFT", inviteeId, leftAt: new Date() }),
+      );
+      await expect(
+        service.leave(invitationId, inviteeId),
+      ).resolves.toMatchObject({ status: "LEFT" });
+    });
+
+    it("still withdraws what the account sent before the rule", async () => {
+      repo.getById.mockResolvedValue(makeInvitation());
+      repo.withdraw.mockResolvedValue(makeInvitation({ status: "WITHDRAWN" }));
+
+      await expect(
+        service.withdraw(groupId, invitationId, inviterId),
+      ).resolves.toMatchObject({ status: "WITHDRAWN" });
     });
   });
 });

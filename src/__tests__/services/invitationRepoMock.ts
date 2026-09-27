@@ -16,6 +16,7 @@ export const mockInvitationRepo =
     refreshGroup: jest.fn().mockResolvedValue(undefined),
     leave: jest.fn().mockResolvedValue(null),
     leaveAll: jest.fn().mockResolvedValue(0),
+    touchUnansweredFor: jest.fn().mockResolvedValue(undefined),
     memberships: jest.fn().mockResolvedValue([]),
     membershipsPage: jest.fn(),
     inGroups: jest.fn().mockResolvedValue([]),

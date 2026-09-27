@@ -107,7 +107,7 @@ interface Harness {
 }
 
 // The profile is absent by default: always sending it would hide the boundary the merge is about.
-const build = (): Harness => {
+const build = (requireConfirmedEmail = false): Harness => {
   const users = { getById: jest.fn().mockResolvedValue(null) };
   const feed = (): Feed => ({ changesSince: jest.fn().mockResolvedValue([]) });
   const accounts = feed();
@@ -137,6 +137,7 @@ const build = (): Harness => {
     settlements as never,
     invitations as never,
     joined,
+    requireConfirmedEmail,
   );
   return {
     service,
@@ -451,7 +452,9 @@ describe("SyncService.getChanges", () => {
   describe("invitations", () => {
     it("finds the ones addressed to this person by the email on their profile", async () => {
       const { service, users, invitations } = build();
-      users.getById.mockResolvedValue(user);
+      users.getById.mockResolvedValue(
+        new User({ ...user, emailVerifiedAt: new Date("2026-09-01") }),
+      );
 
       await service.getChanges(USER_ID, undefined, 10);
 
@@ -460,6 +463,34 @@ describe("SyncService.getChanges", () => {
         undefined,
         11,
       );
+      expect(invitations.receivedChangesSince).toHaveBeenCalledWith(
+        USER_ID,
+        "john@example.com",
+        undefined,
+        11,
+      );
+    });
+
+    it("finds only what this person answered while their email is not confirmed [T-209]", async () => {
+      const { service, users, invitations } = build(true);
+      users.getById.mockResolvedValue(user);
+
+      await service.getChanges(USER_ID, undefined, 10);
+
+      expect(invitations.receivedChangesSince).toHaveBeenCalledWith(
+        USER_ID,
+        null,
+        undefined,
+        11,
+      );
+    });
+
+    it("keeps finding them by address while confirmation is not required [T-209]", async () => {
+      const { service, users, invitations } = build(false);
+      users.getById.mockResolvedValue(user);
+
+      await service.getChanges(USER_ID, undefined, 10);
+
       expect(invitations.receivedChangesSince).toHaveBeenCalledWith(
         USER_ID,
         "john@example.com",
