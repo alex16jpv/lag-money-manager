@@ -1,4 +1,5 @@
 // npm run email:preview — every template in both languages, sent through EMAIL_PROVIDERS (Mailpit unless set).
+import { setTimeout as sleep } from "timers/promises";
 import { parseArgs } from "util";
 
 import type {
@@ -15,6 +16,7 @@ process.env.MONGO_URI ??= "mongodb://localhost:27017/email_preview_unused";
 const SAMPLE_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 const SAMPLE_TOKEN = "q7Xk2mVb9RtL4wPz";
+const SES_SANDBOX_INTERVAL_MS = 1100;
 
 async function main(): Promise<void> {
   const { values } = parseArgs({
@@ -79,8 +81,12 @@ async function main(): Promise<void> {
 
   const providers = createEmailProviders();
   let failed = 0;
+  let first = true;
   for (const template of templates) {
     for (const locale of ["en", "es"] as const) {
+      // SES's sandbox takes one email a second, and the adapter does not retry a throttled one.
+      if (!first && !onlyMailpit) await sleep(SES_SANDBOX_INTERVAL_MS);
+      first = false;
       const rendered = render(template, locale);
       const result = await sendThroughChain(
         providers,

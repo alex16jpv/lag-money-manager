@@ -160,6 +160,14 @@
       "mustReadFirst": false
     },
     {
+      "path": "docs/guides/email.md",
+      "title": "Email in Production: SES and Its Guards",
+      "description": "Setting up Amazon SES once: the pricing plan, the infra/email.yaml stack, the DNS records in Cloudflare, the events webhook, the sandbox test, production access, Turnstile, Vercel's rate limit, what to do when a guard trips and how to raise the limits.",
+      "tags": ["guide", "email", "ses", "production", "aws", "alarms", "budget"],
+      "audience": "human",
+      "mustReadFirst": false
+    },
+    {
       "path": "docs/guides/backup-restore.md",
       "title": "Backup and Restore",
       "description": "Taking a gzipped copy of a live database and putting one back, with the guards that stop a restore from silently writing nothing.",

@@ -3,7 +3,8 @@
 > **Status: the sender and the bounce handling are built, nothing sends yet.** This module is the
 > piece every email of the app goes through: the password reset (T-207), the email verification
 > (T-209), the email change (T-221), the security notices (T-211) and, later, the notification channel
-> (T-131). The AWS guide, alarms and budget are T-224.
+> (T-131). Setting SES up in production, with its alarms and budget, is
+> [Email in Production](../guides/email.md).
 
 ## What This Module Does
 
@@ -179,8 +180,8 @@ an environment variable of the Lambda: it changes in the console and applies on 
   The captcha on Forgot your password? (T-207) is what makes that expensive, and `EMAIL_CAP_REACHED`
   is the alarm that says it happened.
 - **Reaching a cap logs an error with `code: "EMAIL_CAP_REACHED"`** (`budget`, `period`, `max`), once:
-  on the attempt that crosses it, not on every one it stops after. The alarm T-224 builds is a metric
-  filter on it.
+  on the attempt that crosses it, not on every one it stops after. The `ledger-flow-email-cap-reached`
+  alarm ([Email in Production](../guides/email.md#the-alarms)) is a metric filter on it.
 - **All the brakes of a send are counted at once**, in one parallel round trip, and then judged.
 - **An attempt stopped by one brake gives back the brakes it had already passed**, so an attacker
   whose IP is blocked does not also use up the victim's address. **A send gives back its caps only
@@ -239,7 +240,8 @@ wear down the SES account's reputation, with nothing but a log line to show for 
   (`EMAIL_EVENTS_UNSUBSCRIBED`): from then on no bounce arrives, and the owner has to know. A
   subscription confirmed this way can be removed by anyone holding the `UnsubscribeURL` of one of its
   notifications; that log line is the signal.
-- **What the subscription needs** (T-224's guide): HTTPS to the Function URL + `/webhooks/email/ses`,
+- **What the subscription needs** (`infra/email.yaml` creates it, [Email in Production](../guides/email.md)
+  step 4): HTTPS to the Function URL + `/webhooks/email/ses`,
   with **raw message delivery off** (the signature is on SNS's envelope, so a raw body is refused).
 - **A notification carries one SES event**, read by `sesEvents.ts` into the provider-neutral
   `EmailEvent` (`delivered`, `bounced` or `complained`). A future provider adds its own route and
@@ -263,7 +265,8 @@ wear down the SES account's reputation, with nothing but a log line to show for 
   that no longer exists (past its 30 days) changes nothing, and the suppression still happens.
 - **A signed event that cannot be read** is logged (`EMAIL_EVENT_UNREADABLE`) and answered `204`: a
   retry would read the same bytes. A database that fails answers `5xx`, and SNS retries (by default
-  three times in about a minute; T-224's guide sets a longer delivery policy on the subscription).
+  three times in about a minute; the subscription of `infra/email.yaml` retries for about 35 minutes,
+  and an alarm tells the owner when SNS gives up on one).
 
 ### The suppression list: `emailsuppressions`
 
@@ -323,7 +326,7 @@ One line per problem, never the address, never the code:
 | `code`                        | Level | When                                                                 |
 | ----------------------------- | ----- | -------------------------------------------------------------------- |
 | `EMAIL_SENDING_DISABLED`      | warn  | A send while the switch is off or no provider is configured          |
-| `EMAIL_CAP_REACHED`           | error | A daily or monthly cap stopped a send (T-224's alarm)                |
+| `EMAIL_CAP_REACHED`           | error | A daily or monthly cap stopped a send (an alarm emails the owner)    |
 | `EMAIL_SEND_FAILED`           | error | No provider accepted it, with each provider's failure                |
 | `EMAIL_RECIPIENT_REJECTED`    | warn  | A provider refused the address itself: a data problem, not an outage |
 | `EMAIL_PROVIDER_FAILED`       | warn  | A fallback sent it after an earlier provider failed                  |
@@ -350,7 +353,7 @@ These are log codes, not API error codes: nothing here reaches a response to the
 `npm run email:preview` sends every template in both languages to it, with sample data. It sends
 through whatever `EMAIL_PROVIDERS` names (Mailpit when unset); with `EMAIL_PROVIDERS=ses`, AWS
 credentials and `--to <address>` (required for anything but Mailpit: a made-up address would bounce
-and hurt the account's reputation) it sends the 26 of them to a real inbox through SES (0.0026 USD),
+and hurt the account's reputation) it sends the 26 of them to a real inbox through SES (0.0026 USD, one a second: the sandbox's rate),
 which is how the templates are checked in Gmail, Outlook and Apple Mail once SES is set up (T-206).
 `--only <template>` sends one. Mailpit's "HTML Check" tab scores each one against the mail clients'
 support tables.
