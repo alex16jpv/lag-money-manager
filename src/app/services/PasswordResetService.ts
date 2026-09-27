@@ -7,6 +7,7 @@ import {
   IAuthCodeRepository,
 } from "../../domain/repositories/authCode/IAuthCodeRepository";
 import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
+import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { AuthCodePurpose, ENVIRONMENT } from "../../shared/constants";
@@ -71,6 +72,10 @@ export class PasswordResetService {
     private readonly sessions: Pick<
       IRefreshSessionRepository,
       "revokeAllForUser"
+    >,
+    private readonly invitations: Pick<
+      ISharedInvitationRepository,
+      "touchUnansweredFor"
     >,
     private readonly auth: Pick<AuthService, "openSession">,
     private readonly config: PasswordResetConfig,
@@ -186,6 +191,9 @@ export class PasswordResetService {
     );
     if (!updated) throw refused();
     await this.sessions.revokeAllForUser(updated.id);
+    if (!user.emailVerifiedAt) {
+      await this.invitations.touchUnansweredFor(updated.email, this.now());
+    }
     const session = await this.auth.openSession(updated, userAgent);
     return { ...session, user: toUserResponse(updated) };
   }

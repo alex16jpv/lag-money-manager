@@ -29,6 +29,8 @@ export class UserRepository implements IUserRepository {
     locale?: Locale;
     lastLoginAt?: Date | null;
     emailVerifiedAt?: Date | null;
+    firstVerifiedAt?: Date | null;
+    emailChangedAt?: Date | null;
     keepOrStartFresh?: KeepOrStartFresh | null;
     dataResetAt?: Date | null;
     createdAt: Date;
@@ -45,6 +47,8 @@ export class UserRepository implements IUserRepository {
       locale: doc.locale,
       lastLoginAt: doc.lastLoginAt,
       emailVerifiedAt: doc.emailVerifiedAt,
+      firstVerifiedAt: doc.firstVerifiedAt,
+      emailChangedAt: doc.emailChangedAt,
       keepOrStartFresh: doc.keepOrStartFresh
         ? {
             askedAt: doc.keepOrStartFresh.askedAt,
@@ -117,6 +121,7 @@ export class UserRepository implements IUserRepository {
     const doc = await UserModel.findOne({
       email,
       deletedAt: { $ne: null },
+      erasingAt: null,
     }).lean();
     if (!doc) return null;
     return this.toEntity(doc);
@@ -160,6 +165,7 @@ export class UserRepository implements IUserRepository {
                 }
               : keepQuestion,
             emailVerifiedAt: { $ifNull: ["$emailVerifiedAt", now] },
+            firstVerifiedAt: { $ifNull: ["$firstVerifiedAt", now] },
             updatedAt: now,
           },
         },
@@ -167,6 +173,82 @@ export class UserRepository implements IUserRepository {
       { returnDocument: "after", updatePipeline: true },
     ).lean();
     return doc ? this.toEntity(doc) : null;
+  }
+
+  async markEmailVerified(
+    id: string,
+    email: string,
+    now: Date,
+  ): Promise<User | null> {
+    const doc = await UserModel.findOneAndUpdate(
+      { _id: id, email, deletedAt: null, emailVerifiedAt: null },
+      [
+        {
+          $set: {
+            emailVerifiedAt: now,
+            firstVerifiedAt: { $ifNull: ["$firstVerifiedAt", now] },
+            updatedAt: now,
+          },
+        },
+      ],
+      { returnDocument: "after", updatePipeline: true },
+    )
+      .select("-password")
+      .lean();
+    if (doc) return this.toEntity(doc);
+    const current = await UserModel.findOne({ _id: id, email, deletedAt: null })
+      .select("-password")
+      .lean();
+    return current?.emailVerifiedAt ? this.toEntity(current) : null;
+  }
+
+  async getForErasure(id: string): Promise<User | null> {
+    const doc = await UserModel.findOne({
+      _id: id,
+      emailVerifiedAt: null,
+      firstVerifiedAt: null,
+    })
+      .select("-password")
+      .lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async claimErasure(
+    id: string,
+    email: string,
+    tokenIssuedAt: Date,
+    now: Date,
+  ): Promise<User | null> {
+    const doc = await UserModel.findOneAndUpdate(
+      {
+        _id: id,
+        email,
+        emailVerifiedAt: null,
+        firstVerifiedAt: null,
+        $or: [
+          { emailChangedAt: null },
+          { emailChangedAt: { $lte: tokenIssuedAt } },
+        ],
+      },
+      [
+        {
+          $set: {
+            deletedAt: { $ifNull: ["$deletedAt", now] },
+            erasingAt: { $ifNull: ["$erasingAt", now] },
+            tokenVersion: { $add: [{ $ifNull: ["$tokenVersion", 0] }, 1] },
+            updatedAt: now,
+          },
+        },
+      ],
+      { returnDocument: "after", updatePipeline: true },
+    )
+      .select("-password")
+      .lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async eraseForGood(id: string): Promise<void> {
+    await UserModel.deleteOne({ _id: id, erasingAt: { $ne: null } }).exec();
   }
 
   async keepEverything(id: string, now: Date): Promise<User | null> {
@@ -254,7 +336,7 @@ export class UserRepository implements IUserRepository {
   ): Promise<User> {
     // tokenVersion bump keeps any pre-deletion refresh tokens revoked.
     const doc = await UserModel.findOneAndUpdate(
-      { _id: id, deletedAt: { $ne: null } },
+      { _id: id, deletedAt: { $ne: null }, erasingAt: null },
       { $set: { ...updates, deletedAt: null }, $inc: { tokenVersion: 1 } },
       { new: true },
     ).lean();

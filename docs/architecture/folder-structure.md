@@ -168,10 +168,13 @@ Data Transfer Object interfaces for input/output typing.
 
 ### `src/app/factories/`
 
-Repository factory and database provider registrations.
+Repository factory and database provider registrations, and the builders of the services that need
+more than repositories and that several controllers share.
 
-- **What belongs here:** `RepositoryFactory.ts` and the `providers/` subdirectory
-- **What does NOT belong here:** Service or controller factories
+- **What belongs here:** `RepositoryFactory.ts`, the `providers/` subdirectory, and one `create…`
+  per such service: `captchaFactory.ts`, `emailServiceFactory.ts`, `emailEventsFactory.ts`,
+  `emailVerificationFactory.ts`, `sharedLedger.ts`
+- **What does NOT belong here:** Controller factories, or a service one controller builds on its own
 - **Naming:** `PascalCase` for factory, `camelCase` for providers
 
 #### `src/app/factories/providers/`

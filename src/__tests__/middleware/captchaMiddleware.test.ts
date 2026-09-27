@@ -5,7 +5,10 @@ jest.mock("../../shared/logger", () => ({
 
 import { Request, Response } from "express";
 
-import { requireCaptcha } from "../../app/middlewares/captchaMiddleware";
+import {
+  captchaIfSent,
+  requireCaptcha,
+} from "../../app/middlewares/captchaMiddleware";
 import { CaptchaVerifier } from "../../domain/captcha/CaptchaVerifier";
 import logger from "../../shared/logger";
 
@@ -76,5 +79,55 @@ describe("requireCaptcha", () => {
       }),
       expect.any(String),
     );
+  });
+});
+
+describe("captchaIfSent [T-209]", () => {
+  it("lets a request with no token through unchecked, and unmarked", async () => {
+    const passing = verifier({ passed: true });
+    const req = request({ body: {} });
+    const next = jest.fn();
+
+    await captchaIfSent("register", passing)(req, {} as Response, next);
+
+    expect(next).toHaveBeenCalledWith();
+    expect(passing.verify).not.toHaveBeenCalled();
+    expect(req.captchaPassed).toBeUndefined();
+  });
+
+  it("marks a request whose token passed, checked for its action", async () => {
+    const passing = verifier({ passed: true });
+    const req = request();
+
+    await captchaIfSent("register", passing)(req, {} as Response, jest.fn());
+
+    expect(req.captchaPassed).toBe(true);
+    expect(passing.verify).toHaveBeenCalledWith(
+      expect.objectContaining({ token: "token", action: "register" }),
+    );
+  });
+
+  it("refuses a token sent and refused, as requireCaptcha does", async () => {
+    const next = jest.fn();
+    await expect(
+      captchaIfSent(
+        "register",
+        verifier({
+          passed: false,
+          reason: "refused",
+          detail: "invalid-input-response",
+        }),
+      )(request(), {} as Response, next),
+    ).rejects.toMatchObject({ statusCode: 400, code: "CAPTCHA_INVALID" });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a token was sent and could not be checked", async () => {
+    await expect(
+      captchaIfSent(
+        "register",
+        verifier({ passed: false, reason: "unavailable", detail: "timeout" }),
+      )(request(), {} as Response, jest.fn()),
+    ).rejects.toMatchObject({ statusCode: 503, code: "CAPTCHA_UNAVAILABLE" });
   });
 });

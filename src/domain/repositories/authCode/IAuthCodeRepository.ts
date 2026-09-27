@@ -14,6 +14,8 @@ export interface AuthCodeRecord {
   userId: string | null;
   codes: IssuedCode[];
   attempts: number;
+  // When the newest code was issued; null before the first.
+  issuedAt: Date | null;
 }
 
 export interface IAuthCodeRepository {
@@ -49,6 +51,18 @@ export interface IAuthCodeRepository {
   ): Promise<AuthCodeRecord | null>;
 
   redeemToken(
+    purpose: AuthCodePurpose,
+    tokenHash: string,
+    now: Date,
+  ): Promise<AuthCodeRecord | null>;
+
+  find(
+    purpose: AuthCodePurpose,
+    toHash: string,
+  ): Promise<AuthCodeRecord | null>;
+
+  // Reads without spending the code.
+  findByLiveToken(
     purpose: AuthCodePurpose,
     tokenHash: string,
     now: Date,

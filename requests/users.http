@@ -18,7 +18,9 @@ Content-Type: application/json
 @userId = {{login.response.body.user.id}}
 
 ### Get propio perfil (éxito) — incluye timezone, currency, lastLoginAt,
-### createdAt/updatedAt; sin password ni tokenVersion
+### createdAt/updatedAt; sin password ni tokenVersion. emailVerified dice si el correo
+### está confirmado, y emailVerification (null una vez confirmado) si hay un código vivo,
+### cuándo salió el último y cuándo puede salir otro (T-209)
 GET {{baseUrl}}/users/{{userId}}
 Authorization: Bearer {{token}}
 
@@ -58,7 +60,8 @@ Content-Type: application/json
 
 { "password": "NewSecureP@ss123", "currentPassword": "{{password}}" }
 
-### Cambio de email — también requiere currentPassword y revoca refresh
+### Cambio de email — también requiere currentPassword y revoca refresh. La dirección
+### nueva queda sin confirmar y recibe verify-email (T-209; ver auth.http).
 ### Ojo: cambia el @email de todos los archivos; descoméntalo solo a propósito.
 # PUT {{baseUrl}}/users/{{userId}}
 # Authorization: Bearer {{token}}

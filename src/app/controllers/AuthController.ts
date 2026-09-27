@@ -1,12 +1,17 @@
 import { NextFunction, Request, Response } from "express";
 
 import { ENVIRONMENT } from "../../shared/constants";
+import { ApiError } from "../../shared/errors";
+import logger from "../../shared/logger";
 import { createEmailService } from "../factories/emailServiceFactory";
+import { createEmailVerificationService } from "../factories/emailVerificationFactory";
 import repositoryFactory from "../factories/RepositoryFactory";
+import { AuthPayload } from "../middlewares/authMiddleware";
 import { clientIp } from "../middlewares/clientIp";
 import { attemptedEmail } from "../middlewares/loginAttempt";
 import { AuthService } from "../services/AuthService";
 import { CategoryService } from "../services/CategoryService";
+import { EmailOutcome, EmailRequester } from "../services/EmailService";
 import {
   FORGOT_FLOOR_MARGIN_MS,
   PasswordResetService,
@@ -28,12 +33,35 @@ const passwordResetService = new PasswordResetService(
   repositoryFactory.getAccountRepository(),
   repositoryFactory.getTransactionRepository(),
   repositoryFactory.getRefreshSessionRepository(),
+  repositoryFactory.getSharedInvitationRepository(),
   authService,
   {
     resendAfterSeconds: ENVIRONMENT.EMAIL_ADDRESS_INTERVAL_SECONDS,
     floorMarginMs: FORGOT_FLOOR_MARGIN_MS,
   },
 );
+
+const verification = createEmailVerificationService();
+
+const requesterOf = (req: Request): EmailRequester => ({
+  ip: clientIp(req),
+  recognizedDevice: req.recognizedDevice ?? null,
+});
+
+const sendFailed = (
+  reason: "disabled" | "unavailable" | "unconfirmed" | "rejected",
+): ApiError =>
+  reason === "rejected"
+    ? new ApiError(
+        "UnprocessableEntity",
+        "This address does not accept our emails: check it, or change it",
+        "EMAIL_SEND_FAILED",
+      )
+    : new ApiError(
+        "ServiceUnavailable",
+        "The email could not be sent. Try again in a few minutes",
+        "EMAIL_SEND_FAILED",
+      );
 
 export class AuthController {
   static recognizeDevice = async (
@@ -52,12 +80,68 @@ export class AuthController {
     next();
   };
 
-  static register = async (req: Request, res: Response) => {
+  static register = async (req: Request, res: Response): Promise<void> => {
     const result = await authService.register(
       req.body,
       req.get("User-Agent") ?? undefined,
     );
+    if (req.captchaPassed && !result.user.emailVerified) {
+      try {
+        await verification.send(result.user, requesterOf(req));
+      } catch (err) {
+        logger.error(
+          { err, code: "VERIFICATION_NOT_SENT", userId: result.user.id },
+          "The account was created but its confirmation code could not be sent",
+        );
+      }
+    }
     res.status(201).json(result);
+  };
+
+  static verifyEmail = async (req: Request, res: Response): Promise<void> => {
+    const body = req.body as { code: string } | { token: string };
+    if ("code" in body) {
+      await verification.verifyCode(
+        (req.user as AuthPayload).userId,
+        body.code,
+      );
+    } else {
+      await verification.verifyLink(body.token);
+    }
+    res.status(200).json({ message: "Email confirmed" });
+  };
+
+  static resendVerification = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    const { userId, email } = req.user as AuthPayload;
+    const device = await authService.recognizedDevice(
+      (req.body as { deviceToken?: unknown }).deviceToken,
+      email,
+    );
+    const outcome: EmailOutcome = await verification.resend(userId, {
+      ip: clientIp(req),
+      recognizedDevice: device,
+    });
+    if (outcome.status === "limited") {
+      res.setHeader("Retry-After", String(outcome.retryAfterSeconds));
+      res.status(429).json({
+        error: "TooManyRequests",
+        message: "Too many requests, please try again later",
+        code: "RATE_LIMITED",
+      });
+      return;
+    }
+    if (outcome.status === "failed") throw sendFailed(outcome.reason);
+    res
+      .status(202)
+      .json({ resendAfterSeconds: ENVIRONMENT.EMAIL_ADDRESS_INTERVAL_SECONDS });
+  };
+
+  static notMe = async (req: Request, res: Response): Promise<void> => {
+    await verification.notMe((req.body as { token: string }).token);
+    res.status(200).json({ message: "That account is gone" });
   };
 
   static login = async (req: Request, res: Response) => {

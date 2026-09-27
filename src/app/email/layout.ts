@@ -17,7 +17,7 @@ export interface EmailContent {
   middle:
     | { kind: "code"; code: string; note: string; button: EmailButton }
     | { kind: "facts"; facts: { label: string; value: string[] }[] };
-  box: { heading: string; body: string; action?: EmailButton };
+  box?: { heading: string; body: string; action?: EmailButton };
   fallbackLabel: string;
   footer: string;
   site: { label: string; url: string };
@@ -155,14 +155,17 @@ const middlePieces = (content: EmailContent): string[] => {
   ];
 };
 
-const box = (content: EmailContent): string => {
+const box = (content: EmailContent): string[] => {
+  if (!content.box) return [];
   const { heading, body, action } = content.box;
   const pieces = [
     `<h2 class="lf-text" style="margin:0;font-family:${SANS};font-size:15px;line-height:1.5;font-weight:600;color:${LIGHT.text}">${escapeHtml(heading)}</h2>`,
     paragraph(escapeHtml(body), 15),
     ...(action ? [button(action, true), fallbackLink(content, action)] : []),
   ];
-  return `<table ${TABLE} width="100%"><tr><td class="lf-box" bgcolor="${LIGHT.surface2}" style="padding:16px;border-radius:10px;background-color:${LIGHT.surface2}">${stack(pieces, 12)}</td></tr></table>`;
+  return [
+    `<table ${TABLE} width="100%"><tr><td class="lf-box" bgcolor="${LIGHT.surface2}" style="padding:16px;border-radius:10px;background-color:${LIGHT.surface2}">${stack(pieces, 12)}</td></tr></table>`,
+  ];
 };
 
 const footerLine = (content: EmailContent): string => {
@@ -179,7 +182,7 @@ export function renderHtml(content: EmailContent): string {
       paragraph(inlineHtml(content.lead), 15),
       ...(content.extra ? [paragraph(escapeHtml(content.extra), 13)] : []),
       ...middlePieces(content),
-      box(content),
+      ...box(content),
     ],
     16,
   );
@@ -220,7 +223,16 @@ export function renderText(content: EmailContent): string {
           `${middle.button.label}: ${middle.button.url}`,
         ]
       : middle.facts.map((row) => `${row.label}: ${row.value.join(" ")}`);
-  const { heading, body, action } = content.box;
+  const boxLines = content.box
+    ? [
+        "",
+        content.box.heading,
+        content.box.body,
+        ...(content.box.action
+          ? [`${content.box.action.label}: ${content.box.action.url}`]
+          : []),
+      ]
+    : [];
   return [
     "Ledger Flow",
     "",
@@ -230,10 +242,7 @@ export function renderText(content: EmailContent): string {
     ...(content.extra ? ["", content.extra] : []),
     "",
     ...middleLines,
-    "",
-    heading,
-    body,
-    ...(action ? [`${action.label}: ${action.url}`] : []),
+    ...boxLines,
     "",
     "--",
     content.footer,

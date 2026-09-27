@@ -62,6 +62,9 @@ const requestBodies = {
   RefreshInput: bodyOf(v.refreshSchema),
   ForgotPasswordInput: bodyOf(v.forgotPasswordSchema),
   ResetPasswordInput: bodyOf(v.resetPasswordSchema),
+  VerifyEmailInput: bodyOf(v.verifyEmailSchema),
+  ResendVerificationInput: bodyOf(v.resendVerificationSchema),
+  NotMeInput: bodyOf(v.notMeSchema),
   KeepOrStartFreshInput: bodyOf(v.keepOrStartFreshSchema),
   UpdateUserInput: bodyOf(v.updateUserSchema),
   DeleteUserInput: bodyOf(v.deleteUserSchema),
@@ -216,6 +219,11 @@ const responseViews = {
         id: uuid,
         name: { type: "string" },
         email: { type: "string", format: "email" },
+        emailVerified: {
+          type: "boolean",
+          description:
+            "Whether this address is confirmed, by its code or link, or by a password reset. Until it is, the account works as ever but invitations wait: sending, accepting and seeing new ones answer 403 EMAIL_NOT_VERIFIED.",
+        },
         timezone: { type: "string", example: "America/Bogota" },
         currency: { type: "string", example: "COP" },
         locale: { ...enumOf(LOCALES), example: "en" },
@@ -244,6 +252,51 @@ const responseViews = {
     },
     ["reactivated"],
   ),
+  UserWithEmailVerification: {
+    allOf: [
+      { $ref: "#/components/schemas/User" },
+      {
+        type: "object",
+        properties: {
+          emailVerification: {
+            ...withRequired({
+              type: "object",
+              properties: {
+                codeLive: {
+                  type: "boolean",
+                  description:
+                    "A code sent in the last 24 hours that still has tries: show the code field. False when none was ever sent — accounts from before email, a register without captcha, a send that failed — or it expired or was used up: show Send code.",
+                },
+                lastSentAt: {
+                  ...nullableDateTime,
+                  description: "When the last code went.",
+                },
+                resendAvailableAt: {
+                  ...nullableDateTime,
+                  description:
+                    "When Resend can go again, while that is ahead; null when it can go now. The daily limits can still answer 429 with its own Retry-After.",
+                },
+              },
+            }),
+            nullable: true,
+            description:
+              "What the sheet that confirms the email needs: which of its shapes, and Resend's countdown. Null once the email is confirmed.",
+          },
+        },
+        required: ["emailVerification"],
+      },
+    ],
+  },
+  VerificationCodeSent: withRequired({
+    type: "object",
+    properties: {
+      resendAfterSeconds: {
+        type: "integer",
+        minimum: 1,
+        description: "Seconds before Resend can go again.",
+      },
+    },
+  }),
   AuthTokens: withRequired(
     {
       type: "object",

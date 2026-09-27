@@ -12,6 +12,7 @@ import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/IS
 import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import {
+  ENVIRONMENT,
   INVITATION_LIFETIME_DAYS,
   INVITATION_STATUSES,
   InvitationStatus,
@@ -30,6 +31,13 @@ const unavailable = (): ApiError =>
     "INVITATION_UNAVAILABLE",
   );
 
+const notVerified = (): ApiError =>
+  new ApiError(
+    "Forbidden",
+    "Confirm your email first: invitations need a confirmed address",
+    "EMAIL_NOT_VERIFIED",
+  );
+
 export interface InviteOutcome {
   created: boolean;
 }
@@ -40,6 +48,7 @@ export class SharedInvitationService {
     private groupRepo: ISharedGroupRepository,
     private contactRepo: IContactRepository,
     private userRepo: IUserRepository,
+    private requireConfirmedEmail = ENVIRONMENT.EMAIL_VERIFICATION_REQUIRED,
   ) {}
 
   private async ownedGroup(
@@ -59,12 +68,21 @@ export class SharedInvitationService {
     return user;
   }
 
+  private async confirmedMe(userId: string): Promise<User> {
+    const user = await this.me(userId);
+    if (this.requireConfirmedEmail && !user.emailVerifiedAt) {
+      throw notVerified();
+    }
+    return user;
+  }
+
   async invite(
     groupId: string,
     contactId: string,
     userId: string,
     outcome?: InviteOutcome,
   ): Promise<SentInvitationView> {
+    const inviter = await this.confirmedMe(userId);
     const group = await this.ownedGroup(groupId, userId);
     if (group.archivedAt) {
       throw new ApiError(
@@ -91,7 +109,6 @@ export class SharedInvitationService {
         "CONTACT_HAS_NO_EMAIL",
       );
     }
-    const inviter = await this.me(userId);
     if (contact.email === inviter.email) {
       throw new ApiError(
         "BadRequest",
@@ -174,7 +191,7 @@ export class SharedInvitationService {
     userId: string,
     pagination: PaginationParams,
   ): Promise<PaginatedResult<ReceivedInvitationView>> {
-    const me = await this.me(userId);
+    const me = await this.confirmedMe(userId);
     const result = await this.repo.listAnswerable(
       me.email,
       new Date(),
@@ -186,10 +203,15 @@ export class SharedInvitationService {
     };
   }
 
+  // What this user already answered stays theirs; what waits for an address needs that address confirmed.
   private async addressedToMe(id: string, me: User): Promise<SharedInvitation> {
     const invitation = await this.repo.getById(id);
+    const answeredByMe = invitation?.inviteeId === me.id;
+    if (!answeredByMe && this.requireConfirmedEmail && !me.emailVerifiedAt) {
+      throw notVerified();
+    }
     const mine =
-      invitation?.inviteeId === me.id ||
+      answeredByMe ||
       (invitation?.email === me.email && invitation.inviteeId === null);
     if (!invitation || !mine) {
       throw new ApiError("NotFound", "Invitation not found");

@@ -29,9 +29,12 @@ export interface IUserDocument {
   locale: Locale;
   lastLoginAt: Date | null;
   emailVerifiedAt: Date | null;
+  firstVerifiedAt: Date | null;
+  emailChangedAt: Date | null;
   keepOrStartFresh: IKeepOrStartFreshDocument | null;
   dataResetAt: Date | null;
   deletedAt: Date | null;
+  erasingAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -65,6 +68,8 @@ const UserSchema = new Schema<IUserDocument>(
     },
     lastLoginAt: { type: Date, default: null },
     emailVerifiedAt: { type: Date, default: null },
+    firstVerifiedAt: { type: Date, default: null },
+    emailChangedAt: { type: Date, default: null },
     keepOrStartFresh: {
       type: new Schema<IKeepOrStartFreshDocument>(
         {
@@ -95,6 +100,7 @@ const UserSchema = new Schema<IUserDocument>(
     },
     dataResetAt: { type: Date, default: null },
     deletedAt: { type: Date, default: null },
+    erasingAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

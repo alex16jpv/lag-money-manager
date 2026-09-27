@@ -1,9 +1,14 @@
 import { IUserDataEraser } from "../../../domain/repositories/userData/IUserDataEraser";
-import { INVITATION_STATUSES } from "../../../shared/constants";
+import {
+  AUTH_CODE_PURPOSES,
+  INVITATION_STATUSES,
+} from "../../../shared/constants";
 import { AccountModel } from "../../models/AccountModel";
+import { AuthCodeModel } from "../../models/AuthCodeModel";
 import { BudgetModel } from "../../models/BudgetModel";
 import { CategoryModel } from "../../models/CategoryModel";
 import { ContactModel } from "../../models/ContactModel";
+import { RefreshSessionModel } from "../../models/RefreshSessionModel";
 import { SharedCounterpartyModel } from "../../models/SharedCounterpartyModel";
 import { SharedExpenseModel } from "../../models/SharedExpenseModel";
 import { SharedGroupModel } from "../../models/SharedGroupModel";
@@ -57,6 +62,15 @@ export class UserDataEraser implements IUserDataEraser {
       { inviteeId: userId },
       { $set: { inviteeId: retired } },
     ).exec();
+  }
+
+  async eraseAccount(userId: string, toHash: string): Promise<void> {
+    await this.eraseAll(userId);
+    await RefreshSessionModel.deleteMany({ userId }).exec();
+    await AuthCodeModel.deleteMany({
+      purpose: { $in: Object.values(AUTH_CODE_PURPOSES) },
+      toHash,
+    }).exec();
   }
 
   private async eraseDependents(userId: string): Promise<void> {

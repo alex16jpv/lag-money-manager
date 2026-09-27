@@ -29,10 +29,18 @@ export interface KeepOrStartFreshView {
   transactions: number;
 }
 
+// For the sheet that confirms the email: which of its two shapes, and when Resend can go.
+export interface EmailVerificationView {
+  codeLive: boolean;
+  lastSentAt: Date | null;
+  resendAvailableAt: Date | null;
+}
+
 export interface UserResponseDTO {
   id: string;
   name: string;
   email: string;
+  emailVerified: boolean;
   timezone: string;
   currency: string;
   locale: Locale;
@@ -49,6 +57,7 @@ export const toUserResponse = (user: User): UserResponseDTO => ({
   id: user.id,
   name: user.name,
   email: user.email,
+  emailVerified: user.emailVerifiedAt !== null,
   timezone: user.timezone,
   currency: user.currency,
   locale: user.locale,

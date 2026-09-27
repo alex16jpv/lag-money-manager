@@ -52,6 +52,7 @@ const record = (overrides: Partial<AuthCodeRecord> = {}): AuthCodeRecord => ({
   userId: ana().id,
   codes: [],
   attempts: 1,
+  issuedAt: null,
   ...overrides,
 });
 
@@ -67,6 +68,7 @@ interface Harness {
   accounts: { countByUserId: jest.Mock };
   transactions: { countByUserId: jest.Mock };
   sessions: { revokeAllForUser: jest.Mock };
+  invitations: { touchUnansweredFor: jest.Mock };
   auth: { openSession: jest.Mock };
   wait: jest.Mock;
 }
@@ -98,6 +100,8 @@ const build = (): Harness => {
     countAttempt: jest.fn().mockResolvedValue(null),
     redeemCode: jest.fn().mockResolvedValue(null),
     redeemToken: jest.fn().mockResolvedValue(null),
+    find: jest.fn().mockResolvedValue(null),
+    findByLiveToken: jest.fn().mockResolvedValue(null),
   };
   const email = {
     holdBrakes: jest.fn().mockResolvedValue({ limited: false }),
@@ -111,6 +115,9 @@ const build = (): Harness => {
   const accounts = { countByUserId: jest.fn().mockResolvedValue(0) };
   const transactions = { countByUserId: jest.fn().mockResolvedValue(0) };
   const sessions = { revokeAllForUser: jest.fn().mockResolvedValue(undefined) };
+  const invitations = {
+    touchUnansweredFor: jest.fn().mockResolvedValue(undefined),
+  };
   const auth = {
     openSession: jest.fn().mockResolvedValue({
       accessToken: "access",
@@ -126,6 +133,7 @@ const build = (): Harness => {
     accounts,
     transactions,
     sessions,
+    invitations,
     auth,
     { resendAfterSeconds: 60, floorMarginMs: 500 },
     () => NOW,
@@ -139,6 +147,7 @@ const build = (): Harness => {
     accounts,
     transactions,
     sessions,
+    invitations,
     auth,
     wait,
   };
@@ -366,6 +375,28 @@ describe("PasswordResetService.reset", () => {
     await service.reset(withCode, "new password 1");
 
     expect(accounts.countByUserId).not.toHaveBeenCalled();
+  });
+
+  it("lets the invitations that waited for a never-confirmed address reach the feed [T-209]", async () => {
+    const { service, users, codes, invitations } = build();
+    codes.countAttempt.mockResolvedValue(record());
+    codes.redeemCode.mockResolvedValue(record());
+    users.getById.mockResolvedValue(ana({ emailVerifiedAt: null }));
+
+    await service.reset(withCode, "new password 1");
+
+    expect(invitations.touchUnansweredFor).toHaveBeenCalledWith(EMAIL, NOW);
+  });
+
+  it("touches no invitation when the address was already confirmed [T-209]", async () => {
+    const { service, users, codes, invitations } = build();
+    codes.countAttempt.mockResolvedValue(record());
+    codes.redeemCode.mockResolvedValue(record());
+    users.getById.mockResolvedValue(ana());
+
+    await service.reset(withCode, "new password 1");
+
+    expect(invitations.touchUnansweredFor).not.toHaveBeenCalled();
   });
 
   const refusedWith = async (

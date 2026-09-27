@@ -1128,6 +1128,9 @@ router.delete(
  *       has an account — the route never looks — so an invitation cannot be
  *       used to find out who uses the app.
  *
+ *       Only from an account whose email is confirmed (`user.emailVerified`):
+ *       an invitation takes the sender's address to somebody else.
+ *
  *       One live invitation per person per group: inviting somebody who is
  *       already waiting or already joined answers that invitation with 200.
  *       One that ran out of time steps aside and a new one is sent (201).
@@ -1164,6 +1167,14 @@ router.delete(
  *               $ref: '#/components/schemas/ErrorResponse'
  *       401:
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: >
+ *           Your email is not confirmed yet: an invitation carries it to
+ *           somebody else (code EMAIL_NOT_VERIFIED)
  *         content:
  *           application/json:
  *             schema:

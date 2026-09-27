@@ -40,13 +40,16 @@ const currentPasswordLimiter = authRateLimit({
  *           type: string
  *           format: uuid
  *         description: User ID
+ *     description: >
+ *       The profile, and while its email is not confirmed, what the sheet
+ *       that confirms it needs (`emailVerification`).
  *     responses:
  *       200:
  *         description: User found
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/User'
+ *               $ref: '#/components/schemas/UserWithEmailVerification'
  *       400:
  *         description: Invalid ID format (code VALIDATION)
  *         content:
@@ -80,7 +83,9 @@ router.get("/:id", validate(idParamSchema), UserController.getUserById);
  *       must log in again. `currency` can only change while the user has no
  *       accounts (mono-currency mode). Changing the email to one belonging to
  *       another account (soft-deleted included) conflicts — reactivation only
- *       applies on register.
+ *       applies on register. A new email is not confirmed (`emailVerified`
+ *       false) and is sent `verify-email`; a send that fails does not undo
+ *       the change, and the sheet offers Send code.
  *     parameters:
  *       - in: path
  *         name: id

@@ -22,6 +22,19 @@ export interface IUserRepository extends IRepository<User> {
     question: { accounts: number; transactions: number } | null,
     now: Date,
   ): Promise<User | null>;
+  // Null when the account no longer has this address; the account as it is when it was already confirmed.
+  markEmailVerified(id: string, email: string, now: Date): Promise<User | null>;
+  // Never confirmed, deleted or not, including one whose erasure started and has to finish.
+  getForErasure(id: string): Promise<User | null>;
+  // Takes the account out of every read; null once it was confirmed, or moved after the token was issued.
+  claimErasure(
+    id: string,
+    email: string,
+    tokenIssuedAt: Date,
+    now: Date,
+  ): Promise<User | null>;
+  // The one hard delete of an account: only one claimErasure marked.
+  eraseForGood(id: string): Promise<void>;
   // Each resolves null when the question is not open for that answer.
   keepEverything(id: string, now: Date): Promise<User | null>;
   // Null also while another request holds the claim and its lease has not run out.

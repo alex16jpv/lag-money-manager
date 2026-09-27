@@ -22,7 +22,7 @@ interface NoticeFacts {
 }
 
 export interface EmailTemplateData {
-  "verify-email": CodeLink & { notMeToken: string };
+  "verify-email": CodeLink & { notMeToken?: string };
   "password-reset": CodeLink;
   "password-reset-after-undo": CodeLink;
   "email-change-confirm": CodeLink;
@@ -638,10 +638,8 @@ function codeContent(
   const words = CODE_WORDS[template][context.locale];
   const links = CODE_LINKS[template];
   let boxAction: EmailButton | undefined;
-  if (links.boxPath && words.boxAction) {
-    if (data.notMeToken === undefined) {
-      throw new Error(`Email template ${template} needs its box token`);
-    }
+  const withoutBox = !!links.boxPath && data.notMeToken === undefined;
+  if (links.boxPath && words.boxAction && data.notMeToken !== undefined) {
     boxAction = {
       label: words.boxAction,
       url: link(context, links.boxPath, data.notMeToken),
@@ -662,7 +660,9 @@ function codeContent(
         url: link(context, links.path, data.token),
       },
     },
-    box: { heading: words.boxHeading, body: words.boxBody, action: boxAction },
+    box: withoutBox
+      ? undefined
+      : { heading: words.boxHeading, body: words.boxBody, action: boxAction },
   };
 }
 

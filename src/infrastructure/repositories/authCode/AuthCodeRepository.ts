@@ -19,6 +19,7 @@ const toRecord = (doc: IAuthCodeDocument): AuthCodeRecord => ({
     expiresAt,
   })),
   attempts: doc.attempts ?? 0,
+  issuedAt: doc.issuedAt ?? null,
 });
 
 export class AuthCodeRepository implements IAuthCodeRepository {
@@ -65,6 +66,7 @@ export class AuthCodeRepository implements IAuthCodeRepository {
           $set: {
             codes: { $concatArrays: [kept, [{ $literal: code }]] },
             attempts: 0,
+            issuedAt: now,
             expiresAt: { $max: ["$expiresAt", code.expiresAt] },
           },
         },
@@ -112,6 +114,26 @@ export class AuthCodeRepository implements IAuthCodeRepository {
       { $set: { codes: [] } },
       { returnDocument: "before" },
     ).lean();
+    return doc ? toRecord(doc) : null;
+  }
+
+  async find(
+    purpose: AuthCodePurpose,
+    toHash: string,
+  ): Promise<AuthCodeRecord | null> {
+    const doc = await AuthCodeModel.findOne({ purpose, toHash }).lean();
+    return doc ? toRecord(doc) : null;
+  }
+
+  async findByLiveToken(
+    purpose: AuthCodePurpose,
+    tokenHash: string,
+    now: Date,
+  ): Promise<AuthCodeRecord | null> {
+    const doc = await AuthCodeModel.findOne({
+      purpose,
+      codes: { $elemMatch: { tokenHash, expiresAt: { $gt: now } } },
+    }).lean();
     return doc ? toRecord(doc) : null;
   }
 }

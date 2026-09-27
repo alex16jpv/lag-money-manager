@@ -150,12 +150,15 @@ describe("email templates", () => {
       expect(() => render("password-reset", "en", data)).toThrow(/malformed/);
     });
 
-    it("refuses verify-email without its not-me token", () => {
-      const data = {
+    it("leaves the Didn't sign up? box out of verify-email without its not-me token", () => {
+      const data: EmailTemplateData["verify-email"] = {
         code: CODE,
         token: TOKEN,
-      } as EmailTemplateData["verify-email"];
-      expect(() => render("verify-email", "en", data)).toThrow(/box token/);
+      };
+      const email = render("verify-email", "en", data);
+      expect(email.text).not.toMatch(/Didn.t sign up\?|not-me/);
+      expect(email.html).not.toMatch(/class="lf-box"|not-me/);
+      expect(email.text).toContain(`/en/verify#token=${TOKEN}`);
     });
   });
 

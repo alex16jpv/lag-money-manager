@@ -9,6 +9,7 @@ export interface IAuthCodeDocument {
   userId: string | null;
   codes: { codeHash: string; tokenHash: string; expiresAt: Date }[];
   attempts: number;
+  issuedAt: Date | null;
   expiresAt: Date;
 }
 
@@ -34,6 +35,7 @@ const AuthCodeSchema = new Schema<IAuthCodeDocument>(
       default: [],
     },
     attempts: { type: Number, required: true, default: 0 },
+    issuedAt: { type: Date, default: null },
     expiresAt: { type: Date, required: true },
   },
   { versionKey: false },
