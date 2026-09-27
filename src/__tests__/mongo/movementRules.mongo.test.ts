@@ -9,7 +9,7 @@
 import request from "supertest";
 
 import app from "../../app";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 const uuid = (n: number): string =>
   `01960000-0000-7000-8000-b${String(n).padStart(11, "0")}`;
@@ -38,6 +38,7 @@ describe("what a movement may do to an account", () => {
     await connect();
     await dropDatabase();
     const res = await request(app).post("/auth/register").send({
+      captcha: TEST_CAPTCHA,
       name: "Rules tester",
       email: "rules@movements.test",
       password: "Offline!2026",

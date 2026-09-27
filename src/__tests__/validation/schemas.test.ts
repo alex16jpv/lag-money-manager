@@ -222,6 +222,7 @@ describe("Validation Schemas", () => {
         name: "John Doe",
         email: "john@example.com",
         password: "password123",
+        captcha: "token",
       },
     };
 
@@ -369,8 +370,8 @@ describe("Validation Schemas", () => {
       password: "password123",
     };
 
-    it("takes a register with or without a captcha, and keeps the token", () => {
-      expect(registerSchema.safeParse({ body: register }).success).toBe(true);
+    it("needs a register's captcha, and keeps the token [T-228]", () => {
+      expect(registerSchema.safeParse({ body: register }).success).toBe(false);
       expect(
         registerSchema.parse({ body: { ...register, captcha: "token" } }).body
           .captcha,

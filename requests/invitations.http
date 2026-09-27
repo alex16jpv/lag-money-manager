@@ -30,7 +30,7 @@ Content-Type: application/json
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
 
-{ "name": "Invitee", "email": "{{inviteeEmail}}", "password": "{{inviteePassword}}" }
+{ "name": "Invitee", "email": "{{inviteeEmail}}", "password": "{{inviteePassword}}", "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
 
 ### Login del invitado
 # @name inviteeLogin

@@ -35,6 +35,9 @@ import { UserModel } from "../../infrastructure/models/UserModel";
 
 export type { Fixture, FixtureSettlement };
 
+// The suite's verifier passes any token (captcha.setup.ts); the field is what sign-up requires.
+export const TEST_CAPTCHA = "XXXX.DUMMY.TOKEN.XXXX";
+
 const FIXTURE_DIR =
   process.env.OFFLINE_FIXTURES_DIR ??
   join(__dirname, "../../../fixtures/offline");

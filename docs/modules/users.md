@@ -52,7 +52,7 @@ Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `
 | Field               | Meaning |
 | ------------------- | ------- |
 | `codeLive`          | A code sent in the last 24 hours with tries left: the sheet shows the code field. Otherwise it shows Send code |
-| `lastSentAt`        | When the last code went, `null` when none ever did (every account from before email, a register without captcha, a failed send) |
+| `lastSentAt`        | When the last code went, `null` when none ever did (every account from before email, a failed send) |
 | `resendAvailableAt` | When Resend can go again, while that is ahead (`EMAIL_ADDRESS_INTERVAL_SECONDS` after the last). The daily limits answer their own 429 |
 
 ### `PUT /users/:id`

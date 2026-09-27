@@ -34,7 +34,7 @@ Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the
 | `src/domain/repositories/authCode/IAuthCodeRepository.ts`                    | Store of emailed codes, one row per address and purpose                      |
 | `src/infrastructure/repositories/authCode/AuthCodeRepository.ts`             | Mongoose implementation (atomic tries and single use)                        |
 | `src/infrastructure/models/AuthCodeModel.ts`                                 | Mongoose model for `authcodes`, with its TTL                                  |
-| `src/app/middlewares/captchaMiddleware.ts`                                   | `requireCaptcha(action)` and `captchaIfSent(action)`: the Turnstile check     |
+| `src/app/middlewares/captchaMiddleware.ts`                                   | `requireCaptcha(action)`: the Turnstile check                                 |
 | `src/app/services/EmailVerificationService.ts`                               | Confirming the email: the code, the link, Resend, the sheet's state, It wasn't me |
 | `src/domain/captcha/CaptchaVerifier.ts`                                      | The captcha port                                                              |
 | `src/infrastructure/captcha/TurnstileVerifier.ts`                            | Cloudflare Turnstile's `siteverify`                                           |
@@ -88,7 +88,7 @@ Register a new user. **Register also logs in** — the response already carries 
 
 Registration also seeds the user's default categories (failures are logged, never fail the request).
 
-**The confirmation email.** With `captcha` — a Cloudflare Turnstile token for the action `register` — an account whose email is not confirmed is sent `verify-email` right after it is created ([Confirming the email](#confirming-the-email)). A send that fails, is limited or throws does not fail the register: it is logged (`VERIFICATION_NOT_SENT` when it throws) and `GET /users/{id}` shows no live code, so the client offers Send code. **Without `captcha` nothing is sent**, because nothing would stop a script from spending the email budget on any address: the web client of today does not send one, and still registers as before. A `captcha` that Cloudflare refuses is `400 CAPTCHA_INVALID`, and one it cannot check is `503 CAPTCHA_UNAVAILABLE`; in both, nothing is created. The account works before its email is confirmed; only invitations wait for it ([invitations.md](invitations.md#an-address-has-to-be-confirmed)).
+**The captcha and the confirmation email.** `captcha` — a Cloudflare Turnstile token for the action `register` ([The captcha](#the-captcha)) — is required: without it the answer is `400 VALIDATION`, a token Cloudflare refuses is `400 CAPTCHA_INVALID`, and one it cannot check is `503 CAPTCHA_UNAVAILABLE`; in all three, nothing is created. It is what keeps a script from spending the email budget on any address, and from testing addresses by the thousand: `409 EMAIL_TAKEN` still says whether an address has an account (T-185, kept by the owner's decision 2 and braked by this captcha and the limits of [Rate Limiting](#rate-limiting)). An account whose email is not confirmed is sent `verify-email` right after it is created ([Confirming the email](#confirming-the-email)). A send that fails, is limited or throws does not fail the register: it is logged (`VERIFICATION_NOT_SENT` when it throws) and `GET /users/{id}` shows no live code, so the client offers Send code. The account works before its email is confirmed; only invitations wait for it ([invitations.md](invitations.md#an-address-has-to-be-confirmed)).
 
 **Reactivation:** registering with the email **and the password** of a **soft-deleted** account revives it with its full financial history. The response carries `user.reactivated: true`, and the original currency is kept — the `currency` sent in that register is ignored. With any other password the answer is `409 EMAIL_TAKEN`, the same as for a live account: the history goes back only to whoever still knows its password (T-153). That makes register a way to test a deleted account's password, so it spends the same per-email budget as a failed login (see Rate Limiting).
 
@@ -364,12 +364,8 @@ one without, a live account from a deleted one, or a send that worked from one t
 ## The captcha
 
 `requireCaptcha(action, verifier)` runs after `validate()`, on the routes that send an email: `POST
-/auth/password/forgot` (action `forgot-password`) and `POST /auth/email/resend` (`verify-email`).
-`captchaIfSent(action, verifier)` does the same only when the body has a `captcha`, and marks the request
-(`req.captchaPassed`): `POST /auth/register` (`register`), whose web client of today sends none. There the
-captcha decides whether the confirmation email goes, and the day every client sends it, the route
-switches to `requireCaptcha`. It asks Cloudflare
-Turnstile's `siteverify` (`TurnstileVerifier`, 3 s, no retry) with `TURNSTILE_SECRET`, the token and the
+/auth/register` (action `register`), `POST /auth/password/forgot` (`forgot-password`) and `POST
+/auth/email/resend` (`verify-email`). Each body requires its `captcha`. It asks Cloudflare Turnstile's `siteverify` (`TurnstileVerifier`, 3 s, no retry) with `TURNSTILE_SECRET`, the token and the
 client's whole address (`clientAddress`: `clientIp` collapses IPv6 to its /56, which is right for a limit
 and wrong for Cloudflare).
 
@@ -379,11 +375,13 @@ and wrong for Cloudflare).
 - **Refused** (`400 CAPTCHA_INVALID`): the token was spent, expired, forged, or issued for another site or
   action. The client asks the widget for a new one; a token works once and lasts 300 s.
 - **Unavailable** (`503 CAPTCHA_UNAVAILABLE`, logged as an error with the reason): Cloudflare did not
-  answer, answered something else, could not judge the token, or no secret is set. Nothing is sent: the
-  captcha is what keeps strangers from spending the email budget, so it fails closed.
+  answer, answered something else, could not judge the token, or no secret is set. Nothing is created or
+  sent: the captcha is what keeps strangers from spending the email budget, so it fails closed.
 
 The check is here and not only in the web client's server, because a call straight to the Function URL
-would skip it. In production `EMAIL_PROVIDERS` with no `TURNSTILE_SECRET` stops the API from starting.
+would skip it. In production `EMAIL_PROVIDERS` with no `TURNSTILE_SECRET` stops the API from starting;
+without either, every register is `503 CAPTCHA_UNAVAILABLE`, logged as an error each time, like a missing
+`API_SECRET` (the index step of the deploy loads the same settings without the Lambda's secrets).
 
 ## Internal Flow
 
@@ -520,7 +518,7 @@ sequenceDiagram
 | `AUTH_EMAIL_RATE_LIMIT_MAX` | Failed login attempts per email per hour from unrecognized devices (default: `50`) |
 | `AUTH_IP_RATE_LIMIT_MAX`   | Login and register attempts per client IP per 15-minute window (default: `60`) |
 | `REFRESH_RATE_LIMIT_MAX`   | Refresh and logout attempts per 15-minute window (default: `60`)               |
-| `TURNSTILE_SECRET`         | Cloudflare Turnstile's secret key for the captcha; required in production once `EMAIL_PROVIDERS` is set |
+| `TURNSTILE_SECRET`         | Cloudflare Turnstile's secret key for the captcha; without it nobody can sign up. Required in production once `EMAIL_PROVIDERS` is set |
 
 ## Rate Limiting
 
@@ -574,7 +572,7 @@ The per-IP cap is shared by everyone behind that address — a carrier NAT holds
 | `EMAIL_ALREADY_VERIFIED` | 409 | Resend when the email is already confirmed |
 | `EMAIL_SEND_FAILED` | 422 / 503 | Resend whose email did not go: the address refuses our email (422), or no provider took it (503) |
 | `CAPTCHA_INVALID` | 400    | Turnstile refused the captcha token                                                                                                                                                                                                        |
-| `CAPTCHA_UNAVAILABLE` | 503 | The captcha could not be checked; nothing was sent                                                                                                                                                                                     |
+| `CAPTCHA_UNAVAILABLE` | 503 | The captcha could not be checked; nothing was created or sent                                                                                                                                                                          |
 
 > On a `500` during register the user may still have been created — clients should try login before retrying register.
 

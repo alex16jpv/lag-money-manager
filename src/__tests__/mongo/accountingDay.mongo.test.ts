@@ -12,7 +12,7 @@ import request from "supertest";
 
 import app from "../../app";
 import { TransactionModel } from "../../infrastructure/models/TransactionModel";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 const ACCOUNT_ID = "01940000-0000-7000-8000-c00000000001";
 const TX_ID = "01940000-0000-7000-8000-c00000000002";
@@ -85,6 +85,7 @@ describe("the accounting day survives a change of timezone", () => {
     await dropDatabase();
 
     const registered = await request(app).post("/auth/register").send({
+      captcha: TEST_CAPTCHA,
       name: "Zone tester",
       email: "zone@accounting.test",
       password: "Offline!2026",

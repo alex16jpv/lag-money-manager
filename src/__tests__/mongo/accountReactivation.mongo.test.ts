@@ -2,15 +2,19 @@ import request from "supertest";
 
 import app from "../../app";
 import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 const EMAIL = "ana@reactivation.test";
 const PASSWORD = "Offline!2026";
 
 const register = (password: string, name = "Ana") =>
-  request(app)
-    .post("/auth/register")
-    .send({ name, email: EMAIL, password, currency: "COP" });
+  request(app).post("/auth/register").send({
+    captcha: TEST_CAPTCHA,
+    name,
+    email: EMAIL,
+    password,
+    currency: "COP",
+  });
 
 const guesses = async (key: string) =>
   (await RateLimitModel.findById(key).lean())?.count ?? 0;

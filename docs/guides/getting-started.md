@@ -107,12 +107,14 @@ curl http://localhost:3000/health/db  # {"database":"ok"}
 ### Register a user
 
 Registration is also a login: it returns a token pair, so there is no second
-round-trip.
+round-trip. It needs a captcha: with Cloudflare's test secret in `.env`
+(`TURNSTILE_SECRET=1x0000000000000000000000000000000AA`, as in `.env.example`),
+the test token below passes; without a secret it answers `503 CAPTCHA_UNAVAILABLE`.
 
 ```bash
 curl -X POST http://localhost:3000/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"name":"Test User","email":"test@example.com","password":"password123","timezone":"America/Bogota","currency":"COP"}'
+  -d '{"name":"Test User","email":"test@example.com","password":"password123","timezone":"America/Bogota","currency":"COP","captcha":"XXXX.DUMMY.TOKEN.XXXX"}'
 ```
 
 Expected response (201):

@@ -12,6 +12,7 @@ module.exports = {
   testMatch: ["**/__tests__/mongo/*.mongo.test.ts"],
   moduleFileExtensions: ["ts", "js", "json"],
   setupFiles: ["<rootDir>/src/__tests__/mongo/env.setup.ts"],
+  setupFilesAfterEnv: ["<rootDir>/src/__tests__/mongo/captcha.setup.ts"],
   // One database, one writer: these files drop and rebuild it.
   maxWorkers: 1,
   // Same as `npm test`: supertest and the driver keep handles open past the

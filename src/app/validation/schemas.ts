@@ -1132,7 +1132,7 @@ export const registerSchema = z.object({
     currency: currencyField,
     locale: localeField,
     deviceToken: deviceTokenField,
-    captcha: captchaField.optional(),
+    captcha: captchaField,
   }),
 });
 

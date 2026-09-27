@@ -9,7 +9,7 @@ import request from "supertest";
 import app from "../../app";
 import { AccountModel } from "../../infrastructure/models/AccountModel";
 import { TransactionModel } from "../../infrastructure/models/TransactionModel";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 interface Session {
   token: string;
@@ -92,6 +92,7 @@ describe("paying and being paid, against mongod", () => {
     await connect();
     await dropDatabase();
     const registered = await request(app).post("/auth/register").send({
+      captcha: TEST_CAPTCHA,
       name: "Owner",
       email: "owner@settlements.test",
       password: "Offline!2026",
@@ -826,6 +827,7 @@ describe("paying and being paid, against mongod", () => {
 
     beforeAll(async () => {
       const registered = await request(app).post("/auth/register").send({
+        captcha: TEST_CAPTCHA,
         name: "Dollars",
         email: "dollars@settlements.test",
         password: "Offline!2026",

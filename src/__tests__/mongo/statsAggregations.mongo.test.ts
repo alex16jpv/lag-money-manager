@@ -3,7 +3,7 @@ import request from "supertest";
 
 import app from "../../app";
 import { TransactionModel } from "../../infrastructure/models/TransactionModel";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 interface Bucket {
   key: string;
@@ -55,6 +55,7 @@ describe("spending aggregations against mongod", () => {
     await dropDatabase();
 
     const registered = await request(app).post("/auth/register").send({
+      captcha: TEST_CAPTCHA,
       name: "Stats",
       email: "stats@aggregations.test",
       password: "Offline!2026",
