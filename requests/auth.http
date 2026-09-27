@@ -187,3 +187,56 @@ Content-Type: application/json
 ### Rate limit — sin deviceToken, >10 fallos/15min con este correo desde esta IP, o >50/hora
 ### con este correo desde cualquier IP (429 RATE_LIMITED). Con el deviceToken de arriba, el login
 ### bueno sigue entrando.
+
+### ==========================================================
+### FORGOT YOUR PASSWORD? — el código y el enlace llegan a Mailpit
+### (docker compose up -d mailpit, http://localhost:8025). En local el captcha
+### pasa con TURNSTILE_SECRET=1x0000000000000000000000000000000AA en .env y el
+### token de prueba de Cloudflare. La respuesta es la misma exista o no la cuenta.
+### ==========================================================
+
+### Pedir el código (202 { resendAfterSeconds }; tarda ~2 s a propósito)
+POST {{baseUrl}}/auth/password/forgot
+Content-Type: application/json
+
+{ "email": "{{email}}", "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
+
+### Pedirlo para un correo sin cuenta — la MISMA respuesta, y no se envía nada
+POST {{baseUrl}}/auth/password/forgot
+Content-Type: application/json
+
+{ "email": "nadie@test.com", "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
+
+### Pedirlo otra vez antes de un minuto (429 RATE_LIMITED con Retry-After), exista o no
+POST {{baseUrl}}/auth/password/forgot
+Content-Type: application/json
+
+{ "email": "{{email}}", "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
+
+### Sin captcha (400 VALIDATION)
+POST {{baseUrl}}/auth/password/forgot
+Content-Type: application/json
+
+{ "email": "{{email}}" }
+
+### Código equivocado (400 RESET_CODE_INVALID: la misma respuesta para vencido,
+### reemplazado, gastado en cinco intentos o de un correo sin cuenta)
+POST {{baseUrl}}/auth/password/reset
+Content-Type: application/json
+
+{ "email": "{{email}}", "code": "000000", "newPassword": "{{password}}" }
+
+### Cambiar la contraseña con el código de Mailpit — sesión como un login; cierra
+### las demás. Si la cuenta nunca confirmó su correo y tiene algo, user.keepOrStartFresh
+### viene lleno (ver users.http). Sustituye 123456 por el código del correo.
+POST {{baseUrl}}/auth/password/reset
+Content-Type: application/json
+
+{ "email": "{{email}}", "code": "123456", "newPassword": "{{password}}" }
+
+### Con el enlace del correo: el token es lo que va tras #token= (sin correo).
+### Usado, vencido o reemplazado: 400 LINK_INVALID
+POST {{baseUrl}}/auth/password/reset
+Content-Type: application/json
+
+{ "token": "pega-aqui-el-token-del-enlace", "newPassword": "{{password}}" }

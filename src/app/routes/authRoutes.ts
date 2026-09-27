@@ -2,15 +2,19 @@ import { Router } from "express";
 
 import { ENVIRONMENT } from "../../shared/constants";
 import { AuthController } from "../controllers/AuthController";
+import { createCaptchaVerifier } from "../factories/captchaFactory";
 import { authMiddleware } from "../middlewares/authMiddleware";
 import { authRateLimit } from "../middlewares/authRateLimitMiddleware";
+import { requireCaptcha } from "../middlewares/captchaMiddleware";
 import { clientIp } from "../middlewares/clientIp";
 import { attemptedEmail } from "../middlewares/loginAttempt";
 import {
+  forgotPasswordSchema,
   idParamSchema,
   loginSchema,
   refreshSchema,
   registerSchema,
+  resetPasswordSchema,
 } from "../validation/schemas";
 import { validate } from "../validation/validate";
 
@@ -64,6 +68,19 @@ const registerLimiter = authRateLimit({
   max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
+// A volume brake ahead of the captcha, which costs a call to Cloudflare; the email's own brakes come after.
+const forgotLimiter = authRateLimit({
+  keyPrefix: "forgot",
+  max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
+  windowMs: AUTH_WINDOW_MS,
+});
+const resetLimiter = authRateLimit({
+  keyPrefix: "reset",
+  max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
+  windowMs: AUTH_WINDOW_MS,
+});
+const captcha = createCaptchaVerifier();
+
 // Refresh is legitimate high-frequency traffic (~15 min per device), so its threshold is higher.
 const refreshLimiter = authRateLimit({
   keyPrefix: "refresh",
@@ -190,6 +207,133 @@ router.post(
   ...accountLimiters,
   validate(loginSchema),
   AuthController.login,
+);
+
+/**
+ * @openapi
+ * /auth/password/forgot:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Email a code and a link to choose a new password
+ *     description: >
+ *       Always the same answer, in at least the same time, whether the
+ *       address has a live account, a deleted one or none, and whether the
+ *       email could be sent: nothing here may tell them apart. Only a live
+ *       account is emailed, in its own language: a 6-digit code and a link
+ *       (`/{locale}/reset#token=…`), both good for 30 minutes and for one
+ *       reset. A new code replaces the previous one only once its email was
+ *       accepted for delivery. `captcha` is a Cloudflare Turnstile token
+ *       issued for the action `forgot-password`, asked for when the button is
+ *       pressed: it works once. `deviceToken`, from this device's last login
+ *       or register, lets the limits count this device instead of its IP.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ForgotPasswordInput'
+ *     responses:
+ *       202:
+ *         description: >
+ *           Taken. If the address has an account, a code is on its way.
+ *           `resendAfterSeconds` is the same for every address: the countdown
+ *           before Resend.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ForgotPasswordAccepted'
+ *       400:
+ *         description: >
+ *           Validation error (code VALIDATION), or Cloudflare refused the
+ *           captcha token: spent, expired, forged, or issued for another site
+ *           or action (code CAPTCHA_INVALID). Ask for a new token and try
+ *           again
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: >
+ *           Too many requests (code RATE_LIMITED; `Retry-After` in seconds):
+ *           from this IP, from this device or IP in the hour, or for this
+ *           address — one a minute and five a day. Counted the same for every
+ *           address, account or not
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       503:
+ *         description: >
+ *           The captcha could not be checked, so nothing was sent (code
+ *           CAPTCHA_UNAVAILABLE). Try again
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/password/forgot",
+  forgotLimiter,
+  AuthController.recognizeDevice,
+  validate(forgotPasswordSchema),
+  requireCaptcha("forgot-password", captcha),
+  AuthController.forgotPassword,
+);
+
+/**
+ * @openapi
+ * /auth/password/reset:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Choose a new password with the emailed code or link
+ *     description: >
+ *       Either the address and the 6-digit code, or the link's token alone
+ *       (it names the account). Sets the password, signs out every other
+ *       device (every refresh and device token issued before stops working),
+ *       confirms the account's email, and answers a session like a login.
+ *       Using a code or the link spends every code of that request. A code
+ *       takes five tries. When the account had never confirmed its email and
+ *       holds accounts or transactions, the answer's `user.keepOrStartFresh`
+ *       is set: ask "Keep what's in this account?" before opening anything
+ *       (`POST /users/{id}/keep-or-start-fresh`).
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ResetPasswordInput'
+ *     responses:
+ *       200:
+ *         description: Password changed and signed in
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthTokens'
+ *       400:
+ *         description: >
+ *           Validation error (code VALIDATION); a code that does not work —
+ *           mistyped, expired, replaced by a newer one, used up by five
+ *           tries, or for an address with no account, all one answer (code
+ *           RESET_CODE_INVALID); or a link that no longer works — used,
+ *           expired or replaced (code LINK_INVALID)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: Too many attempts from this IP (code RATE_LIMITED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/password/reset",
+  resetLimiter,
+  validate(resetPasswordSchema),
+  AuthController.resetPassword,
 );
 
 /**

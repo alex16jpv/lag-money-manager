@@ -8,6 +8,8 @@ import { ApiError } from "./errors";
 export interface ChangeCursor {
   updatedAt: Date;
   id: string | null;
+  // The account's dataResetAt the cursor was issued under; absent on a `?since=`, which cannot say.
+  resetAt?: Date | null;
 }
 
 /** Anything the feed can order: every entity carries both. */
@@ -17,6 +19,8 @@ export interface ChangeKey {
 }
 
 const CURSOR_VERSION = "v1";
+// v1 plus the reset it was issued under: only an account that went through Start fresh gets one.
+const RESET_CURSOR_VERSION = "v2";
 
 /**
  * `updatedAt` is stamped by the application server (Mongoose timestamps), not
@@ -39,17 +43,50 @@ const invalidCursor = (): never => {
 };
 
 export function encodeCursor(cursor: ChangeCursor): string {
-  const raw = `${CURSOR_VERSION}|${cursor.updatedAt.toISOString()}|${cursor.id ?? ""}`;
+  const position = `${cursor.updatedAt.toISOString()}|${cursor.id ?? ""}`;
+  const raw = cursor.resetAt
+    ? `${RESET_CURSOR_VERSION}|${position}|${cursor.resetAt.toISOString()}`
+    : `${CURSOR_VERSION}|${position}`;
   return Buffer.from(raw, "utf8").toString("base64url");
 }
+
+const parseInstant = (value: string): Date => {
+  const instant = new Date(value);
+  return Number.isNaN(instant.getTime()) ? invalidCursor() : instant;
+};
 
 /** Opaque to the client; a malformed one is a 400, never a silent page one. */
 export function decodeCursor(raw: string): ChangeCursor {
   const parts = Buffer.from(raw, "base64url").toString("utf8").split("|");
-  if (parts.length !== 3 || parts[0] !== CURSOR_VERSION) return invalidCursor();
-  const updatedAt = new Date(parts[1] as string);
-  if (Number.isNaN(updatedAt.getTime())) return invalidCursor();
-  return { updatedAt, id: parts[2] || null };
+  const [version, updatedAt, id, resetAt] = parts;
+  if (version === CURSOR_VERSION && parts.length === 3) {
+    return {
+      updatedAt: parseInstant(updatedAt as string),
+      id: id || null,
+      resetAt: null,
+    };
+  }
+  if (version === RESET_CURSOR_VERSION && parts.length === 4) {
+    return {
+      updatedAt: parseInstant(updatedAt as string),
+      id: id || null,
+      resetAt: parseInstant(resetAt as string),
+    };
+  }
+  return invalidCursor();
+}
+
+// A `?since=` cannot name its copy, so it is only trusted when it starts after the last reset.
+export function cursorFitsReset(
+  cursor: ChangeCursor,
+  dataResetAt: Date | null,
+): boolean {
+  if (cursor.resetAt === undefined) {
+    return !dataResetAt || cursor.updatedAt >= dataResetAt;
+  }
+  return (
+    (cursor.resetAt?.getTime() ?? null) === (dataResetAt?.getTime() ?? null)
+  );
 }
 
 /**

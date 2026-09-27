@@ -1,7 +1,8 @@
 # Email Module
 
-> **Status: the sender and the bounce handling are built, nothing sends yet.** This module is the
-> piece every email of the app goes through: the password reset (T-207), the email verification
+> **Status: the sender and the bounce handling are built, and the password reset (T-207) is its first
+> caller; nothing sends until `EMAIL_PROVIDERS` names a provider.** This module is the piece every
+> email of the app goes through: the password reset ([auth.md](auth.md)), the email verification
 > (T-209), the email change (T-221), the security notices (T-211) and, later, the notification channel
 > (T-131). Setting SES up in production, with its alarms and budget, is
 > [Email in Production](../guides/email.md).
@@ -59,6 +60,12 @@ What the callers owe to this answer, written down here so each task does not red
   margin so the time does not tell either. `providerCeilingMs` is the number of providers × their
   timeout; the margin has to cover the suppression read, the brakes (one parallel round of MongoDB
   hits, and the refunds when one stops the send) and the delivery row.
+- **Brakes that must not tell addresses apart are held first.** `holdBrakes({ template, email,
+  requester })` counts a code email's per-address and per-requester brakes for any address, with an
+  account or not, and answers `limited` with its seconds or not; it throws when the store cannot count.
+  The send that follows passes `brakesHeld: true` and counts only the per-account brake and the caps.
+  Forgot your password? does this, so its `429` is the same for every address; a caller that already
+  knows the account (a Resend with a session) has no need to.
 - **`rejected` means the address will not take email**: it bounced for good, it complained, or the
   provider refused it. Asking again does not help.
 - **Resend in the verification may show it** (`EMAIL_SEND_FAILED`): the address is the person's own.

@@ -75,6 +75,22 @@ describe("email environment", () => {
       { NODE_ENV: "production", EMAIL_PROVIDERS: "ses" },
     ],
     [
+      "SES in production with no captcha to keep strangers from spending it",
+      {
+        NODE_ENV: "production",
+        EMAIL_PROVIDERS: "ses",
+        EMAIL_SES_EVENTS_TOPIC_ARN:
+          "arn:aws:sns:us-east-1:123456789012:ledger-flow-email-events",
+      },
+    ],
+    [
+      "Cloudflare's test secret in production, which passes any token",
+      {
+        NODE_ENV: "production",
+        TURNSTILE_SECRET: "1x0000000000000000000000000000000AA",
+      },
+    ],
+    [
       "an events topic that is not an SNS topic ARN",
       { EMAIL_SES_EVENTS_TOPIC_ARN: "arn:aws:sqs:us-east-1:123456789012:q" },
     ],
@@ -101,11 +117,22 @@ describe("email environment", () => {
       EMAIL_PROVIDERS: "ses",
       EMAIL_SES_EVENTS_TOPIC_ARN:
         "arn:aws:sns:us-east-1:123456789012:ledger-flow-email-events",
+      TURNSTILE_SECRET: "0x4AAAAAAAexample-production-secret",
     });
     expect(env.EMAIL_PROVIDERS).toEqual(["ses"]);
     expect(env.EMAIL_SES_EVENTS_TOPIC_ARN).toBe(
       "arn:aws:sns:us-east-1:123456789012:ledger-flow-email-events",
     );
+  });
+
+  it("takes Cloudflare's test secret outside production", async () => {
+    expect(
+      (
+        await environment({
+          TURNSTILE_SECRET: "1x0000000000000000000000000000000AA",
+        })
+      ).TURNSTILE_SECRET,
+    ).toBe("1x0000000000000000000000000000000AA");
   });
 
   it("starts in production without the topic while SES is not sending", async () => {

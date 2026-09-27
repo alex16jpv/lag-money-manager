@@ -1,5 +1,6 @@
 // Importing this registers every model, so the index-sync step iterates `mongoose.models`.
 export { AccountModel } from "./AccountModel";
+export { AuthCodeModel } from "./AuthCodeModel";
 export { BudgetModel } from "./BudgetModel";
 export { CategoryModel } from "./CategoryModel";
 export { ContactModel } from "./ContactModel";

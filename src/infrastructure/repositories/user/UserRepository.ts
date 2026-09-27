@@ -1,6 +1,10 @@
 import { v7 as uuidv7 } from "uuid";
 
-import { User } from "../../../domain/entities/User";
+import {
+  FreshStartDetails,
+  KeepOrStartFresh,
+  User,
+} from "../../../domain/entities/User";
 import { IUserRepository } from "../../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../../shared/errors";
 import { Locale } from "../../../shared/locale";
@@ -24,6 +28,9 @@ export class UserRepository implements IUserRepository {
     currency?: string;
     locale?: Locale;
     lastLoginAt?: Date | null;
+    emailVerifiedAt?: Date | null;
+    keepOrStartFresh?: KeepOrStartFresh | null;
+    dataResetAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
   }): User {
@@ -37,6 +44,16 @@ export class UserRepository implements IUserRepository {
       currency: doc.currency,
       locale: doc.locale,
       lastLoginAt: doc.lastLoginAt,
+      emailVerifiedAt: doc.emailVerifiedAt,
+      keepOrStartFresh: doc.keepOrStartFresh
+        ? {
+            askedAt: doc.keepOrStartFresh.askedAt,
+            accounts: doc.keepOrStartFresh.accounts,
+            transactions: doc.keepOrStartFresh.transactions,
+            startFresh: doc.keepOrStartFresh.startFresh ?? null,
+          }
+        : null,
+      dataResetAt: doc.dataResetAt,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });
@@ -103,6 +120,131 @@ export class UserRepository implements IUserRepository {
     }).lean();
     if (!doc) return null;
     return this.toEntity(doc);
+  }
+
+  async resetPassword(
+    id: string,
+    passwordHash: string,
+    question: { accounts: number; transactions: number } | null,
+    now: Date,
+  ): Promise<User | null> {
+    const neverConfirmed = {
+      $eq: [{ $ifNull: ["$emailVerifiedAt", null] }, null],
+    };
+    const keepQuestion = { $ifNull: ["$keepOrStartFresh", null] };
+    const doc = await UserModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      [
+        {
+          $set: {
+            password: { $literal: passwordHash },
+            tokenVersion: { $add: [{ $ifNull: ["$tokenVersion", 0] }, 1] },
+            keepOrStartFresh: question
+              ? {
+                  $cond: [
+                    neverConfirmed,
+                    {
+                      $ifNull: [
+                        "$keepOrStartFresh",
+                        {
+                          $literal: {
+                            askedAt: now,
+                            ...question,
+                            startFresh: null,
+                          },
+                        },
+                      ],
+                    },
+                    keepQuestion,
+                  ],
+                }
+              : keepQuestion,
+            emailVerifiedAt: { $ifNull: ["$emailVerifiedAt", now] },
+            updatedAt: now,
+          },
+        },
+      ],
+      { returnDocument: "after", updatePipeline: true },
+    ).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async keepEverything(id: string, now: Date): Promise<User | null> {
+    const doc = await UserModel.findOneAndUpdate(
+      {
+        _id: id,
+        deletedAt: null,
+        keepOrStartFresh: { $ne: null },
+        "keepOrStartFresh.startFresh": null,
+      },
+      { $set: { keepOrStartFresh: null, updatedAt: now } },
+      { returnDocument: "after", timestamps: false },
+    ).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async chooseStartFresh(
+    id: string,
+    details: FreshStartDetails,
+    now: Date,
+    leaseMs: number,
+  ): Promise<User | null> {
+    const doc = await UserModel.findOneAndUpdate(
+      {
+        _id: id,
+        deletedAt: null,
+        keepOrStartFresh: { $ne: null },
+        $or: [
+          { "keepOrStartFresh.startFresh": null },
+          { "keepOrStartFresh.startFresh.claimedUntil": { $lte: now } },
+        ],
+      },
+      {
+        $set: {
+          "keepOrStartFresh.startFresh": {
+            ...details,
+            claimedUntil: new Date(now.getTime() + leaseMs),
+          },
+          updatedAt: now,
+        },
+      },
+      { returnDocument: "after", timestamps: false },
+    ).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async releaseStartFresh(id: string, now: Date): Promise<void> {
+    await UserModel.updateOne(
+      { _id: id, "keepOrStartFresh.startFresh": { $ne: null } },
+      { $set: { "keepOrStartFresh.startFresh.claimedUntil": now } },
+      { timestamps: false },
+    ).exec();
+  }
+
+  async finishStartFresh(id: string, now: Date): Promise<User | null> {
+    const chosen = "$keepOrStartFresh.startFresh";
+    const doc = await UserModel.findOneAndUpdate(
+      {
+        _id: id,
+        deletedAt: null,
+        "keepOrStartFresh.startFresh": { $ne: null },
+      },
+      [
+        {
+          $set: {
+            name: `${chosen}.name`,
+            locale: `${chosen}.locale`,
+            currency: `${chosen}.currency`,
+            timezone: `${chosen}.timezone`,
+            keepOrStartFresh: null,
+            dataResetAt: now,
+            updatedAt: now,
+          },
+        },
+      ],
+      { returnDocument: "after", updatePipeline: true },
+    ).lean();
+    return doc ? this.toEntity(doc) : null;
   }
 
   async reactivate(

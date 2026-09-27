@@ -60,6 +60,9 @@ const requestBodies = {
   RegisterInput: bodyOf(v.registerSchema),
   LoginInput: bodyOf(v.loginSchema),
   RefreshInput: bodyOf(v.refreshSchema),
+  ForgotPasswordInput: bodyOf(v.forgotPasswordSchema),
+  ResetPasswordInput: bodyOf(v.resetPasswordSchema),
+  KeepOrStartFreshInput: bodyOf(v.keepOrStartFreshSchema),
   UpdateUserInput: bodyOf(v.updateUserSchema),
   DeleteUserInput: bodyOf(v.deleteUserSchema),
   CreateAccountInput: bodyOf(v.createAccountSchema),
@@ -217,6 +220,19 @@ const responseViews = {
         currency: { type: "string", example: "COP" },
         locale: { ...enumOf(LOCALES), example: "en" },
         lastLoginAt: nullableDateTime,
+        keepOrStartFresh: {
+          ...withRequired({
+            type: "object",
+            properties: {
+              createdAt: dateTime,
+              accounts: { type: "integer", minimum: 0 },
+              transactions: { type: "integer", minimum: 0 },
+            },
+          }),
+          nullable: true,
+          description:
+            'Set after a password reset of an account that had never confirmed its email and held accounts or transactions: ask "Keep what\'s in this account?" before opening anything, and answer with POST /users/{id}/keep-or-start-fresh. The three facts are when the account was created and what it held then (active accounts, transactions). Null otherwise.',
+        },
         createdAt: dateTime,
         updatedAt: dateTime,
         reactivated: {
@@ -238,13 +254,24 @@ const responseViews = {
         deviceToken: {
           type: "string",
           description:
-            "Login and register only. Proof that this device already signed in to this email: send it back as `deviceToken` on the next login or register and its failed attempts get a budget of their own, so a stranger's failures cannot lock this device out. Keep it across logouts, and keep the new one each login or register answers. A password or email change and a logout-all revoke every device token issued before.",
+            "Login, register and password reset only. Proof that this device already signed in to this email: send it back as `deviceToken` on the next login, register or Forgot your password? and its attempts get a budget of their own, so a stranger's failures cannot lock this device out. Keep it across logouts, and keep the new one each of them answers. A password or email change and a logout-all revoke every device token issued before.",
         },
       },
       required: ["accessToken", "refreshToken"],
     },
     ["user", "deviceToken"],
   ),
+  ForgotPasswordAccepted: withRequired({
+    type: "object",
+    properties: {
+      resendAfterSeconds: {
+        type: "integer",
+        minimum: 1,
+        description:
+          "Seconds before another code can be asked for this address: the same for every address.",
+      },
+    },
+  }),
   Session: withRequired(
     {
       type: "object",

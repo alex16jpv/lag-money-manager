@@ -1,5 +1,6 @@
 import { connectMongo } from "../../../config/mongoConnection";
 import { AccountRepository } from "../../../infrastructure/repositories/account/AccountRepository";
+import { AuthCodeRepository } from "../../../infrastructure/repositories/authCode/AuthCodeRepository";
 import { BudgetRepository } from "../../../infrastructure/repositories/budget/BudgetRepository";
 import { CategoryRepository } from "../../../infrastructure/repositories/category/CategoryRepository";
 import { ContactRepository } from "../../../infrastructure/repositories/contact/ContactRepository";
@@ -16,6 +17,7 @@ import { SharedSettlementRepository } from "../../../infrastructure/repositories
 import { SyncOpRepository } from "../../../infrastructure/repositories/syncOp/SyncOpRepository";
 import { TransactionRepository } from "../../../infrastructure/repositories/transaction/TransactionRepository";
 import { UserRepository } from "../../../infrastructure/repositories/user/UserRepository";
+import { UserDataEraser } from "../../../infrastructure/repositories/userData/UserDataEraser";
 import { DB_TYPES, IS_LAMBDA } from "../../../shared/constants";
 import logger from "../../../shared/logger";
 
@@ -53,4 +55,6 @@ export function registerRepositories(factory: RegistryTarget): void {
   factory.register("emailDelivery", () => new EmailDeliveryRepository());
   factory.register("emailSuppression", () => new EmailSuppressionRepository());
   factory.register("rateCounter", () => new RateCounterRepository());
+  factory.register("authCode", () => new AuthCodeRepository());
+  factory.register("userDataEraser", () => new UserDataEraser());
 }

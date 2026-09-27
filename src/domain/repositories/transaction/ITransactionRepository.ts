@@ -188,6 +188,7 @@ export interface ITransactionRepository extends IRepository<Transaction> {
   listTags(userId: string): Promise<string[]>;
 
   countByCategory(userId: string, categoryId: string): Promise<number>;
+  countByUserId(userId: string): Promise<number>;
 
   // Integer cents per category over the local days [from, to) in `timezone`. Budget spend/earned.
   sumAmountsByCategory(

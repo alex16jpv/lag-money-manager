@@ -20,6 +20,7 @@ export class ApiError extends BaseError {
     Conflict: 409,
     UnprocessableEntity: 422,
     InternalServerError: 500,
+    ServiceUnavailable: 503,
   };
 
   // Stable machine-readable code; clients branch on this, never on `message`.

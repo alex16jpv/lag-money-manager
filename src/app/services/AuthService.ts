@@ -47,7 +47,7 @@ interface AuthTokens {
   refreshToken: string;
 }
 
-interface OpenedSession extends AuthTokens {
+export interface OpenedSession extends AuthTokens {
   deviceToken: string;
 }
 
@@ -103,10 +103,7 @@ export class AuthService {
   }
 
   // Login path: opens a new session family with the full refresh lifetime.
-  private async openSession(
-    user: User,
-    userAgent?: string,
-  ): Promise<OpenedSession> {
+  async openSession(user: User, userAgent?: string): Promise<OpenedSession> {
     const jti = uuidv7();
     const refreshToken = this.signRefreshToken(user, jti);
     const { exp } = jwt.decode(refreshToken) as { exp: number };

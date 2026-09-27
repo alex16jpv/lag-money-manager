@@ -80,6 +80,9 @@ type BrakeResult =
   | { limited: false; costKeys: string[] }
   | { limited: true; retryAfterSeconds: number };
 
+export type HeldBrakes =
+  { limited: false } | { limited: true; retryAfterSeconds: number };
+
 export class EmailService {
   constructor(
     private readonly providers: readonly EmailProvider[],
@@ -95,17 +98,36 @@ export class EmailService {
     return this.providers.length * this.config.providerTimeoutMs;
   }
 
+  // Counts the brakes that depend only on who asks and for which address, account or not.
+  async holdBrakes(request: {
+    template: CodeTemplate;
+    email: string;
+    requester: EmailRequester;
+  }): Promise<HeldBrakes> {
+    const brakes = await this.consume(
+      this.requestBrakes(
+        request.template,
+        hashEmailAddress(request.email),
+        request.requester,
+      ),
+    );
+    return brakes.limited ? brakes : { limited: false };
+  }
+
+  // brakesHeld: the caller already counted this request with holdBrakes, so only the rest is counted here.
   sendCode<T extends CodeTemplate>(request: {
     template: T;
     data: EmailTemplateData[T];
     recipient: EmailRecipient;
     requester: EmailRequester;
+    brakesHeld?: boolean;
   }): Promise<EmailOutcome> {
     return this.deliver(
       request.template,
       request.data,
       request.recipient,
       request.requester,
+      request.brakesHeld ?? false,
     );
   }
 
@@ -119,6 +141,7 @@ export class EmailService {
       request.data,
       request.recipient,
       null,
+      false,
     );
   }
 
@@ -127,6 +150,7 @@ export class EmailService {
     data: EmailTemplateData[T],
     recipient: EmailRecipient,
     requester: EmailRequester | null,
+    brakesHeld: boolean,
   ): Promise<EmailOutcome> {
     const meta = EMAIL_TEMPLATE_META[template];
     const base = {
@@ -178,9 +202,12 @@ export class EmailService {
 
     let brakes: BrakeResult;
     try {
-      brakes = await this.consume(
-        this.brakesFor(template, base.toHash, recipient, requester),
-      );
+      brakes = await this.consume([
+        ...(brakesHeld
+          ? []
+          : this.requestBrakes(template, base.toHash, requester)),
+        ...this.accountAndCapBrakes(template, recipient),
+      ]);
     } catch (err) {
       logger.error(
         { err, code: "EMAIL_BRAKES_UNAVAILABLE", template },
@@ -259,14 +286,13 @@ export class EmailService {
     };
   }
 
-  private brakesFor(
+  private requestBrakes(
     template: EmailTemplate,
     toHash: string,
-    recipient: EmailRecipient,
     requester: EmailRequester | null,
   ): Brake[] {
     const meta = EMAIL_TEMPLATE_META[template];
-    const { brakes, caps } = this.config;
+    const { brakes } = this.config;
     const list: Brake[] = [
       {
         key: `email-address:${meta.purpose}:${toHash}`,
@@ -280,14 +306,6 @@ export class EmailService {
         key: `email-address-day:${meta.purpose}:${toHash}`,
         window: { lengthMs: DAY_MS },
         max: brakes.addressDailyMax,
-        costs: false,
-      });
-    }
-    if (meta.perUser) {
-      list.push({
-        key: `email-user:${recipient.userId}`,
-        window: { lengthMs: DAY_MS },
-        max: brakes.userDailyMax,
         costs: false,
       });
     }
@@ -307,6 +325,24 @@ export class EmailService {
               costs: false,
             },
       );
+    }
+    return list;
+  }
+
+  private accountAndCapBrakes(
+    template: EmailTemplate,
+    recipient: EmailRecipient,
+  ): Brake[] {
+    const meta = EMAIL_TEMPLATE_META[template];
+    const { brakes, caps } = this.config;
+    const list: Brake[] = [];
+    if (meta.perUser) {
+      list.push({
+        key: `email-user:${recipient.userId}`,
+        window: { lengthMs: DAY_MS },
+        max: brakes.userDailyMax,
+        costs: false,
+      });
     }
 
     const now = this.now();

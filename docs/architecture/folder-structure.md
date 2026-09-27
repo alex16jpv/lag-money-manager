@@ -13,12 +13,17 @@ lag-money-manager/
 │   ├── server.ts                  # HTTP server bootstrap and start
 │   ├── lambda.ts                  # AWS Lambda handler (serverless-express adapter)
 │   ├── __tests__/                 # All test files
+│   │   ├── captcha/               # The Turnstile adapter
+│   │   ├── config/                # Mongo connection, the OpenAPI document and its coverage
 │   │   ├── email/                 # Email templates, provider chain and adapters
 │   │   ├── entities/              # Domain entity unit tests
 │   │   ├── factories/             # Repository factory unit tests
 │   │   ├── infra/                 # The CloudFormation templates of infra/
+│   │   ├── infrastructure/        # Model indexes, the model registry and the rate-limit store
 │   │   ├── integration/           # API integration tests (supertest)
 │   │   ├── middleware/            # Middleware unit tests
+│   │   ├── mongo/                 # The suite against a real mongod (npm run test:mongo)
+│   │   ├── scripts/               # The deploy, backup, seed and fixture scripts
 │   │   ├── services/              # Service layer unit tests
 │   │   ├── shared/                # Shared utility unit tests
 │   │   └── validation/            # Zod schema and validate() unit tests
@@ -37,11 +42,13 @@ lag-money-manager/
 │   │   └── seeders/               # Seed files (empty)
 │   ├── domain/                    # Domain layer (framework-agnostic)
 │   │   ├── errors.ts              # Domain validation error class
+│   │   ├── captcha/               # CaptchaVerifier port
 │   │   ├── email/                 # EmailProvider port and the EmailEvent a provider reports back
 │   │   ├── entities/              # Business entity classes
 │   │   └── repositories/          # Repository INTERFACES only
 │   │       ├── IRepository.ts     # Generic base repository interface
 │   │       ├── account/           # IAccountRepository.ts
+│   │       ├── authCode/          # IAuthCodeRepository.ts (emailed codes, one row per address)
 │   │       ├── budget/            # IBudgetRepository.ts
 │   │       ├── category/          # ICategoryRepository.ts
 │   │       ├── contact/           # IContactRepository.ts
@@ -57,8 +64,10 @@ lag-money-manager/
 │   │       ├── sharedSettlement/  # ISharedSettlementRepository.ts
 │   │       ├── syncOp/            # ISyncOpRepository.ts
 │   │       ├── transaction/       # ITransactionRepository.ts
-│   │       └── user/              # IUserRepository.ts
+│   │       ├── user/              # IUserRepository.ts
+│   │       └── userData/          # IUserDataEraser.ts (what Start fresh erases)
 │   ├── infrastructure/            # Persistence layer (Mongoose-specific)
+│   │   ├── captcha/               # Cloudflare Turnstile behind CaptchaVerifier
 │   │   ├── email/                 # Mail provider adapters (SES, Mailpit) and the SNS inbox for SES events
 │   │   ├── models/                # Mongoose schemas: [Entity]Model.ts
 │   │   └── repositories/          # Concrete repositories, one dir per entity
@@ -267,7 +276,7 @@ Repository **interfaces** only — the contracts services depend on. The impleme
 
 ### `src/infrastructure/`
 
-Persistence layer. Everything that knows about MongoDB lives here, and the adapters to the outside services the domain names a port for (`email/`: SES and Mailpit behind `EmailProvider`, and `SnsInbox`, which verifies the signed SNS messages SES events arrive in).
+Persistence layer. Everything that knows about MongoDB lives here, and the adapters to the outside services the domain names a port for (`email/`: SES and Mailpit behind `EmailProvider`, and `SnsInbox`, which verifies the signed SNS messages SES events arrive in; `captcha/`: Cloudflare Turnstile behind `CaptchaVerifier`).
 
 - **What belongs here:** Mongoose schemas/models, the concrete repositories and the provider adapters
 - **What does NOT belong here:** Business rules, HTTP concerns

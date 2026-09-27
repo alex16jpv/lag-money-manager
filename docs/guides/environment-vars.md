@@ -49,6 +49,7 @@ misconfiguration instead of a skipped check.
 | `AUTH_EMAIL_RATE_LIMIT_MAX` | `50` | Failed `/auth/login` and `/auth/register` attempts per email per hour from devices without a valid device token, across every IP: the cap of an attack that rotates addresses. It cannot touch a device that already signed in (`docs/modules/auth.md`, Rate Limiting).                                                                |
 | `AUTH_IP_RATE_LIMIT_MAX` | `60`    | Per-IP limit for `/auth/login` and `/auth/register` per 15-minute window. Higher than the per-email one on purpose: a carrier NAT puts thousands of unrelated users behind a single address.                                                                                                                                                     |
 | `REFRESH_RATE_LIMIT_MAX` | `60`    | Separate, higher limit for `POST /auth/refresh` (a legitimate device refreshes every ~15 min).                                                                                                                                                                                                                                                   |
+| `TURNSTILE_SECRET`       | —       | Cloudflare Turnstile's secret key: the captcha on Forgot your password? (`docs/modules/auth.md`, The captcha). Unset, that route answers `503 CAPTCHA_UNAVAILABLE` and sends nothing. In production it is required once `EMAIL_PROVIDERS` is set, and Cloudflare's test secrets are refused. Locally, the test secret `1x0000000000000000000000000000000AA` passes the test token `XXXX.DUMMY.TOKEN.XXXX`. |
 
 > **`API_SECRET` is all-or-nothing.** When it is set, **every** request must
 > carry a matching `x-api-secret` header or it gets **403 Forbidden** —
@@ -148,6 +149,8 @@ MONGO_URI=mongodb://localhost:27017/lag_money?replicaSet=rs0&directConnection=tr
 # Emails go to the local Mailpit (docker compose up -d mailpit, http://localhost:8025)
 EMAIL_PROVIDERS=mailpit
 APP_URL=http://localhost:3001
+# Cloudflare's test secret: the captcha passes with the test widget's token
+TURNSTILE_SECRET=1x0000000000000000000000000000000AA
 
 # Do NOT set API_SECRET locally: with it, every request needs the
 # x-api-secret header or gets 403.

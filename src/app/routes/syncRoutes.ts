@@ -81,6 +81,16 @@ const router = Router();
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: |
+ *           The cursor, or `since`, is from before the account's last Start
+ *           fresh, which erased rows without tombstones (code
+ *           RESYNC_REQUIRED): drop the local copy and ask again without a
+ *           cursor.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.get("/changes", validate(syncChangesSchema), SyncController.getChanges);
 

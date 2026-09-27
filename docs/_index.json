@@ -186,16 +186,16 @@
     {
       "path": "docs/modules/auth.md",
       "title": "Auth Module",
-      "description": "Authentication module: registration, login, JWT token issuance, password hashing.",
-      "tags": ["module", "auth", "jwt", "registration", "login"],
+      "description": "Authentication module: registration, login, JWT token issuance, password hashing, Forgot your password? with its emailed codes and captcha.",
+      "tags": ["module", "auth", "jwt", "registration", "login", "password-reset", "captcha"],
       "audience": "both",
       "mustReadFirst": false
     },
     {
       "path": "docs/modules/users.md",
       "title": "Users Module",
-      "description": "User management module: CRUD operations, password updates, self-access enforcement.",
-      "tags": ["module", "users", "crud"],
+      "description": "User management module: CRUD operations, password updates, self-access enforcement, and Keep what's in this account? with Start fresh.",
+      "tags": ["module", "users", "crud", "start-fresh"],
       "audience": "both",
       "mustReadFirst": false
     },

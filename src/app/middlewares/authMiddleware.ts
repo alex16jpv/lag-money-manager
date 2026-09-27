@@ -11,6 +11,8 @@ export interface AuthPayload {
   timezone?: string;
   // Refresh family the token belongs to; absent in tokens issued before W-30.
   sid?: string;
+  // Seconds since the epoch, set by jsonwebtoken on every token it signs.
+  iat?: number;
 }
 
 declare global {

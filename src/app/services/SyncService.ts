@@ -28,11 +28,13 @@ import {
   ITransactionRepository,
 } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { ApiError } from "../../shared/errors";
 import {
   ChangeCursor,
   ChangeKey,
   changeKeyOf,
   compareChanges,
+  cursorFitsReset,
   encodeCursor,
   isAfterCursor,
   SYNC_OVERLAP_MS,
@@ -98,9 +100,17 @@ export class SyncService {
 
     // limit+1 from every source separates "there is more" from the end, and makes the merge exact.
     const fetch = limit + 1;
-    const profile = this.users.getById(userId);
+    // First, and alone: Start fresh stamps dataResetAt after its erasure, so every read below sees that erasure.
+    const user = await this.users.getById(userId);
+    // Rows a Start fresh erased leave no tombstone: a copy from before it has to start again.
+    if (cursor && user && !cursorFitsReset(cursor, user.dataResetAt)) {
+      throw new ApiError(
+        "Conflict",
+        "This account's data was erased since this copy was made: drop it and start again without a cursor",
+        "RESYNC_REQUIRED",
+      );
+    }
     const [
-      user,
       accounts,
       categories,
       transactions,
@@ -113,7 +123,6 @@ export class SyncService {
       received,
       joined,
     ] = await Promise.all([
-      profile,
       this.accounts.changesSince(userId, cursor, fetch),
       this.categories.changesSince(userId, cursor, fetch),
       this.transactions.changesSince(userId, cursor, fetch),
@@ -123,16 +132,14 @@ export class SyncService {
       this.sharedExpenses.changesSince(userId, cursor, fetch),
       this.settlements.changesSince(userId, cursor, fetch),
       this.invitations.sentChangesSince(userId, cursor, fetch),
-      profile.then((me) =>
-        me
-          ? this.invitations.receivedChangesSince(
-              userId,
-              me.email,
-              cursor,
-              fetch,
-            )
-          : [],
-      ),
+      user
+        ? this.invitations.receivedChangesSince(
+            userId,
+            user.email,
+            cursor,
+            fetch,
+          )
+        : [],
       this.joined.changes(userId, cursor, fetch),
     ]);
 
@@ -187,14 +194,15 @@ export class SyncService {
         count: Math.min(ordered.length, limit),
         hasMore,
         // Only a finished run advances the watermark, and it stops a minute short (SYNC_OVERLAP_MS).
-        nextCursor: encodeCursor(
-          hasMore && last
+        nextCursor: encodeCursor({
+          ...(hasMore && last
             ? { updatedAt: last.updatedAt, id: last.id }
             : {
                 updatedAt: new Date(serverTime.getTime() - SYNC_OVERLAP_MS),
                 id: null,
-              },
-        ),
+              }),
+          resetAt: user?.dataResetAt ?? null,
+        }),
       },
     };
   }

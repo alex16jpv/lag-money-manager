@@ -1,4 +1,5 @@
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { IAuthCodeRepository } from "../../domain/repositories/authCode/IAuthCodeRepository";
 import { IBudgetRepository } from "../../domain/repositories/budget/IBudgetRepository";
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
@@ -15,6 +16,7 @@ import { ISharedSettlementRepository } from "../../domain/repositories/sharedSet
 import { ISyncOpRepository } from "../../domain/repositories/syncOp/ISyncOpRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { IUserDataEraser } from "../../domain/repositories/userData/IUserDataEraser";
 import { ENVIRONMENT } from "../../shared/constants";
 import logger from "../../shared/logger";
 import {
@@ -42,6 +44,8 @@ export const REPO_KEYS = {
   EMAIL_DELIVERY: "emailDelivery",
   EMAIL_SUPPRESSION: "emailSuppression",
   RATE_COUNTER: "rateCounter",
+  AUTH_CODE: "authCode",
+  USER_DATA_ERASER: "userDataEraser",
 } as const;
 
 type DbProvider = (factory: RepositoryFactory) => void;
@@ -163,6 +167,14 @@ export class RepositoryFactory {
 
   getRateCounterRepository(): IRateCounterRepository {
     return this.getRepository<IRateCounterRepository>(REPO_KEYS.RATE_COUNTER);
+  }
+
+  getAuthCodeRepository(): IAuthCodeRepository {
+    return this.getRepository<IAuthCodeRepository>(REPO_KEYS.AUTH_CODE);
+  }
+
+  getUserDataEraser(): IUserDataEraser {
+    return this.getRepository<IUserDataEraser>(REPO_KEYS.USER_DATA_ERASER);
   }
 }
 

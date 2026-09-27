@@ -95,6 +95,12 @@ Send `nextCursor` back as `cursor` until `hasMore` is false. While `hasMore` is 
 
 The alternative — a `ChangeLog` collection with a monotonic `seq` per user — is exact and needs no window, at the price of an extra write per operation. It is not needed while data belongs to exactly one user.
 
+### A copy from before Start fresh
+
+**The feed learns of a removed row only from its tombstone**, and Start fresh ([users.md](users.md#what-start-fresh-does)) erases an account's rows for good, leaving none. So a cursor also carries the account's `dataResetAt` at the moment it was issued, and a request whose cursor names another one — issued before the reset, or under an earlier one — answers **`409 RESYNC_REQUIRED`**: that copy holds rows that no longer exist, and its next pages would never say so. The client drops the copy and asks again with no cursor. A `since`, which cannot say which copy it belongs to, is answered only when it starts after the reset.
+
+Cursors of an account that was never reset keep their first format; one that went through Start fresh gets a second one that also carries the reset. Both are opaque, and both are read.
+
 A group comes down as stored too: `totals` and `status` are not in it. Both are worked out from the group's live expenses on every read of `GET /shared-groups`, and the client already holds those expenses, so the feed would be paying for an aggregation per group to send a figure the mirror can add up itself.
 
 ### Budgets come as stored, not as the view
@@ -108,6 +114,7 @@ A group comes down as stored too: `totals` and `status` are not in it. Both are 
 | 400    | `VALIDATION`     | `since` is not ISO 8601 with a time and an offset, or `limit` is outside 1–1000 |
 | 400    | `INVALID_CURSOR` | The cursor is not one this server minted                                        |
 | 401    | —                | Missing or invalid token                                                        |
+| 409    | `RESYNC_REQUIRED` | The cursor, or `since`, is from before the account's last Start fresh: drop the copy and start without one |
 
 A cursor the server cannot read is rejected rather than treated as "start from the beginning": silently serving page one is how a client ends up looping over the same rows forever.
 

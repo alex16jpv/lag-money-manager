@@ -515,6 +515,10 @@ export class TransactionRepository implements ITransactionRepository {
     });
   }
 
+  async countByUserId(userId: string): Promise<number> {
+    return TransactionModel.countDocuments({ userId, deletedAt: null });
+  }
+
   async listTags(userId: string): Promise<string[]> {
     const tags = await TransactionModel.distinct("tags", {
       userId,

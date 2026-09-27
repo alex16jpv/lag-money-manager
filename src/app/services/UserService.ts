@@ -88,6 +88,10 @@ export class UserService {
       const { currentPassword: _ignored, ...fields } = dto;
       const securedDto = {
         ...fields,
+        // A confirmation proves the old address, never the new one.
+        ...(dto.email && dto.email !== existing.email
+          ? { emailVerifiedAt: null }
+          : {}),
         ...(dto.password
           ? {
               password: await bcryptjs.hash(

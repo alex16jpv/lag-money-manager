@@ -242,6 +242,7 @@ describe("SyncService.getChanges", () => {
     expect(decodeCursor(page.pagination.nextCursor)).toEqual({
       updatedAt: at("2026-01-01T00:00:00.000Z"),
       id: "a1",
+      resetAt: null,
     });
   });
 
@@ -260,6 +261,7 @@ describe("SyncService.getChanges", () => {
     expect(decodeCursor(first.pagination.nextCursor)).toEqual({
       updatedAt: at(same),
       id: "a2",
+      resetAt: null,
     });
   });
 
@@ -342,6 +344,79 @@ describe("SyncService.getChanges", () => {
       50,
     );
     expect(later.changes.user).toBeNull();
+  });
+
+  describe("a copy from before Start fresh [T-207]", () => {
+    const resetAt = at("2026-03-01T00:00:00.000Z");
+    const erased = new User({ ...user, dataResetAt: resetAt });
+
+    it("refuses a cursor issued before the reset with 409 RESYNC_REQUIRED", async () => {
+      const { service, users } = build();
+      users.getById.mockResolvedValue(erased);
+
+      await expect(
+        service.getChanges(
+          USER_ID,
+          {
+            updatedAt: at("2026-02-01T00:00:00.000Z"),
+            id: null,
+            resetAt: null,
+          },
+          50,
+        ),
+      ).rejects.toMatchObject({ statusCode: 409, code: "RESYNC_REQUIRED" });
+    });
+
+    it("reads the profile before any source, so a page never predates the reset it is stamped with", async () => {
+      const { service, users, accounts } = build();
+      let release: (value: User) => void = () => undefined;
+      users.getById.mockReturnValue(
+        new Promise<User>((resolve) => {
+          release = resolve;
+        }),
+      );
+
+      const page = service.getChanges(USER_ID, undefined, 50);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(accounts.changesSince).not.toHaveBeenCalled();
+
+      release(erased);
+      await page;
+      expect(accounts.changesSince).toHaveBeenCalled();
+    });
+
+    it("refuses a since from before the reset, and serves one from after it", async () => {
+      const { service, users } = build();
+      users.getById.mockResolvedValue(erased);
+
+      await expect(
+        service.getChanges(
+          USER_ID,
+          { updatedAt: at("2026-02-01T00:00:00.000Z"), id: null },
+          50,
+        ),
+      ).rejects.toMatchObject({ code: "RESYNC_REQUIRED" });
+      await expect(
+        service.getChanges(
+          USER_ID,
+          { updatedAt: at("2026-03-02T00:00:00.000Z"), id: null },
+          50,
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it("serves a snapshot, and its cursor carries the reset so the next page is served too", async () => {
+      const { service, users } = build();
+      users.getById.mockResolvedValue(erased);
+
+      const snapshot = await service.getChanges(USER_ID, undefined, 50);
+      const next = decodeCursor(snapshot.pagination.nextCursor);
+      expect(next.resetAt).toEqual(resetAt);
+
+      await expect(
+        service.getChanges(USER_ID, next, 50),
+      ).resolves.toBeDefined();
+    });
   });
 
   it("counts every entity in the page, budgets and categories included", async () => {

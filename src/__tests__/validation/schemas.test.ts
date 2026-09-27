@@ -106,13 +106,16 @@ import {
   createContactSchema,
   createSharedExpenseSchema,
   createTransactionSchema,
+  forgotPasswordSchema,
   getCategoriesSchema,
   getTransactionsSchema,
   idParamSchema,
+  keepOrStartFreshSchema,
   loginSchema,
   paginationQuerySchema,
   quickAddTransactionSchema,
   registerSchema,
+  resetPasswordSchema,
   spendingStatsSchema,
   syncBatchSchema,
   updateAccountSchema,
@@ -285,6 +288,116 @@ describe("Validation Schemas", () => {
     it("should reject missing required fields", () => {
       const result = registerSchema.safeParse({ body: {} });
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe("forgotPasswordSchema [T-207]", () => {
+    it("normalizes the address and needs the captcha token", () => {
+      const parsed = forgotPasswordSchema.parse({
+        body: { email: " Ana@Example.com ", captcha: "token" },
+      });
+      expect(parsed.body.email).toBe("ana@example.com");
+      expect(
+        forgotPasswordSchema.safeParse({ body: { email: "ana@example.com" } })
+          .success,
+      ).toBe(false);
+    });
+  });
+
+  describe("resetPasswordSchema [T-207]", () => {
+    const password = "new password 1";
+
+    it.each([
+      [
+        "the code with its address",
+        { email: "ana@example.com", code: " 004821 " },
+      ],
+      ["the link's token alone", { token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz" }],
+    ])("takes %s", (_label, proof) => {
+      expect(
+        resetPasswordSchema.safeParse({
+          body: { ...proof, newPassword: password },
+        }).success,
+      ).toBe(true);
+    });
+
+    it.each([
+      ["a code without its address", { code: "004821" }],
+      [
+        "a code that is not six digits",
+        { email: "ana@example.com", code: "4821" },
+      ],
+      [
+        "a code and a token together",
+        {
+          email: "ana@example.com",
+          code: "004821",
+          token: "q7Xk2mVb9RtL4wPzq7",
+        },
+      ],
+      [
+        "a token with characters no link carries",
+        { token: "q7Xk2mVb9RtL4wPz/../x" },
+      ],
+      ["no proof at all", {}],
+    ])("refuses %s", (_label, proof) => {
+      expect(
+        resetPasswordSchema.safeParse({
+          body: { ...proof, newPassword: password },
+        }).success,
+      ).toBe(false);
+    });
+
+    it("keeps the password within 8 and 128 characters", () => {
+      const proof = { token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz" };
+      expect(
+        resetPasswordSchema.safeParse({
+          body: { ...proof, newPassword: "short" },
+        }).success,
+      ).toBe(false);
+    });
+  });
+
+  describe("keepOrStartFreshSchema [T-207]", () => {
+    const params = { id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70" };
+
+    it("takes keep alone", () => {
+      expect(
+        keepOrStartFreshSchema.safeParse({ params, body: { choice: "keep" } })
+          .success,
+      ).toBe(true);
+      expect(
+        keepOrStartFreshSchema.safeParse({
+          params,
+          body: { choice: "keep", name: "Ana" },
+        }).success,
+      ).toBe(false);
+    });
+
+    it("needs the whole new profile to start fresh", () => {
+      const parsed = keepOrStartFreshSchema.parse({
+        params,
+        body: {
+          choice: "start-fresh",
+          name: " Ana ",
+          locale: "es",
+          currency: "eur",
+          timezone: "Europe/Madrid",
+        },
+      });
+      expect(parsed.body).toEqual({
+        choice: "start-fresh",
+        name: "Ana",
+        locale: "es",
+        currency: "EUR",
+        timezone: "Europe/Madrid",
+      });
+      expect(
+        keepOrStartFreshSchema.safeParse({
+          params,
+          body: { choice: "start-fresh", name: "Ana", locale: "es" },
+        }).success,
+      ).toBe(false);
     });
   });
 
