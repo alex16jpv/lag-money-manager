@@ -1,12 +1,24 @@
 import { Request, Response } from "express";
 
 import repositoryFactory from "../factories/RepositoryFactory";
+import { AuthPayload } from "../middlewares/authMiddleware";
+import { CategoryService } from "../services/CategoryService";
+import { KeepOrStartFreshService } from "../services/KeepOrStartFreshService";
 import { UserService } from "../services/UserService";
 
 const userService = new UserService(
   repositoryFactory.getUserRepository(),
   repositoryFactory.getAccountRepository(),
   repositoryFactory.getSharedInvitationRepository(),
+);
+const keepOrStartFreshService = new KeepOrStartFreshService(
+  repositoryFactory.getUserRepository(),
+  repositoryFactory.getSharedInvitationRepository(),
+  repositoryFactory.getUserDataEraser(),
+  new CategoryService(
+    repositoryFactory.getCategoryRepository(),
+    repositoryFactory.getTransactionRepository(),
+  ),
 );
 
 export class UserController {
@@ -29,5 +41,20 @@ export class UserController {
     const id = req.params.id as string;
     await userService.deleteUser(id, userId, req.body.currentPassword);
     res.status(200).json({ message: "User deleted successfully" });
+  };
+
+  static keepOrStartFresh = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    const { userId, iat } = req.user as AuthPayload;
+    const session = { userId, issuedAt: iat };
+    const id = req.params.id as string;
+    const { choice, ...details } = req.body;
+    const user =
+      choice === "keep"
+        ? await keepOrStartFreshService.keep(id, session)
+        : await keepOrStartFreshService.startFresh(id, session, details);
+    res.status(200).json(user);
   };
 }

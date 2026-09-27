@@ -216,14 +216,7 @@ month at 9,000 emails and the sends alarm pauses SES above 100 in an hour. The a
 maximum send rate (emails a second): check it in the _Account dashboard_, since a send over it fails
 and the API does not retry it.
 
-## 7. Turn sending on
-
-With production access granted, add `EMAIL_PROVIDERS=ses` to the Lambda's environment.
-`EMAIL_SES_EVENTS_TOPIC_ARN` must already be there (step 4): with `ses` and no topic, production
-refuses to start. Until the password reset and the email verification are deployed, nothing asks for
-an email, so this changes nothing a user can see.
-
-## 8. The captcha: Cloudflare Turnstile
+## 7. The captcha: Cloudflare Turnstile
 
 Cloudflare dashboard → _Turnstile → Add widget_:
 
@@ -233,11 +226,23 @@ Cloudflare dashboard → _Turnstile → Add widget_:
   only a suspicious request is asked for a click. Vercel's preview deployments are not in the
   hostname list, so the widget does not work there: they use the test keys.
 
-Keep the **site key** and the **secret key**. The secret goes in the Lambda as `TURNSTILE_SECRET` and
-the site key in the web client's project, when the password reset (T-207, T-208) ships: those tasks
-add the variables to [Environment Variables](./environment-vars.md) and to the client's docs. Until
-then nothing reads them. Development and the e2e suite use Cloudflare's test keys (site key
-`1x00000000000000000000AA` and secret `1x0000000000000000000000000000000AA` always pass), never these.
+Keep the **site key** and the **secret key**. The secret goes in the Lambda as `TURNSTILE_SECRET`
+([Environment Variables](./environment-vars.md)): the API checks every Forgot your password? with it,
+and without it that route answers `503` and sends nothing. The site key goes in the web client's
+project when its password reset (T-208) ships, which adds it to the client's docs. Development and
+the e2e suite use Cloudflare's test keys (site key `1x00000000000000000000AA` and secret
+`1x0000000000000000000000000000000AA` always pass), never these; production refuses to start with a
+test secret.
+
+It comes before the next step on purpose: with `EMAIL_PROVIDERS` set and no `TURNSTILE_SECRET`,
+production refuses to start, since the captcha is what keeps strangers from spending the email budget.
+
+## 8. Turn sending on
+
+With production access granted, add `EMAIL_PROVIDERS=ses` to the Lambda's environment.
+`EMAIL_SES_EVENTS_TOPIC_ARN` (step 4) and `TURNSTILE_SECRET` (step 7) must already be there: without
+either, production refuses to start. From then on Forgot your password? emails its codes; until the web
+client ships its screens (T-208) nobody reaches it from the app.
 
 ## 9. One rate limit on the web client's sign-in
 

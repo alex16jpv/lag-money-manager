@@ -1089,6 +1089,11 @@ export const deleteUserSchema = z.object({
 
 const deviceTokenField = z.string().max(2048).optional();
 
+const newPasswordField = z
+  .string()
+  .min(8, "Password must be at least 8 characters")
+  .max(128);
+
 export const loginSchema = z.object({
   body: z.object({
     email: emailField,
@@ -1107,15 +1112,68 @@ export const registerSchema = z.object({
   body: z.object({
     name: z.string().min(1, "Name is required").max(255),
     email: emailField,
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters")
-      .max(128),
+    password: newPasswordField,
     timezone: timezoneField,
     currency: currencyField,
     locale: localeField,
     deviceToken: deviceTokenField,
   }),
+});
+
+// A Turnstile token: Cloudflare caps them at 2048 characters.
+const captchaField = z.string().min(1, "captcha is required").max(2048);
+
+export const forgotPasswordSchema = z.object({
+  body: z.object({
+    email: emailField,
+    captcha: captchaField,
+    deviceToken: deviceTokenField,
+  }),
+});
+
+// The code travels with the address it went to; the link's token already names the account.
+export const resetPasswordSchema = z.object({
+  body: z.union([
+    z
+      .object({
+        email: emailField,
+        code: z
+          .string()
+          .trim()
+          .regex(/^\d{6}$/, "code must be the 6 digits of the email"),
+        newPassword: newPasswordField,
+      })
+      .strict(),
+    z
+      .object({
+        token: z
+          .string()
+          .min(16)
+          .max(256)
+          .regex(
+            /^[A-Za-z0-9_-]+$/,
+            "token must be the one of the email's link",
+          ),
+        newPassword: newPasswordField,
+      })
+      .strict(),
+  ]),
+});
+
+export const keepOrStartFreshSchema = z.object({
+  params: idParamSchema.shape.params,
+  body: z.discriminatedUnion("choice", [
+    z.object({ choice: z.literal("keep") }).strict(),
+    z
+      .object({
+        choice: z.literal("start-fresh"),
+        name: z.string().trim().min(1, "Name is required").max(255),
+        locale: localeField.unwrap(),
+        currency: currencyField.unwrap(),
+        timezone: timezoneField.unwrap(),
+      })
+      .strict(),
+  ]),
 });
 
 export const createTransactionSchema = z.object({

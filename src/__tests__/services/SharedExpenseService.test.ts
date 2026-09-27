@@ -93,6 +93,7 @@ const transactionRepo = (): jest.Mocked<ITransactionRepository> => ({
   aggregateSpending: jest.fn(),
   listTags: jest.fn().mockResolvedValue([]),
   countByCategory: jest.fn().mockResolvedValue(0),
+  countByUserId: jest.fn().mockResolvedValue(0),
   sumAmountsByCategory: jest.fn(),
   sumAmounts: jest.fn().mockResolvedValue(0),
 });

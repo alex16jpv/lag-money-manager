@@ -22,6 +22,13 @@ export interface UpdateUserDTO {
   locale?: Locale;
 }
 
+// What helps the owner of the inbox tell whether they created the account: never a name somebody typed.
+export interface KeepOrStartFreshView {
+  createdAt: Date;
+  accounts: number;
+  transactions: number;
+}
+
 export interface UserResponseDTO {
   id: string;
   name: string;
@@ -30,6 +37,7 @@ export interface UserResponseDTO {
   currency: string;
   locale: Locale;
   lastLoginAt: Date | null;
+  keepOrStartFresh: KeepOrStartFreshView | null;
   createdAt: Date;
   updatedAt: Date;
   // Present (true) only when register revived a soft-deleted account.
@@ -45,6 +53,13 @@ export const toUserResponse = (user: User): UserResponseDTO => ({
   currency: user.currency,
   locale: user.locale,
   lastLoginAt: user.lastLoginAt,
+  keepOrStartFresh: user.keepOrStartFresh
+    ? {
+        createdAt: user.createdAt,
+        accounts: user.keepOrStartFresh.accounts,
+        transactions: user.keepOrStartFresh.transactions,
+      }
+    : null,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });

@@ -1,14 +1,15 @@
 import { Router } from "express";
 
+import { ENVIRONMENT } from "../../shared/constants";
 import { UserController } from "../controllers/UserController";
 import { authRateLimit } from "../middlewares/authRateLimitMiddleware";
 import {
   deleteUserSchema,
   idParamSchema,
+  keepOrStartFreshSchema,
   updateUserSchema,
 } from "../validation/schemas";
 import { validate } from "../validation/validate";
-import { ENVIRONMENT } from "../../shared/constants";
 
 const router = Router();
 
@@ -212,6 +213,86 @@ router.delete(
   currentPasswordLimiter,
   validate(deleteUserSchema),
   UserController.deleteUser,
+);
+
+/**
+ * @openapi
+ * /users/{id}/keep-or-start-fresh:
+ *   post:
+ *     tags: [Users]
+ *     summary: Answer "Keep what's in this account?"
+ *     description: >
+ *       Open only while `keepOrStartFresh` is set: after a password reset of
+ *       an account that had never confirmed its email and held something, so
+ *       whoever created it may not own the inbox. It stays open until it is
+ *       answered. `keep` closes it and changes nothing. `start-fresh`
+ *       deletes for good the account's accounts, transactions, budgets,
+ *       categories, contacts and the shared groups it created with their
+ *       expenses and payments; stops sharing those groups and leaves the ones
+ *       it joined, as deleting an account does; seeds the default categories
+ *       again; and sets the profile from the body, the currency free again.
+ *       The email and the password stay. Only a session opened by the reset
+ *       or after it may answer. A start-fresh that fails half-way stays open
+ *       and chosen: send it again to finish it (a `keep` is then refused). Every copy of the account's data synced before it is out
+ *       of date: `GET /sync/changes` with an older cursor answers
+ *       RESYNC_REQUIRED.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: User ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/KeepOrStartFreshInput'
+ *     responses:
+ *       200:
+ *         description: Answered; `keepOrStartFresh` is null again
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Validation error (code VALIDATION)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: >
+ *           Missing, invalid or expired access token, or one issued before
+ *           the question was asked: only a session opened by the reset (or
+ *           after it) may answer
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: User not found (or not the authenticated user's id)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: >
+ *           No question is open: never asked, already answered, or `keep`
+ *           after Start fresh was chosen (code KEEP_OR_START_FRESH_CLOSED);
+ *           or another start-fresh request is still erasing (code
+ *           START_FRESH_IN_PROGRESS)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/:id/keep-or-start-fresh",
+  validate(keepOrStartFreshSchema),
+  UserController.keepOrStartFresh,
 );
 
 export default router;

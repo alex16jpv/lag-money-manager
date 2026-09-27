@@ -67,8 +67,15 @@ What ends a live invitation, and what each one ends:
 | Their contact's email changes, or is cleared            | ✓       | —                                                        | `ContactService.updateContact`, same transaction         |
 | They leave (`POST /invitations/{id}/leave`)             | —       | ✓ (`LEFT`)                                               | This module                                              |
 | Either account is deleted                               | ✓       | ✓ (`WITHDRAWN` for the owner's, `LEFT` for the joiner's) | `UserService.deleteUser`                                 |
+| Either account starts fresh                             | ✓       | ✓ (the same)                                             | `KeepOrStartFreshService.startFresh`                     |
 
 Restoring a group or a contact brings none of them back: inviting again is how somebody comes back.
+
+**Start fresh** ([users.md](users.md#what-start-fresh-does)) erases the groups the account created, and so
+keeps the invitations it sent as the only trace the guests' copies learn the end from: once withdrawn,
+their `userId` becomes `retired:<userId>`. The guests read them as ever, `WITHDRAWN`; the account's own
+feed no longer carries them, since the addresses and group names in them are what somebody else typed;
+and a group that no longer exists is dropped from the guests' reading, like one whose owner is deleted.
 
 ## Public API
 

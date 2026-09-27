@@ -11,6 +11,7 @@ import {
   EmailRequester,
   EmailService,
   EmailServiceConfig,
+  HeldBrakes,
 } from "../../app/services/EmailService";
 import {
   EmailProvider,
@@ -638,6 +639,68 @@ describe("EmailService", () => {
         }),
       ).rejects.toThrow(/malformed/);
       expect(counters.counts.size).toBe(0);
+    });
+  });
+
+  describe("brakes held before the account is known [T-207]", () => {
+    const hold = (
+      svc: EmailService,
+      email = RECIPIENT.email,
+    ): Promise<HeldBrakes> =>
+      svc.holdBrakes({
+        template: "password-reset",
+        email,
+        requester: REQUESTER,
+      });
+
+    it("counts an address that has no account exactly like one that has", async () => {
+      const svc = service();
+      await expect(hold(svc, "nobody@example.com")).resolves.toEqual({
+        limited: false,
+      });
+      advance(15_000);
+      await expect(hold(svc, "NOBODY@example.com ")).resolves.toEqual({
+        limited: true,
+        retryAfterSeconds: 45,
+      });
+      expect(sent).toHaveLength(0);
+    });
+
+    it("counts the requester too, whatever address it asks for", async () => {
+      const svc = service({ brakes: { ...CONFIG.brakes, ipHourlyMax: 2 } });
+      await hold(svc, "one@example.com");
+      await hold(svc, "two@example.com");
+      await expect(hold(svc, "three@example.com")).resolves.toMatchObject({
+        limited: true,
+      });
+    });
+
+    it("leaves the caps to the send, which counts nothing held again", async () => {
+      const svc = service();
+      await hold(svc);
+      await expect(
+        svc.sendCode({
+          template: "password-reset",
+          data: CODE,
+          recipient: RECIPIENT,
+          requester: REQUESTER,
+          brakesHeld: true,
+        }),
+      ).resolves.toMatchObject({ status: "sent" });
+      expect(counters.count("email-address:")).toBe(1);
+      expect(counters.count("email-ip:")).toBe(1);
+      expect(counters.count("email-cap:reset:")).toBe(2);
+    });
+
+    it("counts no cap for an address nothing is sent to", async () => {
+      await hold(service(), "nobody@example.com");
+      expect(counters.count("email-cap:")).toBe(0);
+    });
+
+    it("throws when the store cannot count, so the caller answers every address alike", async () => {
+      const svc = service();
+      counters.failNext = true;
+      await expect(hold(svc)).rejects.toThrow("store down");
     });
   });
 

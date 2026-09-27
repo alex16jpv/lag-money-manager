@@ -29,6 +29,11 @@ const mockUserRepo: jest.Mocked<IUserRepository> = {
   updateWithTokenBump: jest.fn(),
   recordLogin: jest.fn().mockResolvedValue(undefined),
   reactivate: jest.fn(),
+  resetPassword: jest.fn(),
+  keepEverything: jest.fn(),
+  chooseStartFresh: jest.fn(),
+  finishStartFresh: jest.fn(),
+  releaseStartFresh: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -165,6 +170,7 @@ const mockTransactionRepo: jest.Mocked<ITransactionRepository> = {
   aggregateSpending: jest.fn(),
   listTags: jest.fn().mockResolvedValue([]),
   countByCategory: jest.fn().mockResolvedValue(0),
+  countByUserId: jest.fn().mockResolvedValue(0),
   sumAmountsByCategory: jest.fn().mockResolvedValue({}),
   sumAmounts: jest.fn().mockResolvedValue(0),
 };
@@ -206,6 +212,14 @@ const mockRefreshSessionRepo = {
   revokeFamilyForUser: jest.fn().mockResolvedValue(true),
 };
 
+const mockAuthCodeRepo = {
+  recordRequest: jest.fn().mockResolvedValue(undefined),
+  issue: jest.fn().mockResolvedValue(undefined),
+  countAttempt: jest.fn().mockResolvedValue(null),
+  redeemCode: jest.fn().mockResolvedValue(null),
+  redeemToken: jest.fn().mockResolvedValue(null),
+};
+
 // --- Mock modules before importing app ---
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
@@ -221,7 +235,11 @@ jest.mock("../../shared/constants", () => ({
     AUTH_EMAIL_RATE_LIMIT_MAX: 100000,
     LOG_LEVEL: "info",
     NODE_ENV: "test",
+    EMAIL_PROVIDERS: [],
+    APP_URL: "http://localhost:3001",
+    EMAIL_ADDRESS_INTERVAL_SECONDS: 60,
   },
+  TURNSTILE_TEST_SECRET: /^[123]x0{31}AA$/,
   DB_TYPES: { MONGO: "MONGO" },
   DEBT_ACCOUNT_FIELDS: {
     creditLimit: ["CARD", "OVERDRAFT"],
@@ -380,6 +398,9 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getSyncOpRepository: () => mockSyncOpRepo,
     getEmailDeliveryRepository: () => ({}),
     getEmailSuppressionRepository: () => ({}),
+    getRateCounterRepository: () => ({}),
+    getAuthCodeRepository: () => mockAuthCodeRepo,
+    getUserDataEraser: () => ({}),
   },
   RepositoryFactory: jest.fn(),
 }));
@@ -654,6 +675,139 @@ describe("Integration Tests", () => {
         .set("Authorization", "NotBearer some-token");
 
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe("POST /auth/password/forgot [T-207]", () => {
+    it("asks for the captcha token", async () => {
+      const res = await request(app)
+        .post("/auth/password/forgot")
+        .send({ email: "john@example.com" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+    });
+
+    it("sends nothing and says so when the captcha cannot be checked", async () => {
+      const res = await request(app)
+        .post("/auth/password/forgot")
+        .send({ email: "john@example.com", captcha: "XXXX.DUMMY.TOKEN.XXXX" });
+
+      expect(res.status).toBe(503);
+      expect(res.body.code).toBe("CAPTCHA_UNAVAILABLE");
+      expect(mockAuthCodeRepo.recordRequest).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("POST /auth/password/reset [T-207]", () => {
+    it("takes the code with its address, or the link's token, never both", async () => {
+      const res = await request(app).post("/auth/password/reset").send({
+        email: "john@example.com",
+        code: "123456",
+        token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz",
+        newPassword: "new password 1",
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+    });
+
+    it("answers a code that does not work RESET_CODE_INVALID", async () => {
+      const res = await request(app).post("/auth/password/reset").send({
+        email: "john@example.com",
+        code: "123456",
+        newPassword: "new password 1",
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("RESET_CODE_INVALID");
+    });
+
+    it("answers a link that no longer works LINK_INVALID", async () => {
+      const res = await request(app).post("/auth/password/reset").send({
+        token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz",
+        newPassword: "new password 1",
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("LINK_INVALID");
+    });
+  });
+
+  describe("POST /users/:id/keep-or-start-fresh [T-207]", () => {
+    const path =
+      "/users/019576a0-d7b6-7d6d-af6a-2b7545f5ac70/keep-or-start-fresh";
+
+    const withQuestion = (askedAt: Date): User =>
+      new User({
+        ...testUser,
+        keepOrStartFresh: {
+          askedAt,
+          accounts: 1,
+          transactions: 2,
+          startFresh: null,
+        },
+      });
+
+    it("keeps everything and answers the profile", async () => {
+      mockUserRepo.getById.mockResolvedValue(
+        withQuestion(new Date(Date.now() - 60_000)),
+      );
+      mockUserRepo.keepEverything.mockResolvedValue(testUser);
+
+      const res = await request(app)
+        .post(path)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ choice: "keep" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.keepOrStartFresh).toBeNull();
+    });
+
+    it("refuses an access token issued before the question was asked", async () => {
+      mockUserRepo.getById.mockResolvedValue(
+        withQuestion(new Date(Date.now() + 60_000)),
+      );
+
+      const res = await request(app)
+        .post(path)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ choice: "keep" });
+
+      expect(res.status).toBe(401);
+      expect(mockUserRepo.keepEverything).not.toHaveBeenCalled();
+    });
+
+    it("answers 409 KEEP_OR_START_FRESH_CLOSED when nothing is open", async () => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+
+      const res = await request(app)
+        .post(path)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ choice: "keep" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("KEEP_OR_START_FRESH_CLOSED");
+    });
+
+    it("asks Start fresh for the new profile", async () => {
+      const res = await request(app)
+        .post(path)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ choice: "start-fresh", name: "Ana" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+      expect(mockUserRepo.chooseStartFresh).not.toHaveBeenCalled();
+    });
+
+    it("answers 404 for somebody else's profile", async () => {
+      const res = await request(app)
+        .post("/users/019576a0-d7b6-7d6d-af6a-000000000000/keep-or-start-fresh")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ choice: "keep" });
+
+      expect(res.status).toBe(404);
     });
   });
 

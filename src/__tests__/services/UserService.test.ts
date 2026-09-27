@@ -60,6 +60,11 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   updateWithTokenBump: jest.fn(),
   recordLogin: jest.fn().mockResolvedValue(undefined),
   reactivate: jest.fn(),
+  resetPassword: jest.fn(),
+  keepEverything: jest.fn(),
+  chooseStartFresh: jest.fn(),
+  finishStartFresh: jest.fn(),
+  releaseStartFresh: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
@@ -188,6 +193,39 @@ describe("UserService", () => {
       // currentPassword is verification-only: never persisted.
       expect(updateArg).not.toHaveProperty("currentPassword");
       expect(updateArg).not.toHaveProperty("tokenVersion");
+    });
+
+    it("drops the email's confirmation when the email changes, and only then [T-207]", async () => {
+      const withHash = new User({
+        ...mockUser,
+        password: bcryptjs.hashSync("oldpassword", 4),
+        emailVerifiedAt: new Date("2026-09-01T00:00:00.000Z"),
+      });
+      repo.getByIdWithPassword.mockResolvedValue(withHash);
+      repo.updateWithTokenBump.mockResolvedValue(mockUser);
+
+      await service.updateUser(
+        testUserId,
+        { email: "other@example.com", currentPassword: "oldpassword" },
+        testUserId,
+      );
+      await service.updateUser(
+        testUserId,
+        { email: withHash.email, currentPassword: "oldpassword" },
+        testUserId,
+      );
+      await service.updateUser(
+        testUserId,
+        { password: "newpassword", currentPassword: "oldpassword" },
+        testUserId,
+      );
+
+      const [moved, same, password] = repo.updateWithTokenBump.mock.calls.map(
+        (call) => call[1],
+      );
+      expect(moved).toMatchObject({ emailVerifiedAt: null });
+      expect(same).not.toHaveProperty("emailVerifiedAt");
+      expect(password).not.toHaveProperty("emailVerifiedAt");
     });
 
     it("rejects a credential change with a wrong currentPassword [R2-08]", async () => {

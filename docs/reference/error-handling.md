@@ -55,6 +55,7 @@ export class ApiError extends BaseError {
     Conflict: 409,
     UnprocessableEntity: 422,
     InternalServerError: 500,
+    ServiceUnavailable: 503,
   };
 
   // Stable machine-readable code; clients branch on this, never on `message`.
@@ -245,7 +246,7 @@ The global `express-rate-limit` limiter in `src/app.ts` returns the same `error`
 | 422    | Unprocessable Entity  | Request understood but semantically invalid                                                             |
 | 429    | Too Many Requests     | Rate limit exceeded                                                                                     |
 | 500    | Internal Server Error | Unexpected/unhandled error                                                                              |
-| 503    | Service Unavailable   | Database connection unavailable (retryable)                                                             |
+| 503    | Service Unavailable   | Database connection unavailable, or the captcha could not be checked (retryable)                        |
 
 Ownership failures return **404, not 403**. Services compare `entity.userId` against the authenticated user and throw `NotFound` — telling a caller "403" would confirm that the id exists. `ApiError("Forbidden", ...)` is reserved for the gateway-secret check.
 
@@ -255,7 +256,7 @@ The global error middleware in `src/shared/middlewares.ts` handles errors in the
 
 | #   | Error Type / Condition                            | HTTP Status                                      | `error` field             | `code`                            | `message`                                                            |
 | --- | ------------------------------------------------- | ------------------------------------------------ | ------------------------- | --------------------------------- | -------------------------------------------------------------------- |
-| 1   | `ApiError` (instance check)                       | `error.statusCode` (400/401/403/404/409/422/500) | `error.name`              | `error.code` if set, else omitted | `error.message`                                                      |
+| 1   | `ApiError` (instance check)                       | `error.statusCode` (400/401/403/404/409/422/500/503) | `error.name`              | `error.code` if set, else omitted | `error.message`                                                      |
 | 2   | `DomainValidationError` (instance check)          | 400                                              | `ValidationError`         | `error.code ?? "VALIDATION"`      | `error.message`, echoed into `details[0]`                            |
 | 3   | `MongoServerError` with `code === 11000`          | 409                                              | `ConflictError`           | `DUPLICATE`                       | `"Duplicate value for: <fields>"` from `keyValue`                    |
 | 4   | `CastError` (Mongoose invalid id / type mismatch) | 400                                              | `ValidationError`         | `INVALID_ID`                      | `"Invalid ID format"`                                                |
@@ -309,6 +310,9 @@ Codes raised by the services and middleware. Anything not listed here has no `co
 | `SHARED_LINE_NOT_PAID`            | 400    | Add to my ledger on a line somebody other than the owner paid, one you have no part in, or one whose part the owner has not marked paid                                                                        |
 | `SHARED_LINE_IN_LEDGER`           | 400    | Add to my ledger on a line whose part is already in your ledger                                                                                                                                                |
 | `BUDGET_PERIOD_OVERLAP`           | 400    | New budget period overlaps an existing one for the same scope                                                                                                                                                  |
+| `RESET_CODE_INVALID`              | 400    | A password reset whose code does not work: mistyped, expired, replaced, used up by five tries, or for an address with no account — one answer, so no address is told apart                        |
+| `LINK_INVALID`                    | 400    | A link from an email that no longer works: used, expired or replaced by a newer one                                                                                                                         |
+| `CAPTCHA_INVALID`                 | 400    | Cloudflare Turnstile refused the request's captcha token (spent, expired, forged, or for another site or action)                                                                                           |
 | `IDEMPOTENCY_KEY_INVALID`         | 400    | `Idempotency-Key` outside `[A-Za-z0-9_-]{1,200}`                                                                                                                                                               |
 | `MALFORMED_JSON`                  | 400    | Body that is not valid JSON (body-parser `entity.parse.failed`)                                                                                                                                                |
 | `BAD_REQUEST`                     | 400    | A body-parser failure with no code of its own; also a `/sync` operation rejected with no more specific code                                                                                                    |
@@ -322,11 +326,15 @@ Codes raised by the services and middleware. Anything not listed here has no `co
 | `DUPLICATE`                       | 409    | MongoDB duplicate key (11000)                                                                                                                                                                                  |
 | `ID_TAKEN`                        | 409    | A client-minted id that belongs to another user (the caller's own replays with 200)                                                                                                                            |
 | `STALE_UPDATE`                    | 409    | `If-Match` no longer matches the stored version; `current` carries the server's copy                                                                                                                           |
+| `KEEP_OR_START_FRESH_CLOSED`      | 409    | Answering "Keep what's in this account?" when it is not open: never asked, already answered, or Keep after Start fresh was chosen                                                                          |
+| `START_FRESH_IN_PROGRESS`         | 409    | Start fresh while another request for the same account is still erasing it: wait for it, or retry after its 5-minute lease                                                                              |
+| `RESYNC_REQUIRED`                 | 409    | `GET /sync/changes` with a cursor from before the account's Start fresh: the rows it erased left no tombstone, so the copy has to be dropped and fetched again                                            |
 | `EMAIL_TAKEN`                     | 409    | Registration with an email already in use                                                                                                                                                                      |
 | `IDEMPOTENCY_ORIGINAL_DELETED`    | 409    | The transaction created with this key was deleted — retry with a new key                                                                                                                                       |
 | `IDEMPOTENCY_PAYLOAD_MISMATCH`    | 422    | The key was already used with a different payload                                                                                                                                                              |
 | `RATE_LIMITED`                    | 429    | `/auth` per-key rate limit exceeded                                                                                                                                                                            |
 | `INTERNAL`                        | 500    | Unhandled error                                                                                                                                                                                                |
+| `CAPTCHA_UNAVAILABLE`             | 503    | The captcha could not be checked (Cloudflare did not answer, or no secret is set): nothing was done — retryable                                                                                            |
 | `DB_UNAVAILABLE`                  | 503    | MongoDB unreachable — retryable                                                                                                                                                                                |
 
 ## How to Add a New Error Type

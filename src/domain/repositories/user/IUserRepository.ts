@@ -1,5 +1,5 @@
 import { TxSession } from "../../../shared/unitOfWork";
-import { User } from "../../entities/User";
+import { FreshStartDetails, User } from "../../entities/User";
 import { IRepository } from "../IRepository";
 
 export interface IUserRepository extends IRepository<User> {
@@ -15,6 +15,24 @@ export interface IUserRepository extends IRepository<User> {
   // Stamps lastLoginAt; fire-and-forget semantics (no error surfaced).
   recordLogin(id: string): Promise<void>;
   getDeletedByEmail(email: string): Promise<User | null>;
+  // One atomic write: password, tokenVersion, email confirmed, and the question only if it never was.
+  resetPassword(
+    id: string,
+    passwordHash: string,
+    question: { accounts: number; transactions: number } | null,
+    now: Date,
+  ): Promise<User | null>;
+  // Each resolves null when the question is not open for that answer.
+  keepEverything(id: string, now: Date): Promise<User | null>;
+  // Null also while another request holds the claim and its lease has not run out.
+  chooseStartFresh(
+    id: string,
+    details: FreshStartDetails,
+    now: Date,
+    leaseMs: number,
+  ): Promise<User | null>;
+  releaseStartFresh(id: string, now: Date): Promise<void>;
+  finishStartFresh(id: string, now: Date): Promise<User | null>;
   // Clears the soft delete; the account keeps its financial history.
   reactivate(
     id: string,

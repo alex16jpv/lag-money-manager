@@ -142,3 +142,20 @@ Content-Type: application/json
 # Content-Type: application/json
 #
 # { "currentPassword": "{{password}}" }
+
+### Keep what's in this account? — solo abierta tras un reset de una cuenta que nunca
+### confirmó su correo y tenía algo (user.keepOrStartFresh). Sin pregunta abierta:
+### 409 KEEP_OR_START_FRESH_CLOSED
+POST {{baseUrl}}/users/{{userId}}/keep-or-start-fresh
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "choice": "keep" }
+
+### Start fresh — BORRA DE VERDAD cuentas, movimientos, budgets, categorías, contactos
+### y los grupos de la cuenta, y deja el perfil del cuerpo. Descomenta para correrlo.
+# POST {{baseUrl}}/users/{{userId}}/keep-or-start-fresh
+# Authorization: Bearer {{token}}
+# Content-Type: application/json
+#
+# { "choice": "start-fresh", "name": "Tester", "locale": "en", "currency": "COP", "timezone": "America/Bogota" }

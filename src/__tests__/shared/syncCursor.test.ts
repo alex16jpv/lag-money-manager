@@ -1,6 +1,7 @@
 import { ApiError } from "../../shared/errors";
 import {
   compareChanges,
+  cursorFitsReset,
   decodeCursor,
   encodeCursor,
   isAfterCursor,
@@ -11,11 +12,37 @@ const at = (iso: string): Date => new Date(iso);
 describe("sync cursor", () => {
   it("round-trips a position inside an instant", () => {
     const cursor = { updatedAt: at("2026-09-03T12:00:00.000Z"), id: "abc" };
-    expect(decodeCursor(encodeCursor(cursor))).toEqual(cursor);
+    expect(decodeCursor(encodeCursor(cursor))).toEqual({
+      ...cursor,
+      resetAt: null,
+    });
   });
 
   it("round-trips a bare instant", () => {
     const cursor = { updatedAt: at("2026-09-03T12:00:00.000Z"), id: null };
+    expect(decodeCursor(encodeCursor(cursor))).toEqual({
+      ...cursor,
+      resetAt: null,
+    });
+  });
+
+  it("keeps the v1 format for an account that was never reset", () => {
+    const encoded = encodeCursor({
+      updatedAt: at("2026-09-03T12:00:00.000Z"),
+      id: "abc",
+      resetAt: null,
+    });
+    expect(Buffer.from(encoded, "base64url").toString("utf8")).toBe(
+      "v1|2026-09-03T12:00:00.000Z|abc",
+    );
+  });
+
+  it("round-trips the reset a cursor was issued under [T-207]", () => {
+    const cursor = {
+      updatedAt: at("2026-09-03T12:00:00.000Z"),
+      id: "abc",
+      resetAt: at("2026-09-02T08:00:00.000Z"),
+    };
     expect(decodeCursor(encodeCursor(cursor))).toEqual(cursor);
   });
 
@@ -43,6 +70,14 @@ describe("sync cursor", () => {
     [
       "too few fields",
       Buffer.from("v1|2026-09-03T12:00:00.000Z").toString("base64url"),
+    ],
+    [
+      "a v2 without its reset",
+      Buffer.from("v2|2026-09-03T12:00:00.000Z|x").toString("base64url"),
+    ],
+    [
+      "a v2 whose reset is not a date",
+      Buffer.from("v2|2026-09-03T12:00:00.000Z|x|soon").toString("base64url"),
     ],
   ])("rejects %s with 400 INVALID_CURSOR", (_label, raw) => {
     expect(() => decodeCursor(raw)).toThrow(ApiError);
@@ -105,6 +140,79 @@ describe("sync cursor", () => {
         isAfterCursor(
           { id: "a", updatedAt: at("2026-01-01T00:00:00.001Z") },
           bare,
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe("cursorFitsReset [T-207]", () => {
+    const reset = at("2026-09-02T08:00:00.000Z");
+
+    it("takes any cursor of an account that was never reset", () => {
+      expect(
+        cursorFitsReset(
+          {
+            updatedAt: at("2020-01-01T00:00:00.000Z"),
+            id: null,
+            resetAt: null,
+          },
+          null,
+        ),
+      ).toBe(true);
+    });
+
+    it("refuses a cursor issued before the account's reset", () => {
+      expect(
+        cursorFitsReset(
+          { updatedAt: at("2026-09-03T00:00:00.000Z"), id: "x", resetAt: null },
+          reset,
+        ),
+      ).toBe(false);
+    });
+
+    it("refuses a cursor issued under an earlier reset", () => {
+      expect(
+        cursorFitsReset(
+          {
+            updatedAt: at("2026-09-03T00:00:00.000Z"),
+            id: "x",
+            resetAt: at("2026-08-01T00:00:00.000Z"),
+          },
+          reset,
+        ),
+      ).toBe(false);
+    });
+
+    it("takes a cursor issued under the current reset, whatever row it points at", () => {
+      expect(
+        cursorFitsReset(
+          {
+            updatedAt: at("2025-01-01T00:00:00.000Z"),
+            id: "old-invitation",
+            resetAt: reset,
+          },
+          reset,
+        ),
+      ).toBe(true);
+    });
+
+    it("takes a since that starts after the reset, and refuses one from before", () => {
+      expect(
+        cursorFitsReset(
+          { updatedAt: at("2026-09-02T09:00:00.000Z"), id: null },
+          reset,
+        ),
+      ).toBe(true);
+      expect(
+        cursorFitsReset(
+          { updatedAt: at("2026-09-01T09:00:00.000Z"), id: null },
+          reset,
+        ),
+      ).toBe(false);
+      expect(
+        cursorFitsReset(
+          { updatedAt: at("2026-09-01T09:00:00.000Z"), id: null },
+          null,
         ),
       ).toBe(true);
     });

@@ -2,7 +2,7 @@
 
 ## What This Module Does
 
-Handles registration, login, and the full refresh-token session lifecycle. Registration and login are public; session management requires an access token.
+Handles registration, login, the full refresh-token session lifecycle, and choosing a new password by email (Forgot your password?). Registration, login and the password reset are public; session management requires an access token.
 
 Every successful register or login issues a **token pair**:
 
@@ -29,6 +29,14 @@ Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the
 | `src/infrastructure/repositories/refreshSession/RefreshSessionRepository.ts` | Mongoose implementation (atomic `rotate`, family revocation)                  |
 | `src/infrastructure/models/RefreshSessionModel.ts`                           | Mongoose model for refresh sessions                                           |
 | `src/infrastructure/models/RateLimitModel.ts`                                | Persisted rate-limit counters                                                 |
+| `src/app/services/PasswordResetService.ts`                                   | Forgot your password? and the reset: the same answer for every address       |
+| `src/app/services/authCodes.ts`                                              | The 6-digit code, the link's token and how each is hashed                    |
+| `src/domain/repositories/authCode/IAuthCodeRepository.ts`                    | Store of emailed codes, one row per address and purpose                      |
+| `src/infrastructure/repositories/authCode/AuthCodeRepository.ts`             | Mongoose implementation (atomic tries and single use)                        |
+| `src/infrastructure/models/AuthCodeModel.ts`                                 | Mongoose model for `authcodes`, with its TTL                                  |
+| `src/app/middlewares/captchaMiddleware.ts`                                   | `requireCaptcha(action)`: the Turnstile check before a route's handler        |
+| `src/domain/captcha/CaptchaVerifier.ts`                                      | The captcha port                                                              |
+| `src/infrastructure/captcha/TurnstileVerifier.ts`                            | Cloudflare Turnstile's `siteverify`                                           |
 
 ## Public API
 
@@ -69,6 +77,7 @@ Register a new user. **Register also logs in** — the response already carries 
     "currency": "COP",
     "locale": "en",
     "lastLoginAt": "2026-08-31T...",
+    "keepOrStartFresh": null,
     "createdAt": "2026-08-31T...",
     "updatedAt": "2026-08-31T..."
   }
@@ -191,6 +200,119 @@ Access tokens issued before `sid` existed mark no row as current until they are 
 ### `DELETE /auth/sessions/:id`
 
 Revoke one device session by its family id. Idempotent for an own, already-revoked session; `404` when the family is not the user's.
+
+### `POST /auth/password/forgot`
+
+Asks for a code to choose a new password. Body: `{ "email", "captcha", "deviceToken"? }`. `captcha` is a
+Cloudflare Turnstile token issued for the action `forgot-password` (see [The captcha](#the-captcha)).
+
+Always `202 { "resendAfterSeconds": 60 }`, whatever happens after the brakes (see
+[Forgot your password?](#forgot-your-password-one-answer-for-every-address)). Only a **live** account is
+emailed: a deleted one gets nothing (T-153), and neither does an address with no account. The email is
+`password-reset` in the account's own language, with a 6-digit code and a link to
+`{APP_URL}/{locale}/reset#token=…`, both good for 30 minutes.
+
+### `POST /auth/password/reset`
+
+Chooses the new password. Body: `{ "email", "code", "newPassword" }`, or `{ "token", "newPassword" }` with
+the link's token alone, which names the account. A body with both, or with neither, is `400 VALIDATION`.
+
+On success, in one atomic write to the user: the password, `tokenVersion + 1` (every refresh token and
+device token issued before stops working, as a password change does) and `emailVerifiedAt`, since the
+code or the link proved the inbox. The sessions are marked revoked as in logout-all, and the answer is a
+session like a login's: `{ accessToken, refreshToken, deviceToken, user }`. Using the code or the link
+spends every code of that request.
+
+When the account **had never confirmed its email** and holds accounts or transactions, the same write
+opens "Keep what's in this account?" (the owner's decision 12): `user.keepOrStartFresh` carries when the
+account was created and what it held, and the client asks before opening anything. It is answered on
+`POST /users/{id}/keep-or-start-fresh` ([users.md](users.md#keep-whats-in-this-account)).
+
+## Forgot your password? One answer for every address
+
+Anybody can type any address, so nothing the endpoint answers may tell an address with an account from
+one without, a live account from a deleted one, or a send that worked from one that failed (the front's
+`design/spec/screens/access.md`). What makes that hold:
+
+- **The brakes are counted for every address.** `EmailService.holdBrakes` counts the `password-reset`
+  template's per-address brakes (one a minute, five a day) and the requester's (10 an hour per recognized
+  device, else 5 per IP) before anything is looked up, account or not, and the send that follows passes
+  `brakesHeld` so they are not counted twice. A `429` is therefore the same for everyone. Only the money
+  caps are left to the send, and they are global, so reaching one tells nothing about an address: the
+  request still answers `202` and the `EMAIL_CAP_REACHED` alarm fires ([email.md](email.md#brakes)).
+- **Every address leaves the same row.** Each request upserts the address's `authcodes` row (by hash),
+  with `userId: null` when there is no account, and starts its tries again: a reset afterwards makes
+  the same round trips for any address. The send of an address with an account costs more round trips
+  than no send at all; the floor below is what hides them.
+- **Nothing after the brakes is shown.** A failed send, a store that fails, an account that is missing:
+  all end in the same `202`, and are logged (`PASSWORD_RESET_NOT_SENT`, and the email module's own lines).
+  Only an address with an account can fail there, so showing it would name the account.
+- **A floor on the time.** The answer waits until `email.providerCeilingMs` plus 500 ms have passed since
+  the brakes: the providers' ceiling (1.5 s each) plus the MongoDB round trips of a send (the suppression
+  read, the caps, the delivery row, the code). With one provider that is 2 s. A second provider raises it
+  on its own.
+- **A new code replaces the old one only once its email was accepted** (`sent`). When a provider timed out
+  without an answer (`failed / unconfirmed`) the email may still arrive, so the newest live code is kept next
+  to the new one and either works until one is used. Any other failure leaves the old code as it was.
+
+### The codes: `authcodes`
+
+| Field       | Meaning                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------- |
+| `purpose`   | `reset` (the verification and the email change of T-209 and T-221 will add theirs)          |
+| `toHash`    | SHA-256 of the normalized address; unique with `purpose`. Never the address                 |
+| `userId`    | The account the request found, `null` when there was none                                   |
+| `codes`     | At most two live codes, each `{ codeHash, tokenHash, expiresAt }`                           |
+| `attempts`  | Tries of a code since the last one was issued                                               |
+| `expiresAt` | TTL: the row goes when its newest code does                                                  |
+
+- **The code is keyed, the token is not.** `codeHash` is HMAC-SHA256 with `JWT_SECRET` over the address's
+  hash and the six digits: without a secret, a copy of the database would give every code back in a
+  million guesses. The token is 32 random bytes, so its plain SHA-256 (`tokenHash`, indexed) is enough.
+- **Five tries per code**, counted in one atomic `$inc` guarded by `attempts < 5` before the code is even
+  compared, so parallel guesses cannot go past it. An address with no account counts its tries the same
+  way. Every Send code starts the count again, account or not, so a code gets its five tries and an
+  address at most 25 a day. The link is not counted: its token cannot be guessed.
+- **Single use** is one `findOneAndUpdate` that empties `codes` only if the code presented is still in
+  them and live, so of two resets with the same code exactly one gets through.
+- **One answer for a bad code**, `RESET_CODE_INVALID`: mistyped, expired, replaced, spent in five tries,
+  or for an address with no account. With two, "expired" would exist only for the addresses with an
+  account. A code for an address the account no longer has (its email changed since) is refused too.
+  The link has its own, `LINK_INVALID`, like every link of an email.
+- **The new password is hashed first**, before the code is looked at, so a right and a wrong code pay
+  the same bcrypt time.
+
+### What the reset leaves for later
+
+- **A second factor.** The day two-step verification exists (T-217), the reset will need two different
+  proofs among the emailed code, the TOTP and a recovery code (two recovery codes are not two). The check
+  goes between redeeming the code and writing the password, in `PasswordResetService.reset`, and the body
+  gains its optional `totp` and `recoveryCode` then, with `SECOND_FACTOR_REQUIRED`: today there is no
+  factor, so the contract promises neither a field nor a code nothing reads.
+- **Factors of an account that never confirmed its email.** When passkeys, TOTP and recovery codes exist,
+  a reset of an account whose `emailVerifiedAt` was null also removes them: whoever registered somebody
+  else's address may have left one there. Today none exist.
+- **The "Password changed" notice** is sent by T-211 with the other security notices.
+
+## The captcha
+
+`requireCaptcha(action, verifier)` runs after `validate()`, on the routes that send an email to an address
+anybody can type: today `POST /auth/password/forgot` with the action `forgot-password`. It asks Cloudflare
+Turnstile's `siteverify` (`TurnstileVerifier`, 3 s, no retry) with `TURNSTILE_SECRET`, the token and the
+client's whole address (`clientAddress`: `clientIp` collapses IPv6 to its /56, which is right for a limit
+and wrong for Cloudflare).
+
+- **It passes** when Cloudflare says so, for the hostname of `APP_URL` and the route's action. With one of
+  Cloudflare's test secrets, which answer their own hostname and action, those two are not compared;
+  production refuses to start with a test secret.
+- **Refused** (`400 CAPTCHA_INVALID`): the token was spent, expired, forged, or issued for another site or
+  action. The client asks the widget for a new one; a token works once and lasts 300 s.
+- **Unavailable** (`503 CAPTCHA_UNAVAILABLE`, logged as an error with the reason): Cloudflare did not
+  answer, answered something else, could not judge the token, or no secret is set. Nothing is sent: the
+  captcha is what keeps strangers from spending the email budget, so it fails closed.
+
+The check is here and not only in the web client's server, because a call straight to the Function URL
+would skip it. In production `EMAIL_PROVIDERS` with no `TURNSTILE_SECRET` stops the API from starting.
 
 ## Internal Flow
 
@@ -327,6 +449,7 @@ sequenceDiagram
 | `AUTH_EMAIL_RATE_LIMIT_MAX` | Failed login attempts per email per hour from unrecognized devices (default: `50`) |
 | `AUTH_IP_RATE_LIMIT_MAX`   | Login and register attempts per client IP per 15-minute window (default: `60`) |
 | `REFRESH_RATE_LIMIT_MAX`   | Refresh and logout attempts per 15-minute window (default: `60`)               |
+| `TURNSTILE_SECRET`         | Cloudflare Turnstile's secret key for the captcha; required in production once `EMAIL_PROVIDERS` is set |
 
 ## Rate Limiting
 
@@ -339,6 +462,9 @@ sequenceDiagram
 | `POST /auth/login`, `/register` | Otherwise email and client IP (`login-email-ip:<email>:<ip>`) | `AUTH_RATE_LIMIT_MAX` per 15 min  |
 | `POST /auth/login`, `/register` | Otherwise email (`login-email:<email>`)               | `AUTH_EMAIL_RATE_LIMIT_MAX` per hour      |
 | `POST /auth/refresh`, `/logout` | Client IP                                             | `REFRESH_RATE_LIMIT_MAX` per 15 min       |
+| `POST /auth/password/forgot`    | Client IP (`forgot:<ip>`), before the captcha         | `AUTH_IP_RATE_LIMIT_MAX` per 15 min       |
+| `POST /auth/password/forgot`    | Then the email's own brakes, for every address        | See [One answer for every address](#forgot-your-password-one-answer-for-every-address) |
+| `POST /auth/password/reset`     | Client IP (`reset:<ip>`)                              | `AUTH_IP_RATE_LIMIT_MAX` per 15 min       |
 
 Only **failed** attempts burn the account budgets (`refundOnSuccess`), so real logins cost nothing. Register spends the same ones, because registering with a deleted account's email tests its password: a failed register and a failed login spend one budget between them.
 
@@ -367,6 +493,10 @@ The per-IP cap is shared by everyone behind that address — a carrier NAT holds
 | `NotFound`        | 404    | `DELETE /auth/sessions/:id` for a family that is not the user's                                                                                                                                                                            |
 | `EMAIL_TAKEN`     | 409    | Register with the email of a live account, of a soft-deleted one with a different password, or one a concurrent register just reactivated                                                                                                  |
 | `RATE_LIMITED`    | 429    | Too many attempts in the window                                                                                                                                                                                                            |
+| `RESET_CODE_INVALID` | 400 | A reset code that does not work, whatever the reason (see above)                                                                                                                                                                         |
+| `LINK_INVALID`    | 400    | A reset link that was used, expired or replaced                                                                                                                                                                                            |
+| `CAPTCHA_INVALID` | 400    | Turnstile refused the captcha token                                                                                                                                                                                                        |
+| `CAPTCHA_UNAVAILABLE` | 503 | The captcha could not be checked; nothing was sent                                                                                                                                                                                     |
 
 > On a `500` during register the user may still have been created — clients should try login before retrying register.
 
@@ -374,7 +504,7 @@ The per-IP cap is shared by everyone behind that address — a carrier NAT holds
 
 Two independent mechanisms invalidate refresh tokens:
 
-1. **`tokenVersion`** on the user document. `logout-all`, a password change, and an email change all bump it; every outstanding refresh token then fails with `REFRESH_REVOKED`. Access tokens already issued stay valid until they expire (≤ 15 min).
+1. **`tokenVersion`** on the user document. `logout-all`, a password change, a password reset and an email change all bump it; every outstanding refresh token then fails with `REFRESH_REVOKED`. Access tokens already issued stay valid until they expire (≤ 15 min).
 2. **Session families.** Each login opens a family (`familyId` = the first `jti`); each rotation adds a row pointing at the same family. Revoking a family kills that device only.
 
 Access tokens are stateless and are **not** checked against the session store — that is the deliberate trade-off for the short lifetime.
@@ -382,7 +512,8 @@ Access tokens are stateless and are **not** checked against the session store �
 ## How to Extend
 
 - To add OAuth/social login: add methods to `AuthService` that end in `openSession()`, so the session/rotation model stays uniform
-- To add password reset: issue a separate single-use token type (never reuse the refresh type), and bump `tokenVersion` on success
+- To send a code for another purpose (the email verification, the email change): add its purpose to `AUTH_CODE_PURPOSES` and reuse `authcodes`, the digests of `authCodes.ts` and, where the answer must not tell addresses apart, `holdBrakes`
+- To put the captcha on another route: add its action to `CaptchaAction` and mount `requireCaptcha(action, verifier)` after `validate()`
 - To make access tokens revocable immediately: check the session store in `authMiddleware` — accept the per-request read it costs
 - Always keep auth routes **before** the global `authMiddleware` in `src/app.ts`
 - Any new claim added to the access token (like `timezone`) is stale for up to `JWT_EXPIRATION`; consumers need a DB fallback, as `StatsController` and `BudgetController` do

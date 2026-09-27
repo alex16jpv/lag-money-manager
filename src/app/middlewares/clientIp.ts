@@ -13,11 +13,15 @@ declare global {
 
 export const CLIENT_IP_HEADER = "x-client-ip";
 
-export const clientIp = (req: Request): string => {
+// The address as the client has it, for a service that must see it whole (Turnstile's remoteip).
+export const clientAddress = (req: Request): string => {
   const forwarded = req.gatewayTrusted
     ? req.headers[CLIENT_IP_HEADER]
     : undefined;
   const candidate = typeof forwarded === "string" ? forwarded.trim() : "";
-  // ipKeyGenerator collapses an IPv6 address to its /56, so a client cannot rotate inside its own subnet.
-  return ipKeyGenerator(isIP(candidate) ? candidate : (req.ip ?? ""));
+  return isIP(candidate) ? candidate : (req.ip ?? "");
 };
+
+// ipKeyGenerator collapses an IPv6 address to its /56, so a client cannot rotate inside its own subnet.
+export const clientIp = (req: Request): string =>
+  ipKeyGenerator(clientAddress(req));

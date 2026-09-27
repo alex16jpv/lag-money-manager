@@ -128,6 +128,7 @@ Expected response (201):
     "timezone": "America/Bogota",
     "currency": "COP",
     "lastLoginAt": "2026-08-31T...",
+    "keepOrStartFresh": null,
     "createdAt": "2026-08-31T...",
     "updatedAt": "2026-08-31T..."
   }

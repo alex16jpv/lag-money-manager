@@ -255,6 +255,15 @@ export const EMAIL_SUPPRESSION_REASONS = {
 
 export type EmailSuppressionReason = keyof typeof EMAIL_SUPPRESSION_REASONS;
 
+export const AUTH_CODE_PURPOSES = {
+  reset: "reset",
+} as const;
+
+export type AuthCodePurpose = keyof typeof AUTH_CODE_PURPOSES;
+
+// Cloudflare's published test secrets: they pass, fail or report a spent token whatever the token is.
+export const TURNSTILE_TEST_SECRET = /^[123]x0{31}AA$/;
+
 // The second group is the topic's region, which its signing certificate's host must match.
 export const SNS_TOPIC_ARN =
   /^arn:aws[a-z-]*:sns:([a-z0-9-]+):\d{12}:[A-Za-z0-9_-]{1,256}$/;
@@ -332,6 +341,7 @@ const baseEnvSchema = z.object({
   AUTH_EMAIL_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(50),
   AUTH_IP_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(60),
   REFRESH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(60),
+  TURNSTILE_SECRET: z.string().min(1).optional(),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace"])
     .default("info"),
@@ -385,6 +395,25 @@ const mongoEnvSchema = baseEnvSchema
         path: ["EMAIL_SES_EVENTS_TOPIC_ARN"],
         message:
           "sending through SES needs its bounces and complaints: set the topic they are published to",
+      });
+    }
+    if (
+      env.TURNSTILE_SECRET &&
+      TURNSTILE_TEST_SECRET.test(env.TURNSTILE_SECRET)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["TURNSTILE_SECRET"],
+        message:
+          "Cloudflare's test secret lets any request through the captcha",
+      });
+    }
+    if (env.EMAIL_PROVIDERS.length > 0 && !env.TURNSTILE_SECRET) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["TURNSTILE_SECRET"],
+        message:
+          "sending email needs the captcha that keeps strangers from spending it: set the Turnstile secret",
       });
     }
     if (!env.APP_URL.startsWith("https://")) {
