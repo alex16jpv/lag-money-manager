@@ -6,6 +6,7 @@ import {
 export interface EmailDeliveryAttempt {
   provider: EmailProviderName;
   error: string;
+  detail?: string;
 }
 
 export interface NewEmailDelivery {

@@ -342,11 +342,18 @@ Every command below runs with `--profile <deploy profile> --region us-east-1`.
 **Finding out why.** CloudWatch → _Logs Insights_ on `/aws/lambda/<the API's function>`:
 
 ```
-fields @timestamp, code, template, budget, errorMessage
+fields @timestamp, code, template, budget, errorMessage, failures.0.error, failures.0.detail,
+  failures.1.error, failures.1.detail, durationMs
 | filter code like /^EMAIL_/
 | sort @timestamp desc
 | limit 200
 ```
+
+Each failed attempt is in `failures` (a provider tried twice appears twice): `error` is the provider's
+reason and `detail` what the error said, with any address replaced by `[address]`. For example
+`EAI_AGAIN · getaddrinfo EAI_AGAIN email.us-east-1.amazonaws.com` (the lookup failed: tried once more), an
+HTTP status and SES's message, or `error: "TimeoutError"` with `ECONNRESET` in `detail`: SES's connection
+broke, which is not the same as the chain's own `Timeout`. `EMAIL_SEND_SLOW` lines carry `durationMs`.
 
 The SES console's _Reputation metrics_ shows the bounce and complaint rates as SES sees them. SES
 reviews an account at a 5 % bounce rate or a 0.1 % complaint rate, and may pause it at 10 % or 0.5 %.

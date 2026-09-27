@@ -47,6 +47,7 @@ const EmailDeliverySchema = new Schema<IEmailDeliveryDocument>(
           _id: false,
           provider: { type: String, required: true },
           error: { type: String, required: true },
+          detail: { type: String },
         },
       ],
       default: [],

@@ -6,8 +6,16 @@ import {
   OutgoingEmail,
 } from "../../domain/email/EmailProvider";
 import { EMAIL_PROVIDER_NAMES } from "../../shared/constants";
+import { describeError, neverLeft } from "../../shared/errorDetail";
 
 const RECIPIENT_ERRORS = new Set(["BadRequestException"]);
+const UNSIGNED_ERRORS = new Set(["CredentialsProviderError"]);
+
+function answeredStatus(err: unknown): number | undefined {
+  const status = (err as { $metadata?: { httpStatusCode?: unknown } })
+    ?.$metadata?.httpStatusCode;
+  return typeof status === "number" ? status : undefined;
+}
 
 interface SesOptions {
   region?: string;
@@ -44,8 +52,10 @@ export class SesEmailProvider implements EmailProvider {
     signal: AbortSignal,
   ): Promise<{ messageId: string }> {
     let messageId: string | undefined;
+    let loaded = false;
     try {
       const { client, SendEmailCommand } = await this.loadSdk();
+      loaded = true;
       const output = await client.send(
         new SendEmailCommand({
           FromEmailAddress: `"${email.from.name}" <${email.from.address}>`,
@@ -71,15 +81,21 @@ export class SesEmailProvider implements EmailProvider {
       messageId = output.MessageId;
     } catch (err) {
       const reason = err instanceof Error ? err.name : "UnknownError";
-      const answered =
-        typeof (err as { $metadata?: { httpStatusCode?: unknown } })?.$metadata
-          ?.httpStatusCode === "number";
+      const status = answeredStatus(err);
       throw new EmailProviderError(
         this.name,
         RECIPIENT_ERRORS.has(reason) ? "recipient" : "transport",
         reason,
-        answered,
-        err,
+        {
+          outcome:
+            status !== undefined
+              ? "refused"
+              : !loaded || UNSIGNED_ERRORS.has(reason) || neverLeft(err)
+                ? "neverLeft"
+                : "mayHaveSent",
+          cause: err,
+          detail: describeError(err, status),
+        },
       );
     }
     if (!messageId) {

@@ -1,4 +1,5 @@
 import { EmailProviderName } from "../../shared/constants";
+import { describeError } from "../../shared/errorDetail";
 
 export interface OutgoingEmail {
   to: string;
@@ -21,16 +22,33 @@ export interface EmailProvider {
 
 export type EmailFailureKind = "recipient" | "transport";
 
+export type EmailSendOutcome = "refused" | "neverLeft" | "mayHaveSent";
+
+export interface EmailProviderErrorOptions {
+  outcome?: EmailSendOutcome;
+  cause?: unknown;
+  detail?: string;
+}
+
 export class EmailProviderError extends Error {
+  readonly outcome: EmailSendOutcome;
+  readonly cause?: unknown;
+  readonly detail?: string;
+
   constructor(
     readonly provider: EmailProviderName,
     readonly kind: EmailFailureKind,
     readonly reason: string,
-    // True only when the provider answered with a refusal: anything else may have been sent and billed.
-    readonly refused = false,
-    readonly cause?: unknown,
+    options: EmailProviderErrorOptions = {},
   ) {
     super(`${provider}: ${reason}`);
     this.name = "EmailProviderError";
+    this.outcome = options.outcome ?? "mayHaveSent";
+    this.cause = options.cause;
+    this.detail = options.detail ?? describeError(options.cause);
+  }
+
+  get nothingSent(): boolean {
+    return this.outcome !== "mayHaveSent";
   }
 }

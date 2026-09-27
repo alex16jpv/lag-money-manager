@@ -4,6 +4,7 @@ import {
   OutgoingEmail,
 } from "../../domain/email/EmailProvider";
 import { EMAIL_PROVIDER_NAMES } from "../../shared/constants";
+import { neverLeft } from "../../shared/errorDetail";
 
 export class MailpitEmailProvider implements EmailProvider {
   readonly name = EMAIL_PROVIDER_NAMES.mailpit;
@@ -32,14 +33,17 @@ export class MailpitEmailProvider implements EmailProvider {
       });
     } catch (err) {
       const reason = err instanceof Error ? err.name : "UnknownError";
-      throw new EmailProviderError(this.name, "transport", reason, false, err);
+      throw new EmailProviderError(this.name, "transport", reason, {
+        outcome: neverLeft(err) ? "neverLeft" : "mayHaveSent",
+        cause: err,
+      });
     }
     if (!response.ok) {
       throw new EmailProviderError(
         this.name,
         response.status === 400 ? "recipient" : "transport",
         `HTTP ${response.status}`,
-        true,
+        { outcome: "refused" },
       );
     }
     const body = (await response.json()) as { ID?: unknown };

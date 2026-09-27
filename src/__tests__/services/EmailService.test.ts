@@ -526,7 +526,9 @@ describe("EmailService", () => {
 
     it("gives back what a failed send did not spend", async () => {
       provider.send.mockRejectedValue(
-        new EmailProviderError("mailpit", "transport", "HTTP 500", true),
+        new EmailProviderError("mailpit", "transport", "HTTP 500", {
+          outcome: "refused",
+        }),
       );
       const outcome = await reset(service());
       expect(outcome).toEqual({ status: "failed", reason: "unavailable" });
@@ -545,7 +547,9 @@ describe("EmailService", () => {
   describe("failures", () => {
     it("says the address was refused, as a warning and not an outage", async () => {
       provider.send.mockRejectedValue(
-        new EmailProviderError("mailpit", "recipient", "HTTP 400", true),
+        new EmailProviderError("mailpit", "recipient", "HTTP 400", {
+          outcome: "refused",
+        }),
       );
       await expect(reset(service())).resolves.toEqual({
         status: "failed",
@@ -627,6 +631,131 @@ describe("EmailService", () => {
       expect(deliveries.rows[0].failures).toEqual([
         { provider: "ses", error: "Timeout" },
       ]);
+    });
+
+    describe("a network error", () => {
+      const networkFailure = (code: string): EmailProviderError =>
+        new EmailProviderError("mailpit", "transport", "Error", {
+          outcome: code === "ECONNRESET" ? "mayHaveSent" : "neverLeft",
+          cause: Object.assign(new Error(`connect ${code} ana@example.com`), {
+            code,
+          }),
+        });
+
+      it("records and logs why it failed, without the address", async () => {
+        provider.send.mockRejectedValue(networkFailure("ECONNRESET"));
+        await expect(reset(service())).resolves.toEqual({
+          status: "failed",
+          reason: "unconfirmed",
+        });
+        const failures = [
+          {
+            provider: "mailpit",
+            error: "Error",
+            detail: "ECONNRESET · connect ECONNRESET [address]",
+          },
+        ];
+        expect(deliveries.rows[0].failures).toEqual(failures);
+        expect(logger.error).toHaveBeenCalledWith(
+          expect.objectContaining({ code: "EMAIL_SEND_FAILED", failures }),
+          expect.any(String),
+        );
+      });
+
+      it("gives back what a send that never left did not spend", async () => {
+        provider.send.mockRejectedValue(networkFailure("EAI_AGAIN"));
+        await expect(reset(service())).resolves.toEqual({
+          status: "failed",
+          reason: "unavailable",
+        });
+        expect(provider.send).toHaveBeenCalledTimes(2);
+        expect(counters.count("email-cap:")).toBe(0);
+      });
+
+      it("says the same provider sent it on its second try", async () => {
+        provider.send.mockRejectedValueOnce(networkFailure("EAI_AGAIN"));
+        await expect(reset(service())).resolves.toMatchObject({
+          status: "sent",
+          provider: "mailpit",
+        });
+        expect(logger.warn).toHaveBeenCalledWith(
+          expect.objectContaining({
+            code: "EMAIL_SEND_RETRIED",
+            provider: "mailpit",
+          }),
+          expect.any(String),
+        );
+        expect(logger.warn).not.toHaveBeenCalledWith(
+          expect.objectContaining({ code: "EMAIL_PROVIDER_FAILED" }),
+          expect.any(String),
+        );
+        expect(deliveries.rows[0]).toMatchObject({
+          status: "sent",
+          failures: [{ provider: "mailpit", error: "Error" }],
+        });
+      });
+    });
+
+    it("warns when a send took more than half of its timeout", async () => {
+      jest.useFakeTimers({ now: new Date("2026-09-26T12:00:00Z") });
+      try {
+        provider.send.mockImplementationOnce(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          return { messageId: "slow-1" };
+        });
+        const sending = reset(service());
+        await jest.advanceTimersByTimeAsync(900);
+        await expect(sending).resolves.toMatchObject({ status: "sent" });
+      } finally {
+        jest.useRealTimers();
+      }
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: "EMAIL_SEND_SLOW",
+          template: "password-reset",
+          provider: "mailpit",
+          durationMs: 900,
+        }),
+        expect.any(String),
+      );
+    });
+
+    it("times only the provider that sent it, not one that timed out before", async () => {
+      jest.useFakeTimers({ now: new Date("2026-09-26T12:00:00Z") });
+      try {
+        const hangs: EmailProvider = {
+          name: "ses",
+          send: jest.fn(() => new Promise<never>(() => undefined)),
+        };
+        const sending = service({}, [hangs, provider]).sendNotice({
+          template: "new-sign-in",
+          data: FACTS,
+          recipient: RECIPIENT,
+        });
+        await jest.advanceTimersByTimeAsync(1500);
+        await expect(sending).resolves.toMatchObject({
+          status: "sent",
+          provider: "mailpit",
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "EMAIL_PROVIDER_FAILED" }),
+        expect.any(String),
+      );
+      expect(logger.warn).not.toHaveBeenCalledWith(
+        expect.objectContaining({ code: "EMAIL_SEND_SLOW" }),
+        expect.any(String),
+      );
+    });
+
+    it("says nothing about a send that took its usual time", async () => {
+      await reset(service());
+      expect(logger.warn).not.toHaveBeenCalledWith(
+        expect.objectContaining({ code: "EMAIL_SEND_SLOW" }),
+        expect.any(String),
+      );
     });
 
     it("refuses a malformed input before counting anything", async () => {

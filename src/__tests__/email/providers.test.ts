@@ -130,10 +130,69 @@ describe("SesEmailProvider", () => {
     const provider = new SesEmailProvider({});
     await expect(
       provider.send(EMAIL, new AbortController().signal),
-    ).rejects.toMatchObject({ refused: true });
+    ).rejects.toMatchObject({
+      outcome: "refused",
+      detail: "HTTP 429 · TooManyRequestsException",
+    });
     await expect(
       provider.send(EMAIL, new AbortController().signal),
-    ).rejects.toMatchObject({ refused: false });
+    ).rejects.toMatchObject({ outcome: "mayHaveSent" });
+  });
+
+  it("knows a request that never left: no address, no connection, no SDK, no credentials", async () => {
+    const provider = new SesEmailProvider({});
+    const failWith = async (err: unknown): Promise<unknown> => {
+      sesSend.mockRejectedValueOnce(err);
+      return provider
+        .send(EMAIL, new AbortController().signal)
+        .catch((failure: unknown) => failure);
+    };
+    await expect(
+      failWith(
+        Object.assign(
+          new Error("getaddrinfo EAI_AGAIN email.us-east-1.amazonaws.com"),
+          { code: "EAI_AGAIN", syscall: "getaddrinfo", $metadata: {} },
+        ),
+      ),
+    ).resolves.toMatchObject({
+      outcome: "neverLeft",
+      reason: "Error",
+      detail: "EAI_AGAIN · getaddrinfo EAI_AGAIN email.us-east-1.amazonaws.com",
+    });
+    await expect(
+      failWith(awsError("CredentialsProviderError")),
+    ).resolves.toMatchObject({ outcome: "neverLeft" });
+
+    const { SESv2Client } = jest.requireMock("@aws-sdk/client-sesv2") as {
+      SESv2Client: jest.Mock;
+    };
+    SESv2Client.mockImplementationOnce(() => {
+      throw new Error("cold start");
+    });
+    await expect(
+      new SesEmailProvider({})
+        .send(EMAIL, new AbortController().signal)
+        .catch((failure: unknown) => failure),
+    ).resolves.toMatchObject({ outcome: "neverLeft", detail: "cold start" });
+  });
+
+  it("cannot say a reset connection sent nothing: the SDK names it TimeoutError", async () => {
+    sesSend.mockRejectedValue(
+      Object.assign(new Error("socket hang up"), {
+        name: "TimeoutError",
+        code: "ECONNRESET",
+        $metadata: {},
+      }),
+    );
+    await expect(
+      new SesEmailProvider({})
+        .send(EMAIL, new AbortController().signal)
+        .catch((failure: unknown) => failure),
+    ).resolves.toMatchObject({
+      outcome: "mayHaveSent",
+      reason: "TimeoutError",
+      detail: "ECONNRESET · socket hang up",
+    });
   });
 
   it("fails when SES answers without a message id", async () => {
@@ -195,7 +254,11 @@ describe("MailpitEmailProvider", () => {
         EMAIL,
         new AbortController().signal,
       ),
-    ).rejects.toMatchObject({ kind, reason: `HTTP ${status}` });
+    ).rejects.toMatchObject({
+      kind,
+      reason: `HTTP ${status}`,
+      outcome: "refused",
+    });
   });
 
   it("reads a network error as a transport failure", async () => {
@@ -205,7 +268,32 @@ describe("MailpitEmailProvider", () => {
         EMAIL,
         new AbortController().signal,
       ),
-    ).rejects.toMatchObject({ kind: "transport", reason: "TypeError" });
+    ).rejects.toMatchObject({
+      kind: "transport",
+      reason: "TypeError",
+      outcome: "mayHaveSent",
+    });
+  });
+
+  it("knows a connection that did not open sent nothing", async () => {
+    fetchMock.mockRejectedValue(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:8025"), {
+          code: "ECONNREFUSED",
+          syscall: "connect",
+        }),
+      }),
+    );
+    await expect(
+      new MailpitEmailProvider("http://localhost:8025").send(
+        EMAIL,
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({
+      outcome: "neverLeft",
+      detail:
+        "ECONNREFUSED · fetch failed · connect ECONNREFUSED 127.0.0.1:8025",
+    });
   });
 
   it("fails when the answer has no id", async () => {
