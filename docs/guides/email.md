@@ -53,8 +53,15 @@ SES bills per email, and there are two plans that matter here: **à la carte** a
 and **Essentials** at 0.16 USD per 1,000, with no monthly fee either way. Since 2026-07-21 an account
 that had not used SES since 2025-06-01 starts on Essentials. The caps assume à la carte.
 
-SES console → _Pricing plan_. If it says Essentials, choose **Cancel plan**. When Essentials was
-applied by default, cancelling takes effect immediately and the account is on à la carte.
+From a terminal, with an administrator profile (`NONE` is à la carte, no plan):
+
+```bash
+aws sesv2 put-account-pricing-attributes --plan NONE --region us-east-1 --profile <admin profile>
+```
+
+Or SES console → _Pricing plan_ → **Cancel plan**. Plans are per Region: on any Region but the API's
+(`us-east-1`), that page shows another Region's plan. When Essentials was applied by
+default, the change takes effect immediately and the account is on à la carte.
 
 ## 2. Deploy the stack, without the webhook yet
 
@@ -313,7 +320,7 @@ Every command below runs with `--profile <deploy profile> --region us-east-1`.
 | 1 | `aws sesv2 get-account --query PricingAttributes` | `CurrentPlan` is `NONE` (à la carte), with no `NextPlan` |
 | 2 | `aws cloudformation describe-stacks --stack-name ledger-flow-email` | `CREATE_COMPLETE` (`UPDATE_COMPLETE` after step 4); the outputs carry the DNS records of step 3, `ConfigurationSet`, `EventsTopicArn` and `PauseFunction` |
 | 2 | `aws budgets describe-budget-actions-for-budget --account-id <account> --budget-name ledger-flow-ses` | `Status` is `STANDBY`, and `Roles` is `[<role name>]` |
-| 2 | `aws iam simulate-principal-policy --policy-source-arn <BudgetActionRole ARN> --action-names iam:AttachRolePolicy --resource-arns <the API role's ARN> --context-entries Key=iam:PolicyARN,Values=<ledger-flow-deny-email ARN>,Type=string` | `EvalDecision` is `allowed`: the budget can deny the role it names, path included |
+| 2 | `aws iam simulate-principal-policy --policy-source-arn <BudgetActionRole ARN> --action-names iam:AttachRolePolicy --resource-arns <the API role's ARN> --context-entries ContextKeyName=iam:PolicyARN,ContextKeyValues=<ledger-flow-deny-email ARN>,ContextKeyType=string` | `EvalDecision` is `allowed`: the budget can deny the role it names, path included |
 | 3 | `aws sesv2 get-email-identity --email-identity ledgerflow.alexpiral.com` | `DkimAttributes.Status` and `MailFromAttributes.MailFromDomainStatus` are `SUCCESS` |
 | 4 | `aws sns list-subscriptions-by-topic --topic-arn <EventsTopicArn>` | The HTTPS subscription has a real ARN, not `PendingConfirmation` |
 | 6 | `aws sesv2 get-account` | `ProductionAccessEnabled` and `SendingEnabled` are `true`, `EnforcementStatus` is `HEALTHY`, and `SendQuota` says the quota granted |
