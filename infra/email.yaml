@@ -1,0 +1,583 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Ledger Flow email on Amazon SES: the sending domain, its events back to the API, and the guards
+  that stop sending (alarms that pause SES, and a budget that denies it to the API). Deploy it in
+  the API's region, by hand, following docs/guides/email.md.
+
+Parameters:
+  Domain:
+    Type: String
+    Default: ledgerflow.alexpiral.com
+    Description: The sending domain. DKIM signs with exactly this name, which DMARC's adkim=s needs.
+  FromAddress:
+    Type: String
+    Default: no-reply@ledgerflow.alexpiral.com
+    Description: The only From the API's role may send as (EMAIL_FROM_ADDRESS).
+  ConfigurationSetName:
+    Type: String
+    Default: ledger-flow
+    Description: The API's EMAIL_SES_CONFIGURATION_SET.
+  ApiFunctionName:
+    Type: String
+    Default: lag-money-manager
+    Description: The API's Lambda function. Its log group feeds the cap and unsubscribe alarms.
+  ApiRoleName:
+    Type: String
+    AllowedPattern: "[\\w+=,.@-]+"
+    Description: >-
+      Name (not ARN) of the API Lambda's execution role: it gets ses:SendEmail, and the budget
+      denies it when the month's spend is reached.
+  WebhookUrl:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^https://[^\\s]+/webhooks/email/ses$"
+    Description: >-
+      The Function URL + /webhooks/email/ses. Leave it empty on the first deploy, set
+      EMAIL_SES_EVENTS_TOPIC_ARN on the Lambda, then update the stack with it.
+  AlertEmail:
+    Type: String
+    AllowedPattern: "[^\\s@]+@[^\\s@]+"
+    Description: Who hears about every alarm, pause and budget threshold.
+  SendsPerHourAlarm:
+    Type: Number
+    Default: 100
+    MinValue: 1
+    Description: Emails SES accepted in one hour above which sending is paused.
+  BouncesPerHourAlarm:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    Description: Bounces in one hour above which sending is paused.
+  ComplaintsPerDayAlarm:
+    Type: Number
+    Default: 3
+    MinValue: 1
+    Description: Complaints in one day at or above which sending is paused.
+  RateAlarmMinimumSends:
+    Type: Number
+    Default: 200
+    MinValue: 1
+    Description: Emails in the day before the bounce and complaint rates count at all.
+  BounceRatePercentAlarm:
+    Type: Number
+    Default: 5
+    Description: Bounce rate (percent of the day's emails) at or above which sending is paused.
+  ComplaintRatePercentAlarm:
+    Type: Number
+    Default: 0.1
+    Description: Complaint rate (percent of the day's emails) at or above which sending is paused.
+  MonthlyBudgetUsd:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    Description: SES spend in a month at which the API's role is denied sending.
+
+Conditions:
+  HasWebhook: !Not [!Equals [!Ref WebhookUrl, ""]]
+
+Resources:
+  ConfigurationSet:
+    Type: AWS::SES::ConfigurationSet
+    Properties:
+      Name: !Ref ConfigurationSetName
+      ReputationOptions:
+        ReputationMetricsEnabled: true
+      SendingOptions:
+        SendingEnabled: true
+
+  EmailIdentity:
+    Type: AWS::SES::EmailIdentity
+    DeletionPolicy: RetainExceptOnCreate
+    UpdateReplacePolicy: Retain
+    Properties:
+      EmailIdentity: !Ref Domain
+      ConfigurationSetAttributes:
+        ConfigurationSetName: !Ref ConfigurationSet
+      DkimAttributes:
+        SigningEnabled: true
+      DkimSigningAttributes:
+        NextSigningKeyLength: RSA_2048_BIT
+      MailFromAttributes:
+        MailFromDomain: !Sub bounce.${Domain}
+        BehaviorOnMxFailure: USE_DEFAULT_VALUE
+
+  EventsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: ledger-flow-email-events
+      SignatureVersion: "2"
+
+  EventsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref EventsTopic]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: SesPublishesItsEvents
+            Effect: Allow
+            Principal:
+              Service: ses.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref EventsTopic
+            Condition:
+              StringEquals:
+                AWS:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/${ConfigurationSetName}
+
+  EventsDestination:
+    Type: AWS::SES::ConfigurationSetEventDestination
+    DependsOn: EventsTopicPolicy
+    Properties:
+      ConfigurationSetName: !Ref ConfigurationSet
+      EventDestination:
+        Name: api-webhook
+        Enabled: true
+        MatchingEventTypes: [bounce, complaint, delivery]
+        SnsDestination:
+          TopicARN: !Ref EventsTopic
+
+  EventsSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasWebhook
+    Properties:
+      TopicArn: !Ref EventsTopic
+      Protocol: https
+      Endpoint: !Ref WebhookUrl
+      RawMessageDelivery: false
+      DeliveryPolicy:
+        healthyRetryPolicy:
+          numRetries: 13
+          numNoDelayRetries: 0
+          numMinDelayRetries: 2
+          numMaxDelayRetries: 5
+          minDelayTarget: 20
+          maxDelayTarget: 300
+          backoffFunction: exponential
+
+  ApiSendPolicy:
+    Type: AWS::IAM::RolePolicy
+    Properties:
+      RoleName: !Ref ApiRoleName
+      PolicyName: ledger-flow-send-email
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: SendAsTheAppOnly
+            Effect: Allow
+            Action: ses:SendEmail
+            Resource: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${Domain}
+            Condition:
+              StringEquals:
+                ses:FromAddress: !Ref FromAddress
+          - Sid: ThroughItsConfigurationSet
+            Effect: Allow
+            Action: ses:SendEmail
+            Resource: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/${ConfigurationSetName}
+
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: ledger-flow-email-alerts
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+  TripTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: ledger-flow-email-trip
+
+  PauseFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: pause-ses
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ses:PutAccountSendingAttributes
+                Resource: "*"
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref AlertsTopic
+
+  PauseFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Pauses SES sending for the whole account when an email alarm fires.
+      Runtime: nodejs22.x
+      Handler: index.handler
+      MemorySize: 128
+      Timeout: 30
+      Role: !GetAtt PauseFunctionRole.Arn
+      Environment:
+        Variables:
+          ALERTS_TOPIC_ARN: !Ref AlertsTopic
+      Code:
+        ZipFile: |
+          const { SESv2Client, PutAccountSendingAttributesCommand } = require("@aws-sdk/client-sesv2");
+          const { SNSClient, PublishCommand } = require("@aws-sdk/client-sns");
+
+          const ses = new SESv2Client({});
+          const sns = new SNSClient({});
+
+          const alarmOf = (record) => {
+            try {
+              return JSON.parse(record.Sns.Message);
+            } catch {
+              return {};
+            }
+          };
+
+          const notify = (subject, message) =>
+            sns.send(new PublishCommand({ TopicArn: process.env.ALERTS_TOPIC_ARN, Subject: subject, Message: message }));
+
+          exports.handler = async (event) => {
+            const fired = (event.Records || []).map(alarmOf).filter((alarm) => alarm.NewStateValue === "ALARM");
+            if (fired.length === 0) return { paused: false };
+            const names = fired.map((alarm) => alarm.AlarmName).join(", ");
+            try {
+              await ses.send(new PutAccountSendingAttributesCommand({ SendingEnabled: false }));
+            } catch (err) {
+              await notify(
+                "Ledger Flow: SES could NOT be paused",
+                `${names} fired and pausing SES failed (${err.name}: ${err.message}). Pause it by hand: ` +
+                  "aws sesv2 put-account-sending-attributes --no-sending-enabled",
+              );
+              throw err;
+            }
+            await notify(
+              "Ledger Flow: SES sending is paused",
+              `${names} fired, so SES sending is paused for the whole account: no email goes out. ` +
+                "Find out why (docs/guides/email.md, When a guard trips), then resume with " +
+                "aws sesv2 put-account-sending-attributes --sending-enabled",
+            );
+            return { paused: true };
+          };
+
+  PauseFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PauseFunction}
+      RetentionInDays: 365
+
+  PauseSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref TripTopic
+      Protocol: lambda
+      Endpoint: !GetAtt PauseFunction.Arn
+
+  PausePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PauseFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref TripTopic
+
+  SendsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ledger-flow-email-sends-per-hour
+      AlarmDescription: More emails in an hour than the app ever sends. Pauses SES.
+      Namespace: AWS/SES
+      MetricName: Send
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: !Ref SendsPerHourAlarm
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref TripTopic, !Ref AlertsTopic]
+
+  BouncesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ledger-flow-email-bounces-per-hour
+      AlarmDescription: Too many bounces in an hour. Pauses SES.
+      Namespace: AWS/SES
+      MetricName: Bounce
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: !Ref BouncesPerHourAlarm
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref TripTopic, !Ref AlertsTopic]
+
+  ComplaintsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ledger-flow-email-complaints-per-day
+      AlarmDescription: Too many complaints in a day. Pauses SES.
+      Namespace: AWS/SES
+      MetricName: Complaint
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: !Ref ComplaintsPerDayAlarm
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref TripTopic, !Ref AlertsTopic]
+
+  BounceRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ledger-flow-email-bounce-rate
+      AlarmDescription: Bounce rate of the day, once the day has enough emails to mean something. Pauses SES.
+      EvaluationPeriods: 1
+      Threshold: !Ref BounceRatePercentAlarm
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref TripTopic, !Ref AlertsTopic]
+      Metrics:
+        - Id: sends
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/SES
+              MetricName: Send
+            Period: 86400
+            Stat: Sum
+        - Id: bounces
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/SES
+              MetricName: Bounce
+            Period: 86400
+            Stat: Sum
+        - Id: rate
+          Label: Bounce rate (%)
+          ReturnData: true
+          Expression: !Sub IF(sends >= ${RateAlarmMinimumSends}, 100 * FILL(bounces, 0) / sends, 0)
+
+  ComplaintRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ledger-flow-email-complaint-rate
+      AlarmDescription: Complaint rate of the day, once the day has enough emails to mean something. Pauses SES.
+      EvaluationPeriods: 1
+      Threshold: !Ref ComplaintRatePercentAlarm
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref TripTopic, !Ref AlertsTopic]
+      Metrics:
+        - Id: sends
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/SES
+              MetricName: Send
+            Period: 86400
+            Stat: Sum
+        - Id: complaints
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/SES
+              MetricName: Complaint
+            Period: 86400
+            Stat: Sum
+        - Id: rate
+          Label: Complaint rate (%)
+          ReturnData: true
+          Expression: !Sub IF(sends >= ${RateAlarmMinimumSends}, 100 * FILL(complaints, 0) / sends, 0)
+
+  CapReachedFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApiFunctionName}
+      FilterPattern: '{ $.code = "EMAIL_CAP_REACHED" }'
+      MetricTransformations:
+        - MetricNamespace: LedgerFlow/Email
+          MetricName: CapReached
+          MetricValue: "1"
+          Unit: Count
+
+  CapReachedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ledger-flow-email-cap-reached
+      AlarmDescription: The app reached a daily or monthly email cap and is refusing that share's emails. Does not pause SES.
+      Namespace: LedgerFlow/Email
+      MetricName: CapReached
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  EventsUnsubscribedFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApiFunctionName}
+      FilterPattern: '{ $.code = "EMAIL_EVENTS_UNSUBSCRIBED" }'
+      MetricTransformations:
+        - MetricNamespace: LedgerFlow/Email
+          MetricName: EventsUnsubscribed
+          MetricValue: "1"
+          Unit: Count
+
+  EventsUnsubscribedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ledger-flow-email-events-unsubscribed
+      AlarmDescription: The API's subscription to the SES events topic was removed, so bounces and complaints stopped arriving. Does not pause SES.
+      Namespace: LedgerFlow/Email
+      MetricName: EventsUnsubscribed
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  EventsUndeliveredAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ledger-flow-email-events-undelivered
+      AlarmDescription: SNS gave up delivering an SES event to the API's webhook, so a bounce or complaint may be lost. Does not pause SES.
+      Namespace: AWS/SNS
+      MetricName: NumberOfNotificationsFailed
+      Dimensions:
+        - Name: TopicName
+          Value: !GetAtt EventsTopic.TopicName
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  DenySendPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: ledger-flow-deny-email
+      Description: Attached to the API's role by the SES budget when the month's spend is reached.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Deny
+            Action: ses:Send*
+            Resource: "*"
+
+  BudgetActionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: budgets.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:budgets::${AWS::AccountId}:budget/ledger-flow-ses*
+      Policies:
+        - PolicyName: deny-email-to-the-api
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [iam:AttachRolePolicy, iam:DetachRolePolicy]
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ApiRoleName}
+                Condition:
+                  ArnEquals:
+                    iam:PolicyARN: !Ref DenySendPolicy
+
+  EmailBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: ledger-flow-ses
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetUsd
+          Unit: USD
+        FilterExpression:
+          And:
+            - Dimensions:
+                Key: SERVICE
+                Values: [Amazon Simple Email Service]
+            - Not:
+                Dimensions:
+                  Key: RECORD_TYPE
+                  Values: [Credit, Refund]
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 50
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+
+  EmailBudgetAction:
+    Type: AWS::Budgets::BudgetsAction
+    Properties:
+      BudgetName: !Ref EmailBudget
+      NotificationType: ACTUAL
+      ActionType: APPLY_IAM_POLICY
+      ActionThreshold:
+        Type: PERCENTAGE
+        Value: 100
+      ApprovalModel: AUTOMATIC
+      ExecutionRoleArn: !GetAtt BudgetActionRole.Arn
+      Definition:
+        IamActionDefinition:
+          PolicyArn: !Ref DenySendPolicy
+          Roles: [!Ref ApiRoleName]
+      Subscribers:
+        - Type: EMAIL
+          Address: !Ref AlertEmail
+
+Outputs:
+  DkimRecord1:
+    Description: Cloudflare, DNS only. CNAME name → target.
+    Value: !Sub ${EmailIdentity.DkimDNSTokenName1} → ${EmailIdentity.DkimDNSTokenValue1}
+  DkimRecord2:
+    Description: Cloudflare, DNS only. CNAME name → target.
+    Value: !Sub ${EmailIdentity.DkimDNSTokenName2} → ${EmailIdentity.DkimDNSTokenValue2}
+  DkimRecord3:
+    Description: Cloudflare, DNS only. CNAME name → target.
+    Value: !Sub ${EmailIdentity.DkimDNSTokenName3} → ${EmailIdentity.DkimDNSTokenValue3}
+  MailFromMxRecord:
+    Description: Cloudflare. MX name → mail server, priority 10.
+    Value: !Sub bounce.${Domain} → feedback-smtp.${AWS::Region}.amazonses.com
+  MailFromSpfRecord:
+    Description: Cloudflare. TXT name → content.
+    Value: !Sub bounce.${Domain} → v=spf1 include:amazonses.com ~all
+  ConfigurationSet:
+    Description: The Lambda's EMAIL_SES_CONFIGURATION_SET.
+    Value: !Ref ConfigurationSet
+  EventsTopicArn:
+    Description: The Lambda's EMAIL_SES_EVENTS_TOPIC_ARN. Set it before WebhookUrl.
+    Value: !Ref EventsTopic
+  PauseFunction:
+    Description: The Lambda that pauses SES when an alarm fires.
+    Value: !Ref PauseFunction

@@ -5,6 +5,7 @@
 ```
 lag-money-manager/
 ├── docs/                          # Project documentation (you are here)
+├── infra/                         # CloudFormation the owner deploys by hand (email.yaml: SES and its guards)
 ├── requests/                      # `.http` request examples (REST client)
 ├── scripts/                       # Deploy and ops scripts (Lambda, keepalive, index sync, email preview and unsuppress)
 ├── src/
@@ -15,6 +16,7 @@ lag-money-manager/
 │   │   ├── email/                 # Email templates, provider chain and adapters
 │   │   ├── entities/              # Domain entity unit tests
 │   │   ├── factories/             # Repository factory unit tests
+│   │   ├── infra/                 # The CloudFormation templates of infra/
 │   │   ├── integration/           # API integration tests (supertest)
 │   │   ├── middleware/            # Middleware unit tests
 │   │   ├── services/              # Service layer unit tests
@@ -71,6 +73,15 @@ lag-money-manager/
 
 ## Directory Details
 
+### `infra/`
+
+CloudFormation templates the owner deploys by hand, never the deploy script. `email.yaml` is Amazon
+SES and its guards; its guide is [Email in Production](../guides/email.md).
+
+- **What belongs here:** AWS resources the API needs around it that are set up once
+- **What does NOT belong here:** The API's own function, which `npm run deploy:lambda` updates
+- **Naming:** `<what it sets up>.yaml`
+
 ### `src/`
 
 Root source directory. Contains the entry-point files (`app.ts`, `server.ts`, `lambda.ts`) and all subdirectories.
@@ -104,6 +115,11 @@ Unit tests for middleware functions (error handling, auth, request id, request l
 #### `src/__tests__/services/`
 
 Unit tests for service layer business logic with mocked repositories.
+
+#### `src/__tests__/infra/`
+
+Tests of the CloudFormation templates in `infra/`: they run the inline code of a template's Lambda
+against fake AWS clients, and fail when a template drifts from what the API logs, mounts or accepts.
 
 #### `src/__tests__/factories/`, `src/__tests__/shared/`, `src/__tests__/validation/`
 

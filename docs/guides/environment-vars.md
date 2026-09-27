@@ -89,8 +89,9 @@ nothing. What each limit means, and why it is there: [Email module](../modules/e
 
 Like every variable here, a value the schema refuses stops the process from starting, so a typo in a
 console edit takes the API down until it is corrected. Startup refuses shares that add up to 100 or more, and a cap so low that the reset or the security
-share rounds down to zero. To raise the caps when the app grows, raise SES's own quota first, then
-these two (T-224 writes the table of values per spending step).
+share rounds down to zero. To raise the caps when the app grows, raise SES's own quota and the AWS
+guards first, then these two: [Email in Production](./email.md#raising-the-limits) has the values per
+spending step, and how SES, its DNS and its guards are set up.
 
 ## MongoDB
 
