@@ -10,7 +10,7 @@ import request from "supertest";
 import app from "../../app";
 import { AccountModel } from "../../infrastructure/models/AccountModel";
 import { TransactionModel } from "../../infrastructure/models/TransactionModel";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 interface Session {
   token: string;
@@ -73,6 +73,7 @@ describe("what counts as yours, against mongod", () => {
     await connect();
     await dropDatabase();
     const registered = await request(app).post("/auth/register").send({
+      captcha: TEST_CAPTCHA,
       name: "Owner",
       email: "owner@shared-ledger.test",
       password: "Offline!2026",
@@ -185,6 +186,7 @@ describe("what counts as yours, against mongod", () => {
 
     it("refuses a movement of somebody else's the same way as a missing one", async () => {
       const stranger = await request(app).post("/auth/register").send({
+        captcha: TEST_CAPTCHA,
         name: "Stranger",
         email: "stranger@shared-ledger.test",
         password: "Offline!2026",

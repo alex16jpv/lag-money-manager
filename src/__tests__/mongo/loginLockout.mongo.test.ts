@@ -3,7 +3,7 @@ import request from "supertest";
 import app from "../../app";
 import { CLIENT_IP_HEADER } from "../../app/middlewares/clientIp";
 import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 jest.mock("../../shared/constants", () => {
   const actual = jest.requireActual("../../shared/constants");
@@ -43,6 +43,7 @@ const registerAs = (
   ip: string,
 ): request.Test =>
   fromClient(request(app).post("/auth/register"), ip).send({
+    captcha: TEST_CAPTCHA,
     name: "Someone",
     email,
     password,

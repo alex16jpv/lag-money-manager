@@ -7,7 +7,7 @@
 import request from "supertest";
 
 import app from "../../app";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 interface Session {
   token: string;
@@ -17,9 +17,13 @@ interface Session {
 type Row = Record<string, unknown>;
 
 async function register(email: string, name: string): Promise<Session> {
-  const res = await request(app)
-    .post("/auth/register")
-    .send({ name, email, password: "Offline!2026", currency: "COP" });
+  const res = await request(app).post("/auth/register").send({
+    captcha: TEST_CAPTCHA,
+    name,
+    email,
+    password: "Offline!2026",
+    currency: "COP",
+  });
   expect(res.status).toBe(201);
   return { token: res.body.accessToken, userId: res.body.user.id };
 }

@@ -2,6 +2,9 @@
 ### AUTH — registro (devuelve tokens), login, refresh con rotación,
 ### logout por dispositivo, logout-all, sesiones activas
 ### Corre "register" una vez, luego "login". El resto encadena.
+### Todo registro lleva captcha: en local pasa con
+### TURNSTILE_SECRET=1x0000000000000000000000000000000AA en .env y el
+### token de prueba de Cloudflare (sin el secreto, 503 CAPTCHA_UNAVAILABLE).
 ### ==========================================================
 @baseUrl = http://localhost:3000
 @email = tester@test.com
@@ -19,7 +22,8 @@ Content-Type: application/json
   "password": "{{password}}",
   "timezone": "America/Bogota",
   "currency": "COP",
-  "locale": "en"
+  "locale": "en",
+  "captcha": "XXXX.DUMMY.TOKEN.XXXX"
 }
 
 ### Register con email de una cuenta borrada (soft delete) — REACTIVA la cuenta
@@ -146,19 +150,25 @@ Authorization: Bearer {{accessToken}}
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
 
-{ "name": "Otro", "email": "{{email}}", "password": "{{password}}" }
+{ "name": "Otro", "email": "{{email}}", "password": "{{password}}", "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
 
 ### Register — email con mayúsculas = misma cuenta (409; emails normalizados)
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
 
-{ "name": "Otro", "email": "TESTER@test.com", "password": "{{password}}" }
+{ "name": "Otro", "email": "TESTER@test.com", "password": "{{password}}", "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
 
 ### Register — currency inválida (400: debe ser ISO 4217 de 3 letras)
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
 
-{ "name": "X", "email": "x@test.com", "password": "{{password}}", "currency": "pesos" }
+{ "name": "X", "email": "x@test.com", "password": "{{password}}", "currency": "pesos", "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
+
+### Register — sin captcha (400 VALIDATION; no se crea nada)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "name": "X", "email": "x@test.com", "password": "{{password}}" }
 
 ### Login — password incorrecta (401; mismo timing que email inexistente)
 POST {{baseUrl}}/auth/login
@@ -246,8 +256,8 @@ Content-Type: application/json
 ### EMAIL_PROVIDERS=mailpit): el código y los enlaces se leen en http://localhost:8025
 ### ==========================================================
 
-### Register con captcha — además de la sesión, manda verify-email (código, enlace
-### y "No fui yo"). Sin captcha la cuenta se crea igual y no se manda nada.
+### Register — además de la sesión, manda verify-email (código, enlace y
+### "No fui yo"). Si el envío falla, la cuenta se crea igual sin código vivo.
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
 

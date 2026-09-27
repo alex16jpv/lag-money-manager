@@ -7,7 +7,7 @@ import request from "supertest";
 
 import app from "../../app";
 import { swaggerSpec } from "../../config/swagger";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 interface Session {
   token: string;
@@ -91,6 +91,7 @@ describe("the shared layer through sync, against mongod", () => {
     await connect();
     await dropDatabase();
     const registered = await request(app).post("/auth/register").send({
+      captcha: TEST_CAPTCHA,
       name: "Owner",
       email: "owner@shared-sync.test",
       password: "Offline!2026",

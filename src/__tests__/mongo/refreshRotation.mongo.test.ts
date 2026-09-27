@@ -5,7 +5,7 @@ import request from "supertest";
 import app from "../../app";
 import { RefreshSessionModel } from "../../infrastructure/models/RefreshSessionModel";
 import { RefreshSessionRepository } from "../../infrastructure/repositories/refreshSession/RefreshSessionRepository";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 const jtiOf = (token: string): string =>
   (jwt.decode(token) as { jti: string }).jti;
@@ -20,9 +20,12 @@ const logout = async (refreshToken: string): Promise<request.Response> =>
 const PRODUCTION_GAP_MS = 13_284_000;
 
 async function register(email: string): Promise<string> {
-  const res = await request(app)
-    .post("/auth/register")
-    .send({ name: "Rotator", email, password: "Offline!2026" });
+  const res = await request(app).post("/auth/register").send({
+    captcha: TEST_CAPTCHA,
+    name: "Rotator",
+    email,
+    password: "Offline!2026",
+  });
   expect(res.status).toBe(201);
   return res.body.refreshToken as string;
 }

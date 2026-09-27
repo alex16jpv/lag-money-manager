@@ -265,7 +265,7 @@ const responseViews = {
                 codeLive: {
                   type: "boolean",
                   description:
-                    "A code sent in the last 24 hours that still has tries: show the code field. False when none was ever sent — accounts from before email, a register without captcha, a send that failed — or it expired or was used up: show Send code.",
+                    "A code sent in the last 24 hours that still has tries: show the code field. False when none was ever sent — accounts from before email, a send that failed — or it expired or was used up: show Send code.",
                 },
                 lastSentAt: {
                   ...nullableDateTime,

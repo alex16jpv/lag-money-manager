@@ -5,10 +5,7 @@ import { AuthController } from "../controllers/AuthController";
 import { createCaptchaVerifier } from "../factories/captchaFactory";
 import { authMiddleware } from "../middlewares/authMiddleware";
 import { authRateLimit } from "../middlewares/authRateLimitMiddleware";
-import {
-  captchaIfSent,
-  requireCaptcha,
-} from "../middlewares/captchaMiddleware";
+import { requireCaptcha } from "../middlewares/captchaMiddleware";
 import { clientIp } from "../middlewares/clientIp";
 import { attemptedEmail } from "../middlewares/loginAttempt";
 import {
@@ -139,11 +136,12 @@ const refreshLimiter = authRateLimit({
  *       account. On a 500 the
  *       user may still have been created: try login before retrying register.
  *       `captcha` is a Cloudflare Turnstile token issued for the action
- *       `register`: with it, an account whose email is not confirmed is sent
- *       `verify-email` (a 6-digit code and a link, 24 hours); without it,
- *       nothing is sent and `GET /users/{id}` shows no live code, so the
- *       client offers Send code. A send that fails does not fail the
- *       register. The account works before its email is confirmed
+ *       `register`, asked for when the button is pressed: it works once, and
+ *       nothing is created without one that passes. An account whose email
+ *       is not confirmed is sent `verify-email` (a 6-digit code and a link,
+ *       24 hours). A send that fails does not fail the register:
+ *       `GET /users/{id}` then shows no live code, so the client offers Send
+ *       code. The account works before its email is confirmed
  *       (`user.emailVerified`); only invitations wait for it.
  *     security: []
  *     requestBody:
@@ -161,8 +159,10 @@ const refreshLimiter = authRateLimit({
  *               $ref: '#/components/schemas/AuthTokens'
  *       400:
  *         description: >
- *           Validation error (code VALIDATION), or Cloudflare refused the
- *           captcha token (code CAPTCHA_INVALID)
+ *           Validation error, a missing captcha among them (code
+ *           VALIDATION), or Cloudflare refused the captcha token: spent,
+ *           expired, forged, or issued for another site or action (code
+ *           CAPTCHA_INVALID). Ask for a new token and try again
  *         content:
  *           application/json:
  *             schema:
@@ -188,8 +188,8 @@ const refreshLimiter = authRateLimit({
  *               $ref: '#/components/schemas/ErrorResponse'
  *       503:
  *         description: >
- *           A captcha was sent and could not be checked (code
- *           CAPTCHA_UNAVAILABLE): nothing was created. Try again
+ *           The captcha could not be checked (code CAPTCHA_UNAVAILABLE):
+ *           nothing was created. Try again
  *         content:
  *           application/json:
  *             schema:
@@ -200,7 +200,7 @@ router.post(
   registerLimiter,
   ...accountLimiters,
   validate(registerSchema),
-  captchaIfSent("register", captcha),
+  requireCaptcha("register", captcha),
   AuthController.register,
 );
 

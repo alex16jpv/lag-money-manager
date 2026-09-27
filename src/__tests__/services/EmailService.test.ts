@@ -524,7 +524,7 @@ describe("EmailService", () => {
       ).toEqual(new Date("2026-10-01T00:00:00Z"));
     });
 
-    it("gives back what a failed send did not spend", async () => {
+    it("gives back what a failed send did not spend, and keeps the requester's try [T-228]", async () => {
       provider.send.mockRejectedValue(
         new EmailProviderError("mailpit", "transport", "HTTP 500", {
           outcome: "refused",
@@ -533,7 +533,9 @@ describe("EmailService", () => {
       const outcome = await reset(service());
       expect(outcome).toEqual({ status: "failed", reason: "unavailable" });
       expect(counters.count("email-cap:")).toBe(0);
-      expect(counters.count("email-address:")).toBe(1);
+      expect(counters.count("email-address:")).toBe(0);
+      expect(counters.count("email-address-day:")).toBe(0);
+      expect(counters.count("email-ip:")).toBe(1);
       expect(deliveries.rows).toMatchObject([
         {
           status: "failed",
@@ -819,6 +821,27 @@ describe("EmailService", () => {
       expect(counters.count("email-address:")).toBe(1);
       expect(counters.count("email-ip:")).toBe(1);
       expect(counters.count("email-cap:reset:")).toBe(2);
+    });
+
+    it("keeps the address brakes it held when the send leaves nothing [T-228]", async () => {
+      const svc = service();
+      provider.send.mockRejectedValue(
+        new EmailProviderError("mailpit", "transport", "HTTP 500", {
+          outcome: "refused",
+        }),
+      );
+      await hold(svc);
+      await expect(
+        svc.sendCode({
+          template: "password-reset",
+          data: CODE,
+          recipient: RECIPIENT,
+          requester: REQUESTER,
+          brakesHeld: true,
+        }),
+      ).resolves.toEqual({ status: "failed", reason: "unavailable" });
+      expect(counters.count("email-address:")).toBe(1);
+      expect(counters.count("email-cap:")).toBe(0);
     });
 
     it("counts no cap for an address nothing is sent to", async () => {

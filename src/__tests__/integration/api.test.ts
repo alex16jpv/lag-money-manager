@@ -1,5 +1,6 @@
 import bcryptjs from "bcryptjs";
 
+import { EmailVerificationService } from "../../app/services/EmailVerificationService";
 import { Account } from "../../domain/entities/Account";
 import { Budget } from "../../domain/entities/Budget";
 import { Category } from "../../domain/entities/Category";
@@ -226,6 +227,16 @@ const mockAuthCodeRepo = {
   findByLiveToken: jest.fn().mockResolvedValue(null),
 };
 
+const CAPTCHA = "XXXX.DUMMY.TOKEN.XXXX";
+
+const mockCaptchaVerify = jest.fn().mockResolvedValue({ passed: true });
+
+const UNCHECKED = {
+  passed: false,
+  reason: "unavailable",
+  detail: "TURNSTILE_SECRET is not set",
+};
+
 // --- Mock modules before importing app ---
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
@@ -384,6 +395,10 @@ jest.mock("../../app/middlewares/authRateLimitMiddleware", () => ({
       next(),
 }));
 
+jest.mock("../../app/factories/captchaFactory", () => ({
+  createCaptchaVerifier: () => ({ verify: mockCaptchaVerify }),
+}));
+
 jest.mock("../../app/factories/RepositoryFactory", () => ({
   __esModule: true,
   default: {
@@ -484,17 +499,27 @@ describe("Integration Tests", () => {
   });
 
   describe("POST /auth/register", () => {
-    it("should register a new user", async () => {
+    it("should register a new user, and send it the code to confirm its email", async () => {
       mockUserRepo.create.mockResolvedValue(testUser);
+      const send = jest.spyOn(EmailVerificationService.prototype, "send");
 
       const res = await request(app).post("/auth/register").send({
         name: "John Doe",
         email: "john@example.com",
         password: "password123",
+        captcha: CAPTCHA,
       });
 
       expect(res.status).toBe(201);
       expect(mockUserRepo.create).toHaveBeenCalledTimes(1);
+      expect(mockCaptchaVerify).toHaveBeenCalledWith(
+        expect.objectContaining({ token: CAPTCHA, action: "register" }),
+      );
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({ email: testUser.email }),
+        expect.anything(),
+      );
+      send.mockRestore();
     });
 
     it("should return 400 for invalid email", async () => {
@@ -502,6 +527,7 @@ describe("Integration Tests", () => {
         name: "John",
         email: "not-an-email",
         password: "password123",
+        captcha: CAPTCHA,
       });
 
       expect(res.status).toBe(400);
@@ -513,6 +539,7 @@ describe("Integration Tests", () => {
         name: "John",
         email: "john@example.com",
         password: "short",
+        captcha: CAPTCHA,
       });
 
       expect(res.status).toBe(400);
@@ -696,9 +723,10 @@ describe("Integration Tests", () => {
     });
 
     it("sends nothing and says so when the captcha cannot be checked", async () => {
+      mockCaptchaVerify.mockResolvedValueOnce(UNCHECKED);
       const res = await request(app)
         .post("/auth/password/forgot")
-        .send({ email: "john@example.com", captcha: "XXXX.DUMMY.TOKEN.XXXX" });
+        .send({ email: "john@example.com", captcha: CAPTCHA });
 
       expect(res.status).toBe(503);
       expect(res.body.code).toBe("CAPTCHA_UNAVAILABLE");
@@ -706,8 +734,8 @@ describe("Integration Tests", () => {
     });
   });
 
-  describe("POST /auth/register with a captcha [T-209]", () => {
-    it("sends no code without a captcha: the account is made as ever", async () => {
+  describe("POST /auth/register's captcha [T-228]", () => {
+    it("creates nothing without a captcha", async () => {
       mockUserRepo.create.mockResolvedValue(testUser);
 
       const res = await request(app).post("/auth/register").send({
@@ -716,17 +744,42 @@ describe("Integration Tests", () => {
         password: "password123",
       });
 
-      expect(res.status).toBe(201);
-      expect(res.body.user.emailVerified).toBe(false);
-      expect(mockAuthCodeRepo.recordRequest).not.toHaveBeenCalled();
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+      expect(res.body.details).toEqual([
+        expect.objectContaining({ field: "captcha" }),
+      ]);
+      expect(mockCaptchaVerify).not.toHaveBeenCalled();
+      expect(mockUserRepo.create).not.toHaveBeenCalled();
     });
 
-    it("creates nothing when the captcha sent cannot be checked", async () => {
+    it("creates nothing when Cloudflare refuses the captcha", async () => {
+      mockCaptchaVerify.mockResolvedValueOnce({
+        passed: false,
+        reason: "refused",
+        detail: "timeout-or-duplicate",
+      });
+
       const res = await request(app).post("/auth/register").send({
         name: "John Doe",
         email: "john@example.com",
         password: "password123",
-        captcha: "XXXX.DUMMY.TOKEN.XXXX",
+        captcha: CAPTCHA,
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("CAPTCHA_INVALID");
+      expect(mockUserRepo.create).not.toHaveBeenCalled();
+    });
+
+    it("creates nothing when the captcha cannot be checked", async () => {
+      mockCaptchaVerify.mockResolvedValueOnce(UNCHECKED);
+
+      const res = await request(app).post("/auth/register").send({
+        name: "John Doe",
+        email: "john@example.com",
+        password: "password123",
+        captcha: CAPTCHA,
       });
 
       expect(res.status).toBe(503);
@@ -780,7 +833,7 @@ describe("Integration Tests", () => {
     it("needs a session", async () => {
       const res = await request(app)
         .post("/auth/email/resend")
-        .send({ captcha: "XXXX.DUMMY.TOKEN.XXXX" });
+        .send({ captcha: CAPTCHA });
 
       expect(res.status).toBe(401);
     });
@@ -793,10 +846,11 @@ describe("Integration Tests", () => {
       expect(missing.status).toBe(400);
       expect(missing.body.code).toBe("VALIDATION");
 
+      mockCaptchaVerify.mockResolvedValueOnce(UNCHECKED);
       const unchecked = await request(app)
         .post("/auth/email/resend")
         .set("Authorization", `Bearer ${token}`)
-        .send({ captcha: "XXXX.DUMMY.TOKEN.XXXX" });
+        .send({ captcha: CAPTCHA });
       expect(unchecked.status).toBe(503);
       expect(unchecked.body.code).toBe("CAPTCHA_UNAVAILABLE");
       expect(mockAuthCodeRepo.recordRequest).not.toHaveBeenCalled();

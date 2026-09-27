@@ -7,6 +7,9 @@
  */
 import request from "supertest";
 
+import repositoryFactory from "../../app/factories/RepositoryFactory";
+import { AuthService } from "../../app/services/AuthService";
+import { CategoryService } from "../../app/services/CategoryService";
 import { OutgoingEmail } from "../../domain/email/EmailProvider";
 import { AccountModel } from "../../infrastructure/models/AccountModel";
 import { AuthCodeModel } from "../../infrastructure/models/AuthCodeModel";
@@ -17,26 +20,24 @@ import { SharedInvitationModel } from "../../infrastructure/models/SharedInvitat
 import { UserModel } from "../../infrastructure/models/UserModel";
 import { UserDataEraser } from "../../infrastructure/repositories/userData/UserDataEraser";
 import { hashEmailAddress } from "../../shared/emailHash";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 const mockSent: OutgoingEmail[] = [];
+const mockUnreachable = new Set<string>();
 
 jest.mock("../../shared/constants", () => {
   process.env.EMAIL_VERIFICATION_REQUIRED = "true";
   return jest.requireActual("../../shared/constants");
 });
 
-jest.mock("../../app/factories/captchaFactory", () => ({
-  createCaptchaVerifier: () => ({
-    verify: async () => ({ passed: true }),
-  }),
-}));
-
 // A provider that keeps what it is given: this suite reads the code the way a person would.
 jest.mock("../../app/factories/emailServiceFactory", () => {
   const actual = jest.requireActual("../../app/factories/emailServiceFactory");
   const { EmailService } = jest.requireActual(
     "../../app/services/EmailService",
+  );
+  const { EmailProviderError } = jest.requireActual(
+    "../../domain/email/EmailProvider",
   );
   const factory = jest.requireActual(
     "../../app/factories/RepositoryFactory",
@@ -50,6 +51,11 @@ jest.mock("../../app/factories/emailServiceFactory", () => {
           {
             name: "mailpit",
             send: async (email: OutgoingEmail) => {
+              if (mockUnreachable.has(email.to)) {
+                throw new EmailProviderError("mailpit", "transport", "down", {
+                  outcome: "neverLeft",
+                });
+              }
               mockSent.push(email);
               return { messageId: `m-${mockSent.length}` };
             },
@@ -77,23 +83,41 @@ interface Session {
 }
 
 const PASSWORD = "Offline!2026";
-const CAPTCHA = "XXXX.DUMMY.TOKEN.XXXX";
 
-async function register(
+async function register(email: string, name: string): Promise<Session> {
+  const res = await request(app).post("/auth/register").send({
+    captcha: TEST_CAPTCHA,
+    name,
+    email,
+    password: PASSWORD,
+    currency: "COP",
+  });
+  expect(res.status).toBe(201);
+  return {
+    token: res.body.accessToken,
+    refreshToken: res.body.refreshToken,
+    userId: res.body.user.id,
+  };
+}
+
+// Made the way every account from before the email was: by the service, with no email sent.
+async function accountFromBeforeEmail(
   email: string,
   name: string,
-  options: { captcha?: boolean; password?: string } = {},
 ): Promise<Session> {
+  const auth = new AuthService(
+    repositoryFactory.getUserRepository(),
+    new CategoryService(
+      repositoryFactory.getCategoryRepository(),
+      repositoryFactory.getTransactionRepository(),
+    ),
+    repositoryFactory.getRefreshSessionRepository(),
+  );
+  await auth.register({ name, email, password: PASSWORD });
   const res = await request(app)
-    .post("/auth/register")
-    .send({
-      name,
-      email,
-      password: options.password ?? PASSWORD,
-      currency: "COP",
-      ...(options.captcha === false ? {} : { captcha: CAPTCHA }),
-    });
-  expect(res.status).toBe(201);
+    .post("/auth/login")
+    .send({ email, password: PASSWORD });
+  expect(res.status).toBe(200);
   return {
     token: res.body.accessToken,
     refreshToken: res.body.refreshToken,
@@ -129,7 +153,7 @@ const verifyLink = (token: string): request.Test =>
 const resend = (session: Session): request.Test =>
   as(
     session,
-    request(app).post("/auth/email/resend").send({ captcha: CAPTCHA }),
+    request(app).post("/auth/email/resend").send({ captcha: TEST_CAPTCHA }),
   );
 
 const notMe = (token: string): request.Test =>
@@ -235,10 +259,29 @@ describe("Confirming an email against mongod [T-209]", () => {
     expect(row?.attempts).toBe(5);
   });
 
-  it("sends nothing at a sign-up without captcha, and Send code confirms by the link alone", async () => {
-    const dani = await register("dani@verify.test", "Dani Gil", {
-      captcha: false,
+  it("signs up even when its email cannot go out, and its Send code goes at once [T-228]", async () => {
+    mockUnreachable.add("dora@verify.test");
+    let dora: Session;
+    try {
+      dora = await register("dora@verify.test", "Dora Paz");
+    } finally {
+      mockUnreachable.delete("dora@verify.test");
+    }
+    expect(sentTo("dora@verify.test")).toBe(0);
+    expect((await profile(dora)).emailVerification).toEqual({
+      codeLive: false,
+      lastSentAt: null,
+      resendAvailableAt: null,
     });
+
+    const sent = await resend(dora);
+    expect(sent.status).toBe(202);
+    expect((await profile(dora)).emailVerification?.codeLive).toBe(true);
+    expect(sentTo("dora@verify.test")).toBe(1);
+  });
+
+  it("gives an account from before the email a code from Send code, and confirms it by the link alone", async () => {
+    const dani = await accountFromBeforeEmail("dani@verify.test", "Dani Gil");
     expect(sentTo("dani@verify.test")).toBe(0);
     expect((await profile(dani)).emailVerification).toEqual({
       codeLive: false,
@@ -422,6 +465,7 @@ describe("Confirming an email against mongod [T-209]", () => {
     expect(refresh.status).toBe(401);
 
     const gina = await request(app).post("/auth/register").send({
+      captcha: TEST_CAPTCHA,
       name: "Gina",
       email: "gina@verify.test",
       password: "Gina's own 2026",
@@ -463,6 +507,7 @@ describe("Confirming an email against mongod [T-209]", () => {
     );
     expect(deleted.status).toBe(200);
     const taken = await request(app).post("/auth/register").send({
+      captcha: TEST_CAPTCHA,
       name: "Ivan",
       email: "ivan@verify.test",
       password: "Ivan's own 2026",
@@ -472,6 +517,7 @@ describe("Confirming an email against mongod [T-209]", () => {
     expect((await notMe(notMeToken)).status).toBe(200);
 
     const mine = await request(app).post("/auth/register").send({
+      captcha: TEST_CAPTCHA,
       name: "Ivan",
       email: "ivan@verify.test",
       password: "Ivan's own 2026",
@@ -495,6 +541,7 @@ describe("Confirming an email against mongod [T-209]", () => {
       .send({ email: "jose@verify.test", password: PASSWORD });
     expect(login.status).toBe(401);
     const revive = await request(app).post("/auth/register").send({
+      captcha: TEST_CAPTCHA,
       name: "Not Jose",
       email: "jose@verify.test",
       password: PASSWORD,
@@ -505,6 +552,7 @@ describe("Confirming an email against mongod [T-209]", () => {
     spy.mockRestore();
     expect(await UserModel.findById(jose.userId).lean()).toBeNull();
     const mine = await request(app).post("/auth/register").send({
+      captcha: TEST_CAPTCHA,
       name: "Jose",
       email: "jose@verify.test",
       password: "Jose's own 2026",
@@ -565,7 +613,7 @@ describe("Confirming an email against mongod [T-209]", () => {
     });
     const again = await as(
       lola,
-      request(app).post("/auth/email/resend").send({ captcha: CAPTCHA }),
+      request(app).post("/auth/email/resend").send({ captcha: TEST_CAPTCHA }),
     );
     expect(again.status).toBe(202);
     const fresh = notMeOf("lola@verify.test");

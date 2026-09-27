@@ -6,7 +6,7 @@
 import request from "supertest";
 
 import app from "../../app";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 // A valid uuid v7 minted before any row here, so `_id > it` would match every one of them.
 const BEFORE_EVERY_ID = "01950000-0000-7000-8000-a00000000099";
@@ -17,9 +17,12 @@ interface Session {
 }
 
 async function register(email: string): Promise<Session> {
-  const res = await request(app)
-    .post("/auth/register")
-    .send({ name: "Owner", email, password: "Offline!2026" });
+  const res = await request(app).post("/auth/register").send({
+    captcha: TEST_CAPTCHA,
+    name: "Owner",
+    email,
+    password: "Offline!2026",
+  });
   expect(res.status).toBe(201);
   return { token: res.body.accessToken, userId: res.body.user.id };
 }

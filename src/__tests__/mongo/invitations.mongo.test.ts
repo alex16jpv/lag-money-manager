@@ -8,7 +8,7 @@ import request from "supertest";
 
 import app from "../../app";
 import { SharedInvitationModel } from "../../infrastructure/models/SharedInvitationModel";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 interface Session {
   token: string;
@@ -20,9 +20,13 @@ async function register(
   name: string,
   currency = "COP",
 ): Promise<Session> {
-  const res = await request(app)
-    .post("/auth/register")
-    .send({ name, email, password: "Offline!2026", currency });
+  const res = await request(app).post("/auth/register").send({
+    captcha: TEST_CAPTCHA,
+    name,
+    email,
+    password: "Offline!2026",
+    currency,
+  });
   expect(res.status).toBe(201);
   return { token: res.body.accessToken, userId: res.body.user.id };
 }

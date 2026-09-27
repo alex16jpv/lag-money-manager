@@ -85,7 +85,7 @@ export class AuthController {
       req.body,
       req.get("User-Agent") ?? undefined,
     );
-    if (req.captchaPassed && !result.user.emailVerified) {
+    if (!result.user.emailVerified) {
       try {
         await verification.send(result.user, requesterOf(req));
       } catch (err) {

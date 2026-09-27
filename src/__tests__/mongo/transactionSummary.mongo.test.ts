@@ -1,7 +1,7 @@
 import request from "supertest";
 
 import app from "../../app";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 describe("the listing's summary against mongod", () => {
   let token: string;
@@ -25,6 +25,7 @@ describe("the listing's summary against mongod", () => {
     await connect();
     await dropDatabase();
     const registered = await request(app).post("/auth/register").send({
+      captcha: TEST_CAPTCHA,
       name: "Sums",
       email: "sums@summary.test",
       password: "Offline!2026",

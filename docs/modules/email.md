@@ -207,10 +207,13 @@ an environment variable of the Lambda: it changes in the console and applies on 
   alarm ([Email in Production](../guides/email.md#the-alarms)) is a metric filter on it.
 - **All the brakes of a send are counted at once**, in one parallel round trip, and then judged.
 - **An attempt stopped by one brake gives back the brakes it had already passed**, so an attacker
-  whose IP is blocked does not also use up the victim's address. **A send gives back its caps only
-  when nothing went out**: every provider answered with a refusal or never got the request (it cost
-  nothing). Never after a timeout or a connection that broke without an answer: the provider may have
-  sent it, and billed it. It never gives back its abuse brakes.
+  whose IP is blocked does not also use up the victim's address. **A send gives back its caps and its
+  address's brakes only when nothing went out**: every provider answered with a refusal or never got
+  the request (it cost nothing, and nothing reached that inbox), so the account's Send code works at
+  once, as its `emailVerification` says. Never after a timeout or a connection that broke without an
+  answer: the provider may have sent it, and billed it. The requester's and the account's brakes are
+  never given back: they count every try. A code whose address brakes were held for it
+  (`holdBrakes`, Forgot your password?) gives back only its caps, the same for every address.
 - **If the store cannot count, nothing is sent** (`failed / unavailable`, logged as
   `EMAIL_BRAKES_UNAVAILABLE`), and whatever it did count is given back. The auth limiter fails open because locking everyone out of sign-in is
   worse than a lost limit; here the limit is the spending guarantee, and a missing email is the

@@ -22,15 +22,9 @@ import { UserModel } from "../../infrastructure/models/UserModel";
 import { AuthCodeRepository } from "../../infrastructure/repositories/authCode/AuthCodeRepository";
 import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
 import { hashEmailAddress } from "../../shared/emailHash";
-import { connect, disconnect, dropDatabase } from "./support";
+import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 const mockSent: OutgoingEmail[] = [];
-
-jest.mock("../../app/factories/captchaFactory", () => ({
-  createCaptchaVerifier: () => ({
-    verify: async () => ({ passed: true }),
-  }),
-}));
 
 // A provider that keeps what it is given: this suite reads the code the way a person would.
 jest.mock("../../app/factories/emailServiceFactory", () => {
@@ -79,9 +73,13 @@ interface Session {
 const PASSWORD = "Offline!2026";
 
 async function register(email: string, name: string): Promise<Session> {
-  const res = await request(app)
-    .post("/auth/register")
-    .send({ name, email, password: PASSWORD, currency: "COP" });
+  const res = await request(app).post("/auth/register").send({
+    captcha: TEST_CAPTCHA,
+    name,
+    email,
+    password: PASSWORD,
+    currency: "COP",
+  });
   expect(res.status).toBe(201);
   return {
     token: res.body.accessToken,
@@ -102,12 +100,15 @@ async function created(req: request.Test): Promise<string> {
 const forgot = (email: string): request.Test =>
   request(app)
     .post("/auth/password/forgot")
-    .send({ email, captcha: "XXXX.DUMMY.TOKEN.XXXX" });
+    .send({ email, captcha: TEST_CAPTCHA });
 
 const reset = (body: Record<string, unknown>): request.Test =>
   request(app)
     .post("/auth/password/reset")
     .send({ newPassword: "Brand new 2026", ...body });
+
+const resetsSent = (): OutgoingEmail[] =>
+  mockSent.filter((email) => email.template === "password-reset");
 
 function lastEmailTo(address: string): { code: string; token: string } {
   const email = [...mockSent].reverse().find((sent) => sent.to === address);
@@ -138,9 +139,9 @@ describe("Forgot your password? against mongod [T-207]", () => {
     expect(without.status).toBe(202);
     expect(without.body).toEqual(withAccount.body);
     expect(withAccount.body).toEqual({ resendAfterSeconds: 60 });
-    expect(mockSent.map((email) => email.to)).toEqual(["ana@reset.test"]);
+    expect(resetsSent().map((email) => email.to)).toEqual(["ana@reset.test"]);
 
-    const rows = await AuthCodeModel.find({}).lean();
+    const rows = await AuthCodeModel.find({ purpose: "reset" }).lean();
     const byHash = new Map(rows.map((row) => [row.toHash, row]));
     expect(byHash.get(hashEmailAddress("ana@reset.test"))?.codes).toHaveLength(
       1,
@@ -172,10 +173,11 @@ describe("Forgot your password? against mongod [T-207]", () => {
 
     expect(res.status).toBe(202);
     expect(res.body).toEqual({ resendAfterSeconds: 60 });
-    expect(mockSent.some((email) => email.to === "gabi@reset.test")).toBe(
+    expect(resetsSent().some((email) => email.to === "gabi@reset.test")).toBe(
       false,
     );
     const row = await AuthCodeModel.findOne({
+      purpose: "reset",
       toHash: hashEmailAddress("gabi@reset.test"),
     }).lean();
     expect(row).toMatchObject({ userId: null, codes: [] });
@@ -238,6 +240,7 @@ describe("Forgot your password? against mongod [T-207]", () => {
 
     await reset({ email: "nobody@reset.test", code: "123456" });
     const nobody = await AuthCodeModel.findOne({
+      purpose: "reset",
       toHash: hashEmailAddress("nobody@reset.test"),
     }).lean();
     expect(nobody?.attempts).toBe(1);
