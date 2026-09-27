@@ -3,6 +3,7 @@ import { IBudgetRepository } from "../../domain/repositories/budget/IBudgetRepos
 import { ICategoryRepository } from "../../domain/repositories/category/ICategoryRepository";
 import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
 import { IEmailDeliveryRepository } from "../../domain/repositories/emailDelivery/IEmailDeliveryRepository";
+import { IEmailSuppressionRepository } from "../../domain/repositories/emailSuppression/IEmailSuppressionRepository";
 import { IIdempotencyRepository } from "../../domain/repositories/idempotency/IIdempotencyRepository";
 import { IRateCounterRepository } from "../../domain/repositories/rateCounter/IRateCounterRepository";
 import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
@@ -39,6 +40,7 @@ export const REPO_KEYS = {
   SHARED_INVITATION: "sharedInvitation",
   SHARED_COUNTERPARTY: "sharedCounterparty",
   EMAIL_DELIVERY: "emailDelivery",
+  EMAIL_SUPPRESSION: "emailSuppression",
   RATE_COUNTER: "rateCounter",
 } as const;
 
@@ -150,6 +152,12 @@ export class RepositoryFactory {
   getEmailDeliveryRepository(): IEmailDeliveryRepository {
     return this.getRepository<IEmailDeliveryRepository>(
       REPO_KEYS.EMAIL_DELIVERY,
+    );
+  }
+
+  getEmailSuppressionRepository(): IEmailSuppressionRepository {
+    return this.getRepository<IEmailSuppressionRepository>(
+      REPO_KEYS.EMAIL_SUPPRESSION,
     );
   }
 

@@ -35,6 +35,7 @@ Cada archivo define arriba: `@baseUrl`, `@email`, `@password` y `@apiSecret`.
 | Archivo | Módulo |
 |---|---|
 | `health.http` | Health check |
+| `webhooks.http` | El webhook de SES (rebotes y quejas): sin API secret; los rechazos de un mensaje sin firmar, con firma falsa o de otro topic. Un evento real solo llega desde SNS |
 | `auth.http` | Registro (devuelve tokens, reactivación), login, refresh con rotación real y la reemisión del sucesor intacto, logout/logout-all, sesiones activas |
 | `users.http` | Perfil (currency, lastLoginAt), timezone, currency con bloqueo, credenciales con `currentPassword` |
 | `accounts.http` | Cuentas (currency estampada), default (bloqueo al archivarla), archivar/restaurar idempotentes, lectura de archivadas, `INVALID_CURSOR` |

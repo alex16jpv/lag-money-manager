@@ -232,9 +232,32 @@ export const EMAIL_DELIVERY_STATUSES = {
   failed: "failed",
   limited: "limited",
   disabled: "disabled",
+  suppressed: "suppressed",
+  delivered: "delivered",
+  bounced: "bounced",
+  complained: "complained",
 } as const;
 
 export type EmailDeliveryStatus = keyof typeof EMAIL_DELIVERY_STATUSES;
+
+export const EMAIL_EVENT_KINDS = {
+  delivered: "delivered",
+  bounced: "bounced",
+  complained: "complained",
+} as const;
+
+export type EmailEventKind = keyof typeof EMAIL_EVENT_KINDS;
+
+export const EMAIL_SUPPRESSION_REASONS = {
+  bounce: "bounce",
+  complaint: "complaint",
+} as const;
+
+export type EmailSuppressionReason = keyof typeof EMAIL_SUPPRESSION_REASONS;
+
+// The second group is the topic's region, which its signing certificate's host must match.
+export const SNS_TOPIC_ARN =
+  /^arn:aws[a-z-]*:sns:([a-z0-9-]+):\d{12}:[A-Za-z0-9_-]{1,256}$/;
 
 import { z } from "zod";
 
@@ -274,6 +297,13 @@ const emailEnvSchema = z.object({
   EMAIL_PROVIDER_TIMEOUT_MS: z.coerce.number().int().min(100).default(1500),
   EMAIL_SES_REGION: z.string().min(1).optional(),
   EMAIL_SES_CONFIGURATION_SET: z.string().min(1).optional(),
+  EMAIL_SES_EVENTS_TOPIC_ARN: z
+    .string()
+    .regex(
+      SNS_TOPIC_ARN,
+      "must be the ARN of the SNS topic SES publishes its events to",
+    )
+    .optional(),
   MAILPIT_URL: z.url().default("http://localhost:8025"),
   EMAIL_DAILY_CAP: z.coerce.number().int().min(1).default(300),
   EMAIL_MONTHLY_CAP: z.coerce.number().int().min(1).default(9000),
@@ -344,6 +374,17 @@ const mongoEnvSchema = baseEnvSchema
         code: "custom",
         path: ["EMAIL_PROVIDERS"],
         message: "mailpit only catches mail on a developer's machine",
+      });
+    }
+    if (
+      env.EMAIL_PROVIDERS.includes(EMAIL_PROVIDER_NAMES.ses) &&
+      !env.EMAIL_SES_EVENTS_TOPIC_ARN
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["EMAIL_SES_EVENTS_TOPIC_ARN"],
+        message:
+          "sending through SES needs its bounces and complaints: set the topic they are published to",
       });
     }
     if (!env.APP_URL.startsWith("https://")) {

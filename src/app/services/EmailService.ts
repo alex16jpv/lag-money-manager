@@ -3,6 +3,7 @@ import {
   IEmailDeliveryRepository,
   NewEmailDelivery,
 } from "../../domain/repositories/emailDelivery/IEmailDeliveryRepository";
+import { IEmailSuppressionRepository } from "../../domain/repositories/emailSuppression/IEmailSuppressionRepository";
 import {
   CounterWindow,
   IRateCounterRepository,
@@ -84,6 +85,7 @@ export class EmailService {
     private readonly providers: readonly EmailProvider[],
     private readonly counters: IRateCounterRepository,
     private readonly deliveries: IEmailDeliveryRepository,
+    private readonly suppressions: IEmailSuppressionRepository,
     private readonly config: EmailServiceConfig,
     private readonly now: () => Date = () => new Date(),
   ) {}
@@ -154,6 +156,25 @@ export class EmailService {
       appUrl: this.config.appUrl,
       contact: this.config.replyTo,
     });
+
+    let suppressed: boolean;
+    try {
+      suppressed = await this.suppressions.isSuppressed(base.toHash);
+    } catch (err) {
+      logger.error(
+        { err, code: "EMAIL_SUPPRESSIONS_UNAVAILABLE", template },
+        "Email not sent: the suppression list could not be read",
+      );
+      return { status: "failed", reason: "unavailable" };
+    }
+    if (suppressed) {
+      logger.warn(
+        { code: "EMAIL_RECIPIENT_SUPPRESSED", template },
+        "Email not sent: the address bounced or complained before",
+      );
+      if (isNotice) await this.record(base, "suppressed");
+      return { status: "failed", reason: "rejected" };
+    }
 
     let brakes: BrakeResult;
     try {

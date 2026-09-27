@@ -31,6 +31,7 @@ import userRoutes from "../../app/routes/userRoutes";
 import { swaggerSpec } from "../../config/swagger";
 
 // Mirrors app.ts: a router mounted there and not here is only caught if it adds paths.
+// Not /webhooks/email: AWS calls it, it is no part of the front's contract (docs/modules/email.md).
 const MOUNTS: Record<string, Router> = {
   "/auth": authRoutes,
   "/users": userRoutes,

@@ -1,0 +1,25 @@
+### Webhooks — los llama AWS, no el front: sin API secret ni sesión
+### Un evento de verdad solo lo puede firmar SNS, así que aquí se prueban los rechazos.
+### Con EMAIL_SES_EVENTS_TOPIC_ARN sin poner, todo contesta 403 (motivo "not-configured" en el log).
+@baseUrl = http://localhost:3000
+@topicArn = arn:aws:sns:us-east-1:123456789012:ledger-flow-email-events
+
+### El motivo del rechazo sale en la línea de log de la petición: code EMAIL_EVENT_REJECTED, errorMessage <motivo>
+### Sin firmar → 403 ("malformed")
+POST {{baseUrl}}/webhooks/email/ses
+Content-Type: text/plain; charset=UTF-8
+
+hello
+
+### Con forma de SNS pero firma inventada → 403 ("bad-certificate": el certificado no existe en AWS)
+### Arranca el back con EMAIL_SES_EVENTS_TOPIC_ARN={{topicArn}} para llegar a este punto
+POST {{baseUrl}}/webhooks/email/ses
+Content-Type: text/plain; charset=UTF-8
+
+{"Type":"Notification","MessageId":"1","TopicArn":"{{topicArn}}","Message":"{}","Timestamp":"{{$datetime iso8601}}","SignatureVersion":"2","Signature":"AAAA","SigningCertURL":"https://sns.us-east-1.amazonaws.com/SimpleNotificationService-doesnotexist.pem"}
+
+### De otro topic → 403 ("unexpected-topic"), sin descargar nada
+POST {{baseUrl}}/webhooks/email/ses
+Content-Type: text/plain; charset=UTF-8
+
+{"Type":"Notification","MessageId":"1","TopicArn":"arn:aws:sns:us-east-1:999999999999:other","Message":"{}","Timestamp":"2027-01-01T00:00:00Z","SignatureVersion":"2","Signature":"AAAA","SigningCertURL":"https://sns.us-east-1.amazonaws.com/x.pem"}

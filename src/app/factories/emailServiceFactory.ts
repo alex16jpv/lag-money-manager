@@ -34,6 +34,7 @@ export function createEmailService(): EmailService {
     createEmailProviders(),
     repositoryFactory.getRateCounterRepository(),
     repositoryFactory.getEmailDeliveryRepository(),
+    repositoryFactory.getEmailSuppressionRepository(),
     emailServiceConfig(),
   );
 }

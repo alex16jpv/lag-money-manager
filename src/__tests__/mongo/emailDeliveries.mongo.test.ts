@@ -6,6 +6,7 @@ import {
 } from "../../infrastructure/models/EmailDeliveryModel";
 import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
 import { EmailDeliveryRepository } from "../../infrastructure/repositories/emailDelivery/EmailDeliveryRepository";
+import { EmailSuppressionRepository } from "../../infrastructure/repositories/emailSuppression/EmailSuppressionRepository";
 import { RateCounterRepository } from "../../infrastructure/repositories/rateCounter/RateCounterRepository";
 import { hashEmailAddress } from "../../shared/emailHash";
 import { connect, disconnect, dropDatabase } from "./support";
@@ -20,6 +21,7 @@ const service = (): EmailService =>
     [provider],
     new RateCounterRepository(),
     new EmailDeliveryRepository(),
+    new EmailSuppressionRepository(),
     {
       enabled: true,
       from: {

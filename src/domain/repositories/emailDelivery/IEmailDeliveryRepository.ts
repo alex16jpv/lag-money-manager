@@ -20,6 +20,19 @@ export interface NewEmailDelivery {
   failures: EmailDeliveryAttempt[];
 }
 
+export interface EmailDeliveryReport {
+  provider: EmailProviderName;
+  messageId: string;
+  status: EmailDeliveryStatus;
+  // The row moves only from one of these, so a late or repeated event never rolls it back.
+  from: EmailDeliveryStatus[];
+  at: Date;
+  detail: string | null;
+}
+
 export interface IEmailDeliveryRepository {
   record(delivery: NewEmailDelivery): Promise<void>;
+
+  // A row already there, further along or gone with its TTL is left as it is.
+  report(report: EmailDeliveryReport): Promise<void>;
 }

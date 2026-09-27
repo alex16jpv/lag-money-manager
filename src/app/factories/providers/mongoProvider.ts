@@ -4,6 +4,7 @@ import { BudgetRepository } from "../../../infrastructure/repositories/budget/Bu
 import { CategoryRepository } from "../../../infrastructure/repositories/category/CategoryRepository";
 import { ContactRepository } from "../../../infrastructure/repositories/contact/ContactRepository";
 import { EmailDeliveryRepository } from "../../../infrastructure/repositories/emailDelivery/EmailDeliveryRepository";
+import { EmailSuppressionRepository } from "../../../infrastructure/repositories/emailSuppression/EmailSuppressionRepository";
 import { IdempotencyRepository } from "../../../infrastructure/repositories/idempotency/IdempotencyRepository";
 import { RateCounterRepository } from "../../../infrastructure/repositories/rateCounter/RateCounterRepository";
 import { RefreshSessionRepository } from "../../../infrastructure/repositories/refreshSession/RefreshSessionRepository";
@@ -50,5 +51,6 @@ export function registerRepositories(factory: RegistryTarget): void {
     () => new SharedCounterpartyRepository(),
   );
   factory.register("emailDelivery", () => new EmailDeliveryRepository());
+  factory.register("emailSuppression", () => new EmailSuppressionRepository());
   factory.register("rateCounter", () => new RateCounterRepository());
 }
