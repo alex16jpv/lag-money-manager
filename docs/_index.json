@@ -240,6 +240,14 @@
       "mustReadFirst": false
     },
     {
+      "path": "docs/modules/email.md",
+      "title": "Email Module",
+      "description": "Email module: the provider chain (SES, Mailpit), the 13 templates copied from the front's contract, the brakes and spending caps, and the emaildeliveries record.",
+      "tags": ["module", "email", "ses", "rate-limit", "templates"],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
       "path": "docs/examples/full-module-walkthrough.md",
       "title": "Full Module Walkthrough",
       "description": "Step-by-step tutorial building the Transactions module — the most representative module in the project.",

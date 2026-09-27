@@ -59,7 +59,8 @@ npm run build
 # failure: a database that rejects an index (a duplicate that a unique index
 # would forbid, say) must stop the release, not ship onto it.
 echo "==> Syncing MongoDB indexes"
-NODE_ENV=production npm run db:sync-indexes
+# The index step loads .env for MONGO_URI; the development email settings in it would fail production's checks.
+EMAIL_PROVIDERS="" APP_URL="https://ledgerflow.alexpiral.com" NODE_ENV=production npm run db:sync-indexes
 
 echo "==> Installing production dependencies into $STAGE_DIR"
 rm -rf "$STAGE_DIR" "$ZIP_FILE"

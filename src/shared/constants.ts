@@ -220,7 +220,71 @@ export const COLORS = {
 
 export type Color = keyof typeof COLORS;
 
+export const EMAIL_PROVIDER_NAMES = {
+  ses: "ses",
+  mailpit: "mailpit",
+} as const;
+
+export type EmailProviderName = keyof typeof EMAIL_PROVIDER_NAMES;
+
+export const EMAIL_DELIVERY_STATUSES = {
+  sent: "sent",
+  failed: "failed",
+  limited: "limited",
+  disabled: "disabled",
+} as const;
+
+export type EmailDeliveryStatus = keyof typeof EMAIL_DELIVERY_STATUSES;
+
 import { z } from "zod";
+
+import { emailBudgetSlices } from "./emailBudgets";
+
+const envFlag = z
+  .string()
+  .default("true")
+  .transform((value) => value.trim().toLowerCase())
+  .pipe(z.enum(["true", "false", "1", "0"]))
+  .transform((value) => value === "true" || value === "1");
+
+const emailProviderList = z
+  .string()
+  .default("")
+  .transform((value) =>
+    value
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean),
+  )
+  .pipe(z.array(z.enum(EMAIL_PROVIDER_NAMES)));
+
+const emailEnvSchema = z.object({
+  EMAIL_PROVIDERS: emailProviderList,
+  EMAIL_SENDING_ENABLED: envFlag,
+  EMAIL_FROM_NAME: z
+    .string()
+    .regex(
+      /^[\x20-\x21\x23-\x5b\x5d-\x7e]+$/,
+      "printable ASCII without quotes or backslashes: it goes quoted into a mail header",
+    )
+    .default("Ledger Flow"),
+  EMAIL_FROM_ADDRESS: z.email().default("no-reply@ledgerflow.alexpiral.com"),
+  EMAIL_REPLY_TO: z.email().default("ledgerflow@alexpiral.com"),
+  APP_URL: z.url().default("https://ledgerflow.alexpiral.com"),
+  EMAIL_PROVIDER_TIMEOUT_MS: z.coerce.number().int().min(100).default(1500),
+  EMAIL_SES_REGION: z.string().min(1).optional(),
+  EMAIL_SES_CONFIGURATION_SET: z.string().min(1).optional(),
+  MAILPIT_URL: z.url().default("http://localhost:8025"),
+  EMAIL_DAILY_CAP: z.coerce.number().int().min(1).default(300),
+  EMAIL_MONTHLY_CAP: z.coerce.number().int().min(1).default(9000),
+  EMAIL_RESET_SHARE_PERCENT: z.coerce.number().int().min(1).max(98).default(30),
+  EMAIL_OTHER_SHARE_PERCENT: z.coerce.number().int().min(0).max(98).default(20),
+  EMAIL_ADDRESS_INTERVAL_SECONDS: z.coerce.number().int().min(1).default(60),
+  EMAIL_ADDRESS_DAILY_MAX: z.coerce.number().int().min(1).default(5),
+  EMAIL_USER_DAILY_MAX: z.coerce.number().int().min(1).default(5),
+  EMAIL_DEVICE_HOURLY_MAX: z.coerce.number().int().min(1).default(10),
+  EMAIL_IP_HOURLY_MAX: z.coerce.number().int().min(1).default(5),
+});
 
 const baseEnvSchema = z.object({
   PORT: z.coerce.number().default(3000),
@@ -246,9 +310,50 @@ const baseEnvSchema = z.object({
     .default("development"),
 });
 
-const mongoEnvSchema = baseEnvSchema.extend({
-  MONGO_URI: z.string().min(1, "MONGO_URI is required"),
-});
+const mongoEnvSchema = baseEnvSchema
+  .extend(emailEnvSchema.shape)
+  .extend({
+    MONGO_URI: z.string().min(1, "MONGO_URI is required"),
+  })
+  .superRefine((env, ctx) => {
+    if (env.EMAIL_RESET_SHARE_PERCENT + env.EMAIL_OTHER_SHARE_PERCENT >= 100) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["EMAIL_OTHER_SHARE_PERCENT"],
+        message:
+          "EMAIL_RESET_SHARE_PERCENT + EMAIL_OTHER_SHARE_PERCENT must leave a share for verification and security",
+      });
+    }
+    for (const cap of ["EMAIL_DAILY_CAP", "EMAIL_MONTHLY_CAP"] as const) {
+      const slices = emailBudgetSlices(
+        env[cap],
+        env.EMAIL_RESET_SHARE_PERCENT,
+        env.EMAIL_OTHER_SHARE_PERCENT,
+      );
+      if (slices.reset < 1 || slices.security < 1) {
+        ctx.addIssue({
+          code: "custom",
+          path: [cap],
+          message: `${cap} is too low: its reset or security share rounds down to no email at all`,
+        });
+      }
+    }
+    if (env.NODE_ENV !== "production") return;
+    if (env.EMAIL_PROVIDERS.includes(EMAIL_PROVIDER_NAMES.mailpit)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["EMAIL_PROVIDERS"],
+        message: "mailpit only catches mail on a developer's machine",
+      });
+    }
+    if (!env.APP_URL.startsWith("https://")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["APP_URL"],
+        message: "every link in an email must be https in production",
+      });
+    }
+  });
 
 export const ENVIRONMENT = mongoEnvSchema.parse(process.env);
 

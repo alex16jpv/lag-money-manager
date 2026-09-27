@@ -6,12 +6,13 @@
 lag-money-manager/
 ├── docs/                          # Project documentation (you are here)
 ├── requests/                      # `.http` request examples (REST client)
-├── scripts/                       # Deploy and ops scripts (Lambda, keepalive, index sync)
+├── scripts/                       # Deploy and ops scripts (Lambda, keepalive, index sync, email preview)
 ├── src/
 │   ├── app.ts                     # Express app setup and middleware registration
 │   ├── server.ts                  # HTTP server bootstrap and start
 │   ├── lambda.ts                  # AWS Lambda handler (serverless-express adapter)
 │   ├── __tests__/                 # All test files
+│   │   ├── email/                 # Email templates, provider chain and adapters
 │   │   ├── entities/              # Domain entity unit tests
 │   │   ├── factories/             # Repository factory unit tests
 │   │   ├── integration/           # API integration tests (supertest)
@@ -22,6 +23,7 @@ lag-money-manager/
 │   ├── app/                       # Application layer (HTTP-aware)
 │   │   ├── controllers/           # Route handlers (thin, delegate to services)
 │   │   ├── dtos/                  # Data Transfer Objects (input/output shapes)
+│   │   ├── email/                 # Email templates, their layout and the provider chain
 │   │   ├── factories/             # Repository factory and DB providers
 │   │   │   └── providers/         # DB provider registration (mongoProvider.ts)
 │   │   ├── middlewares/           # Application-level middleware
@@ -33,6 +35,7 @@ lag-money-manager/
 │   │   └── seeders/               # Seed files (empty)
 │   ├── domain/                    # Domain layer (framework-agnostic)
 │   │   ├── errors.ts              # Domain validation error class
+│   │   ├── email/                 # EmailProvider port (what a mail provider must do)
 │   │   ├── entities/              # Business entity classes
 │   │   └── repositories/          # Repository INTERFACES only
 │   │       ├── IRepository.ts     # Generic base repository interface
@@ -40,7 +43,9 @@ lag-money-manager/
 │   │       ├── budget/            # IBudgetRepository.ts
 │   │       ├── category/          # ICategoryRepository.ts
 │   │       ├── contact/           # IContactRepository.ts
+│   │       ├── emailDelivery/     # IEmailDeliveryRepository.ts
 │   │       ├── idempotency/       # IIdempotencyRepository.ts
+│   │       ├── rateCounter/       # IRateCounterRepository.ts (the limiters' counters)
 │   │       ├── refreshSession/    # IRefreshSessionRepository.ts
 │   │       ├── sharedCounterparty/ # ISharedCounterpartyRepository.ts
 │   │       ├── sharedExpense/     # ISharedExpenseRepository.ts
@@ -51,10 +56,11 @@ lag-money-manager/
 │   │       ├── transaction/       # ITransactionRepository.ts
 │   │       └── user/              # IUserRepository.ts
 │   ├── infrastructure/            # Persistence layer (Mongoose-specific)
+│   │   ├── email/                 # Mail provider adapters (SES, Mailpit)
 │   │   ├── models/                # Mongoose schemas: [Entity]Model.ts
 │   │   └── repositories/          # Concrete repositories, one dir per entity
 │   └── shared/                    # Cross-cutting utilities and constants
-├── docker-compose.yml             # Local dev containers (Mongo replica set, Mongoku)
+├── docker-compose.yml             # Local dev containers (Mongo replica set, Mongoku, Mailpit)
 ├── package.json                   # Dependencies and scripts
 ├── tsconfig.json                  # TypeScript compiler config
 ├── tsconfig.test.json             # Type-check config for the test sources
@@ -244,16 +250,16 @@ Repository **interfaces** only — the contracts services depend on. The impleme
 
 ### `src/infrastructure/`
 
-Persistence layer. Everything that knows about MongoDB lives here.
+Persistence layer. Everything that knows about MongoDB lives here, and the adapters to the outside services the domain names a port for (`email/`: SES and Mailpit behind `EmailProvider`).
 
-- **What belongs here:** Mongoose schemas/models and the concrete repositories
+- **What belongs here:** Mongoose schemas/models, the concrete repositories and the provider adapters
 - **What does NOT belong here:** Business rules, HTTP concerns
 
 ---
 
 ### `src/infrastructure/models/`
 
-Mongoose schema and model definitions, including the infrastructure-only collections (`IdempotencyKeyModel`, `RateLimitModel`, `RefreshSessionModel`, `SharedCounterpartyModel`) that have no domain entity.
+Mongoose schema and model definitions, including the infrastructure-only collections (`EmailDeliveryModel`, `IdempotencyKeyModel`, `RateLimitModel`, `RefreshSessionModel`, `SharedCounterpartyModel`) that have no domain entity.
 
 - **What belongs here:** One model per collection, exporting the model and its `I[Entity]Document` interface
 - **Naming:** `PascalCase` with `Model` suffix: `TransactionModel.ts`

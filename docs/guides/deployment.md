@@ -304,6 +304,8 @@ Lambda's egress address at runtime.
 
 Once `API_SECRET` is set, **every** request must carry the `x-api-secret` header — including `GET /`, `GET /health/db` and `/auth/*`. Requests without it (or with a wrong value) get `403 Access denied`. See `src/app/middlewares/gatewaySecretMiddleware.ts`.
 
+**Email.** Nothing is sent until `EMAIL_PROVIDERS=ses` is set, so deploying without the email variables changes nothing (the SES SDK is not even loaded). Sending needs the domain verified in SES, the account out of the sandbox and `ses:SendEmail` on the Lambda's role; the step-by-step guide, the alarms and the budget are T-224's `docs/guides/email.md`. The caps (`EMAIL_DAILY_CAP`, `EMAIL_MONTHLY_CAP`) and the switch (`EMAIL_SENDING_ENABLED`) are environment variables, so they change in the console without a deploy. The SES client adds 2.8 MB to the zip (13.0 → 15.8 MB on 2026-09-26). The index step of the deploy loads `.env`, so `deploy-lambda.sh` runs it with `EMAIL_PROVIDERS` empty and an https `APP_URL`: the development values there (`mailpit`, `http://localhost:3001`) would fail production's checks and stop the deploy.
+
 Swagger UI is **not** served in production: `/api-docs` is only mounted when `NODE_ENV !== "production"` (`src/app.ts`).
 
 ### Database Keepalive (MongoDB Atlas free tier)
@@ -514,8 +516,9 @@ Before deploying, ensure these are set:
 - [ ] `MONGO_URI` — replica set, **database name in the path**, no `directConnection`, password URL-encoded ([details](#the-production-mongo-uri)). Set in **both** the Lambda's configuration and `.env.deploy`
 - [ ] `LOG_LEVEL` — appropriate for production (`info` or `warn`)
 - [ ] `BCRYPT_SALT_ROUNDS` — 12+ for production
+- [ ] `EMAIL_PROVIDERS=ses` — only once SES is set up; until then leave it unset and nothing is sent ([Email module](../modules/email.md))
 - [ ] Indexes synced — the deploy does this and aborts on failure; only run `npm run db:sync-indexes` by hand if you deployed some other way
 
-Optional: `REFRESH_SECRET` (falls back to `JWT_SECRET`; a separate value lets you rotate the access secret without invalidating every session), `RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_MAX`, `AUTH_EMAIL_RATE_LIMIT_MAX`, `AUTH_IP_RATE_LIMIT_MAX`, `REFRESH_RATE_LIMIT_MAX`, `JWT_EXPIRATION`, `REFRESH_TOKEN_EXPIRATION`.
+Optional: `REFRESH_SECRET` (falls back to `JWT_SECRET`; a separate value lets you rotate the access secret without invalidating every session), `RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_MAX`, `AUTH_EMAIL_RATE_LIMIT_MAX`, `AUTH_IP_RATE_LIMIT_MAX`, `REFRESH_RATE_LIMIT_MAX`, `JWT_EXPIRATION`, `REFRESH_TOKEN_EXPIRATION`, and the email ones (`EMAIL_*`, `APP_URL`).
 
 See `docs/guides/environment-vars.md` for the complete list.

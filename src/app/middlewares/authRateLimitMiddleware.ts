@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 
-import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
+import { RateCounterRepository } from "../../infrastructure/repositories/rateCounter/RateCounterRepository";
 import logger from "../../shared/logger";
 import { clientIp } from "./clientIp";
 
@@ -13,6 +13,8 @@ interface AuthRateLimitOptions {
   // Refund on success so a per-account counter cannot lock the real owner out, nor punish real logins.
   refundOnSuccess?: boolean;
 }
+
+const rateCounters = new RateCounterRepository();
 
 // Backed by MongoDB so the limit holds across Lambda instances. Fails open on store errors.
 export function authRateLimit(options: AuthRateLimitOptions) {
@@ -31,32 +33,7 @@ export function authRateLimit(options: AuthRateLimitOptions) {
     const key = `${keyPrefix}:${subject}`;
 
     try {
-      // One atomic op: on upsert $expiresAt is missing, sorts below $$NOW, so a fresh doc starts at 1.
-      const doc = await RateLimitModel.findOneAndUpdate(
-        { _id: key },
-        [
-          {
-            $set: {
-              count: {
-                $cond: [
-                  { $lte: ["$expiresAt", "$$NOW"] },
-                  1,
-                  { $add: [{ $ifNull: ["$count", 0] }, 1] },
-                ],
-              },
-              expiresAt: {
-                $cond: [
-                  { $lte: ["$expiresAt", "$$NOW"] },
-                  { $add: ["$$NOW", windowMs] },
-                  "$expiresAt",
-                ],
-              },
-            },
-          },
-        ],
-        // Mongoose 9 refuses a pipeline without this, and the limiter fails open: no auth limit at all.
-        { upsert: true, new: true, updatePipeline: true },
-      ).lean();
+      const counted = await rateCounters.hit(key, { lengthMs: windowMs });
 
       if (refundOnSuccess) {
         // Refund BEFORE replying: on Lambda the container can freeze right after, losing later writes.
@@ -66,12 +43,8 @@ export function authRateLimit(options: AuthRateLimitOptions) {
             return originalJson(body);
           }
           res.json = originalJson;
-          // count > 0 floors at 0: a refund landing in a fresh window must not go negative.
-          RateLimitModel.updateOne(
-            { _id: key, count: { $gt: 0 } },
-            { $inc: { count: -1 } },
-          )
-            .exec()
+          rateCounters
+            .refund(key)
             .catch(() => {
               /* best-effort refund */
             })
@@ -80,10 +53,10 @@ export function authRateLimit(options: AuthRateLimitOptions) {
         }) as typeof res.json;
       }
 
-      if (doc && doc.count > max) {
+      if (counted.count > max) {
         const retryAfter = Math.max(
           1,
-          Math.ceil((doc.expiresAt.getTime() - Date.now()) / 1000),
+          Math.ceil((counted.expiresAt.getTime() - Date.now()) / 1000),
         );
         res.setHeader("Retry-After", String(retryAfter));
         res.status(429).json({

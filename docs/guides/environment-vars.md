@@ -59,6 +59,38 @@ misconfiguration instead of a skipped check.
 > names the reason (`request rejected`, with status and message), so read the
 > server output first.
 
+## Email
+
+Nothing sends until `EMAIL_PROVIDERS` names a provider, so a deploy that does not set these changes
+nothing. What each limit means, and why it is there: [Email module](../modules/email.md).
+
+| Variable                         | Default                             | Description                                                                                                                               |
+| -------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `EMAIL_PROVIDERS`                | —                                   | Comma-separated chain, tried in order: `ses`, `mailpit`. Empty means sending is off. `mailpit` is refused in production.                  |
+| `EMAIL_SENDING_ENABLED`          | `true`                              | `false` (or `0`, any case) stops every email at once, without deploying code. Any other value stops the whole API from starting.          |
+| `EMAIL_FROM_NAME`                | `Ledger Flow`                       | Sender name: printable ASCII without `"` or `\`, since it goes quoted into a header.                                                     |
+| `EMAIL_FROM_ADDRESS`             | `no-reply@ledgerflow.alexpiral.com` | Sender address. SES must have its domain verified.                                                                                        |
+| `EMAIL_REPLY_TO`                 | `ledgerflow@alexpiral.com`          | Reply-To, and the contact every email's footer shows.                                                                                     |
+| `APP_URL`                        | `https://ledgerflow.alexpiral.com`  | Where every link in an email points (`{APP_URL}/{locale}/…`). Must be https in production; `http://localhost:3001` in development.       |
+| `EMAIL_PROVIDER_TIMEOUT_MS`      | `1500`                              | How long each provider gets before the next one is tried.                                                                                 |
+| `EMAIL_SES_REGION`               | the Lambda's region                 | SES region, when it is not the one the SDK finds.                                                                                         |
+| `EMAIL_SES_CONFIGURATION_SET`    | —                                   | SES configuration set (the one T-223's bounce and complaint events come from).                                                            |
+| `MAILPIT_URL`                    | `http://localhost:8025`             | Mailpit's API, for `EMAIL_PROVIDERS=mailpit`.                                                                                             |
+| `EMAIL_DAILY_CAP`                | `300`                               | Emails per UTC day, all templates together.                                                                                               |
+| `EMAIL_MONTHLY_CAP`              | `9000`                              | Emails per UTC month: 0.90 USD at SES's à la carte price.                                                                                 |
+| `EMAIL_RESET_SHARE_PERCENT`      | `30`                                | Share of both caps kept for the password reset.                                                                                           |
+| `EMAIL_OTHER_SHARE_PERCENT`      | `20`                                | Share kept for the notification emails of T-131. The rest goes to verification and security notices.                                      |
+| `EMAIL_ADDRESS_INTERVAL_SECONDS` | `60`                                | One email per address and purpose in this many seconds.                                                                                   |
+| `EMAIL_ADDRESS_DAILY_MAX`        | `5`                                 | Emails per address and purpose in 24 hours.                                                                                               |
+| `EMAIL_USER_DAILY_MAX`           | `5`                                 | Verification and email-change emails one account can send in 24 hours, to any address.                                                   |
+| `EMAIL_DEVICE_HOURLY_MAX`        | `10`                                | Code emails per recognized device per hour.                                                                                               |
+| `EMAIL_IP_HOURLY_MAX`            | `5`                                 | Code emails per IP per hour, for requests without a recognized device (stricter than the device's).                                      |
+
+Like every variable here, a value the schema refuses stops the process from starting, so a typo in a
+console edit takes the API down until it is corrected. Startup refuses shares that add up to 100 or more, and a cap so low that the reset or the security
+share rounds down to zero. To raise the caps when the app grows, raise SES's own quota first, then
+these two (T-224 writes the table of values per spending step).
+
 ## MongoDB
 
 | Variable    | Description                                       |
@@ -109,7 +141,11 @@ MONGO_URI=mongodb://localhost:27017/lag_money?replicaSet=rs0&directConnection=tr
 # Everything else has a sane default (PORT=3000, JWT_EXPIRATION=15m,
 # REFRESH_TOKEN_EXPIRATION=30d, BCRYPT_SALT_ROUNDS=12, LOG_LEVEL=info,
 # RATE_LIMIT_MAX=1000, AUTH_RATE_LIMIT_MAX=10, AUTH_EMAIL_RATE_LIMIT_MAX=50, AUTH_IP_RATE_LIMIT_MAX=60,
-# REFRESH_RATE_LIMIT_MAX=60).
+# REFRESH_RATE_LIMIT_MAX=60, and no email provider: nothing is sent).
+
+# Emails go to the local Mailpit (docker compose up -d mailpit, http://localhost:8025)
+EMAIL_PROVIDERS=mailpit
+APP_URL=http://localhost:3001
 
 # Do NOT set API_SECRET locally: with it, every request needs the
 # x-api-secret header or gets 403.

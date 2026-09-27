@@ -119,6 +119,7 @@ export default withMermaid({
             { text: "Budgets", link: "/docs/modules/budgets" },
             { text: "Stats", link: "/docs/modules/stats" },
             { text: "Sync", link: "/docs/modules/sync" },
+            { text: "Email", link: "/docs/modules/email" },
           ],
         },
         {
