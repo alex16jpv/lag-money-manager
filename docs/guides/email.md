@@ -53,8 +53,15 @@ SES bills per email, and there are two plans that matter here: **à la carte** a
 and **Essentials** at 0.16 USD per 1,000, with no monthly fee either way. Since 2026-07-21 an account
 that had not used SES since 2025-06-01 starts on Essentials. The caps assume à la carte.
 
-SES console → _Pricing plan_. If it says Essentials, choose **Cancel plan**. When Essentials was
-applied by default, cancelling takes effect immediately and the account is on à la carte.
+From a terminal, with an administrator profile (`NONE` is à la carte, no plan):
+
+```bash
+aws sesv2 put-account-pricing-attributes --plan NONE --region us-east-1 --profile <admin profile>
+```
+
+Or SES console → _Pricing plan_ → **Cancel plan**. Plans are per Region: on any Region but the API's
+(`us-east-1`), that page shows another Region's plan. When Essentials was applied by
+default, the change takes effect immediately and the account is on à la carte.
 
 ## 2. Deploy the stack, without the webhook yet
 
