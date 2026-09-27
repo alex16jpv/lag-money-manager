@@ -259,10 +259,14 @@ describe("Confirming an email against mongod [T-209]", () => {
     expect(row?.attempts).toBe(5);
   });
 
-  it("signs up even when its email cannot go out, with no live code and that try counted [T-228]", async () => {
+  it("signs up even when its email cannot go out, and its Send code goes at once [T-228]", async () => {
     mockUnreachable.add("dora@verify.test");
-    const dora = await register("dora@verify.test", "Dora Paz");
-    mockUnreachable.delete("dora@verify.test");
+    let dora: Session;
+    try {
+      dora = await register("dora@verify.test", "Dora Paz");
+    } finally {
+      mockUnreachable.delete("dora@verify.test");
+    }
     expect(sentTo("dora@verify.test")).toBe(0);
     expect((await profile(dora)).emailVerification).toEqual({
       codeLive: false,
@@ -270,9 +274,10 @@ describe("Confirming an email against mongod [T-209]", () => {
       resendAvailableAt: null,
     });
 
-    const early = await resend(dora);
-    expect(early.status).toBe(429);
-    expect(Number(early.headers["retry-after"])).toBeGreaterThan(0);
+    const sent = await resend(dora);
+    expect(sent.status).toBe(202);
+    expect((await profile(dora)).emailVerification?.codeLive).toBe(true);
+    expect(sentTo("dora@verify.test")).toBe(1);
   });
 
   it("gives an account from before the email a code from Send code, and confirms it by the link alone", async () => {

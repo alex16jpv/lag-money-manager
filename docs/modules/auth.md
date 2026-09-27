@@ -54,15 +54,18 @@ Register a new user. **Register also logs in** — the response already carries 
   "password": "password123",
   "timezone": "America/Bogota",
   "currency": "COP",
-  "locale": "en"
+  "locale": "en",
+  "captcha": "<Turnstile token>"
 }
 ```
 
+- `captcha` — required: a Cloudflare Turnstile token for the action `register` (see [The captcha](#the-captcha)).
 - `password` — 8–128 characters.
 - `email` — normalized (trimmed + lowercased), so `John@X.com` and `john@x.com` are the same account.
 - `timezone` — optional IANA zone; drives day and period boundaries for stats and budgets. Defaults to `America/Bogota`.
 - `currency` — optional ISO 4217 alpha code; defaults to `COP`. It is the user's single money currency and locks once they have accounts.
 - `locale` — optional UI language, `en` (default) or `es`.
+- `deviceToken` — optional, from this device's last login or register: the limits count this device instead of its IP (see Rate Limiting).
 
 **Response (201):**
 
@@ -380,8 +383,9 @@ and wrong for Cloudflare).
 
 The check is here and not only in the web client's server, because a call straight to the Function URL
 would skip it. In production `EMAIL_PROVIDERS` with no `TURNSTILE_SECRET` stops the API from starting;
-without either, every register is `503 CAPTCHA_UNAVAILABLE`, logged as an error each time, like a missing
-`API_SECRET` (the index step of the deploy loads the same settings without the Lambda's secrets).
+without either, every register is `503 CAPTCHA_UNAVAILABLE`, logged as an error each time. That is checked
+per request, like a missing `API_SECRET`, on purpose: a process that refused to start would take sign-in
+down too, and this only stops what needs the captcha.
 
 ## Internal Flow
 
@@ -391,14 +395,17 @@ without either, every register is `503 CAPTCHA_UNAVAILABLE`, logged as an error 
 sequenceDiagram
     participant C as Client
     participant V as Validation
+    participant CAP as Turnstile
     participant CTRL as AuthController
     participant SVC as AuthService
     participant REPO as UserRepository
     participant SESS as RefreshSessionRepository
 
     alt Registration
-        C->>V: POST /auth/register { name, email, password, timezone?, currency?, locale? }
-        V->>CTRL: Validated data (email normalized)
+        C->>V: POST /auth/register { name, email, password, captcha, timezone?, currency?, locale? }
+        V->>CAP: siteverify(captcha, action register)
+        Note over CAP: refused → 400 CAPTCHA_INVALID, unchecked → 503 CAPTCHA_UNAVAILABLE
+        CAP->>CTRL: Validated data (email normalized)
         CTRL->>SVC: register(dto, userAgent)
         SVC->>SVC: Hash password (bcryptjs)
         SVC->>REPO: getDeletedByEmail(email)
@@ -557,7 +564,7 @@ The per-IP cap is shared by everyone behind that address — a carrier NAT holds
 
 | Error / code      | Status | Condition                                                                                                                                                                                                                                  |
 | ----------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `VALIDATION`      | 400    | Invalid email format, password shorter than 8 chars, invalid timezone/currency/locale                                                                                                                                                      |
+| `VALIDATION`      | 400    | Invalid email format, password shorter than 8 chars, invalid timezone/currency/locale, a missing captcha                                                                                                                                   |
 | `Unauthorized`    | 401    | Invalid email or password on login (uniform for unknown email and wrong password)                                                                                                                                                          |
 | `REFRESH_INVALID` | 401    | Refresh token malformed, expired, or its `jti` is unknown                                                                                                                                                                                  |
 | `REFRESH_REVOKED` | 401    | Reuse of a rotated token whose successor is already spent; a rotated token presented past its re-issue limit; a family already ended by a logout or `DELETE /auth/sessions/:id`; or a token that predates a logout-all / credential change |

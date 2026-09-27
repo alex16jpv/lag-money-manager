@@ -1,5 +1,6 @@
 import bcryptjs from "bcryptjs";
 
+import { EmailVerificationService } from "../../app/services/EmailVerificationService";
 import { Account } from "../../domain/entities/Account";
 import { Budget } from "../../domain/entities/Budget";
 import { Category } from "../../domain/entities/Category";
@@ -498,8 +499,9 @@ describe("Integration Tests", () => {
   });
 
   describe("POST /auth/register", () => {
-    it("should register a new user", async () => {
+    it("should register a new user, and send it the code to confirm its email", async () => {
       mockUserRepo.create.mockResolvedValue(testUser);
+      const send = jest.spyOn(EmailVerificationService.prototype, "send");
 
       const res = await request(app).post("/auth/register").send({
         name: "John Doe",
@@ -513,6 +515,11 @@ describe("Integration Tests", () => {
       expect(mockCaptchaVerify).toHaveBeenCalledWith(
         expect.objectContaining({ token: CAPTCHA, action: "register" }),
       );
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({ email: testUser.email }),
+        expect.anything(),
+      );
+      send.mockRestore();
     });
 
     it("should return 400 for invalid email", async () => {

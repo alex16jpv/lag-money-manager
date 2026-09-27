@@ -241,7 +241,7 @@ Cloudflare dashboard → _Turnstile → Add widget_:
 - **Widget mode:** Managed. The web client will run it with `appearance: "interaction-only"` (its
   `design/spec/screens/access.md`, built with the password reset), so most people never see it and
   only a suspicious request is asked for a click. Vercel's preview deployments are not in the
-  hostname list, so the widget does not work there: they use the test keys.
+  hostname list, so the widget does not work there, and the site key below is set for Production only.
 
 Keep the **site key** and the **secret key**. The secret goes in the Lambda as `TURNSTILE_SECRET`
 ([Environment Variables](./environment-vars.md)): the API checks with it every sign-up, every Forgot

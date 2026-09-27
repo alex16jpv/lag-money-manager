@@ -73,12 +73,12 @@ interface Brake {
   key: string;
   window: CounterWindow;
   max: number;
-  costs: boolean;
+  unsentGivesBack: boolean;
   cap?: { budget: EmailBudget; period: "day" | "month" };
 }
 
 type BrakeResult =
-  | { limited: false; costKeys: string[] }
+  | { limited: false; unsentKeys: string[] }
   | { limited: true; retryAfterSeconds: number };
 
 export type HeldBrakes =
@@ -237,7 +237,7 @@ export class EmailService {
     );
 
     if (!result.accepted) {
-      if (result.nothingSent) await this.refund(brakes.costKeys);
+      if (result.nothingSent) await this.refund(brakes.unsentKeys);
       if (result.recipientRejected) {
         logger.warn(
           {
@@ -318,7 +318,7 @@ export class EmailService {
         key: `email-address:${meta.purpose}:${toHash}`,
         window: { lengthMs: brakes.addressIntervalSeconds * 1000 },
         max: 1,
-        costs: false,
+        unsentGivesBack: true,
       },
     ];
     if (meta.addressDaily) {
@@ -326,7 +326,7 @@ export class EmailService {
         key: `email-address-day:${meta.purpose}:${toHash}`,
         window: { lengthMs: DAY_MS },
         max: brakes.addressDailyMax,
-        costs: false,
+        unsentGivesBack: true,
       });
     }
     if (requester) {
@@ -336,13 +336,13 @@ export class EmailService {
               key: `email-device:${requester.recognizedDevice}`,
               window: { lengthMs: HOUR_MS },
               max: brakes.deviceHourlyMax,
-              costs: false,
+              unsentGivesBack: false,
             }
           : {
               key: `email-ip:${requester.ip}`,
               window: { lengthMs: HOUR_MS },
               max: brakes.ipHourlyMax,
-              costs: false,
+              unsentGivesBack: false,
             },
       );
     }
@@ -361,7 +361,7 @@ export class EmailService {
         key: `email-user:${recipient.userId}`,
         window: { lengthMs: DAY_MS },
         max: brakes.userDailyMax,
-        costs: false,
+        unsentGivesBack: false,
       });
     }
 
@@ -389,14 +389,14 @@ export class EmailService {
         key: `email-cap:${meta.budget}:${day}`,
         window: { endsAt: dayEnds },
         max: daily[meta.budget],
-        costs: true,
+        unsentGivesBack: true,
         cap: { budget: meta.budget, period: "day" },
       },
       {
         key: `email-cap:${meta.budget}:${month}`,
         window: { endsAt: monthEnds },
         max: monthly[meta.budget],
-        costs: true,
+        unsentGivesBack: true,
         cap: { budget: meta.budget, period: "month" },
       },
     );
@@ -428,7 +428,7 @@ export class EmailService {
     if (over.length === 0) {
       return {
         limited: false,
-        costKeys: brakes.filter((b) => b.costs).map((b) => b.key),
+        unsentKeys: brakes.filter((b) => b.unsentGivesBack).map((b) => b.key),
       };
     }
 
