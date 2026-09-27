@@ -46,7 +46,7 @@ something the owner did.
 | `limited` · `retryAfterSeconds` | A brake stopped it. The seconds are the ones of the brake that stopped it      |
 | `failed` · `disabled`           | The switch is off or there is no provider                                      |
 | `failed` · `rejected`           | The address is suppressed, or a provider refused it; another provider was not tried |
-| `failed` · `unavailable`        | Every provider answered with a refusal, or the brakes could not be counted: nothing went out |
+| `failed` · `unavailable`        | Every provider answered with a refusal or never got the request (the address did not resolve, the connection did not open, the SDK or its credentials did not load), or the brakes could not be counted: nothing went out |
 | `failed` · `unconfirmed`        | A provider timed out or failed without answering: the email **may still arrive** |
 
 What the callers owe to this answer, written down here so each task does not rediscover it:
@@ -129,6 +129,19 @@ the contract already fixes every value, so a tool would buy nothing.
 - **Each provider gets `EMAIL_PROVIDER_TIMEOUT_MS`** (1.5 s). The chain enforces it itself, even on
   a provider that ignores its abort signal, so `providerCeilingMs` is a real ceiling. A provider that accepted
   just after its timeout may make the next one send a second copy; with one provider that cannot happen.
+- **Each failure says what happened to the email** (`EmailProviderError.outcome`), set by the adapter,
+  which knows its transport: `refused` (the provider answered no), `neverLeft` (the request never reached
+  it) or `mayHaveSent` (anything else). `neverLeft` is a lookup that failed (`ENOTFOUND`, `EAI_AGAIN` from
+  `getaddrinfo`), a connection that did not open (`ECONNREFUSED`, `EHOSTUNREACH`, `ENETUNREACH` from
+  `connect`, or every address of one that tried several), and for SES an SDK that did not load or
+  credentials that did not resolve. The code alone is not enough: an open socket can report
+  `EHOSTUNREACH` after it wrote the request.
+- **A request that never left is tried once more on the same provider**, inside that same timeout, so
+  `providerCeilingMs` still holds. Nothing reached the provider, so nothing can arrive twice. A request
+  that may have been written is never tried again: a reset or a timed-out socket (the SES SDK names
+  those `TimeoutError`, with `ECONNRESET`, `EPIPE` or `ETIMEDOUT` as their code), or the chain's own
+  `Timeout`. After the timeout aborted a send, nothing is tried again either. With `maxAttempts: 1`
+  the SDK does not retry on its own.
 
 A future fallback (Resend is the one planned) is one more adapter in `src/infrastructure/email/` and
 its name in the list.
@@ -140,7 +153,10 @@ its name in the list.
 
 **The SES SDK is loaded on the first send**, not at startup: it weighs 35 ms at require time and
 2.8 MB in the zip, and an invocation that sends nothing does not pay the first. A load that failed is
-retried on the next send.
+retried on the next send. **The providers are built once per process** (`emailServiceFactory.ts`), so
+the reset, the verification and every other email service share one SES client and its connections,
+instead of one client each. A connection that sat idle long enough is closed by the other side, so an
+email after a long quiet spell may still open a new one.
 
 **Mailpit through its HTTP API, not SMTP**: it needs no SMTP library in the zip, and the message that
 arrives is the same multipart one. The e2e suite of the front reads the code back through the same
@@ -192,9 +208,9 @@ an environment variable of the Lambda: it changes in the console and applies on 
 - **All the brakes of a send are counted at once**, in one parallel round trip, and then judged.
 - **An attempt stopped by one brake gives back the brakes it had already passed**, so an attacker
   whose IP is blocked does not also use up the victim's address. **A send gives back its caps only
-  when every provider answered with a refusal** (it cost nothing), never after a timeout or a
-  connection that failed without an answer: the provider may have sent it, and billed it. It never
-  gives back its abuse brakes.
+  when nothing went out**: every provider answered with a refusal or never got the request (it cost
+  nothing). Never after a timeout or a connection that broke without an answer: the provider may have
+  sent it, and billed it. It never gives back its abuse brakes.
 - **If the store cannot count, nothing is sent** (`failed / unavailable`, logged as
   `EMAIL_BRAKES_UNAVAILABLE`), and whatever it did count is given back. The auth limiter fails open because locking everyone out of sign-in is
   worse than a lost limit; here the limit is the spending guarantee, and a missing email is the
@@ -308,7 +324,7 @@ wear down the SES account's reputation, with nothing but a log line to show for 
 | `toHash`                  | SHA-256 of the trimmed, lower-cased address. **The address itself is never stored** (see below) |
 | `status`                  | `sent` · `failed` · `limited` · `disabled` · `suppressed` when it is written; then `delivered` · `bounced` · `complained` as the provider reports |
 | `provider`, `messageId`   | Who accepted it and its id there: the events are matched by the pair (indexed) |
-| `failures`                | `{ provider, error }` for every provider that failed before the answer           |
+| `failures`                | `{ provider, error, detail? }` for every attempt that failed before the answer: `error` is the provider's reason (the error's name, `HTTP 500`, `Timeout`, `NoMessageId`), `detail` what the error said: the system code, the HTTP status and the first line of the message and of its cause, with any address as `[address]`, any access key id as `[key]` and any run of 32 or more token characters as `[token]`, at most 300 characters. A provider tried twice appears twice |
 | `reportedAt`, `report`    | When the provider's last event happened and what it said (`Permanent/NoEmail`, `abuse`) |
 | `createdAt`               | TTL index: the row is deleted **30 days** later                                  |
 
@@ -334,9 +350,11 @@ One line per problem, never the address, never the code:
 | ----------------------------- | ----- | -------------------------------------------------------------------- |
 | `EMAIL_SENDING_DISABLED`      | warn  | A send while the switch is off or no provider is configured          |
 | `EMAIL_CAP_REACHED`           | error | A daily or monthly cap stopped a send (an alarm emails the owner)    |
-| `EMAIL_SEND_FAILED`           | error | No provider accepted it, with each provider's failure                |
+| `EMAIL_SEND_FAILED`           | error | No provider accepted it, with each attempt's failure and its `detail` |
 | `EMAIL_RECIPIENT_REJECTED`    | warn  | A provider refused the address itself: a data problem, not an outage |
 | `EMAIL_PROVIDER_FAILED`       | warn  | A fallback sent it after an earlier provider failed                  |
+| `EMAIL_SEND_RETRIED`          | warn  | The same provider sent it on its second try, after a request that never left |
+| `EMAIL_SEND_SLOW`             | warn  | A sent email took more than half of `EMAIL_PROVIDER_TIMEOUT_MS` (`durationMs`): the timeout is getting close |
 | `EMAIL_BRAKES_UNAVAILABLE`    | error | The brakes could not be counted                                      |
 | `EMAIL_REFUND_FAILED`         | error | A counter could not be given back: it over-counts until its window ends |
 | `EMAIL_DELIVERY_NOT_RECORDED` | error | The row could not be written                                         |

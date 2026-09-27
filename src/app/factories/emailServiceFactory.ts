@@ -1,3 +1,4 @@
+import { EmailProvider } from "../../domain/email/EmailProvider";
 import { createEmailProviders } from "../../infrastructure/email/emailProviders";
 import { ENVIRONMENT } from "../../shared/constants";
 import { EmailService, EmailServiceConfig } from "../services/EmailService";
@@ -29,9 +30,16 @@ export function emailServiceConfig(): EmailServiceConfig {
   };
 }
 
+let processProviders: EmailProvider[] | undefined;
+
+function emailProviders(): EmailProvider[] {
+  processProviders ??= createEmailProviders();
+  return processProviders;
+}
+
 export function createEmailService(): EmailService {
   return new EmailService(
-    createEmailProviders(),
+    emailProviders(),
     repositoryFactory.getRateCounterRepository(),
     repositoryFactory.getEmailDeliveryRepository(),
     repositoryFactory.getEmailSuppressionRepository(),

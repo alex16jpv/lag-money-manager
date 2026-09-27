@@ -25,6 +25,7 @@ import {
 } from "../email/templates";
 
 const HOUR_MS = 60 * 60 * 1000;
+const SLOW_SEND_SHARE_OF_TIMEOUT = 0.5;
 const DAY_MS = 24 * HOUR_MS;
 
 export interface EmailRecipient {
@@ -236,7 +237,7 @@ export class EmailService {
     );
 
     if (!result.accepted) {
-      if (result.everyProviderRefused) await this.refund(brakes.costKeys);
+      if (result.nothingSent) await this.refund(brakes.costKeys);
       if (result.recipientRejected) {
         logger.warn(
           {
@@ -257,21 +258,40 @@ export class EmailService {
         status: "failed",
         reason: result.recipientRejected
           ? "rejected"
-          : result.everyProviderRefused
+          : result.nothingSent
             ? "unavailable"
             : "unconfirmed",
       };
     }
 
     if (result.failures.length > 0) {
+      const fellBack = result.failures.some(
+        (failure) => failure.provider !== result.provider,
+      );
       logger.warn(
         {
-          code: "EMAIL_PROVIDER_FAILED",
+          code: fellBack ? "EMAIL_PROVIDER_FAILED" : "EMAIL_SEND_RETRIED",
           template,
           provider: result.provider,
           failures: result.failures,
         },
-        "Email sent by a fallback provider",
+        fellBack
+          ? "Email sent by a fallback provider"
+          : "Email sent on the provider's second try",
+      );
+    }
+    if (
+      result.durationMs >
+      this.config.providerTimeoutMs * SLOW_SEND_SHARE_OF_TIMEOUT
+    ) {
+      logger.warn(
+        {
+          code: "EMAIL_SEND_SLOW",
+          template,
+          provider: result.provider,
+          durationMs: result.durationMs,
+        },
+        "Email took more than half of its provider timeout",
       );
     }
     await this.record(base, "sent", {
