@@ -373,6 +373,21 @@ describe("EmailService", () => {
     ).resolves.toMatchObject({ status: "sent" });
   });
 
+  it("counts a code sent with no requester, the undo's, on no IP or device [T-211]", async () => {
+    const svc = service({ caps: { ...CONFIG.caps, daily: 1000 } });
+    for (let i = 0; i < 6; i++) {
+      await expect(
+        svc.sendCode({
+          template: "password-reset-after-undo",
+          data: CODE,
+          recipient: { ...RECIPIENT, email: `owner${i}@example.com` },
+          requester: null,
+        }),
+      ).resolves.toMatchObject({ status: "sent" });
+    }
+    expect(counters.count("email-ip:")).toBe(0);
+  });
+
   describe("per account", () => {
     const verify = (svc: EmailService, email: string): Promise<EmailOutcome> =>
       svc.sendCode({

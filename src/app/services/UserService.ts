@@ -15,7 +15,9 @@ import {
 } from "../dtos/UserDTO";
 import { assertCurrentPassword } from "./currentPassword";
 import { EmailChangeService } from "./EmailChangeService";
+import { EmailService } from "./EmailService";
 import { EmailVerificationService } from "./EmailVerificationService";
+import { sendSecurityNotice } from "./securityNotice";
 
 export class UserService {
   constructor(
@@ -23,8 +25,9 @@ export class UserService {
     private accountRepo: IAccountRepository,
     private invitationRepo: ISharedInvitationRepository,
     private verification: Pick<EmailVerificationService, "status">,
-    private emailChange: Pick<EmailChangeService, "view">,
+    private emailChange: Pick<EmailChangeService, "view" | "cancel">,
     private sessions: Pick<IRefreshSessionRepository, "revokeAllForUser">,
+    private email: Pick<EmailService, "sendNotice">,
   ) {}
 
   async getUserById(
@@ -54,6 +57,7 @@ export class UserService {
     id: string,
     dto: UpdateUserDTO,
     userId: string,
+    userAgent?: string,
   ): Promise<UserResponseDTO> {
     if (id !== userId) {
       throw new ApiError("NotFound", "User not found");
@@ -97,6 +101,11 @@ export class UserService {
         ),
       });
       await this.sessions.revokeAllForUser(id);
+      await this.emailChange.cancel(id);
+      await sendSecurityNotice(this.email, updated, "password-changed", {
+        at: new Date(),
+        userAgent,
+      });
       return toUserResponse(updated);
     }
 
@@ -109,6 +118,7 @@ export class UserService {
     id: string,
     userId: string,
     currentPassword: string,
+    userAgent?: string,
   ): Promise<void> {
     if (id !== userId) {
       throw new ApiError("NotFound", "User not found");
@@ -128,5 +138,9 @@ export class UserService {
       now,
     );
     await this.invitationRepo.leaveAll(id, now);
+    await sendSecurityNotice(this.email, existing, "account-deleted", {
+      at: now,
+      userAgent,
+    });
   }
 }

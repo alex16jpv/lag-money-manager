@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 
 import { AuthService } from "../../app/services/AuthService";
 import { CategoryService } from "../../app/services/CategoryService";
+import { signDeviceToken } from "../../app/services/deviceToken";
 import { User } from "../../domain/entities/User";
 import {
   IRefreshSessionRepository,
@@ -62,8 +63,12 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   renewEmailChange: jest.fn(),
   dropEmailChange: jest.fn().mockResolvedValue(undefined),
   applyEmailChange: jest.fn(),
+  dropUndoLink: jest.fn().mockResolvedValue(undefined),
+  addUndoLink: jest.fn().mockResolvedValue(true),
+  getForUndo: jest.fn().mockResolvedValue(null),
+  undoEmailChange: jest.fn(),
   getByIdWithPassword: jest.fn().mockResolvedValue(null),
-  bumpTokenVersion: jest.fn().mockResolvedValue(undefined),
+  forgetDevices: jest.fn().mockResolvedValue(null),
   updateWithTokenBump: jest.fn(),
   recordLogin: jest.fn().mockResolvedValue(undefined),
   reactivate: jest.fn(),
@@ -101,15 +106,24 @@ describe("AuthService", () => {
     Pick<CategoryService, "seedDefaultCategories">
   >;
   let sessions: jest.Mocked<IRefreshSessionRepository>;
+  let email: { sendNotice: jest.Mock };
 
   beforeEach(() => {
     repo = createMockRepo();
     categoryService = createMockCategoryService();
     sessions = createMockSessionRepo();
+    email = {
+      sendNotice: jest.fn().mockResolvedValue({
+        status: "sent",
+        provider: "mailpit",
+        messageId: "m",
+      }),
+    };
     service = new AuthService(
       repo,
       categoryService as unknown as CategoryService,
       sessions,
+      email,
     );
   });
 
@@ -286,6 +300,23 @@ describe("AuthService", () => {
       ).rejects.toBe(failure);
     });
 
+    it("answers EMAIL_TAKEN for an address kept for another account's undo link [T-211]", async () => {
+      repo.create.mockRejectedValue(
+        Object.assign(new Error("E11000 duplicate key"), {
+          code: 11000,
+          keyPattern: { heldEmails: 1 },
+        }),
+      );
+
+      await expect(
+        service.register({
+          name: "John",
+          email: "john@example.com",
+          password: "newpassword123",
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
+    });
+
     it("answers EMAIL_TAKEN for the email of a live account [T-153]", async () => {
       repo.create.mockRejectedValue(
         Object.assign(new Error("E11000 duplicate key"), {
@@ -446,6 +477,156 @@ describe("AuthService", () => {
       await expect(
         service.login("john@example.com", "wrongpassword"),
       ).rejects.toThrow("Invalid email or password");
+    });
+  });
+
+  describe("new-sign-in [T-211]", () => {
+    const EMAIL = "owner@example.com";
+    const owner = (overrides: Partial<User> = {}) =>
+      new User({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac71",
+        name: "Owner",
+        email: EMAIL,
+        password: bcryptjs.hashSync("pw", 4),
+        locale: "es",
+        timezone: "America/Bogota",
+        emailVerifiedAt: new Date("2026-09-01T00:00:00.000Z"),
+        tokenVersion: 2,
+        ...overrides,
+      });
+
+    it("tells a confirmed account about a sign-in from a device without its token", async () => {
+      repo.getByEmail.mockResolvedValue(owner());
+
+      await service.login(EMAIL, "pw", "Mozilla/5.0");
+
+      expect(email.sendNotice).toHaveBeenCalledWith({
+        template: "new-sign-in",
+        data: { at: expect.any(Date), userAgent: "Mozilla/5.0" },
+        recipient: {
+          userId: owner().id,
+          email: EMAIL,
+          locale: "es",
+          timezone: "America/Bogota",
+        },
+      });
+    });
+
+    it("says nothing to a device this email signed in before, even after a password change bumped tokenVersion", async () => {
+      repo.getByEmail.mockResolvedValue(owner());
+      const { deviceToken } = await service.login(EMAIL, "pw");
+      email.sendNotice.mockClear();
+      repo.getByEmail.mockResolvedValue(owner({ tokenVersion: 5 }));
+
+      await service.login(EMAIL, "pw", undefined, deviceToken);
+
+      expect(email.sendNotice).not.toHaveBeenCalled();
+    });
+
+    it("forgets the devices from before a reset or an undo", async () => {
+      const deviceToken = signDeviceToken(EMAIL, 2);
+      repo.getByEmail.mockResolvedValue(
+        owner({ devicesResetAt: new Date(Date.now() + 2000) }),
+      );
+
+      await service.login(EMAIL, "pw", undefined, deviceToken);
+
+      expect(email.sendNotice).toHaveBeenCalledTimes(1);
+    });
+
+    it("knows a device whose token was issued after the last forget, to the millisecond", () => {
+      const deviceToken = signDeviceToken(EMAIL, 3);
+      const { issuedAtMs } = jwt.decode(deviceToken) as { issuedAtMs: number };
+
+      expect(
+        service.knownDevice(
+          deviceToken,
+          owner({ devicesResetAt: new Date(issuedAtMs) }),
+        ),
+      ).toBe(true);
+      expect(
+        service.knownDevice(
+          deviceToken,
+          owner({ devicesResetAt: new Date(issuedAtMs + 1) }),
+        ),
+      ).toBe(false);
+    });
+
+    it("reads a token from before T-211, which has only its second", () => {
+      const legacy = jwt.sign(
+        { tokenVersion: 2, jti: "d-1" },
+        "test-secret-key",
+        {
+          algorithm: "HS256",
+          audience: "device",
+          subject: jwt.decode(signDeviceToken(EMAIL, 2))?.sub as string,
+          expiresIn: "365d",
+        },
+      );
+      const { iat } = jwt.decode(legacy) as { iat: number };
+
+      expect(
+        service.knownDevice(
+          legacy,
+          owner({ devicesResetAt: new Date(iat * 1000) }),
+        ),
+      ).toBe(true);
+      expect(
+        service.knownDevice(
+          legacy,
+          owner({ devicesResetAt: new Date(iat * 1000 + 1) }),
+        ),
+      ).toBe(false);
+    });
+
+    it("tells about the other devices after a move: their tokens name the old email", async () => {
+      repo.getByEmail.mockResolvedValue(owner({ email: "moved@example.com" }));
+
+      await service.login(
+        "moved@example.com",
+        "pw",
+        undefined,
+        signDeviceToken(EMAIL, 2),
+      );
+
+      expect(email.sendNotice).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not take another email's device token for this account's", async () => {
+      repo.getByEmail.mockResolvedValue(owner());
+
+      await service.login(
+        EMAIL,
+        "pw",
+        undefined,
+        signDeviceToken("someone@example.com", 2),
+      );
+
+      expect(email.sendNotice).toHaveBeenCalledTimes(1);
+    });
+
+    it("tells an address that was never confirmed nothing: it may be a stranger's", async () => {
+      repo.getByEmail.mockResolvedValue(owner({ emailVerifiedAt: null }));
+
+      await service.login(EMAIL, "pw");
+
+      expect(email.sendNotice).not.toHaveBeenCalled();
+    });
+
+    it("signs in all the same when the notice cannot be sent", async () => {
+      repo.getByEmail.mockResolvedValue(owner());
+      email.sendNotice.mockRejectedValue(new Error("render bug"));
+
+      await expect(service.login(EMAIL, "pw")).resolves.toMatchObject({
+        accessToken: expect.any(String),
+      });
+    });
+
+    it("sends nothing for a failed sign-in", async () => {
+      repo.getByEmail.mockResolvedValue(owner());
+
+      await expect(service.login(EMAIL, "wrong")).rejects.toThrow(ApiError);
+      expect(email.sendNotice).not.toHaveBeenCalled();
     });
   });
 
@@ -865,8 +1046,31 @@ describe("AuthService", () => {
     it("logoutAll bumps tokenVersion and revokes every session", async () => {
       await service.logoutAll(user.id);
 
-      expect(repo.bumpTokenVersion).toHaveBeenCalledWith(user.id);
+      expect(repo.forgetDevices).toHaveBeenCalledWith(
+        user.id,
+        expect.any(Date),
+      );
       expect(sessions.revokeAllForUser).toHaveBeenCalledWith(user.id);
+    });
+
+    it("logoutAll forgets every device and answers this one a token issued after it [T-211]", async () => {
+      const bumped = new User({
+        ...user,
+        tokenVersion: 4,
+        devicesResetAt: new Date(),
+      });
+      repo.forgetDevices.mockResolvedValue(bumped);
+
+      const { deviceToken } = await service.logoutAll(user.id);
+
+      expect(deviceToken).toEqual(expect.any(String));
+      expect(service.knownDevice(deviceToken, bumped)).toBe(true);
+      const before = signDeviceToken(bumped.email, 3);
+      const later = new User({
+        ...bumped,
+        devicesResetAt: new Date(Date.now() + 1),
+      });
+      expect(service.knownDevice(before, later)).toBe(false);
     });
   });
 

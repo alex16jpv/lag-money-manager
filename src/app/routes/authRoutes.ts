@@ -18,6 +18,7 @@ import {
   registerSchema,
   resendVerificationSchema,
   resetPasswordSchema,
+  undoEmailChangeSchema,
   verifyEmailSchema,
 } from "../validation/schemas";
 import { validate } from "../validation/validate";
@@ -100,6 +101,11 @@ const confirmChangeLimiter = authRateLimit({
 });
 const notMeLimiter = authRateLimit({
   keyPrefix: "not-me",
+  max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
+  windowMs: AUTH_WINDOW_MS,
+});
+const undoLimiter = authRateLimit({
+  keyPrefix: "undo-email-change",
   max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
@@ -222,7 +228,9 @@ router.post(
  *       send the `deviceToken` of this device's last login or register and
  *       they count against this device alone, so nobody else's failures can
  *       lock it out; without one they count per email and IP and per email in
- *       total. Successful logins are refunded.
+ *       total. Successful logins are refunded. A login whose `deviceToken` is
+ *       not one this account's email gave since its last password reset, undo
+ *       or logout-all emails `new-sign-in` to that email, when it is confirmed.
  *     security: []
  *     requestBody:
  *       required: true
@@ -354,7 +362,9 @@ router.post(
  *       takes five tries. When the account had never confirmed its email and
  *       holds accounts or transactions, the answer's `user.keepOrStartFresh`
  *       is set: ask "Keep what's in this account?" before opening anything
- *       (`POST /users/{id}/keep-or-start-fresh`).
+ *       (`POST /users/{id}/keep-or-start-fresh`). A change of email that was
+ *       waiting is cancelled, and `password-changed` goes to the address. The
+ *       code of `password-reset-after-undo` is redeemed here as well.
  *     security: []
  *     requestBody:
  *       required: true
@@ -708,6 +718,61 @@ router.post(
 
 /**
  * @openapi
+ * /auth/email/undo:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Undo an email change, from the old address
+ *     description: >
+ *       "Undo the change" of `email-change-requested` (`/{locale}/undo#token=…`),
+ *       for whoever holds the address the account had. It works for 7 days
+ *       and once, even after the change was confirmed, and brings back an
+ *       account deleted since. The account goes back to that address (confirmed), any
+ *       change still waiting is cancelled, every session and device token is
+ *       revoked, and the password stops working: `password-reset-after-undo`
+ *       takes a code and a link to that address, which `/auth/password/reset`
+ *       redeems. The undo links issued after it stop working, with the
+ *       addresses they kept; an earlier one still works, so the first link an
+ *       owner received always wins. No `new-sign-in` and no
+ *       `password-changed` are sent.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UndoEmailChangeInput'
+ *     responses:
+ *       200:
+ *         description: The change is undone
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/EmailChangeUndone'
+ *       400:
+ *         description: >
+ *           Validation error (code VALIDATION), or a link that no longer
+ *           works: used, past its 7 days, or stopped by the undo of an
+ *           earlier link (code LINK_INVALID)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: Too many attempts from this IP (code RATE_LIMITED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/email/undo",
+  undoLimiter,
+  validate(undoEmailChangeSchema),
+  AuthController.undoEmailChange,
+);
+
+/**
+ * @openapi
  * /auth/refresh:
  *   post:
  *     tags: [Auth]
@@ -826,14 +891,17 @@ router.post(
  *     summary: Revoke every session of the authenticated user
  *     description: >
  *       Bumps the user's token version, so every outstanding refresh token
- *       stops working (subsequent refreshes fail with 401 REFRESH_REVOKED).
+ *       stops working (subsequent refreshes fail with 401 REFRESH_REVOKED),
+ *       and forgets every device: a login with a device token issued before
+ *       emails `new-sign-in`. The answer's `deviceToken` is this device's new
+ *       one, issued after that.
  *     responses:
  *       200:
  *         description: All sessions revoked
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Message'
+ *               $ref: '#/components/schemas/LoggedOutEverywhere'
  *       401:
  *         description: Missing, invalid or expired access token
  *         content:

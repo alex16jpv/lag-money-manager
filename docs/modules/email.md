@@ -1,7 +1,8 @@
 # Email Module
 
-> **Status: the sender and the bounce handling are built, and the password reset (T-207) and the
-> email's confirmation (T-209) are its callers; nothing sends until `EMAIL_PROVIDERS` names a provider.**
+> **Status: the sender and the bounce handling are built; the password reset (T-207), the email's
+> confirmation (T-209), the change of email (T-221) and the security notices (T-211) are its callers;
+> nothing sends until `EMAIL_PROVIDERS` names a provider.**
 > This module is the piece every email of the app goes through: the password reset and the confirmation
 > ([auth.md](auth.md)), the email change (T-221), the security notices (T-211) and, later, the
 > notification channel (T-131). Setting SES up in production, with its alarms and budget, is
@@ -72,6 +73,39 @@ What the callers owe to this answer, written down here so each task does not red
 - **A security notice never blocks what triggered it.** Send it after the change is committed, and
   whatever the outcome, the change stands; the notice is on the record either way.
 
+## Security notices
+
+The notices of T-211, sent through `sendSecurityNotice` (`src/app/services/securityNotice.ts`), which
+holds the two rules every one of them follows:
+
+- **Only to a confirmed address** (`emailVerifiedAt`). An address nobody confirmed may be a stranger's,
+  registered by somebody else, and a stranger hears from us only when they ask (a verification or a reset
+  they requested). So an account that never confirmed its email gets none of these.
+- **Never failing what sent it.** The change is committed first; a notice that throws is logged
+  (`SECURITY_NOTICE_NOT_SENT`, error) and the request answers as if it had gone. The one exception is
+  `email-change-requested`: it goes before the change is saved, and a brake, a cap or no provider refuses
+  the change instead (the owner's decision of 2026-09-28, [users.md](users.md#changing-the-email)).
+
+| Notice                   | Sent when                                                                   | By                                    |
+| ------------------------ | --------------------------------------------------------------------------- | ------------------------------------- |
+| `password-changed`       | A password change in Settings (`PUT /users/:id`), and every reset           | `UserService`, `PasswordResetService` |
+| `email-change-requested` | A change of email is asked for: to the old address, with its undo link, before the change is saved | `EmailChangeService.request` |
+| `new-sign-in`            | A login whose device token is not one of this email since its last reset, undo or Log out everywhere | `AuthService.login`          |
+| `account-deleted`        | Delete account                                                              | `UserService.deleteUser`              |
+
+- **When** is the moment of the change and **Device** the request's user agent read against the fixed list.
+- **No notice after an undo, `/confirm-email` or a register**: each sends its own email (the reset code, or
+  nothing new to say), and a register gives the device its token.
+- **`new-sign-in` and the devices** ([auth.md](auth.md#post-authlogin)): a password change keeps the devices
+  known; a reset, an undo and Log out everywhere forget them; after a move, only the device that confirmed it
+  holds a token of the new email.
+- **`passkey-added`, `two-factor-on`, `passkey-removed`, `two-factor-off` and `recovery-code-used`** are
+  rendered and tested, and nothing sends them yet: passkeys and the second step (T-215, T-217) do not
+  exist. When they do, the two "added" notices carry an undo link like `email-change-requested`, and the
+  undo also removes every passkey, TOTP and recovery code added since that link was issued (its
+  `expiresAt` minus 7 days), so a thief with the password cannot leave a factor behind that the owner's
+  reset would then ask for.
+
 ## Templates
 
 `src/app/email/templates.ts` holds the 13 templates of the front's contract,
@@ -80,13 +114,13 @@ plates (`design/build.mjs`, typographic quotes included). **The contract is the 
 a colour or a piece changes there, it changes here in the same way. This repository imports nothing
 from the front.
 
-| Template                    | Kind   | Budget   | Brake purpose  | Per account |
-| --------------------------- | ------ | -------- | -------------- | ----------- |
-| `verify-email`              | code   | security | `verify`       | yes         |
-| `password-reset`            | code   | reset    | `reset`        | no          |
-| `password-reset-after-undo` | code   | reset    | `reset-after-undo`, no daily brake | no |
-| `email-change-confirm`      | code   | security | `email-change` | yes         |
-| every other one             | notice | security | its own name   | no          |
+| Template                    | Kind   | Budget   | Brake purpose  | Per account | IP or device |
+| --------------------------- | ------ | -------- | -------------- | ----------- | ------------ |
+| `verify-email`              | code   | security | `verify`       | yes         | yes          |
+| `password-reset`            | code   | reset    | `reset`        | no          | yes          |
+| `password-reset-after-undo` | code   | reset    | `reset-after-undo`, no daily brake | no | no: sent with no requester |
+| `email-change-confirm`      | code   | security | `email-change` | yes         | yes          |
+| every other one             | notice | security | its own name   | no          | no           |
 
 - **The layout** (`src/app/email/layout.ts`) is the contract's "Building it for mail clients": tables
   with `role="presentation"`, inline styles on every element, an `<!--[if mso]>` table of 560px for

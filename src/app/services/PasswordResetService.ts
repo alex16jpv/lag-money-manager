@@ -1,6 +1,5 @@
 import bcryptjs from "bcryptjs";
 
-import { User } from "../../domain/entities/User";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import {
   AuthCodeRecord,
@@ -18,13 +17,14 @@ import { toUserResponse, UserResponseDTO } from "../dtos/UserDTO";
 import {
   CODE_MAX_ATTEMPTS,
   codeDigest,
-  newCode,
-  newLinkToken,
+  emailChangeKey,
   RESET_CODE_LIFETIME_MS,
   tokenDigest,
 } from "./authCodes";
 import { AuthService, OpenedSession } from "./AuthService";
 import { EmailRequester, EmailService } from "./EmailService";
+import { sendResetCode } from "./resetCode";
+import { sendSecurityNotice } from "./securityNotice";
 
 const PURPOSE: AuthCodePurpose = "reset";
 
@@ -62,7 +62,7 @@ export class PasswordResetService {
     private readonly codes: IAuthCodeRepository,
     private readonly email: Pick<
       EmailService,
-      "holdBrakes" | "sendCode" | "providerCeilingMs"
+      "holdBrakes" | "sendCode" | "sendNotice" | "providerCeilingMs"
     >,
     private readonly accounts: Pick<IAccountRepository, "countByUserId">,
     private readonly transactions: Pick<
@@ -107,7 +107,15 @@ export class PasswordResetService {
         user?.id ?? null,
         new Date(this.now().getTime() + RESET_CODE_LIFETIME_MS),
       );
-      if (user) await this.sendCode(user, toHash, requester);
+      if (user) {
+        await sendResetCode(
+          { codes: this.codes, email: this.email, now: this.now },
+          user,
+          "password-reset",
+          requester,
+          true,
+        );
+      }
     } catch (err) {
       // Only an address with an account can fail past this point, so the answer cannot say it did.
       logger.error(
@@ -123,42 +131,6 @@ export class PasswordResetService {
       status: "accepted",
       resendAfterSeconds: this.config.resendAfterSeconds,
     };
-  }
-
-  private async sendCode(
-    user: User,
-    toHash: string,
-    requester: EmailRequester,
-  ): Promise<void> {
-    const code = newCode();
-    const token = newLinkToken();
-    const outcome = await this.email.sendCode({
-      template: "password-reset",
-      data: { code, token },
-      recipient: {
-        userId: user.id,
-        email: user.email,
-        locale: user.locale,
-        timezone: user.timezone,
-      },
-      requester,
-      brakesHeld: true,
-    });
-    const unconfirmed =
-      outcome.status === "failed" && outcome.reason === "unconfirmed";
-    // A send that failed leaves the person with the code they already had.
-    if (outcome.status !== "sent" && !unconfirmed) return;
-    await this.codes.issue(
-      PURPOSE,
-      toHash,
-      {
-        codeHash: codeDigest(toHash, code),
-        tokenHash: tokenDigest(token),
-        expiresAt: new Date(this.now().getTime() + RESET_CODE_LIFETIME_MS),
-      },
-      unconfirmed,
-      this.now(),
-    );
   }
 
   async reset(
@@ -191,10 +163,20 @@ export class PasswordResetService {
     );
     if (!updated) throw refused();
     await this.sessions.revokeAllForUser(updated.id);
+    if (user.emailChange) {
+      await this.codes.discard(
+        "email-change",
+        emailChangeKey(user.id, user.emailChange.email),
+      );
+    }
     if (!user.emailVerifiedAt) {
       await this.invitations.touchUnansweredFor(updated.email, this.now());
     }
     const session = await this.auth.openSession(updated, userAgent);
+    await sendSecurityNotice(this.email, updated, "password-changed", {
+      at: this.now(),
+      userAgent,
+    });
     return { ...session, user: toUserResponse(updated) };
   }
 

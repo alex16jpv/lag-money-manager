@@ -3,7 +3,9 @@ import bcryptjs from "bcryptjs";
 import {
   codeDigest,
   emailChangeKey,
+  newUndoToken,
   tokenDigest,
+  undoTokenAccount,
 } from "../../app/services/authCodes";
 import { EmailChangeService } from "../../app/services/EmailChangeService";
 import { EmailOutcome } from "../../app/services/EmailService";
@@ -14,9 +16,11 @@ import {
 } from "../../domain/repositories/authCode/IAuthCodeRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { hashEmailAddress } from "../../shared/emailHash";
+import logger from "../../shared/logger";
 
 const NOW = new Date("2026-09-28T12:00:00.000Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEK_MS = 7 * DAY_MS;
 const USER_ID = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
 const EMAIL = "ana@example.com";
 const NEW_EMAIL = "ana.ruiz@example.org";
@@ -93,11 +97,15 @@ interface Harness {
     | "startEmailChange"
     | "renewEmailChange"
     | "dropEmailChange"
-    | "applyEmailChange",
+    | "applyEmailChange"
+    | "addUndoLink"
+    | "dropUndoLink"
+    | "getForUndo"
+    | "undoEmailChange",
     jest.Mock
   >;
   codes: jest.Mocked<IAuthCodeRepository>;
-  email: { sendCode: jest.Mock };
+  email: { sendCode: jest.Mock; sendNotice: jest.Mock };
   invitations: { touchUnansweredFor: jest.Mock };
   sessions: { revokeAllForUser: jest.Mock };
   auth: { openSession: jest.Mock; isLiveSessionOf: jest.Mock };
@@ -116,6 +124,12 @@ const build = (): Harness => {
     ),
     dropEmailChange: jest.fn().mockResolvedValue(undefined),
     applyEmailChange: jest.fn(async () => moved()),
+    addUndoLink: jest.fn().mockResolvedValue(true),
+    dropUndoLink: jest.fn().mockResolvedValue(undefined),
+    getForUndo: jest.fn().mockResolvedValue(null),
+    undoEmailChange: jest.fn(async () =>
+      ana({ emailVerifiedAt: NOW, tokenVersion: 2 }),
+    ),
   };
   const codes: jest.Mocked<IAuthCodeRepository> = {
     recordRequest: jest.fn().mockResolvedValue(undefined),
@@ -127,7 +141,10 @@ const build = (): Harness => {
     findByLiveToken: jest.fn().mockResolvedValue(null),
     discard: jest.fn().mockResolvedValue(undefined),
   };
-  const email = { sendCode: jest.fn().mockResolvedValue(sent) };
+  const email = {
+    sendCode: jest.fn().mockResolvedValue(sent),
+    sendNotice: jest.fn().mockResolvedValue(sent),
+  };
   const invitations = {
     touchUnansweredFor: jest.fn().mockResolvedValue(undefined),
   };
@@ -295,7 +312,7 @@ describe("EmailChangeService [T-221]", () => {
         "EMAIL_TAKEN",
         409,
       );
-      expect(users.emailInUse).toHaveBeenCalledWith(NEW_EMAIL);
+      expect(users.emailInUse).toHaveBeenCalledWith(NEW_EMAIL, NOW, USER_ID);
       expect(email.sendCode).not.toHaveBeenCalled();
     });
 
@@ -344,6 +361,281 @@ describe("EmailChangeService [T-221]", () => {
       expect(result.status).toBe("sent");
       expect(codes.issue.mock.calls[0][3]).toBe(true);
       expect(users.startEmailChange).toHaveBeenCalled();
+    });
+  });
+
+  describe("the notice to the old address [T-211]", () => {
+    it("tells a confirmed old address the new one, with a link to undo it for 7 days, before saving the change", async () => {
+      const { service, email, users } = build();
+
+      await service.request(USER_ID, NEW_EMAIL, PASSWORD, REQUESTER, "Mozilla");
+
+      expect(email.sendNotice).toHaveBeenCalledTimes(1);
+      const notice = email.sendNotice.mock.calls[0][0];
+      expect(notice).toMatchObject({
+        template: "email-change-requested",
+        data: { at: NOW, userAgent: "Mozilla", newEmail: NEW_EMAIL },
+        recipient: {
+          userId: USER_ID,
+          email: EMAIL,
+          locale: "es",
+          timezone: "America/Bogota",
+        },
+      });
+      const { undoToken } = notice.data;
+      expect(undoTokenAccount(undoToken)).toBe(USER_ID);
+      expect(users.addUndoLink).toHaveBeenCalledWith(
+        USER_ID,
+        {
+          email: EMAIL,
+          tokenHash: tokenDigest(undoToken),
+          expiresAt: new Date(NOW.getTime() + WEEK_MS),
+        },
+        NOW,
+      );
+      const order = (mock: jest.Mock): number =>
+        mock.mock.invocationCallOrder[0];
+      expect(order(users.addUndoLink)).toBeLessThan(order(email.sendNotice));
+      expect(order(email.sendNotice)).toBeLessThan(
+        order(users.startEmailChange),
+      );
+      expect(users.dropUndoLink).not.toHaveBeenCalled();
+    });
+
+    it("tells an address that was never confirmed nothing, and keeps no undo link", async () => {
+      const { service, email, users } = build();
+      users.getByIdWithPassword.mockResolvedValue(
+        ana({ emailVerifiedAt: null }),
+      );
+
+      const result = await service.request(
+        USER_ID,
+        NEW_EMAIL,
+        PASSWORD,
+        REQUESTER,
+      );
+
+      expect(result.status).toBe("sent");
+      expect(email.sendNotice).not.toHaveBeenCalled();
+      expect(users.addUndoLink).not.toHaveBeenCalled();
+      expect(users.startEmailChange).toHaveBeenCalled();
+    });
+
+    it("saves nothing, and says why, when a brake or a cap stops the notice [owner, 2026-09-28]", async () => {
+      const { service, email, users } = build();
+      email.sendNotice.mockResolvedValue({
+        status: "limited",
+        retryAfterSeconds: 40,
+      });
+
+      const result = await service.request(
+        USER_ID,
+        NEW_EMAIL,
+        PASSWORD,
+        REQUESTER,
+      );
+
+      expect(result).toEqual({ status: "limited", retryAfterSeconds: 40 });
+      const { tokenHash } = users.addUndoLink.mock.calls[0][1];
+      expect(users.dropUndoLink).toHaveBeenCalledWith(USER_ID, tokenHash);
+      expect(users.startEmailChange).not.toHaveBeenCalled();
+    });
+
+    it("saves nothing when no provider could take the notice", async () => {
+      const { service, email, users } = build();
+      email.sendNotice.mockResolvedValue({
+        status: "failed",
+        reason: "unavailable",
+      });
+
+      const result = await service.request(
+        USER_ID,
+        NEW_EMAIL,
+        PASSWORD,
+        REQUESTER,
+      );
+
+      expect(result).toEqual({ status: "failed", reason: "unavailable" });
+      expect(users.startEmailChange).not.toHaveBeenCalled();
+    });
+
+    it("lets an account leave an old address that refuses all email, with no undo link", async () => {
+      const { service, email, users } = build();
+      email.sendNotice.mockResolvedValue({
+        status: "failed",
+        reason: "rejected",
+      });
+
+      const result = await service.request(
+        USER_ID,
+        NEW_EMAIL,
+        PASSWORD,
+        REQUESTER,
+      );
+
+      expect(result.status).toBe("sent");
+      expect(users.dropUndoLink).toHaveBeenCalled();
+      expect(users.startEmailChange).toHaveBeenCalled();
+    });
+
+    it("keeps the undo link when the notice may still arrive", async () => {
+      const { service, email, users } = build();
+      email.sendNotice.mockResolvedValue({
+        status: "failed",
+        reason: "unconfirmed",
+      });
+
+      await service.request(USER_ID, NEW_EMAIL, PASSWORD, REQUESTER);
+
+      expect(users.dropUndoLink).not.toHaveBeenCalled();
+      expect(users.startEmailChange).toHaveBeenCalled();
+    });
+
+    it("tells the old address nothing when the new one's email did not go", async () => {
+      const { service, email, users } = build();
+      email.sendCode.mockResolvedValue({
+        status: "failed",
+        reason: "rejected",
+      });
+
+      await service.request(USER_ID, NEW_EMAIL, PASSWORD, REQUESTER);
+
+      expect(email.sendNotice).not.toHaveBeenCalled();
+      expect(users.addUndoLink).not.toHaveBeenCalled();
+      expect(users.startEmailChange).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("undo [T-211]", () => {
+    const token = newUndoToken(USER_ID);
+    const link = {
+      email: EMAIL,
+      tokenHash: tokenDigest(token),
+      expiresAt: new Date(NOW.getTime() + WEEK_MS - 1000),
+    };
+    const movedWithLink = (): User =>
+      ana({ email: NEW_EMAIL, emailChangedAt: NOW, undoLinks: [link] });
+
+    it("puts the account back at the address the link reached and mails it a code to choose a password", async () => {
+      const { service, users, sessions, codes, email, invitations } = build();
+      users.getForUndo.mockResolvedValue(movedWithLink());
+
+      const result = await service.undo(token);
+
+      const [id, used, unusable, at] = users.undoEmailChange.mock.calls[0];
+      expect(id).toBe(USER_ID);
+      expect(used).toEqual(link);
+      expect(at).toBe(NOW);
+      expect(await bcryptjs.compare(PASSWORD, unusable)).toBe(false);
+      expect(sessions.revokeAllForUser).toHaveBeenCalledWith(USER_ID);
+      expect(invitations.touchUnansweredFor).toHaveBeenCalledWith(EMAIL, NOW);
+      const toHash = hashEmailAddress(EMAIL);
+      expect(codes.recordRequest).toHaveBeenCalledWith(
+        "reset",
+        toHash,
+        USER_ID,
+        new Date(NOW.getTime() + 30 * 60 * 1000),
+      );
+      const sendRequest = email.sendCode.mock.calls[0][0];
+      expect(sendRequest).toMatchObject({
+        template: "password-reset-after-undo",
+        recipient: { userId: USER_ID, email: EMAIL, locale: "es" },
+        requester: null,
+        brakesHeld: false,
+      });
+      expect(codes.issue).toHaveBeenCalledWith(
+        "reset",
+        toHash,
+        {
+          codeHash: codeDigest(toHash, sendRequest.data.code),
+          tokenHash: tokenDigest(sendRequest.data.token),
+          expiresAt: new Date(NOW.getTime() + 30 * 60 * 1000),
+        },
+        false,
+        NOW,
+      );
+      expect(email.sendNotice).not.toHaveBeenCalled();
+      expect(result).toEqual({ email: EMAIL, codeSent: true });
+    });
+
+    it("cancels a change that still waits, with its code and link", async () => {
+      const { service, users, codes, invitations } = build();
+      users.getForUndo.mockResolvedValue(
+        ana({ emailChange: pendingChange(), undoLinks: [link] }),
+      );
+
+      await service.undo(token);
+
+      expect(codes.discard).toHaveBeenCalledWith("email-change", NEW_KEY);
+      expect(invitations.touchUnansweredFor).not.toHaveBeenCalled();
+    });
+
+    it("says LINK_INVALID for a token that is not a link of the account, and does nothing", async () => {
+      const { service, users } = build();
+      users.getForUndo.mockResolvedValue(movedWithLink());
+
+      await rejects(service.undo(newUndoToken(USER_ID)), "LINK_INVALID", 400);
+      await rejects(service.undo("x".repeat(64)), "LINK_INVALID");
+      expect(users.undoEmailChange).not.toHaveBeenCalled();
+    });
+
+    it("names its account in a token of 64 characters, and reads nothing else as one", () => {
+      expect(token).toMatch(/^[A-Za-z0-9_-]{64}$/);
+      expect(undoTokenAccount(token)).toBe(USER_ID);
+      expect(newUndoToken(USER_ID)).not.toBe(token);
+      expect(undoTokenAccount(token.slice(0, 63))).toBeNull();
+      expect(undoTokenAccount(`${token.slice(0, 63)}!`)).toBeNull();
+    });
+
+    it("says LINK_INVALID once the link's 7 days passed", async () => {
+      const { service, users } = build();
+      users.getForUndo.mockResolvedValue(
+        ana({ undoLinks: [{ ...link, expiresAt: NOW }] }),
+      );
+
+      await rejects(service.undo(token), "LINK_INVALID");
+      expect(users.undoEmailChange).not.toHaveBeenCalled();
+    });
+
+    it("says LINK_INVALID when the account is gone, or the link was spent between the read and the write", async () => {
+      const { service, users, email } = build();
+      users.getForUndo.mockResolvedValueOnce(null);
+      await rejects(service.undo(token), "LINK_INVALID");
+
+      users.getForUndo.mockResolvedValue(movedWithLink());
+      users.undoEmailChange.mockResolvedValue(null);
+      await rejects(service.undo(token), "LINK_INVALID");
+      expect(email.sendCode).not.toHaveBeenCalled();
+    });
+
+    it("answers codeSent false when the code could not go, and the undo stands", async () => {
+      const { service, users, email, codes } = build();
+      users.getForUndo.mockResolvedValue(movedWithLink());
+      email.sendCode.mockResolvedValue({
+        status: "failed",
+        reason: "rejected",
+      });
+
+      const result = await service.undo(token);
+
+      expect(result).toEqual({ email: EMAIL, codeSent: false });
+      expect(codes.issue).not.toHaveBeenCalled();
+    });
+
+    it("answers codeSent false and logs it when sending the code throws", async () => {
+      const { service, users, email } = build();
+      users.getForUndo.mockResolvedValue(movedWithLink());
+      email.sendCode.mockRejectedValue(new Error("render bug"));
+      const error = jest.spyOn(logger, "error").mockImplementation();
+
+      const result = await service.undo(token);
+
+      expect(result).toEqual({ email: EMAIL, codeSent: false });
+      expect(error).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "UNDO_RESET_CODE_NOT_SENT" }),
+        expect.any(String),
+      );
+      error.mockRestore();
     });
   });
 

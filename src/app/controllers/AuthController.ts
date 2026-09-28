@@ -26,6 +26,7 @@ const authService = new AuthService(
   repositoryFactory.getUserRepository(),
   categoryService,
   repositoryFactory.getRefreshSessionRepository(),
+  createEmailService(),
 );
 const passwordResetService = new PasswordResetService(
   repositoryFactory.getUserRepository(),
@@ -148,12 +149,23 @@ export class AuthController {
     res.status(200).json({ message: "That account is gone" });
   };
 
+  static undoEmailChange = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    const result = await emailChange.undo(
+      (req.body as { token: string }).token,
+    );
+    res.status(200).json(result);
+  };
+
   static login = async (req: Request, res: Response) => {
-    const { email, password } = req.body;
+    const { email, password, deviceToken } = req.body;
     const result = await authService.login(
       email,
       password,
       req.get("User-Agent") ?? undefined,
+      deviceToken,
     );
     res.status(200).json(result);
   };
@@ -195,8 +207,11 @@ export class AuthController {
   };
 
   static logoutAll = async (req: Request, res: Response) => {
-    await authService.logoutAll(req.user!.userId);
-    res.status(200).json({ message: "All sessions revoked" });
+    const { deviceToken } = await authService.logoutAll(req.user!.userId);
+    res.status(200).json({
+      message: "All sessions revoked",
+      ...(deviceToken ? { deviceToken } : {}),
+    });
   };
 
   static listSessions = async (req: Request, res: Response) => {

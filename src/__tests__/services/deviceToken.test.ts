@@ -12,10 +12,15 @@ const subjectOf = (token: string): string =>
   (jwt.decode(token) as { sub: string }).sub;
 
 describe("device token", () => {
-  it("reads back the device id and the token version it was issued with", () => {
+  it("reads back the device id, the token version and the millisecond it was issued", () => {
     const token = signDeviceToken(EMAIL, 3);
     const claim = readDeviceToken(token, EMAIL);
-    expect(claim).toEqual({ deviceId: expect.any(String), tokenVersion: 3 });
+    const { issuedAtMs } = jwt.decode(token) as { issuedAtMs: number };
+    expect(claim).toEqual({
+      deviceId: expect.any(String),
+      tokenVersion: 3,
+      issuedAt: new Date(issuedAtMs),
+    });
     expect(readDeviceToken(token, EMAIL)).toEqual(claim);
   });
 

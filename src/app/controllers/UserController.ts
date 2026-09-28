@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { ENVIRONMENT } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
 import { createEmailChangeService } from "../factories/emailChangeFactory";
+import { createEmailService } from "../factories/emailServiceFactory";
 import { createEmailVerificationService } from "../factories/emailVerificationFactory";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { AuthPayload } from "../middlewares/authMiddleware";
@@ -23,6 +24,7 @@ const authService = new AuthService(
   repositoryFactory.getUserRepository(),
   categoryService,
   repositoryFactory.getRefreshSessionRepository(),
+  createEmailService(),
 );
 const emailChangeService = createEmailChangeService(authService);
 const userService = new UserService(
@@ -32,6 +34,7 @@ const userService = new UserService(
   createEmailVerificationService(),
   emailChangeService,
   repositoryFactory.getRefreshSessionRepository(),
+  createEmailService(),
 );
 const keepOrStartFreshService = new KeepOrStartFreshService(
   repositoryFactory.getUserRepository(),
@@ -78,14 +81,24 @@ export class UserController {
   static updateUser = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     const id = req.params.id as string;
-    const updatedUser = await userService.updateUser(id, req.body, userId);
+    const updatedUser = await userService.updateUser(
+      id,
+      req.body,
+      userId,
+      req.get("User-Agent") ?? undefined,
+    );
     res.status(200).json(updatedUser);
   };
 
   static deleteUser = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     const id = req.params.id as string;
-    await userService.deleteUser(id, userId, req.body.currentPassword);
+    await userService.deleteUser(
+      id,
+      userId,
+      req.body.currentPassword,
+      req.get("User-Agent") ?? undefined,
+    );
     res.status(200).json({ message: "User deleted successfully" });
   };
 
@@ -100,6 +113,7 @@ export class UserController {
       email,
       currentPassword,
       await requesterOf(req),
+      req.get("User-Agent") ?? undefined,
     );
     answerEmailChange(res, result);
   };

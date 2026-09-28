@@ -4,6 +4,7 @@ import {
   FreshStartDetails,
   KeepOrStartFresh,
   PendingEmailChange,
+  UndoLink,
   User,
 } from "../../../domain/entities/User";
 import { IUserRepository } from "../../../domain/repositories/user/IUserRepository";
@@ -17,6 +18,22 @@ import {
 } from "../../../shared/pagination";
 import { UserModel } from "../../models/UserModel";
 import { ID_CURSOR_SORT, idCursorFilter } from "../keysetCursor";
+
+const duplicateOn = (err: unknown, field: string): boolean => {
+  const e = err as { code?: number; keyPattern?: Record<string, unknown> };
+  return e?.code === 11000 && !!e.keyPattern && field in e.keyPattern;
+};
+
+const liveUndoLinks = (now: Date): Record<string, unknown> => ({
+  $filter: {
+    input: { $ifNull: ["$undoLinks", []] },
+    cond: { $gt: ["$$this.expiresAt", now] },
+  },
+});
+
+const heldBy = (email: unknown, links: unknown): Record<string, unknown> => ({
+  $setUnion: [[email], { $map: { input: links, in: "$$this.email" } }],
+});
 
 export class UserRepository implements IUserRepository {
   private toEntity(doc: {
@@ -33,6 +50,8 @@ export class UserRepository implements IUserRepository {
     firstVerifiedAt?: Date | null;
     emailChangedAt?: Date | null;
     emailChange?: PendingEmailChange | null;
+    undoLinks?: UndoLink[];
+    devicesResetAt?: Date | null;
     keepOrStartFresh?: KeepOrStartFresh | null;
     dataResetAt?: Date | null;
     createdAt: Date;
@@ -58,6 +77,12 @@ export class UserRepository implements IUserRepository {
             expiresAt: doc.emailChange.expiresAt,
           }
         : null,
+      undoLinks: (doc.undoLinks ?? []).map((link) => ({
+        email: link.email,
+        tokenHash: link.tokenHash,
+        expiresAt: link.expiresAt,
+      })),
+      devicesResetAt: doc.devicesResetAt,
       keepOrStartFresh: doc.keepOrStartFresh
         ? {
             askedAt: doc.keepOrStartFresh.askedAt,
@@ -119,11 +144,15 @@ export class UserRepository implements IUserRepository {
     return this.toEntity(doc);
   }
 
-  async bumpTokenVersion(id: string): Promise<void> {
-    await UserModel.updateOne(
+  async forgetDevices(id: string, now: Date): Promise<User | null> {
+    const doc = await UserModel.findOneAndUpdate(
       { _id: id, deletedAt: null },
-      { $inc: { tokenVersion: 1 } },
-    );
+      { $set: { devicesResetAt: now }, $inc: { tokenVersion: 1 } },
+      { returnDocument: "after" },
+    )
+      .select("-password")
+      .lean();
+    return doc ? this.toEntity(doc) : null;
   }
 
   async getDeletedByEmail(email: string): Promise<User | null> {
@@ -175,6 +204,8 @@ export class UserRepository implements IUserRepository {
               : keepQuestion,
             emailVerifiedAt: { $ifNull: ["$emailVerifiedAt", now] },
             firstVerifiedAt: { $ifNull: ["$firstVerifiedAt", now] },
+            emailChange: null,
+            devicesResetAt: now,
             updatedAt: now,
           },
         },
@@ -211,8 +242,22 @@ export class UserRepository implements IUserRepository {
     return current?.emailVerifiedAt ? this.toEntity(current) : null;
   }
 
-  async emailInUse(email: string): Promise<boolean> {
-    return (await UserModel.exists({ email })) !== null;
+  async emailInUse(
+    email: string,
+    now: Date,
+    exceptUserId?: string,
+  ): Promise<boolean> {
+    const held = await UserModel.exists({
+      $or: [
+        { email },
+        {
+          heldEmails: email,
+          undoLinks: { $elemMatch: { email, expiresAt: { $gt: now } } },
+          ...(exceptUserId ? { _id: { $ne: exceptUserId } } : {}),
+        },
+      ],
+    });
+    return held !== null;
   }
 
   async startEmailChange(
@@ -227,6 +272,26 @@ export class UserRepository implements IUserRepository {
       .select("-password")
       .lean();
     return doc ? this.toEntity(doc) : null;
+  }
+
+  async addUndoLink(id: string, link: UndoLink, now: Date): Promise<boolean> {
+    const links = {
+      $concatArrays: [liveUndoLinks(now), [{ $literal: link }]],
+    };
+    const result = await UserModel.updateOne(
+      { _id: id, deletedAt: null },
+      [{ $set: { undoLinks: links, heldEmails: heldBy("$email", links) } }],
+      { timestamps: false, updatePipeline: true },
+    ).exec();
+    return result.matchedCount > 0;
+  }
+
+  async dropUndoLink(id: string, tokenHash: string): Promise<void> {
+    await UserModel.updateOne(
+      { _id: id },
+      { $pull: { undoLinks: { tokenHash } } },
+      { timestamps: false },
+    ).exec();
   }
 
   async renewEmailChange(
@@ -264,38 +329,127 @@ export class UserRepository implements IUserRepository {
     now: Date,
   ): Promise<User | "taken" | null> {
     try {
-      const doc = await UserModel.findOneAndUpdate(
-        {
-          _id: id,
-          deletedAt: null,
-          "emailChange.email": email,
-          "emailChange.expiresAt": { $gt: now },
-        },
-        [
-          {
-            $set: {
-              email: { $literal: email },
-              emailVerifiedAt: now,
-              firstVerifiedAt: { $ifNull: ["$firstVerifiedAt", now] },
-              emailChangedAt: now,
-              emailChange: null,
-              tokenVersion: { $add: [{ $ifNull: ["$tokenVersion", 0] }, 1] },
-              updatedAt: now,
-            },
-          },
-        ],
-        { returnDocument: "after", updatePipeline: true },
-      )
-        .select("-password")
-        .lean();
-      return doc ? this.toEntity(doc) : null;
+      return await this.moveTo(id, email, now);
     } catch (err) {
-      const e = err as { code?: number; keyPattern?: Record<string, unknown> };
-      if (e.code === 11000 && !!e.keyPattern && "email" in e.keyPattern) {
+      if (duplicateOn(err, "email")) return "taken";
+      if (!duplicateOn(err, "heldEmails")) throw err;
+    }
+    await this.releaseLapsedHolds(email, now);
+    try {
+      return await this.moveTo(id, email, now);
+    } catch (err) {
+      if (duplicateOn(err, "email") || duplicateOn(err, "heldEmails")) {
         return "taken";
       }
       throw err;
     }
+  }
+
+  private async moveTo(
+    id: string,
+    email: string,
+    now: Date,
+  ): Promise<User | null> {
+    const links = liveUndoLinks(now);
+    const doc = await UserModel.findOneAndUpdate(
+      {
+        _id: id,
+        deletedAt: null,
+        "emailChange.email": email,
+        "emailChange.expiresAt": { $gt: now },
+      },
+      [
+        {
+          $set: {
+            email: { $literal: email },
+            emailVerifiedAt: now,
+            firstVerifiedAt: { $ifNull: ["$firstVerifiedAt", now] },
+            emailChangedAt: now,
+            emailChange: null,
+            undoLinks: links,
+            heldEmails: heldBy({ $literal: email }, links),
+            tokenVersion: { $add: [{ $ifNull: ["$tokenVersion", 0] }, 1] },
+            updatedAt: now,
+          },
+        },
+      ],
+      { returnDocument: "after", updatePipeline: true },
+    )
+      .select("-password")
+      .lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  // An address whose undo links all lapsed is still in its old account's heldEmails until this lets it go.
+  private async releaseLapsedHolds(email: string, now: Date): Promise<void> {
+    const links = liveUndoLinks(now);
+    await UserModel.updateMany(
+      { heldEmails: email, email: { $ne: email } },
+      [{ $set: { undoLinks: links, heldEmails: heldBy("$email", links) } }],
+      { timestamps: false, updatePipeline: true },
+    ).exec();
+  }
+
+  async getForUndo(id: string): Promise<User | null> {
+    const doc = await UserModel.findOne({ _id: id, erasingAt: null })
+      .select("-password")
+      .lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async undoEmailChange(
+    id: string,
+    link: UndoLink,
+    unusablePasswordHash: string,
+    now: Date,
+  ): Promise<User | null> {
+    const earlier = {
+      $filter: {
+        input: liveUndoLinks(now),
+        cond: { $lt: ["$$this.expiresAt", link.expiresAt] },
+      },
+    };
+    const doc = await UserModel.findOneAndUpdate(
+      {
+        _id: id,
+        erasingAt: null,
+        undoLinks: {
+          $elemMatch: {
+            email: link.email,
+            tokenHash: link.tokenHash,
+            expiresAt: { $eq: link.expiresAt, $gt: now },
+          },
+        },
+      },
+      [
+        {
+          $set: {
+            emailChangedAt: {
+              $cond: [
+                { $eq: ["$email", link.email] },
+                { $ifNull: ["$emailChangedAt", null] },
+                now,
+              ],
+            },
+            email: { $literal: link.email },
+            emailVerifiedAt: now,
+            firstVerifiedAt: { $ifNull: ["$firstVerifiedAt", now] },
+            emailChange: null,
+            undoLinks: earlier,
+            heldEmails: heldBy({ $literal: link.email }, earlier),
+            deletedAt: null,
+            password: { $literal: unusablePasswordHash },
+            tokenVersion: { $add: [{ $ifNull: ["$tokenVersion", 0] }, 1] },
+            devicesResetAt: now,
+            updatedAt: now,
+          },
+        },
+      ],
+      { returnDocument: "after", updatePipeline: true },
+    )
+      .select("-password")
+      .lean();
+    return doc ? this.toEntity(doc) : null;
   }
 
   async getForErasure(id: string): Promise<User | null> {
@@ -466,9 +620,18 @@ export class UserRepository implements IUserRepository {
   }
 
   async create(user: Partial<User>): Promise<User> {
-    const id = user.id ?? uuidv7();
-    const doc = await UserModel.create({ _id: id, ...user });
-    return this.toEntity(doc);
+    const fields = {
+      _id: user.id ?? uuidv7(),
+      ...user,
+      heldEmails: user.email ? [user.email] : undefined,
+    };
+    try {
+      return this.toEntity(await UserModel.create(fields));
+    } catch (err) {
+      if (!user.email || !duplicateOn(err, "heldEmails")) throw err;
+    }
+    await this.releaseLapsedHolds(user.email.trim().toLowerCase(), new Date());
+    return this.toEntity(await UserModel.create(fields));
   }
 
   async update(id: string, user: Partial<User>): Promise<User> {

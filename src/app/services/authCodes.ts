@@ -6,11 +6,16 @@ import {
   timingSafeEqual,
 } from "crypto";
 
-import { ENVIRONMENT, NOT_ME_TOKEN_FORMAT } from "../../shared/constants";
+import {
+  ENVIRONMENT,
+  NOT_ME_TOKEN_FORMAT,
+  UNDO_TOKEN_FORMAT,
+} from "../../shared/constants";
 import { hashEmailAddress } from "../../shared/emailHash";
 
 export const RESET_CODE_LIFETIME_MS = 30 * 60 * 1000;
 export const VERIFY_CODE_LIFETIME_MS = 24 * 60 * 60 * 1000;
+export const UNDO_LINK_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 export const CODE_MAX_ATTEMPTS = 5;
 
 export const newCode = (): string =>
@@ -103,4 +108,17 @@ export const notMeTokenFits = (
     notMeMac(claim.userId, toHash, issued, claim.nonce),
   );
   return signed && (!emailChangedAt || claim.issuedAt >= emailChangedAt);
+};
+
+// The account's id locates the link; the 32 random bytes are what proves it, and only their hash is kept.
+export const newUndoToken = (userId: string): string =>
+  Buffer.concat([uuidBytes(userId), randomBytes(32)]).toString("base64url");
+
+export const undoTokenAccount = (token: string): string | null => {
+  if (!UNDO_TOKEN_FORMAT.test(token)) return null;
+  const bytes = Buffer.from(token, "base64url");
+  if (bytes.length !== 48 || bytes.toString("base64url") !== token) {
+    return null;
+  }
+  return uuidOf(bytes.subarray(0, 16));
 };

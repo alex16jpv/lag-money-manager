@@ -112,7 +112,9 @@ router.get("/:id", validate(idParamSchema), UserController.getUserById);
  *     summary: Update a user
  *     description: >
  *       Changing `password` requires `currentPassword` (re-authentication)
- *       and revokes every refresh token — other devices must log in again.
+ *       and revokes every refresh token — other devices must log in again —
+ *       cancels a change of email that waits, and emails `password-changed`
+ *       when the account's email is confirmed.
  *       `currency` can only change while the user has no accounts
  *       (mono-currency mode). The email does not change here: a body with
  *       `email` is refused whole, before its password or its fields are
@@ -190,7 +192,9 @@ router.put(
  *       Requires `currentPassword`: a hijacked 15-minute access token must not
  *       be able to delete the account. Soft delete: the account and its
  *       financial history are kept, and registering again with the same email
- *       and the password it had reactivates it.
+ *       and the password it had reactivates it. Emails `account-deleted` when
+ *       the email is confirmed. An undo link sent before (7 days) still
+ *       brings the account back, at the address it went to.
  *     parameters:
  *       - in: path
  *         name: id
@@ -349,6 +353,13 @@ router.post(
  *       this device's last login or register, lets the limits count this
  *       device instead of its IP. It is the only way the email changes:
  *       PUT /users/{id} refuses `email` (EMAIL_CHANGE_REQUIRES_VERIFICATION).
+ *       When the account's email is confirmed, `email-change-requested` goes
+ *       to it too, naming the new address, with "Undo the change"
+ *       (`/{locale}/undo#token=…`, POST /auth/email/undo) for 7 days, and the
+ *       change is saved only once that notice went (an old address that
+ *       refuses all email does not stop it); while that link works the old
+ *       address stays the account's, and another account's register or
+ *       change of email to it is EMAIL_TAKEN.
  *     parameters:
  *       - in: path
  *         name: id
@@ -418,16 +429,18 @@ router.post(
  *           password guesses for this account, from this IP, from this
  *           device or IP in the hour, for this account (five verification or
  *           email-change emails a day), or for this address — one a minute
- *           and five a day
+ *           and five a day — which counts the old address's
+ *           `email-change-requested` too, as does the day's cap of security
+ *           emails. Nothing was saved
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       503:
  *         description: >
- *           The email could not be sent (code EMAIL_SEND_FAILED), or the
- *           captcha could not be checked (code CAPTCHA_UNAVAILABLE). Nothing
- *           was saved
+ *           The email to the new address, or the notice to the confirmed old
+ *           one, could not be sent (code EMAIL_SEND_FAILED), or the captcha
+ *           could not be checked (code CAPTCHA_UNAVAILABLE). Nothing was saved
  *         content:
  *           application/json:
  *             schema:

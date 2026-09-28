@@ -120,7 +120,8 @@ export class EmailService {
     template: T;
     data: EmailTemplateData[T];
     recipient: EmailRecipient;
-    requester: EmailRequester;
+    // Null only where something else already limits who can ask: the undo's single-use link.
+    requester: EmailRequester | null;
     brakesHeld?: boolean;
   }): Promise<EmailOutcome> {
     return this.deliver(

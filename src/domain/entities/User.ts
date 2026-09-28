@@ -32,6 +32,13 @@ export interface PendingEmailChange {
   expiresAt: Date;
 }
 
+// An "Undo the change" link sent to an address the account had; while it works, that address stays the account's.
+export interface UndoLink {
+  email: string;
+  tokenHash: string;
+  expiresAt: Date;
+}
+
 export interface UserProps {
   id?: string;
   name: string;
@@ -53,6 +60,9 @@ export interface UserProps {
   // An It wasn't me issued before it no longer works.
   emailChangedAt?: Date | null;
   emailChange?: PendingEmailChange | null;
+  undoLinks?: UndoLink[];
+  // A device token issued before it no longer marks a known device for new-sign-in.
+  devicesResetAt?: Date | null;
   keepOrStartFresh?: KeepOrStartFresh | null;
   // When Start fresh last erased the account: a sync cursor from before it names rows that are gone.
   dataResetAt?: Date | null;
@@ -74,6 +84,8 @@ export class User {
   firstVerifiedAt: Date | null;
   emailChangedAt: Date | null;
   emailChange: PendingEmailChange | null;
+  undoLinks: UndoLink[];
+  devicesResetAt: Date | null;
   keepOrStartFresh: KeepOrStartFresh | null;
   dataResetAt: Date | null;
   createdAt: Date;
@@ -93,6 +105,8 @@ export class User {
     firstVerifiedAt,
     emailChangedAt,
     emailChange,
+    undoLinks,
+    devicesResetAt,
     keepOrStartFresh,
     dataResetAt,
     createdAt,
@@ -111,6 +125,8 @@ export class User {
     this.firstVerifiedAt = firstVerifiedAt ?? null;
     this.emailChangedAt = emailChangedAt ?? null;
     this.emailChange = emailChange ?? null;
+    this.undoLinks = undoLinks ?? [];
+    this.devicesResetAt = devicesResetAt ?? null;
     this.keepOrStartFresh = keepOrStartFresh ?? null;
     this.dataResetAt = dataResetAt ?? null;
     this.createdAt = createdAt ?? new Date();
