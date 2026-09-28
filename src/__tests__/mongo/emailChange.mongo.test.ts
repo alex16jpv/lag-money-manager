@@ -462,7 +462,7 @@ describe("Changing the email against mongod [T-221]", () => {
     expect(live).toBe(0);
   });
 
-  it("hands the invitations waiting for the new address to the feed once it is confirmed", async () => {
+  it("hands the invitations waiting for the new address to the feed once it is confirmed, and keeps the answer through the next move", async () => {
     const lola = await register("lola@change.test", "Lola Paz");
     expect(
       (await verifyCode(lola, lastEmailTo("lola@change.test").code)).status,
@@ -525,6 +525,23 @@ describe("Changing the email against mongod [T-221]", () => {
         (one) => one.id,
       ),
     ).toEqual([invited.body.id]);
+
+    const accepted = await as(
+      now,
+      request(app).post(`/invitations/${invited.body.id}/accept`),
+    );
+    expect(accepted.status).toBe(200);
+    expect((await askToMove(now, "mario.home@change.test")).status).toBe(202);
+    const movedAgain = await confirmCode(
+      now,
+      lastEmailTo("mario.home@change.test").code,
+    );
+    expect(movedAgain.status).toBe(200);
+    const home = { ...mario, token: movedAgain.body.accessToken };
+    const feed = await as(home, request(app).get("/sync/changes?limit=100"));
+    expect(feed.body.changes.invitationsReceived).toEqual([
+      expect.objectContaining({ id: invited.body.id, status: "ACCEPTED" }),
+    ]);
   });
 
   it("keeps each account's code and link its own when two ask for the same address [review]", async () => {

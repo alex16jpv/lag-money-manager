@@ -60,15 +60,13 @@ Content-Type: application/json
 
 { "password": "NewSecureP@ss123", "currentPassword": "{{password}}" }
 
-### Cambio de email por PUT (el camino viejo, mientras la app lo use) — también requiere
-### currentPassword y revoca refresh. La dirección nueva queda sin confirmar y recibe
-### verify-email (T-209; ver auth.http). El que espera a la dirección nueva, abajo (T-221).
-### Ojo: cambia el @email de todos los archivos; descoméntalo solo a propósito.
-# PUT {{baseUrl}}/users/{{userId}}
-# Authorization: Bearer {{token}}
-# Content-Type: application/json
-#
-# { "email": "tester2@test.com", "currentPassword": "{{password}}" }
+### Email por PUT — 400 EMAIL_CHANGE_REQUIRES_VERIFICATION (T-232): el PUT ya no cambia el
+### correo, con cualquier valor. No toca nada ni gasta intento de contraseña; el cambio, abajo.
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "email": "tester2@test.com", "currentPassword": "{{password}}" }
 
 ### ---------- Cambio de email que espera a la dirección nueva (T-221) ----------
 ### Con Mailpit (docker compose up -d mailpit, EMAIL_PROVIDERS=mailpit): el código y el

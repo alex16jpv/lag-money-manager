@@ -32,7 +32,7 @@ An invitation takes the sender's address to somebody else, and finds the invited
 
 **Confirming delivers what waited.** The feed is a keyset over `updatedAt`, and a copy's cursor is
 usually past the invitations that arrived while the address was unconfirmed, or before the email changed
-to it. So the moment an address is confirmed — its code, its link, or a reset — every unanswered
+to it. So the moment an address is confirmed — its code, its link, a reset, or the move of a change of email to it — every unanswered
 invitation addressed to it gets a new `updatedAt` (`touchUnansweredFor`, one `updateMany` on the
 `{ email, … }` index), and reaches the feed on the next pull. The senders' feeds receive them again
 unchanged, which costs them nothing.

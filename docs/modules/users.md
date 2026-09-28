@@ -12,36 +12,36 @@ Beyond name/email/password, the profile carries three settings that shape the re
 
 ## Files and Responsibilities
 
-| File                                                     | Role                                                                                                |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `src/app/routes/userRoutes.ts`                           | Route definitions (`GET /users/:id`, `PUT /users/:id`, `DELETE /users/:id`)                         |
-| `src/app/controllers/UserController.ts`                  | Thin HTTP handler, delegates to UserService                                                         |
-| `src/app/services/UserService.ts`                        | Self-access enforcement, re-authentication on credential changes, currency lock, password stripping |
-| `src/app/dtos/UserDTO.ts`                                | `CreateUserDTO`, `UpdateUserDTO`, `UserResponseDTO`                                                 |
-| `src/app/validation/schemas.ts`                          | `updateUserSchema`, `deleteUserSchema`, `idParamSchema`                                             |
-| `src/domain/entities/User.ts`                            | User domain entity (`tokenVersion`, `timezone`, `currency`, `locale`, `lastLoginAt`)                |
-| `src/domain/repositories/user/IUserRepository.ts`        | Repository interface (adds `getByEmail`, `recordLogin`, `updateWithTokenBump`, `reactivate`, …)     |
-| `src/infrastructure/repositories/user/UserRepository.ts` | Mongoose implementation (soft delete, atomic token-version bumps)                                   |
-| `src/infrastructure/models/UserModel.ts`                 | Mongoose model (unique lowercase `email`)                                                           |
-| `src/app/services/KeepOrStartFreshService.ts`            | The answer to "Keep what's in this account?": keep, or start fresh                                  |
-| `src/domain/repositories/userData/IUserDataEraser.ts`    | What Start fresh and It wasn't me erase (the port)                                                  |
-| `src/infrastructure/repositories/userData/UserDataEraser.ts` | The erasure itself, collection by collection                                                    |
-| `src/app/services/EmailVerificationService.ts`           | The confirmation of the email, and It wasn't me ([auth.md](auth.md#confirming-the-email))           |
-| `src/app/services/EmailChangeService.ts`                 | The change of email that waits for the new address ([below](#changing-the-email))                  |
+| File                                                         | Role                                                                                                |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `src/app/routes/userRoutes.ts`                               | Route definitions (`GET /users/:id`, `PUT /users/:id`, `DELETE /users/:id`)                         |
+| `src/app/controllers/UserController.ts`                      | Thin HTTP handler, delegates to UserService                                                         |
+| `src/app/services/UserService.ts`                            | Self-access enforcement, re-authentication on credential changes, currency lock, password stripping |
+| `src/app/dtos/UserDTO.ts`                                    | `CreateUserDTO`, `UpdateUserDTO`, `UserResponseDTO`                                                 |
+| `src/app/validation/schemas.ts`                              | `updateUserSchema`, `deleteUserSchema`, `idParamSchema`                                             |
+| `src/domain/entities/User.ts`                                | User domain entity (`tokenVersion`, `timezone`, `currency`, `locale`, `lastLoginAt`)                |
+| `src/domain/repositories/user/IUserRepository.ts`            | Repository interface (adds `getByEmail`, `recordLogin`, `updateWithTokenBump`, `reactivate`, …)     |
+| `src/infrastructure/repositories/user/UserRepository.ts`     | Mongoose implementation (soft delete, atomic token-version bumps)                                   |
+| `src/infrastructure/models/UserModel.ts`                     | Mongoose model (unique lowercase `email`)                                                           |
+| `src/app/services/KeepOrStartFreshService.ts`                | The answer to "Keep what's in this account?": keep, or start fresh                                  |
+| `src/domain/repositories/userData/IUserDataEraser.ts`        | What Start fresh and It wasn't me erase (the port)                                                  |
+| `src/infrastructure/repositories/userData/UserDataEraser.ts` | The erasure itself, collection by collection                                                        |
+| `src/app/services/EmailVerificationService.ts`               | The confirmation of the email, and It wasn't me ([auth.md](auth.md#confirming-the-email))           |
+| `src/app/services/EmailChangeService.ts`                     | The change of email that waits for the new address ([below](#changing-the-email))                   |
 
 ## Public API
 
 ### Endpoint Authorization Matrix
 
-| Endpoint            | Auth Required      | Self-Access Enforced | Notes                                                                |
-| ------------------- | ------------------ | -------------------- | -------------------------------------------------------------------- |
-| `GET /users/:id`    | Yes (access token) | Yes                  | `id` must match the authenticated user's ID, otherwise **404**.      |
-| `PUT /users/:id`    | Yes (access token) | Yes                  | Partial updates. Credential changes need `currentPassword`.          |
-| `DELETE /users/:id` | Yes (access token) | Yes                  | Soft delete; needs `currentPassword`; responds `200` with a message. |
-| `POST /users/:id/email-change`        | Yes (access token) | Yes | A new email that waits for its code; needs `currentPassword` and a captcha. |
-| `POST /users/:id/email-change/resend` | Yes (access token) | Yes | Mails the waiting address again; needs a captcha.                        |
-| `DELETE /users/:id/email-change`      | Yes (access token) | Yes | Cancels what waits; `200` even when nothing did.                         |
-| `POST /users/:id/keep-or-start-fresh` | Yes (access token) | Yes | Only while `keepOrStartFresh` is open.                          |
+| Endpoint                              | Auth Required      | Self-Access Enforced | Notes                                                                       |
+| ------------------------------------- | ------------------ | -------------------- | --------------------------------------------------------------------------- |
+| `GET /users/:id`                      | Yes (access token) | Yes                  | `id` must match the authenticated user's ID, otherwise **404**.             |
+| `PUT /users/:id`                      | Yes (access token) | Yes                  | Partial updates. A password change needs `currentPassword`.                 |
+| `DELETE /users/:id`                   | Yes (access token) | Yes                  | Soft delete; needs `currentPassword`; responds `200` with a message.        |
+| `POST /users/:id/email-change`        | Yes (access token) | Yes                  | A new email that waits for its code; needs `currentPassword` and a captcha. |
+| `POST /users/:id/email-change/resend` | Yes (access token) | Yes                  | Mails the waiting address again; needs a captcha.                           |
+| `DELETE /users/:id/email-change`      | Yes (access token) | Yes                  | Cancels what waits; `200` even when nothing did.                            |
+| `POST /users/:id/keep-or-start-fresh` | Yes (access token) | Yes                  | Only while `keepOrStartFresh` is open.                                      |
 
 > There is **no `GET /users`** endpoint — listing users was removed. Self-access failures return `404 User not found`, not `403`, so a user id cannot be confirmed by probing.
 
@@ -53,25 +53,23 @@ Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `
 
 `emailVerified` is in every profile answer (register, login, the reset, the sync feed): whether the address is confirmed ([auth.md](auth.md#confirming-the-email)). `emailVerification` is what the sheet that confirms it needs, and costs one indexed read of `authcodes`, so only this route carries it — `null` once the email is confirmed, otherwise:
 
-| Field               | Meaning |
-| ------------------- | ------- |
-| `codeLive`          | A code sent in the last 24 hours with tries left: the sheet shows the code field. Otherwise it shows Send code |
-| `lastSentAt`        | When the last code went, `null` when none ever did (every account from before email, a failed send) |
+| Field               | Meaning                                                                                                                                |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `codeLive`          | A code sent in the last 24 hours with tries left: the sheet shows the code field. Otherwise it shows Send code                         |
+| `lastSentAt`        | When the last code went, `null` when none ever did (every account from before email, a failed send)                                    |
 | `resendAvailableAt` | When Resend can go again, while that is ahead (`EMAIL_ADDRESS_INTERVAL_SECONDS` after the last). The daily limits answer their own 429 |
 
 ### `PUT /users/:id`
 
-Update the profile. Partial updates over `name`, `email`, `password`, `timezone`, `currency`, `locale`; at least one field must be present.
+Update the profile. Partial updates over `name`, `password`, `timezone`, `currency`, `locale`; at least one field must be present.
 
-**Changing `email` or `password` requires `currentPassword`** in the same request. A new `email` also drops the account's confirmation (`emailVerifiedAt` back to `null`): a confirmation proves the old address, and keeping it would let somebody confirm their own address and then move the account to someone else's, whose reset would then never ask "Keep what's in this account?". This is re-authentication: a hijacked access token (valid for up to 15 minutes) must not be able to take over the account by swapping the credentials. On success, the user's `tokenVersion` is bumped atomically, so **every refresh token is revoked** and other devices must log in again; every session row is marked revoked too, so Active sessions stops listing the devices it signed out (before T-221 they stayed listed until they expired).
+**The email does not change here.** A body that carries `email` — any value, the account's own address and `null` included — is refused whole with `400 EMAIL_CHANGE_REQUIRES_VERIFICATION` (`details` on the field `email`), once the session is checked and before the password limiter or the validation run: nothing else is checked, spent or written. The email changes only through [Changing the email](#changing-the-email), once the new address confirms it. Until T-232 this `PUT` moved the account at once and confirmed afterwards (the web client's way before T-222); it is refused rather than dropped as an undeclared field, because a client still sending it would otherwise read a `200` and believe the account had moved.
+
+**Changing `password` requires `currentPassword`** in the same request. This is re-authentication: a hijacked access token (valid for up to 15 minutes) must not be able to take over the account by swapping the credentials. On success, the user's `tokenVersion` is bumped atomically, so **every refresh token is revoked** and other devices must log in again; every session row is marked revoked too, so Active sessions stops listing the devices it signed out (before T-221 they stayed listed until they expired).
 
 `currency` can only change while the user has **no accounts** (`CURRENCY_LOCKED`). No accounts implies no transactions — every transaction type requires one — so a single account count settles it.
 
-Changing the email to one belonging to another account (soft-deleted included) conflicts with `409 DUPLICATE`; reactivation only happens on register.
-
-**A new address is asked to confirm itself**: once the change is written, `verify-email` goes to it, with the requester's IP brake (the `PUT` carries no device token). A send that fails or is limited does not undo the change: `GET /users/:id` then shows no live code, and the sheet offers Send code. A change that was waiting on `POST /users/:id/email-change` is dropped.
-
-**This `email` is the old way, kept while the web client still uses it**: the account moves at once and confirms afterwards. The way that waits for the new address is [below](#changing-the-email); once the client uses it and is deployed, a task of this repo closes `email` here with `EMAIL_CHANGE_REQUIRES_VERIFICATION`. Closing it before would break the client that is live.
+**Accounts the old `PUT` moved are still around.** It left the new address unconfirmed (`emailVerifiedAt: null`, `emailChangedAt` set) and sent it `verify-email`; an account confirmed before (`firstVerifiedAt`) keeps getting that email without "It wasn't me", and every "It wasn't me" issued before the move stays dead ([below](#it-wasnt-me-an-account-that-used-somebody-elses-address)). Those rules stay for them.
 
 ### Changing the email
 
@@ -115,7 +113,8 @@ atomic write as the new password:
   account with neither accounts nor transactions has nothing to keep and is not asked. A confirmed
   account is never asked. Every account that existed before `emailVerifiedAt` counts as never confirmed
   (decision 4); the reset confirms one, like its code or link ([auth.md](auth.md#confirming-the-email)).
-  Changing the email takes the confirmation away (above).
+  The old `PUT` with a new email took it away before T-232 ([above](#put-usersid)); a move through
+  [Changing the email](#changing-the-email) confirms the new address.
 - **It stays open until it is answered**, in every profile answer (login, `GET /users/:id`, the sync
   feed), so a client that closes lands on it again. A second reset before the answer keeps the first
   question and its facts.
@@ -188,7 +187,7 @@ The `verify-email` of an account that **never confirmed any address** carries "I
 decision 11 of 2026-09-26): whoever holds the inbox can delete, for good, an account that signed up with
 it and never confirmed it, and have the address free at once, without going through Forgot your
 password?. An account confirmed once is not an occupation, whatever its address today: `firstVerifiedAt`
-is set by its first confirmation and never cleared (unlike `emailVerifiedAt`, which a new email drops),
+is set by its first confirmation and never cleared (unlike `emailVerifiedAt`, which the old `PUT` with a new email dropped),
 and its `verify-email` goes without the "Didn't sign up?" box. Without that, whoever held a mistyped new
 address could erase an account with years in it. `POST /auth/email/not-me { token }`
 ([auth.md](auth.md#post-authemailnot-me)).
@@ -258,7 +257,7 @@ sequenceDiagram
     CTRL->>C: 200 + user JSON
 ```
 
-### Credential Change (PUT with email or password)
+### Credential Change (PUT with a password)
 
 ```mermaid
 sequenceDiagram
@@ -271,11 +270,12 @@ sequenceDiagram
         SVC->>ACCT: countByUserId(id)
         Note over SVC: > 0 and the value changes → 400 CURRENCY_LOCKED
     end
-    alt email or password in the patch
+    Note over SVC: An email in the body was refused before the service (400 EMAIL_CHANGE_REQUIRES_VERIFICATION)
+    alt password in the patch
         SVC->>REPO: getByIdWithPassword(id)
         SVC->>SVC: bcrypt.compare(currentPassword, stored)
         Note over SVC: Mismatch or missing → 401 CURRENT_PASSWORD_INVALID
-        SVC->>SVC: Hash the new password when present
+        SVC->>SVC: Hash the new password
         SVC->>REPO: updateWithTokenBump(id, fields)
         Note over REPO: Atomic $inc tokenVersion — a concurrent<br/>logout-all must never lose a revocation
     else Plain profile fields
@@ -303,19 +303,19 @@ sequenceDiagram
 
 ## Error States
 
-| Error / code               | Status | Condition                                                                             |
-| -------------------------- | ------ | ------------------------------------------------------------------------------------- |
-| `VALIDATION`               | 400    | Invalid input, or `currentPassword` missing while changing email/password or deleting |
-| `BadRequest`               | 400    | User ID in body doesn't match URL param                                               |
-| `CURRENCY_LOCKED`          | 400    | Changing `currency` while the user already has accounts                               |
-| `Unauthorized`             | 401    | Missing, invalid or expired access token                                              |
-| `CURRENT_PASSWORD_INVALID` | 401    | `currentPassword` is wrong (credential change or delete)                              |
-| `NotFound`                 | 404    | User does not exist, **or the id is not the authenticated user's**                    |
-| `DUPLICATE`                | 409    | Email already used by another account (unique index), on `PUT`                        |
-| `EMAIL_TAKEN`              | 409    | The new email belongs to another account: asking for it, or confirming it once taken  |
-| `EMAIL_CHANGE_NOT_PENDING` | 409    | Resend, or the code of a change, when nothing waits (confirmed, cancelled, 24 h past) |
-| `EMAIL_SEND_FAILED`        | 422/503 | The email to the new address did not go: nothing was saved, or the old code still works |
-| `KEEP_OR_START_FRESH_CLOSED` | 409  | Answering "Keep what's in this account?" when it is not open                          |
+| Error / code                         | Status  | Condition                                                                               |
+| ------------------------------------ | ------- | --------------------------------------------------------------------------------------- |
+| `VALIDATION`                         | 400     | Invalid input, or `currentPassword` missing while changing the password or deleting     |
+| `EMAIL_CHANGE_REQUIRES_VERIFICATION` | 400     | `email` in the body of `PUT /users/:id`: the email changes through `email-change`       |
+| `BadRequest`                         | 400     | User ID in body doesn't match URL param                                                 |
+| `CURRENCY_LOCKED`                    | 400     | Changing `currency` while the user already has accounts                                 |
+| `Unauthorized`                       | 401     | Missing, invalid or expired access token                                                |
+| `CURRENT_PASSWORD_INVALID`           | 401     | `currentPassword` is wrong (credential change or delete)                                |
+| `NotFound`                           | 404     | User does not exist, **or the id is not the authenticated user's**                      |
+| `EMAIL_TAKEN`                        | 409     | The new email belongs to another account: asking for it, or confirming it once taken    |
+| `EMAIL_CHANGE_NOT_PENDING`           | 409     | Resend, or the code of a change, when nothing waits (confirmed, cancelled, 24 h past)   |
+| `EMAIL_SEND_FAILED`                  | 422/503 | The email to the new address did not go: nothing was saved, or the old code still works |
+| `KEEP_OR_START_FRESH_CLOSED`         | 409     | Answering "Keep what's in this account?" when it is not open                            |
 
 ## Soft Delete and Reactivation
 

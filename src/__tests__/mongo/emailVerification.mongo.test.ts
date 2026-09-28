@@ -184,6 +184,24 @@ const notMeOf = (address: string): string => {
 const sentTo = (address: string): number =>
   mockSent.filter((sent) => sent.to === address).length;
 
+// What PUT /users/{id} with an email wrote before T-232, bar the tokenVersion that would end the session.
+const movedByTheOldPut = async (
+  session: Session,
+  email: string,
+): Promise<void> => {
+  await UserModel.updateOne(
+    { _id: session.userId },
+    {
+      $set: {
+        email,
+        emailVerifiedAt: null,
+        emailChangedAt: new Date(),
+        emailChange: null,
+      },
+    },
+  );
+};
+
 describe("Confirming an email against mongod [T-209]", () => {
   beforeAll(async () => {
     await connect();
@@ -299,31 +317,30 @@ describe("Confirming an email against mongod [T-209]", () => {
     expect((await profile(dani)).emailVerified).toBe(true);
   });
 
-  it("mails a new address its own code when the email changes, and the old link stops confirming", async () => {
+  it("refuses to move the email on the profile's PUT, and the address keeps its code and link [T-232]", async () => {
     const eva = await register("eva@verify.test", "Eva Paz");
     const old = lastEmailTo("eva@verify.test");
 
-    const moved = await as(
+    const refused = await as(
       eva,
       request(app)
         .put(`/users/${eva.userId}`)
         .send({ email: "eva.new@verify.test", currentPassword: PASSWORD }),
     );
-    expect(moved.status).toBe(200);
-    expect(moved.body.emailVerified).toBe(false);
+    expect(refused.status).toBe(400);
+    expect(refused.body.code).toBe("EMAIL_CHANGE_REQUIRES_VERIFICATION");
+    expect(sentTo("eva.new@verify.test")).toBe(0);
+    expect(
+      await RateLimitModel.countDocuments({ _id: /^current-password:/ }),
+    ).toBe(0);
+    expect(await UserModel.findById(eva.userId).lean()).toMatchObject({
+      email: "eva@verify.test",
+      emailChangedAt: null,
+    });
 
-    const dead = await verifyLink(old.token);
-    expect(dead.status).toBe(400);
-    expect(dead.body.code).toBe("LINK_INVALID");
-    expect((await verifyCode(eva, old.code)).body.code).toBe(
-      "EMAIL_CODE_INVALID",
-    );
-
-    const fresh = lastEmailTo("eva.new@verify.test");
-    expect((await verifyCode(eva, fresh.code)).status).toBe(200);
-    const me = await profile(eva);
-    expect(me).toMatchObject({
-      email: "eva.new@verify.test",
+    expect((await verifyLink(old.token)).status).toBe(200);
+    expect(await profile(eva)).toMatchObject({
+      email: "eva@verify.test",
       emailVerified: true,
     });
   });
@@ -560,54 +577,34 @@ describe("Confirming an email against mongod [T-209]", () => {
     expect(mine.status).toBe(201);
   });
 
-  it("never lets It wasn't me erase an account that was confirmed once, even after it moves", async () => {
+  it("never lets It wasn't me erase an account that was confirmed once and moved by the old PUT", async () => {
     const kike = await register("kike@verify.test", "Kike Mar");
     const first = lastEmailTo("kike@verify.test");
     const firstNotMe = notMeOf("kike@verify.test");
     expect((await verifyCode(kike, first.code)).status).toBe(200);
 
-    const moved = await as(
-      kike,
-      request(app)
-        .put(`/users/${kike.userId}`)
-        .send({ email: "kike.typo@verify.test", currentPassword: PASSWORD }),
-    );
-    expect(moved.status).toBe(200);
-    expect(moved.body.emailVerified).toBe(false);
-
+    await movedByTheOldPut(kike, "kike.typo@verify.test");
+    expect((await resend(kike)).status).toBe(202);
     const toNew = lastEmailTo("kike.typo@verify.test");
     expect(toNew.notMeToken).toBeUndefined();
     expect(toNew.text).not.toMatch(/Didn.t sign up/);
-    const back = await as(
-      kike,
-      request(app)
-        .put(`/users/${kike.userId}`)
-        .send({ email: "kike@verify.test", currentPassword: PASSWORD }),
-    );
-    expect(back.status).toBe(200);
+    await movedByTheOldPut(kike, "kike@verify.test");
 
     const refused = await notMe(firstNotMe);
     expect(refused.body.code).toBe("LINK_INVALID");
     expect(await UserModel.findById(kike.userId).lean()).not.toBeNull();
   });
 
-  it("stops an old It wasn't me once the address changed, even back to the same one", async () => {
+  it("stops an old It wasn't me once the old PUT moved the address, even back to the same one", async () => {
     const lola = await register("lola@verify.test", "Not Lola");
     const oldNotMe = notMeOf("lola@verify.test");
-    for (const email of ["lola.else@verify.test", "lola@verify.test"]) {
-      const res = await as(
-        lola,
-        request(app)
-          .put(`/users/${lola.userId}`)
-          .send({ email, currentPassword: PASSWORD }),
-      );
-      expect(res.status).toBe(200);
-    }
+    await movedByTheOldPut(lola, "lola.else@verify.test");
+    await movedByTheOldPut(lola, "lola@verify.test");
 
     expect((await notMe(oldNotMe)).body.code).toBe("LINK_INVALID");
     expect(await UserModel.findById(lola.userId).lean()).not.toBeNull();
 
-    // The per-address minute would hold back the email the move back sends.
+    // The per-address minute of the sign-up email would hold back Resend.
     await RateLimitModel.deleteMany({
       _id: new RegExp(hashEmailAddress("lola@verify.test")),
     });

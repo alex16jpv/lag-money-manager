@@ -245,8 +245,9 @@ this existed has `emailVerifiedAt: null`: nothing is migrated.
 
 What confirms an address: its **code** (with the account's session), its **link** (without one), a
 **password reset**, whose code proved the same inbox, or **the move to a new email**, whose code or link
-proved the new one ([below](#post-authemailconfirm-change)). Changing the email with `PUT` takes the
-confirmation away ([users.md](users.md#put-usersid)).
+proved the new one ([below](#post-authemailconfirm-change)). Before T-232, `PUT /users/{id}` moved the
+email at once and took the confirmation away; the accounts it moved stay unconfirmed until their address
+is confirmed like any other ([users.md](users.md#put-usersid)).
 
 ### `POST /auth/email/verify`
 
@@ -285,7 +286,7 @@ Send code and Resend code of the sheet. With the access token, `{ "captcha", "de
   per address, five a day per account, and the device's or the IP's ([email.md](email.md#brakes)).
 - `409 EMAIL_ALREADY_VERIFIED` when there is nothing to confirm.
 
-Every send (at register, Resend, and a new email on `PUT /users/{id}`) is the same: a new code and link
+Every send (at register and Resend) is the same: a new code and link
 replace the live ones only once the email was accepted (`sent`); with `failed / unconfirmed` the newest
 live code is kept next to the new one, as in the reset. Each email of an account never confirmed also
 carries its own **"It wasn't me"** link, which no new code cancels; an account confirmed once gets the
@@ -620,7 +621,7 @@ The per-IP cap is shared by everyone behind that address — a carrier NAT holds
 
 Two independent mechanisms invalidate refresh tokens:
 
-1. **`tokenVersion`** on the user document. `logout-all`, a password change, a password reset and an email change (on `PUT`, or its confirmation) all bump it; every outstanding refresh token then fails with `REFRESH_REVOKED`. Access tokens already issued stay valid until they expire (≤ 15 min).
+1. **`tokenVersion`** on the user document. `logout-all`, a password change, a password reset and an email change (on its confirmation) all bump it; every outstanding refresh token then fails with `REFRESH_REVOKED`. Access tokens already issued stay valid until they expire (≤ 15 min).
 2. **Session families.** Each login opens a family (`familyId` = the first `jti`); each rotation adds a row pointing at the same family. Revoking a family kills that device only.
 
 Access tokens are stateless and are **not** checked against the session store — that is the deliberate trade-off for the short lifetime.
