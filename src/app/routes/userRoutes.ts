@@ -1,6 +1,7 @@
-import { Router } from "express";
+import { RequestHandler, Router } from "express";
 
 import { ENVIRONMENT } from "../../shared/constants";
+import { ApiError } from "../../shared/errors";
 import { UserController } from "../controllers/UserController";
 import { createCaptchaVerifier } from "../factories/captchaFactory";
 import { authRateLimit } from "../middlewares/authRateLimitMiddleware";
@@ -29,6 +30,25 @@ const currentPasswordLimiter = authRateLimit({
       ? req.user.userId
       : null,
 });
+
+// Before validation, which would drop the field and answer 200 with the email unchanged.
+const refuseEmail: RequestHandler = (req, _res, next) => {
+  const body: unknown = req.body;
+  if (typeof body === "object" && body !== null && "email" in body) {
+    throw new ApiError(
+      "BadRequest",
+      "The email changes through POST /users/{id}/email-change, once the new address confirms it",
+      "EMAIL_CHANGE_REQUIRES_VERIFICATION",
+      [
+        {
+          field: "email",
+          message: "Confirm the new address to change the email",
+        },
+      ],
+    );
+  }
+  next();
+};
 
 const emailChangeLimiter = authRateLimit({
   keyPrefix: "email-change",
@@ -91,14 +111,13 @@ router.get("/:id", validate(idParamSchema), UserController.getUserById);
  *     tags: [Users]
  *     summary: Update a user
  *     description: >
- *       Changing `email` or `password` requires `currentPassword`
- *       (re-authentication) and revokes every refresh token — other devices
- *       must log in again. `currency` can only change while the user has no
- *       accounts (mono-currency mode). Changing the email to one belonging to
- *       another account (soft-deleted included) conflicts — reactivation only
- *       applies on register. A new email is not confirmed (`emailVerified`
- *       false) and is sent `verify-email`; a send that fails does not undo
- *       the change, and the sheet offers Send code.
+ *       Changing `password` requires `currentPassword` (re-authentication)
+ *       and revokes every refresh token — other devices must log in again.
+ *       `currency` can only change while the user has no accounts
+ *       (mono-currency mode). The email does not change here: a body with
+ *       `email` is refused whole, before its password or its fields are
+ *       checked, and nothing is written; it changes through
+ *       `POST /users/{id}/email-change`, once the new address confirms it.
  *     parameters:
  *       - in: path
  *         name: id
@@ -122,8 +141,9 @@ router.get("/:id", validate(idParamSchema), UserController.getUserById);
  *               $ref: '#/components/schemas/User'
  *       400:
  *         description: >
- *           Validation error, e.g. missing currentPassword when changing
- *           email/password (code VALIDATION), or currency change while
+ *           Validation error, e.g. missing currentPassword when changing the
+ *           password (code VALIDATION); an `email` in the body (code
+ *           EMAIL_CHANGE_REQUIRES_VERIFICATION); or currency change while
  *           accounts exist (code CURRENCY_LOCKED)
  *         content:
  *           application/json:
@@ -143,12 +163,6 @@ router.get("/:id", validate(idParamSchema), UserController.getUserById);
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
- *       409:
- *         description: Email already used by another account (code DUPLICATE)
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
  *       429:
  *         description: >
  *           Too many wrong currentPassword guesses for this user (code
@@ -160,6 +174,7 @@ router.get("/:id", validate(idParamSchema), UserController.getUserById);
  */
 router.put(
   "/:id",
+  refuseEmail,
   currentPasswordLimiter,
   validate(updateUserSchema),
   UserController.updateUser,
@@ -329,11 +344,11 @@ router.post(
  *       its email was accepted, or may have gone (a provider timed out), so a
  *       send that fails leaves any earlier one as it was. Asking again replaces a change that was waiting: its code
  *       and its link stop working. `currentPassword` re-authenticates, as a
- *       credential change on PUT /users/{id} does; `captcha` is a Cloudflare
+ *       password change on PUT /users/{id} does; `captcha` is a Cloudflare
  *       Turnstile token for the action `email-change`; `deviceToken`, from
  *       this device's last login or register, lets the limits count this
- *       device instead of its IP. PUT /users/{id} with `email` still moves
- *       the account at once, until the app uses this route.
+ *       device instead of its IP. It is the only way the email changes:
+ *       PUT /users/{id} refuses `email` (EMAIL_CHANGE_REQUIRES_VERIFICATION).
  *     parameters:
  *       - in: path
  *         name: id

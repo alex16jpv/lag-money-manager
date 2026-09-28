@@ -78,10 +78,7 @@ export class UserController {
   static updateUser = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     const id = req.params.id as string;
-    const updatedUser = await userService.updateUser(id, req.body, userId, {
-      ip: clientIp(req),
-      recognizedDevice: null,
-    });
+    const updatedUser = await userService.updateUser(id, req.body, userId);
     res.status(200).json(updatedUser);
   };
 

@@ -272,7 +272,7 @@ client signs in, so a flood from one address is turned away before it reaches th
 
 Vercel → the web client's project → _Firewall → Configure → New rule_:
 
-- **If** _Request Path_ matches the expression `^/api/auth/(login|register|forgot|reset|verify|resend|not-me)$` **and**
+- **If** _Request Path_ matches the expression `^/api/auth/(login|register|forgot|reset|verify|resend|not-me|change-email|change-email/resend|confirm-change)$` **and**
   _Method_ equals `POST`;
 - **Then** _Rate Limit_: fixed window of 60 seconds, 10 requests, keyed on **IP**, answering the
   default `429`.
@@ -280,7 +280,7 @@ Vercel → the web client's project → _Firewall → Configure → New rule_:
 Save and publish it. `/api/auth/refresh` stays out on purpose: a session refreshes on its own, and
 many sessions share one address behind a carrier NAT; the API's own limiter covers it. `forgot` and
 `reset` are the password reset's (T-208); `verify`, `resend` and `not-me`, the email's confirmation's
-(T-210).
+(T-210); `change-email`, `change-email/resend` and `confirm-change`, the change of email's (T-222).
 
 ## After the web client confirms emails: invitations wait for it
 

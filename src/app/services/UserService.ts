@@ -1,13 +1,11 @@
 import bcryptjs from "bcryptjs";
 
-import { User } from "../../domain/entities/User";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT, INVITATION_STATUSES } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
-import logger from "../../shared/logger";
 import {
   EmailChangeView,
   EmailVerificationView,
@@ -17,7 +15,6 @@ import {
 } from "../dtos/UserDTO";
 import { assertCurrentPassword } from "./currentPassword";
 import { EmailChangeService } from "./EmailChangeService";
-import { EmailRequester } from "./EmailService";
 import { EmailVerificationService } from "./EmailVerificationService";
 
 export class UserService {
@@ -25,7 +22,7 @@ export class UserService {
     private repo: IUserRepository,
     private accountRepo: IAccountRepository,
     private invitationRepo: ISharedInvitationRepository,
-    private verification: Pick<EmailVerificationService, "status" | "send">,
+    private verification: Pick<EmailVerificationService, "status">,
     private emailChange: Pick<EmailChangeService, "view">,
     private sessions: Pick<IRefreshSessionRepository, "revokeAllForUser">,
   ) {}
@@ -57,7 +54,6 @@ export class UserService {
     id: string,
     dto: UpdateUserDTO,
     userId: string,
-    requester: EmailRequester,
   ): Promise<UserResponseDTO> {
     if (id !== userId) {
       throw new ApiError("NotFound", "User not found");
@@ -84,8 +80,7 @@ export class UserService {
       }
     }
 
-    // The email is an identity claim, so changing it re-authenticates and revokes live refreshes.
-    if (dto.password || dto.email) {
+    if (dto.password) {
       const existing = await this.repo.getByIdWithPassword(id);
       if (!existing) {
         throw new ApiError("NotFound", "User not found");
@@ -93,50 +88,21 @@ export class UserService {
       await assertCurrentPassword(existing, dto.currentPassword);
 
       const { currentPassword: _ignored, ...fields } = dto;
-      const movesEmail = !!dto.email && dto.email !== existing.email;
-      const securedDto = {
-        ...fields,
-        // A confirmation proves the old address, never the new one.
-        ...(movesEmail
-          ? {
-              emailVerifiedAt: null,
-              emailChangedAt: new Date(),
-              emailChange: null,
-            }
-          : {}),
-        ...(dto.password
-          ? {
-              password: await bcryptjs.hash(
-                dto.password,
-                ENVIRONMENT.BCRYPT_SALT_ROUNDS,
-              ),
-            }
-          : {}),
-      };
       // Atomic bump: a concurrent logout-all must never lose a revocation.
-      const updated = await this.repo.updateWithTokenBump(id, securedDto);
+      const updated = await this.repo.updateWithTokenBump(id, {
+        ...fields,
+        password: await bcryptjs.hash(
+          dto.password,
+          ENVIRONMENT.BCRYPT_SALT_ROUNDS,
+        ),
+      });
       await this.sessions.revokeAllForUser(id);
-      if (movesEmail) await this.askToConfirm(updated, requester);
       return toUserResponse(updated);
     }
 
     const { currentPassword: _ignored, ...fields } = dto;
     const updated = await this.repo.update(id, fields);
     return toUserResponse(updated);
-  }
-
-  private async askToConfirm(
-    user: User,
-    requester: EmailRequester,
-  ): Promise<void> {
-    try {
-      await this.verification.send(user, requester);
-    } catch (err) {
-      logger.error(
-        { err, code: "VERIFICATION_NOT_SENT", userId: user.id },
-        "The new address was saved but its confirmation code could not be sent",
-      );
-    }
   }
 
   async deleteUser(

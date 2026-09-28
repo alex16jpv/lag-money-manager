@@ -1076,6 +1076,28 @@ describe("Integration Tests", () => {
 
       expect(res.status).toBe(400);
     });
+
+    it("refuses an email whole, before the password is checked or anything is written [T-232]", async () => {
+      for (const body of [
+        { email: "new@example.com", currentPassword: "password123" },
+        { name: "Updated", email: testUser.email },
+        { email: null },
+      ]) {
+        const res = await request(app)
+          .put("/users/019576a0-d7b6-7d6d-af6a-2b7545f5ac70")
+          .set("Authorization", `Bearer ${token}`)
+          .send(body);
+
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe("EMAIL_CHANGE_REQUIRES_VERIFICATION");
+        expect(res.body.details).toEqual([
+          { field: "email", message: expect.any(String) },
+        ]);
+      }
+      expect(mockUserRepo.getByIdWithPassword).not.toHaveBeenCalled();
+      expect(mockUserRepo.update).not.toHaveBeenCalled();
+      expect(mockUserRepo.updateWithTokenBump).not.toHaveBeenCalled();
+    });
   });
 
   describe("DELETE /users/:id", () => {

@@ -13,7 +13,6 @@ export interface CreateUserDTO {
 export interface UpdateUserDTO {
   id?: string;
   name?: string;
-  email?: string;
   password?: string;
   // Verification only; never persisted.
   currentPassword?: string;

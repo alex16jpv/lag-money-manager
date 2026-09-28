@@ -560,12 +560,22 @@ describe("Validation Schemas", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should accept valid update with email", () => {
+    it("never carries an email to the service [T-232]", () => {
       const result = updateUserSchema.safeParse({
         params: { id: validUUID },
-        body: { email: "new@example.com", currentPassword: "oldpassword" },
+        body: { name: "New Name", email: "new@example.com" },
       });
       expect(result.success).toBe(true);
+      expect(result.data?.body).toEqual({ name: "New Name" });
+    });
+
+    it("asks currentPassword for a new password", () => {
+      const result = updateUserSchema.safeParse({
+        params: { id: validUUID },
+        body: { password: "newpassword123" },
+      });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0].path).toEqual(["body", "currentPassword"]);
     });
 
     it("should accept valid update with password", () => {

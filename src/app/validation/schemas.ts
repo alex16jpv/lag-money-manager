@@ -306,7 +306,6 @@ export const updateUserSchema = z.object({
   body: z
     .object({
       name: z.string().min(1).max(255).optional(),
-      email: emailField.optional(),
       password: z
         .string()
         .min(8, "Password must be at least 8 characters")
@@ -321,8 +320,8 @@ export const updateUserSchema = z.object({
     .refine((data) => Object.values(data).some((v) => v !== undefined), {
       message: "At least one field must be provided",
     })
-    .refine((data) => !(data.password || data.email) || data.currentPassword, {
-      message: "currentPassword is required to change email or password",
+    .refine((data) => !data.password || data.currentPassword, {
+      message: "currentPassword is required to change the password",
       path: ["currentPassword"],
     }),
 });

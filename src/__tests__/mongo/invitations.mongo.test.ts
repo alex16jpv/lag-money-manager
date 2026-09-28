@@ -8,6 +8,7 @@ import request from "supertest";
 
 import app from "../../app";
 import { SharedInvitationModel } from "../../infrastructure/models/SharedInvitationModel";
+import { UserModel } from "../../infrastructure/models/UserModel";
 import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 interface Session {
@@ -197,14 +198,19 @@ describe("invitations against mongod", () => {
   });
 
   it("keeps the answer in the invited person's feed after they change their email", async () => {
-    const res = await as(
-      beto,
-      request(app).put(`/users/${beto.userId}`).send({
-        email: "beto.new@invitations.test",
-        currentPassword: "Offline!2026",
-      }),
+    const now = new Date();
+    await UserModel.updateOne(
+      { _id: beto.userId },
+      {
+        $set: {
+          email: "beto.new@invitations.test",
+          emailVerifiedAt: now,
+          emailChangedAt: now,
+          emailChange: null,
+        },
+        $inc: { tokenVersion: 1 },
+      },
     );
-    expect(res.status).toBe(200);
     const login = await request(app).post("/auth/login").send({
       email: "beto.new@invitations.test",
       password: "Offline!2026",
