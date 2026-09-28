@@ -27,6 +27,7 @@ Beyond name/email/password, the profile carries three settings that shape the re
 | `src/domain/repositories/userData/IUserDataEraser.ts`    | What Start fresh and It wasn't me erase (the port)                                                  |
 | `src/infrastructure/repositories/userData/UserDataEraser.ts` | The erasure itself, collection by collection                                                    |
 | `src/app/services/EmailVerificationService.ts`           | The confirmation of the email, and It wasn't me ([auth.md](auth.md#confirming-the-email))           |
+| `src/app/services/EmailChangeService.ts`                 | The change of email that waits for the new address ([below](#changing-the-email))                  |
 
 ## Public API
 
@@ -37,13 +38,16 @@ Beyond name/email/password, the profile carries three settings that shape the re
 | `GET /users/:id`    | Yes (access token) | Yes                  | `id` must match the authenticated user's ID, otherwise **404**.      |
 | `PUT /users/:id`    | Yes (access token) | Yes                  | Partial updates. Credential changes need `currentPassword`.          |
 | `DELETE /users/:id` | Yes (access token) | Yes                  | Soft delete; needs `currentPassword`; responds `200` with a message. |
+| `POST /users/:id/email-change`        | Yes (access token) | Yes | A new email that waits for its code; needs `currentPassword` and a captcha. |
+| `POST /users/:id/email-change/resend` | Yes (access token) | Yes | Mails the waiting address again; needs a captcha.                        |
+| `DELETE /users/:id/email-change`      | Yes (access token) | Yes | Cancels what waits; `200` even when nothing did.                         |
 | `POST /users/:id/keep-or-start-fresh` | Yes (access token) | Yes | Only while `keepOrStartFresh` is open.                          |
 
 > There is **no `GET /users`** endpoint — listing users was removed. Self-access failures return `404 User not found`, not `403`, so a user id cannot be confirmed by probing.
 
 ### `GET /users/:id`
 
-Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `email`, `emailVerified`, `timezone`, `currency`, `locale`, `lastLoginAt`, `keepOrStartFresh`, `createdAt`, `updatedAt`, and, on this route only, `emailVerification`. The password is never returned, and neither are `emailVerifiedAt` and `dataResetAt`, which stay internal.
+Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `email`, `emailVerified`, `timezone`, `currency`, `locale`, `lastLoginAt`, `keepOrStartFresh`, `createdAt`, `updatedAt`, and, on this route only, `emailVerification` and `emailChange` ([below](#changing-the-email)). The password is never returned, and neither are `emailVerifiedAt` and `dataResetAt`, which stay internal.
 
 `keepOrStartFresh` is `null`, or `{ createdAt, accounts, transactions }` while "Keep what's in this account?" is open (below).
 
@@ -59,13 +63,33 @@ Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `
 
 Update the profile. Partial updates over `name`, `email`, `password`, `timezone`, `currency`, `locale`; at least one field must be present.
 
-**Changing `email` or `password` requires `currentPassword`** in the same request. A new `email` also drops the account's confirmation (`emailVerifiedAt` back to `null`): a confirmation proves the old address, and keeping it would let somebody confirm their own address and then move the account to someone else's, whose reset would then never ask "Keep what's in this account?". This is re-authentication: a hijacked access token (valid for up to 15 minutes) must not be able to take over the account by swapping the credentials. On success, the user's `tokenVersion` is bumped atomically, so **every refresh token is revoked** and other devices must log in again.
+**Changing `email` or `password` requires `currentPassword`** in the same request. A new `email` also drops the account's confirmation (`emailVerifiedAt` back to `null`): a confirmation proves the old address, and keeping it would let somebody confirm their own address and then move the account to someone else's, whose reset would then never ask "Keep what's in this account?". This is re-authentication: a hijacked access token (valid for up to 15 minutes) must not be able to take over the account by swapping the credentials. On success, the user's `tokenVersion` is bumped atomically, so **every refresh token is revoked** and other devices must log in again; every session row is marked revoked too, so Active sessions stops listing the devices it signed out (before T-221 they stayed listed until they expired).
 
 `currency` can only change while the user has **no accounts** (`CURRENCY_LOCKED`). No accounts implies no transactions — every transaction type requires one — so a single account count settles it.
 
 Changing the email to one belonging to another account (soft-deleted included) conflicts with `409 DUPLICATE`; reactivation only happens on register.
 
-**A new address is asked to confirm itself**: once the change is written, `verify-email` goes to it, with the requester's IP brake (the `PUT` carries no device token). A send that fails or is limited does not undo the change: `GET /users/:id` then shows no live code, and the sheet offers Send code. This is the email change until T-221 replaces it with one that waits for the new address before moving the account.
+**A new address is asked to confirm itself**: once the change is written, `verify-email` goes to it, with the requester's IP brake (the `PUT` carries no device token). A send that fails or is limited does not undo the change: `GET /users/:id` then shows no live code, and the sheet offers Send code. A change that was waiting on `POST /users/:id/email-change` is dropped.
+
+**This `email` is the old way, kept while the web client still uses it**: the account moves at once and confirms afterwards. The way that waits for the new address is [below](#changing-the-email); once the client uses it and is deployed, a task of this repo closes `email` here with `EMAIL_CHANGE_REQUIRES_VERIFICATION`. Closing it before would break the client that is live.
+
+### Changing the email
+
+The account moves to a new address only once that address proves it is reached: the owner's line of 2026-09-26 ("Email and access"), with the screens of the web client's `settings.md` (`#profile-and-security-pending-email`) and `access.md` (`/confirm-email`), and the email `email-change-confirm` of `emails.md`.
+
+1. **`POST /users/:id/email-change`** `{ email, currentPassword, captcha, deviceToken? }` — Save changes with a new email. `currentPassword` re-authenticates (with the per-user limiter of `PUT`), `captcha` is Turnstile's for the action `email-change`, and `deviceToken` lets the email brakes count this device instead of its IP. Nothing moves: the account keeps `email`, and `email-change-confirm` goes to the new address with a 6-digit code and a link (`{APP_URL}/{locale}/confirm-email#token=…`), both for 24 hours. `202 { resendAfterSeconds, emailChange }`.
+   - **The change is saved only once its email was accepted, or may have gone** (`sent`, or `failed / unconfirmed`: a provider timed out; the `202` is the same, and the code live before is kept next to the new one): a send that fails leaves the account as it was, with any earlier change still waiting. Unlike Forgot your password?, a failure is said (`EMAIL_SEND_FAILED`, `503` or `422`): the address is the one the person typed.
+   - **Refused before anything is sent:** the account's own address (`400 VALIDATION`, on the field `email`), an address any other account holds, a deleted one included (`409 EMAIL_TAKEN`), a wrong password (`401 CURRENT_PASSWORD_INVALID`).
+   - **Asking again replaces what waits**: once the new one is saved, the first address's codes are discarded (they would fail anyway, being checked against the address that waits now). Cancel discards them too.
+2. **`POST /users/:id/email-change/resend`** `{ captcha, deviceToken? }` — a new code and link to the address that waits, replacing the old ones once accepted; the change then waits 24 hours from this send. `409 EMAIL_CHANGE_NOT_PENDING` when nothing waits.
+3. **`DELETE /users/:id/email-change`** — Cancel change. `200` also when nothing waited.
+4. **`POST /auth/email/confirm-change`** — the code (with the session) or the link (without one) moves the account ([auth.md](auth.md#post-authemailconfirm-change)).
+
+**What is kept.** `emailChange: { email, sentAt, expiresAt }` on the user document, `null` when nothing waits; it is never in the sync feed and bumps no `updatedAt`. `GET /users/:id` shows it as `emailChange: { email, expiresAt, resendAvailableAt }`, or `null` once its 24 hours passed (a change past `expiresAt` is read as none; the field is simply overwritten by the next one). The codes live in `authcodes` with the purpose `email-change`, but **keyed by the account and the address** (`emailChangeKey`: SHA-256 of the account id and the address's hash), not by the address alone like the others: many accounts can ask for the same new address, and each keeps its own code, tries and link, so one account asking can neither cancel another's code nor turn another's link into its own move ([auth.md](auth.md#the-codes-authcodes)). The email brakes still count the address itself.
+
+**The move is one write** (`UserRepository.applyEmailChange`), guarded by the address that waits and its `expiresAt`: `email`, `emailVerifiedAt` and `firstVerifiedAt` (the new address is proven), `emailChangedAt` (every "It wasn't me" issued before stops working), `emailChange: null` and `tokenVersion + 1`. **The unique index on `email` decides a race**: if another account took the address meanwhile, the write fails on it, the change is dropped and the answer is `409 EMAIL_TAKEN`, with the account untouched. Then every session row is revoked, the invitations waiting for the new address are touched so they reach the feed (`touchUnansweredFor`), and, when this device keeps its session, a new one is opened.
+
+**What waits for T-211.** The notice to the old address (`email-change-requested`, only when that address was confirmed), its "Undo the change" (`/undo`, 7 days, even after the move) and the old address staying reserved while that undo works are the security notices of T-211, which build on this. Until then the old address hears nothing and is free once the account leaves it.
 
 ### `DELETE /users/:id`
 
@@ -287,7 +311,10 @@ sequenceDiagram
 | `Unauthorized`             | 401    | Missing, invalid or expired access token                                              |
 | `CURRENT_PASSWORD_INVALID` | 401    | `currentPassword` is wrong (credential change or delete)                              |
 | `NotFound`                 | 404    | User does not exist, **or the id is not the authenticated user's**                    |
-| `DUPLICATE`                | 409    | Email already used by another account (unique index)                                  |
+| `DUPLICATE`                | 409    | Email already used by another account (unique index), on `PUT`                        |
+| `EMAIL_TAKEN`              | 409    | The new email belongs to another account: asking for it, or confirming it once taken  |
+| `EMAIL_CHANGE_NOT_PENDING` | 409    | Resend, or the code of a change, when nothing waits (confirmed, cancelled, 24 h past) |
+| `EMAIL_SEND_FAILED`        | 422/503 | The email to the new address did not go: nothing was saved, or the old code still works |
 | `KEEP_OR_START_FRESH_CLOSED` | 409  | Answering "Keep what's in this account?" when it is not open                          |
 
 ## Soft Delete and Reactivation

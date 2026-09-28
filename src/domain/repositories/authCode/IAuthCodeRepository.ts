@@ -9,7 +9,7 @@ export interface IssuedCode {
 export interface AuthCodeRecord {
   id: string;
   purpose: AuthCodePurpose;
-  // SHA-256 of the normalized address: one row per address and purpose, account or not.
+  // SHA-256 of the normalized address, one row per address and purpose; for email-change, of the account and the address.
   toHash: string;
   userId: string | null;
   codes: IssuedCode[];
@@ -55,6 +55,9 @@ export interface IAuthCodeRepository {
     tokenHash: string,
     now: Date,
   ): Promise<AuthCodeRecord | null>;
+
+  // Every code and link of the row stops working; its tries and its history stay.
+  discard(purpose: AuthCodePurpose, toHash: string): Promise<void>;
 
   find(
     purpose: AuthCodePurpose,

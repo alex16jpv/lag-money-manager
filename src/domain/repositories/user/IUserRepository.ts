@@ -1,5 +1,9 @@
 import { TxSession } from "../../../shared/unitOfWork";
-import { FreshStartDetails, User } from "../../entities/User";
+import {
+  FreshStartDetails,
+  PendingEmailChange,
+  User,
+} from "../../entities/User";
 import { IRepository } from "../IRepository";
 
 export interface IUserRepository extends IRepository<User> {
@@ -24,6 +28,27 @@ export interface IUserRepository extends IRepository<User> {
   ): Promise<User | null>;
   // Null when the account no longer has this address; the account as it is when it was already confirmed.
   markEmailVerified(id: string, email: string, now: Date): Promise<User | null>;
+  // Any account holding the address, deleted ones included: the unique index counts them all.
+  emailInUse(email: string): Promise<boolean>;
+  startEmailChange(
+    id: string,
+    change: PendingEmailChange,
+  ): Promise<User | null>;
+  // Null when the account no longer waits for this address.
+  renewEmailChange(
+    id: string,
+    email: string,
+    sentAt: Date,
+    expiresAt: Date,
+  ): Promise<User | null>;
+  // With an email, only while the account still waits for that address.
+  dropEmailChange(id: string, email?: string): Promise<void>;
+  // One write: the address, its confirmation and tokenVersion. "taken" when another account holds it now.
+  applyEmailChange(
+    id: string,
+    email: string,
+    now: Date,
+  ): Promise<User | "taken" | null>;
   // Never confirmed, deleted or not, including one whose erasure started and has to finish.
   getForErasure(id: string): Promise<User | null>;
   // Takes the account out of every read; null once it was confirmed, or moved after the token was issued.

@@ -66,6 +66,11 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   getForErasure: jest.fn().mockResolvedValue(null),
   claimErasure: jest.fn().mockResolvedValue(null),
   eraseForGood: jest.fn().mockResolvedValue(undefined),
+  emailInUse: jest.fn().mockResolvedValue(false),
+  startEmailChange: jest.fn(),
+  renewEmailChange: jest.fn(),
+  dropEmailChange: jest.fn().mockResolvedValue(undefined),
+  applyEmailChange: jest.fn(),
   getByIdWithPassword: jest.fn().mockResolvedValue(null),
   bumpTokenVersion: jest.fn().mockResolvedValue(undefined),
   updateWithTokenBump: jest.fn(),
@@ -87,6 +92,8 @@ describe("UserService", () => {
   let accountRepo: jest.Mocked<IAccountRepository>;
   let invitations: ReturnType<typeof mockInvitationRepo>;
   let verification: { status: jest.Mock; send: jest.Mock };
+  let emailChange: { view: jest.Mock };
+  let sessions: { revokeAllForUser: jest.Mock };
 
   beforeEach(() => {
     repo = createMockRepo();
@@ -98,7 +105,16 @@ describe("UserService", () => {
       status: jest.fn().mockResolvedValue(null),
       send: jest.fn().mockResolvedValue({ status: "sent" }),
     };
-    service = new UserService(repo, accountRepo, invitations, verification);
+    emailChange = { view: jest.fn().mockReturnValue(null) };
+    sessions = { revokeAllForUser: jest.fn().mockResolvedValue(undefined) };
+    service = new UserService(
+      repo,
+      accountRepo,
+      invitations,
+      verification,
+      emailChange,
+      sessions,
+    );
   });
 
   describe("getUserById", () => {
@@ -125,6 +141,21 @@ describe("UserService", () => {
       expect(verification.status).toHaveBeenCalledWith(mockUser);
       expect(result.emailVerified).toBe(false);
       expect(result.emailVerification).toEqual(view);
+    });
+
+    it("carries the new address that waits for its code [T-221]", async () => {
+      repo.getById.mockResolvedValue(mockUser);
+      const view = {
+        email: "john.doe@example.org",
+        expiresAt: new Date("2026-09-29T12:00:00.000Z"),
+        resendAvailableAt: null,
+      };
+      emailChange.view.mockReturnValue(view);
+
+      const result = await service.getUserById(testUserId, testUserId);
+
+      expect(emailChange.view).toHaveBeenCalledWith(mockUser);
+      expect(result.emailChange).toEqual(view);
     });
 
     it("should throw Forbidden when accessing another user", async () => {
@@ -232,6 +263,40 @@ describe("UserService", () => {
       expect(updateArg).not.toHaveProperty("tokenVersion");
     });
 
+    it("ends every session row, so Active sessions stops listing the devices it signed out [T-221]", async () => {
+      const withHash = new User({
+        ...mockUser,
+        password: bcryptjs.hashSync("oldpassword", 4),
+      });
+      repo.getByIdWithPassword.mockResolvedValue(withHash);
+      repo.updateWithTokenBump.mockResolvedValue(mockUser);
+
+      await service.updateUser(
+        testUserId,
+        { password: "newpassword", currentPassword: "oldpassword" },
+        testUserId,
+        REQUESTER,
+      );
+
+      expect(sessions.revokeAllForUser).toHaveBeenCalledWith(testUserId);
+      expect(
+        sessions.revokeAllForUser.mock.invocationCallOrder[0],
+      ).toBeGreaterThan(repo.updateWithTokenBump.mock.invocationCallOrder[0]);
+    });
+
+    it("leaves the sessions alone on a plain profile edit [T-221]", async () => {
+      repo.update.mockResolvedValue(mockUser);
+
+      await service.updateUser(
+        testUserId,
+        { name: "Juan" },
+        testUserId,
+        REQUESTER,
+      );
+
+      expect(sessions.revokeAllForUser).not.toHaveBeenCalled();
+    });
+
     it("drops the email's confirmation when the email changes, and only then [T-207]", async () => {
       const withHash = new User({
         ...mockUser,
@@ -263,8 +328,9 @@ describe("UserService", () => {
       const [moved, same, password] = repo.updateWithTokenBump.mock.calls.map(
         (call) => call[1],
       );
-      expect(moved).toMatchObject({ emailVerifiedAt: null });
+      expect(moved).toMatchObject({ emailVerifiedAt: null, emailChange: null });
       expect(same).not.toHaveProperty("emailVerifiedAt");
+      expect(same).not.toHaveProperty("emailChange");
       expect(password).not.toHaveProperty("emailVerifiedAt");
     });
 

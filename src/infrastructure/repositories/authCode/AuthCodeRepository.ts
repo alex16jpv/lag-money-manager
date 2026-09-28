@@ -117,6 +117,13 @@ export class AuthCodeRepository implements IAuthCodeRepository {
     return doc ? toRecord(doc) : null;
   }
 
+  async discard(purpose: AuthCodePurpose, toHash: string): Promise<void> {
+    await AuthCodeModel.updateOne(
+      { purpose, toHash },
+      { $set: { codes: [] } },
+    ).exec();
+  }
+
   async find(
     purpose: AuthCodePurpose,
     toHash: string,

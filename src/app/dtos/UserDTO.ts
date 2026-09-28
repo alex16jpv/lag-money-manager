@@ -36,6 +36,12 @@ export interface EmailVerificationView {
   resendAvailableAt: Date | null;
 }
 
+export interface EmailChangeView {
+  email: string;
+  expiresAt: Date;
+  resendAvailableAt: Date | null;
+}
+
 export interface UserResponseDTO {
   id: string;
   name: string;

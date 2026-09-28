@@ -1,8 +1,8 @@
 import { NextFunction, Request, Response } from "express";
 
 import { ENVIRONMENT } from "../../shared/constants";
-import { ApiError } from "../../shared/errors";
 import logger from "../../shared/logger";
+import { createEmailChangeService } from "../factories/emailChangeFactory";
 import { createEmailService } from "../factories/emailServiceFactory";
 import { createEmailVerificationService } from "../factories/emailVerificationFactory";
 import repositoryFactory from "../factories/RepositoryFactory";
@@ -16,6 +16,7 @@ import {
   FORGOT_FLOOR_MARGIN_MS,
   PasswordResetService,
 } from "../services/PasswordResetService";
+import { answerLimited, sendFailed } from "./emailOutcome";
 
 const categoryService = new CategoryService(
   repositoryFactory.getCategoryRepository(),
@@ -42,26 +43,12 @@ const passwordResetService = new PasswordResetService(
 );
 
 const verification = createEmailVerificationService();
+const emailChange = createEmailChangeService(authService);
 
 const requesterOf = (req: Request): EmailRequester => ({
   ip: clientIp(req),
   recognizedDevice: req.recognizedDevice ?? null,
 });
-
-const sendFailed = (
-  reason: "disabled" | "unavailable" | "unconfirmed" | "rejected",
-): ApiError =>
-  reason === "rejected"
-    ? new ApiError(
-        "UnprocessableEntity",
-        "This address does not accept our emails: check it, or change it",
-        "EMAIL_SEND_FAILED",
-      )
-    : new ApiError(
-        "ServiceUnavailable",
-        "The email could not be sent. Try again in a few minutes",
-        "EMAIL_SEND_FAILED",
-      );
 
 export class AuthController {
   static recognizeDevice = async (
@@ -125,18 +112,35 @@ export class AuthController {
       recognizedDevice: device,
     });
     if (outcome.status === "limited") {
-      res.setHeader("Retry-After", String(outcome.retryAfterSeconds));
-      res.status(429).json({
-        error: "TooManyRequests",
-        message: "Too many requests, please try again later",
-        code: "RATE_LIMITED",
-      });
+      answerLimited(res, outcome.retryAfterSeconds);
       return;
     }
     if (outcome.status === "failed") throw sendFailed(outcome.reason);
     res
       .status(202)
       .json({ resendAfterSeconds: ENVIRONMENT.EMAIL_ADDRESS_INTERVAL_SECONDS });
+  };
+
+  static confirmEmailChange = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    const body = req.body as
+      { code: string } | { token: string; refreshToken?: string };
+    const userAgent = req.get("User-Agent") ?? undefined;
+    const result =
+      "code" in body
+        ? await emailChange.confirmCode(
+            (req.user as AuthPayload).userId,
+            body.code,
+            userAgent,
+          )
+        : await emailChange.confirmLink(
+            body.token,
+            body.refreshToken,
+            userAgent,
+          );
+    res.status(200).json(result);
   };
 
   static notMe = async (req: Request, res: Response): Promise<void> => {
@@ -163,12 +167,7 @@ export class AuthController {
       recognizedDevice: req.recognizedDevice ?? null,
     });
     if (outcome.status === "limited") {
-      res.setHeader("Retry-After", String(outcome.retryAfterSeconds));
-      res.status(429).json({
-        error: "TooManyRequests",
-        message: "Too many requests, please try again later",
-        code: "RATE_LIMITED",
-      });
+      answerLimited(res, outcome.retryAfterSeconds);
       return;
     }
     res.status(202).json({ resendAfterSeconds: outcome.resendAfterSeconds });

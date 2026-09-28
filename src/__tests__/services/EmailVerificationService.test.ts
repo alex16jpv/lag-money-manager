@@ -97,6 +97,7 @@ const build = (): Harness => {
     redeemToken: jest.fn(),
     find: jest.fn().mockResolvedValue(null),
     findByLiveToken: jest.fn().mockResolvedValue(record()),
+    discard: jest.fn().mockResolvedValue(undefined),
   };
   const email = { sendCode: jest.fn().mockResolvedValue(sent) };
   const invitations = {

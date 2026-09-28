@@ -101,6 +101,7 @@ jest.mock("../../shared/constants", () => ({
 }));
 
 import {
+  confirmEmailChangeSchema,
   createAccountSchema,
   createBudgetSchema,
   createCategorySchema,
@@ -117,6 +118,8 @@ import {
   paginationQuerySchema,
   quickAddTransactionSchema,
   registerSchema,
+  requestEmailChangeSchema,
+  resendEmailChangeSchema,
   resendVerificationSchema,
   resetPasswordSchema,
   spendingStatsSchema,
@@ -419,6 +422,66 @@ describe("Validation Schemas", () => {
       expect(notMeSchema.safeParse({ body: { token, extra: 1 } }).success).toBe(
         false,
       );
+    });
+  });
+
+  describe("the change of email [T-221]", () => {
+    const params = { id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70" };
+    const asked = {
+      email: " Ana.Ruiz@Example.org ",
+      currentPassword: "Offline!2026",
+      captcha: "token",
+    };
+
+    it("asks with the new address, the current password and the captcha, and normalizes the address", () => {
+      const parsed = requestEmailChangeSchema.safeParse({
+        params,
+        body: asked,
+      });
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.body.email).toBe("ana.ruiz@example.org");
+    });
+
+    it.each([
+      ["no current password", { ...asked, currentPassword: undefined }],
+      ["no captcha", { ...asked, captcha: undefined }],
+      ["an address that is not one", { ...asked, email: "not-an-address" }],
+    ])("refuses to ask with %s", (_label, body) => {
+      expect(requestEmailChangeSchema.safeParse({ params, body }).success).toBe(
+        false,
+      );
+    });
+
+    it("needs the captcha to resend", () => {
+      expect(
+        resendEmailChangeSchema.safeParse({
+          params,
+          body: { captcha: "token" },
+        }).success,
+      ).toBe(true);
+      expect(
+        resendEmailChangeSchema.safeParse({ params, body: {} }).success,
+      ).toBe(false);
+    });
+
+    it.each([
+      ["the code", { code: "004821" }],
+      ["the link's token", { token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz" }],
+      [
+        "the link's token and this browser's refresh token",
+        { token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz", refreshToken: "r.e.f" },
+      ],
+    ])("confirms with %s", (_label, body) => {
+      expect(confirmEmailChangeSchema.safeParse({ body }).success).toBe(true);
+    });
+
+    it.each([
+      ["both", { code: "004821", token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz" }],
+      ["neither", {}],
+      ["a refresh token with the code", { code: "004821", refreshToken: "r" }],
+      ["a code that is not six digits", { code: "4821" }],
+    ])("refuses to confirm with %s", (_label, body) => {
+      expect(confirmEmailChangeSchema.safeParse({ body }).success).toBe(false);
     });
   });
 

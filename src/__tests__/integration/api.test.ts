@@ -29,6 +29,11 @@ const mockUserRepo: jest.Mocked<IUserRepository> = {
   getForErasure: jest.fn().mockResolvedValue(null),
   claimErasure: jest.fn().mockResolvedValue(null),
   eraseForGood: jest.fn().mockResolvedValue(undefined),
+  emailInUse: jest.fn().mockResolvedValue(false),
+  startEmailChange: jest.fn(),
+  renewEmailChange: jest.fn(),
+  dropEmailChange: jest.fn().mockResolvedValue(undefined),
+  applyEmailChange: jest.fn(),
   getByIdWithPassword: jest.fn().mockResolvedValue(null),
   bumpTokenVersion: jest.fn().mockResolvedValue(undefined),
   updateWithTokenBump: jest.fn(),
@@ -225,6 +230,7 @@ const mockAuthCodeRepo = {
   redeemToken: jest.fn().mockResolvedValue(null),
   find: jest.fn().mockResolvedValue(null),
   findByLiveToken: jest.fn().mockResolvedValue(null),
+  discard: jest.fn().mockResolvedValue(undefined),
 };
 
 const CAPTCHA = "XXXX.DUMMY.TOKEN.XXXX";
