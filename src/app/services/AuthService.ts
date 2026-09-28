@@ -19,6 +19,8 @@ import {
 } from "../dtos/UserDTO";
 import { CategoryService } from "./CategoryService";
 import { readDeviceToken, signDeviceToken } from "./deviceToken";
+import { EmailService } from "./EmailService";
+import { sendSecurityNotice } from "./securityNotice";
 
 type LostAnswer =
   | { kind: "reissued"; tokens: AuthTokens; count: number }
@@ -30,7 +32,11 @@ const emailTaken = () =>
 
 function isDuplicateEmailError(err: unknown): boolean {
   const e = err as { code?: number; keyPattern?: Record<string, unknown> };
-  return e?.code === 11000 && !!e.keyPattern && "email" in e.keyPattern;
+  return (
+    e?.code === 11000 &&
+    !!e.keyPattern &&
+    ("email" in e.keyPattern || "heldEmails" in e.keyPattern)
+  );
 }
 
 const REFRESH_TOKEN_TYPE = "refresh";
@@ -62,6 +68,7 @@ export class AuthService {
     private repo: IUserRepository,
     private categoryService: CategoryService,
     private sessions: IRefreshSessionRepository,
+    private email: Pick<EmailService, "sendNotice">,
   ) {}
 
   // `sid` is the refresh family, so the sessions list marks the caller's device with no DB lookup.
@@ -195,10 +202,18 @@ export class AuthService {
     return user?.tokenVersion === claim.tokenVersion ? claim.deviceId : null;
   }
 
+  // Unlike recognizedDevice, a password change or a move does not forget a device: only devicesResetAt does.
+  knownDevice(deviceToken: unknown, user: User): boolean {
+    const claim = readDeviceToken(deviceToken, user.email);
+    if (!claim) return false;
+    return !user.devicesResetAt || claim.issuedAt >= user.devicesResetAt;
+  }
+
   async login(
     email: string,
     password: string,
     userAgent?: string,
+    deviceToken?: unknown,
   ): Promise<OpenedSession & { user: UserResponseDTO }> {
     const user = await this.repo.getByEmail(email);
     if (!user || !user.password) {
@@ -212,6 +227,12 @@ export class AuthService {
     }
 
     const tokens = await this.openSession(user, userAgent);
+    if (!this.knownDevice(deviceToken, user)) {
+      await sendSecurityNotice(this.email, user, "new-sign-in", {
+        at: new Date(),
+        userAgent,
+      });
+    }
     return { ...tokens, user: toUserResponse(user) };
   }
 
@@ -435,9 +456,12 @@ export class AuthService {
   }
 
   // Global logout: version mismatch kills every refresh, and the records are marked for bookkeeping.
-  async logoutAll(userId: string): Promise<void> {
-    await this.repo.bumpTokenVersion(userId);
+  async logoutAll(userId: string): Promise<{ deviceToken: string | null }> {
+    const user = await this.repo.forgetDevices(userId, new Date());
     await this.sessions.revokeAllForUser(userId);
+    return {
+      deviceToken: user ? signDeviceToken(user.email, user.tokenVersion) : null,
+    };
   }
 
   // From the caller's `sid`; tokens minted before it existed mark nothing current until renewed.

@@ -299,3 +299,14 @@ POST {{baseUrl}}/auth/email/not-me
 Content-Type: application/json
 
 { "token": "pega-aqui-el-token-de-no-fui-yo" }
+
+### "Deshacer el cambio" (sin sesión): el token tras #token= de /undo, en el aviso
+### email-change-requested que llega a la dirección vieja. Devuelve la cuenta a esa
+### dirección (y la recupera si se borró), cierra todas las sesiones, deja sin servir
+### la contraseña y manda allí password-reset-after-undo (su código se canjea con
+### /auth/password/reset). Los enlaces posteriores dejan de servir; los anteriores, no.
+### 200 { email, codeSent }; usado, vencido (7 días) o anulado: 400 LINK_INVALID.
+POST {{baseUrl}}/auth/email/undo
+Content-Type: application/json
+
+{ "token": "pega-aqui-el-token-de-deshacer" }

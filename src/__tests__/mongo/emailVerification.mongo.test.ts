@@ -7,6 +7,7 @@
  */
 import request from "supertest";
 
+import { createEmailService } from "../../app/factories/emailServiceFactory";
 import repositoryFactory from "../../app/factories/RepositoryFactory";
 import { AuthService } from "../../app/services/AuthService";
 import { CategoryService } from "../../app/services/CategoryService";
@@ -112,6 +113,7 @@ async function accountFromBeforeEmail(
       repositoryFactory.getTransactionRepository(),
     ),
     repositoryFactory.getRefreshSessionRepository(),
+    createEmailService(),
   );
   await auth.register({ name, email, password: PASSWORD });
   const res = await request(app)

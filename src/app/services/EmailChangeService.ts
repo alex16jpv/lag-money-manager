@@ -1,10 +1,14 @@
-import { PendingEmailChange, User } from "../../domain/entities/User";
+import bcryptjs from "bcryptjs";
+
+import { PendingEmailChange, UndoLink, User } from "../../domain/entities/User";
 import { IAuthCodeRepository } from "../../domain/repositories/authCode/IAuthCodeRepository";
 import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
-import { AuthCodePurpose } from "../../shared/constants";
+import { AuthCodePurpose, ENVIRONMENT } from "../../shared/constants";
+import { hashEmailAddress } from "../../shared/emailHash";
 import { ApiError } from "../../shared/errors";
+import logger from "../../shared/logger";
 import {
   EmailChangeView,
   toUserResponse,
@@ -16,12 +20,18 @@ import {
   emailChangeKey,
   newCode,
   newLinkToken,
+  newUndoToken,
+  RESET_CODE_LIFETIME_MS,
   tokenDigest,
+  UNDO_LINK_LIFETIME_MS,
+  undoTokenAccount,
   VERIFY_CODE_LIFETIME_MS,
 } from "./authCodes";
 import { AuthService, OpenedSession } from "./AuthService";
 import { assertCurrentPassword } from "./currentPassword";
 import { EmailOutcome, EmailRequester, EmailService } from "./EmailService";
+import { sendResetCode } from "./resetCode";
+import { mayHaveArrived, sendSecurityNotice } from "./securityNotice";
 
 const PURPOSE: AuthCodePurpose = "email-change";
 
@@ -36,6 +46,11 @@ export type EmailChangeRequest =
 export type EmailChangeConfirmed = {
   user: UserResponseDTO;
 } & Partial<OpenedSession>;
+
+export interface EmailChangeUndone {
+  email: string;
+  codeSent: boolean;
+}
 
 const notFound = (): ApiError => new ApiError("NotFound", "User not found");
 
@@ -74,7 +89,7 @@ export class EmailChangeService {
   constructor(
     private readonly users: IUserRepository,
     private readonly codes: IAuthCodeRepository,
-    private readonly email: Pick<EmailService, "sendCode">,
+    private readonly email: Pick<EmailService, "sendCode" | "sendNotice">,
     private readonly invitations: Pick<
       ISharedInvitationRepository,
       "touchUnansweredFor"
@@ -109,6 +124,7 @@ export class EmailChangeService {
     email: string,
     currentPassword: string,
     requester: EmailRequester,
+    userAgent?: string,
   ): Promise<EmailChangeRequest> {
     const user = await this.users.getByIdWithPassword(userId);
     if (!user) throw notFound();
@@ -118,10 +134,14 @@ export class EmailChangeService {
         { field: "email", message: "This is already the account's email" },
       ]);
     }
-    if (await this.users.emailInUse(email)) throw emailTaken();
+    if (await this.users.emailInUse(email, this.now(), user.id)) {
+      throw emailTaken();
+    }
 
     const outcome = await this.send(user, email, requester);
     if (outcome.status !== "sent") return outcome.result;
+    const untold = await this.tellOldAddress(user, email, userAgent);
+    if (untold) return untold;
     const saved = await this.users.startEmailChange(user.id, outcome.change);
     if (!saved) throw notFound();
     const replaced = user.emailChange;
@@ -132,6 +152,36 @@ export class EmailChangeService {
       );
     }
     return { status: "sent", emailChange: this.viewOf(outcome.change) };
+  }
+
+  // A refusal when the old address could not be told: the change is then not saved.
+  private async tellOldAddress(
+    user: User,
+    newEmail: string,
+    userAgent: string | undefined,
+  ): Promise<Exclude<EmailOutcome, { status: "sent" }> | null> {
+    if (!user.emailVerifiedAt) return null;
+    const now = this.now();
+    const undoToken = newUndoToken(user.id);
+    const link: UndoLink = {
+      email: user.email,
+      tokenHash: tokenDigest(undoToken),
+      expiresAt: new Date(now.getTime() + UNDO_LINK_LIFETIME_MS),
+    };
+    if (!(await this.users.addUndoLink(user.id, link, now))) throw notFound();
+    const notice = await sendSecurityNotice(
+      this.email,
+      user,
+      "email-change-requested",
+      { at: now, userAgent, newEmail, undoToken },
+    );
+    if (!notice || notice.status === "sent" || mayHaveArrived(notice)) {
+      return null;
+    }
+    await this.users.dropUndoLink(user.id, link.tokenHash);
+    return notice.status === "failed" && notice.reason === "rejected"
+      ? null
+      : notice;
   }
 
   async resend(
@@ -227,6 +277,69 @@ export class EmailChangeService {
     if (!keepsSession) return { user: toUserResponse(updated) };
     const session = await this.auth.openSession(updated, userAgent);
     return { ...session, user: toUserResponse(updated) };
+  }
+
+  async undo(token: string): Promise<EmailChangeUndone> {
+    const userId = undoTokenAccount(token);
+    const user = userId ? await this.users.getForUndo(userId) : null;
+    const now = this.now();
+    const tokenHash = tokenDigest(token);
+    const link = user?.undoLinks.find(
+      (l) => l.tokenHash === tokenHash && l.expiresAt > now,
+    );
+    if (!user || !link) throw linkInvalid();
+
+    const unusable = await bcryptjs.hash(
+      newLinkToken(),
+      ENVIRONMENT.BCRYPT_SALT_ROUNDS,
+    );
+    const undone = await this.users.undoEmailChange(
+      user.id,
+      link,
+      unusable,
+      now,
+    );
+    if (!undone) throw linkInvalid();
+    await this.sessions.revokeAllForUser(undone.id);
+    if (user.emailChange) {
+      await this.codes.discard(
+        PURPOSE,
+        emailChangeKey(user.id, user.emailChange.email),
+      );
+    }
+    if (user.email !== undone.email) {
+      await this.invitations.touchUnansweredFor(undone.email, now);
+    }
+    return {
+      email: undone.email,
+      codeSent: await this.resetAfterUndo(undone),
+    };
+  }
+
+  private async resetAfterUndo(user: User): Promise<boolean> {
+    try {
+      const now = this.now();
+      await this.codes.recordRequest(
+        "reset",
+        hashEmailAddress(user.email),
+        user.id,
+        new Date(now.getTime() + RESET_CODE_LIFETIME_MS),
+      );
+      const outcome = await sendResetCode(
+        { codes: this.codes, email: this.email, now: this.now },
+        user,
+        "password-reset-after-undo",
+        null,
+        false,
+      );
+      return mayHaveArrived(outcome);
+    } catch (err) {
+      logger.error(
+        { err, code: "UNDO_RESET_CODE_NOT_SENT", userId: user.id },
+        "The change was undone but the code to choose a new password could not be sent",
+      );
+      return false;
+    }
   }
 
   private async apply(

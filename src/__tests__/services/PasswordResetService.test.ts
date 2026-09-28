@@ -14,7 +14,11 @@ jest.mock("../../shared/logger", () => ({
 
 import bcryptjs from "bcryptjs";
 
-import { codeDigest, tokenDigest } from "../../app/services/authCodes";
+import {
+  codeDigest,
+  emailChangeKey,
+  tokenDigest,
+} from "../../app/services/authCodes";
 import { EmailOutcome } from "../../app/services/EmailService";
 import { PasswordResetService } from "../../app/services/PasswordResetService";
 import { User } from "../../domain/entities/User";
@@ -63,6 +67,7 @@ interface Harness {
   email: {
     holdBrakes: jest.Mock;
     sendCode: jest.Mock;
+    sendNotice: jest.Mock;
     providerCeilingMs: number;
   };
   accounts: { countByUserId: jest.Mock };
@@ -110,6 +115,11 @@ const build = (): Harness => {
       status: "sent",
       provider: "mailpit",
       messageId: "m-1",
+    } satisfies EmailOutcome),
+    sendNotice: jest.fn().mockResolvedValue({
+      status: "sent",
+      provider: "mailpit",
+      messageId: "m-2",
     } satisfies EmailOutcome),
     providerCeilingMs: 1500,
   };
@@ -333,6 +343,76 @@ describe("PasswordResetService.reset", () => {
       user: { id: ana().id, keepOrStartFresh: null },
     });
     expect(result.user).not.toHaveProperty("password");
+  });
+
+  it("tells the account its password changed, with the device that changed it [T-211]", async () => {
+    const { service, users, codes, email } = build();
+    codes.countAttempt.mockResolvedValue(record());
+    codes.redeemCode.mockResolvedValue(record());
+    users.getById.mockResolvedValue(ana({ emailVerifiedAt: null }));
+
+    await service.reset(withCode, "new password 1", "Mozilla");
+
+    expect(email.sendNotice).toHaveBeenCalledTimes(1);
+    expect(email.sendNotice).toHaveBeenCalledWith({
+      template: "password-changed",
+      data: { at: NOW, userAgent: "Mozilla" },
+      recipient: {
+        userId: ana().id,
+        email: EMAIL,
+        locale: "es",
+        timezone: "America/Bogota",
+      },
+    });
+  });
+
+  it("keeps the new password when its notice cannot be sent, and logs it [T-211]", async () => {
+    const { service, users, codes, email } = build();
+    codes.countAttempt.mockResolvedValue(record());
+    codes.redeemCode.mockResolvedValue(record());
+    users.getById.mockResolvedValue(ana());
+    email.sendNotice.mockRejectedValue(new Error("render bug"));
+
+    const result = await service.reset(withCode, "new password 1");
+
+    expect(result.accessToken).toBe("access");
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "SECURITY_NOTICE_NOT_SENT",
+        template: "password-changed",
+      }),
+      expect.any(String),
+    );
+  });
+
+  it("cancels the email change that was waiting, with its code and link [T-211]", async () => {
+    const { service, users, codes } = build();
+    codes.countAttempt.mockResolvedValue(record());
+    codes.redeemCode.mockResolvedValue(record());
+    const waiting = {
+      email: "thief@example.net",
+      sentAt: NOW,
+      expiresAt: new Date(NOW.getTime() + 60_000),
+    };
+    users.getById.mockResolvedValue(ana({ emailChange: waiting }));
+
+    await service.reset(withCode, "new password 1");
+
+    expect(codes.discard).toHaveBeenCalledWith(
+      "email-change",
+      emailChangeKey(ana().id, "thief@example.net"),
+    );
+  });
+
+  it("discards nothing when no email change was waiting [T-211]", async () => {
+    const { service, users, codes } = build();
+    codes.countAttempt.mockResolvedValue(record());
+    codes.redeemCode.mockResolvedValue(record());
+    users.getById.mockResolvedValue(ana());
+
+    await service.reset(withCode, "new password 1");
+
+    expect(codes.discard).not.toHaveBeenCalled();
   });
 
   it("asks keep or start fresh when the account never confirmed its email and holds something", async () => {

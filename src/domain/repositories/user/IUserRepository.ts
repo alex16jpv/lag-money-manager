@@ -2,6 +2,7 @@ import { TxSession } from "../../../shared/unitOfWork";
 import {
   FreshStartDetails,
   PendingEmailChange,
+  UndoLink,
   User,
 } from "../../entities/User";
 import { IRepository } from "../IRepository";
@@ -12,14 +13,14 @@ export interface IUserRepository extends IRepository<User> {
   getManyByIds(ids: string[]): Promise<User[]>;
   // Unlike getById, keeps the password hash (current-password verification).
   getByIdWithPassword(id: string): Promise<User | null>;
-  // Atomic $inc: revokes every live refresh token of the user.
-  bumpTokenVersion(id: string): Promise<void>;
+  // Atomic $inc of tokenVersion, and every device token issued before is unknown to new-sign-in.
+  forgetDevices(id: string, now: Date): Promise<User | null>;
   // Fields and tokenVersion in one atomic write, so a concurrent logout-all cannot lose a revocation.
   updateWithTokenBump(id: string, fields: Partial<User>): Promise<User>;
   // Stamps lastLoginAt; fire-and-forget semantics (no error surfaced).
   recordLogin(id: string): Promise<void>;
   getDeletedByEmail(email: string): Promise<User | null>;
-  // One atomic write: password, tokenVersion, email confirmed, and the question only if it never was.
+  // One atomic write: password, tokenVersion, email confirmed, no change waiting, and the question only if it never was.
   resetPassword(
     id: string,
     passwordHash: string,
@@ -28,12 +29,15 @@ export interface IUserRepository extends IRepository<User> {
   ): Promise<User | null>;
   // Null when the account no longer has this address; the account as it is when it was already confirmed.
   markEmailVerified(id: string, email: string, now: Date): Promise<User | null>;
-  // Any account holding the address, deleted ones included: the unique index counts them all.
-  emailInUse(email: string): Promise<boolean>;
+  // Any account holding the address, deleted ones included, or another one keeping it for a working undo link.
+  emailInUse(email: string, now: Date, exceptUserId?: string): Promise<boolean>;
   startEmailChange(
     id: string,
     change: PendingEmailChange,
   ): Promise<User | null>;
+  // Keeps the link's address in heldEmails in the same write.
+  addUndoLink(id: string, link: UndoLink, now: Date): Promise<boolean>;
+  dropUndoLink(id: string, tokenHash: string): Promise<void>;
   // Null when the account no longer waits for this address.
   renewEmailChange(
     id: string,
@@ -49,6 +53,15 @@ export interface IUserRepository extends IRepository<User> {
     email: string,
     now: Date,
   ): Promise<User | "taken" | null>;
+  // Live or soft-deleted: an undo link also brings back an account deleted after it was sent.
+  getForUndo(id: string): Promise<User | null>;
+  // One write: back to the link's address, not deleted, no password; the links issued before it survive. Null once it no longer works.
+  undoEmailChange(
+    id: string,
+    link: UndoLink,
+    unusablePasswordHash: string,
+    now: Date,
+  ): Promise<User | null>;
   // Never confirmed, deleted or not, including one whose erasure started and has to finish.
   getForErasure(id: string): Promise<User | null>;
   // Takes the account out of every read; null once it was confirmed, or moved after the token was issued.

@@ -64,8 +64,12 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   renewEmailChange: jest.fn(),
   dropEmailChange: jest.fn().mockResolvedValue(undefined),
   applyEmailChange: jest.fn(),
+  dropUndoLink: jest.fn().mockResolvedValue(undefined),
+  addUndoLink: jest.fn().mockResolvedValue(true),
+  getForUndo: jest.fn().mockResolvedValue(null),
+  undoEmailChange: jest.fn(),
   getByIdWithPassword: jest.fn().mockResolvedValue(null),
-  bumpTokenVersion: jest.fn().mockResolvedValue(undefined),
+  forgetDevices: jest.fn().mockResolvedValue(null),
   updateWithTokenBump: jest.fn(),
   recordLogin: jest.fn().mockResolvedValue(undefined),
   reactivate: jest.fn(),
@@ -85,8 +89,9 @@ describe("UserService", () => {
   let accountRepo: jest.Mocked<IAccountRepository>;
   let invitations: ReturnType<typeof mockInvitationRepo>;
   let verification: { status: jest.Mock };
-  let emailChange: { view: jest.Mock };
+  let emailChange: { view: jest.Mock; cancel: jest.Mock };
   let sessions: { revokeAllForUser: jest.Mock };
+  let email: { sendNotice: jest.Mock };
 
   beforeEach(() => {
     repo = createMockRepo();
@@ -97,8 +102,18 @@ describe("UserService", () => {
     verification = {
       status: jest.fn().mockResolvedValue(null),
     };
-    emailChange = { view: jest.fn().mockReturnValue(null) };
+    emailChange = {
+      view: jest.fn().mockReturnValue(null),
+      cancel: jest.fn().mockResolvedValue(undefined),
+    };
     sessions = { revokeAllForUser: jest.fn().mockResolvedValue(undefined) };
+    email = {
+      sendNotice: jest.fn().mockResolvedValue({
+        status: "sent",
+        provider: "mailpit",
+        messageId: "m",
+      }),
+    };
     service = new UserService(
       repo,
       accountRepo,
@@ -106,6 +121,7 @@ describe("UserService", () => {
       verification,
       emailChange,
       sessions,
+      email,
     );
   });
 
@@ -271,6 +287,78 @@ describe("UserService", () => {
       ).toBeGreaterThan(repo.updateWithTokenBump.mock.invocationCallOrder[0]);
     });
 
+    it("tells a confirmed address its password changed, with the device that changed it [T-211]", async () => {
+      const confirmed = new User({
+        ...mockUser,
+        emailVerifiedAt: new Date("2026-02-01"),
+      });
+      repo.getByIdWithPassword.mockResolvedValue(
+        new User({
+          ...confirmed,
+          password: bcryptjs.hashSync("oldpassword", 4),
+        }),
+      );
+      repo.updateWithTokenBump.mockResolvedValue(confirmed);
+
+      await service.updateUser(
+        testUserId,
+        { password: "newpassword", currentPassword: "oldpassword" },
+        testUserId,
+        "Mozilla/5.0",
+      );
+
+      expect(email.sendNotice).toHaveBeenCalledWith({
+        template: "password-changed",
+        data: { at: expect.any(Date), userAgent: "Mozilla/5.0" },
+        recipient: expect.objectContaining({
+          userId: testUserId,
+          email: "john@example.com",
+        }),
+      });
+    });
+
+    it("cancels an email change that waits, since it was asked with the old password [T-211]", async () => {
+      repo.getByIdWithPassword.mockResolvedValue(
+        new User({
+          ...mockUser,
+          password: bcryptjs.hashSync("oldpassword", 4),
+        }),
+      );
+      repo.updateWithTokenBump.mockResolvedValue(mockUser);
+      repo.update.mockResolvedValue(mockUser);
+
+      await service.updateUser(
+        testUserId,
+        { password: "newpassword", currentPassword: "oldpassword" },
+        testUserId,
+      );
+      expect(emailChange.cancel).toHaveBeenCalledWith(testUserId);
+      emailChange.cancel.mockClear();
+
+      await service.updateUser(testUserId, { name: "Juan" }, testUserId);
+      expect(emailChange.cancel).not.toHaveBeenCalled();
+    });
+
+    it("tells an address that was never confirmed nothing, and sends nothing for a profile edit [T-211]", async () => {
+      repo.getByIdWithPassword.mockResolvedValue(
+        new User({
+          ...mockUser,
+          password: bcryptjs.hashSync("oldpassword", 4),
+        }),
+      );
+      repo.updateWithTokenBump.mockResolvedValue(mockUser);
+      repo.update.mockResolvedValue(mockUser);
+
+      await service.updateUser(
+        testUserId,
+        { password: "newpassword", currentPassword: "oldpassword" },
+        testUserId,
+      );
+      await service.updateUser(testUserId, { name: "Juan" }, testUserId);
+
+      expect(email.sendNotice).not.toHaveBeenCalled();
+    });
+
     it("leaves the sessions alone on a plain profile edit [T-221]", async () => {
       repo.update.mockResolvedValue(mockUser);
 
@@ -327,6 +415,38 @@ describe("UserService", () => {
         testUserId,
         expect.any(Date),
       );
+    });
+
+    it("tells a confirmed address its account was deleted, once it is [T-211]", async () => {
+      repo.getByIdWithPassword.mockResolvedValue(
+        new User({ ...withPassword, emailVerifiedAt: new Date("2026-02-01") }),
+      );
+      repo.delete.mockResolvedValue();
+
+      await service.deleteUser(
+        testUserId,
+        testUserId,
+        "oldpassword",
+        "Mozilla/5.0",
+      );
+
+      expect(email.sendNotice).toHaveBeenCalledWith({
+        template: "account-deleted",
+        data: { at: expect.any(Date), userAgent: "Mozilla/5.0" },
+        recipient: expect.objectContaining({ email: "john@example.com" }),
+      });
+      expect(email.sendNotice.mock.invocationCallOrder[0]).toBeGreaterThan(
+        repo.delete.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("tells an address that was never confirmed nothing when its account is deleted [T-211]", async () => {
+      repo.getByIdWithPassword.mockResolvedValue(withPassword);
+      repo.delete.mockResolvedValue();
+
+      await service.deleteUser(testUserId, testUserId, "oldpassword");
+
+      expect(email.sendNotice).not.toHaveBeenCalled();
     });
 
     it("refuses a delete whose currentPassword is wrong [T-153]", async () => {

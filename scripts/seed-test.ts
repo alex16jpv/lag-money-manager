@@ -18,6 +18,7 @@ import "dotenv/config";
 import { DateTime } from "luxon";
 import mongoose from "mongoose";
 
+import { createEmailService } from "../src/app/factories/emailServiceFactory";
 import repositoryFactory from "../src/app/factories/RepositoryFactory";
 import { sharedLedgerService } from "../src/app/factories/sharedLedger";
 import { AccountService } from "../src/app/services/AccountService";
@@ -246,6 +247,7 @@ export async function seed(): Promise<Record<string, unknown>> {
     users,
     categoryService,
     repositoryFactory.getRefreshSessionRepository(),
+    createEmailService(),
   );
   const accountService = new AccountService(accounts, users);
   const transactionService = new TransactionService(

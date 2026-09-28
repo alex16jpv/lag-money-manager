@@ -266,6 +266,9 @@ export type AuthCodePurpose = keyof typeof AUTH_CODE_PURPOSES;
 // The "It wasn't me" link's token: 72 bytes in base64url (src/app/services/authCodes.ts).
 export const NOT_ME_TOKEN_FORMAT = /^[A-Za-z0-9_-]{96}$/;
 
+// The "Undo the change" link's token: 48 bytes in base64url (src/app/services/authCodes.ts).
+export const UNDO_TOKEN_FORMAT = /^[A-Za-z0-9_-]{64}$/;
+
 // Cloudflare's published test secrets: they pass, fail or report a spent token whatever the token is.
 export const TURNSTILE_TEST_SECRET = /^[123]x0{31}AA$/;
 

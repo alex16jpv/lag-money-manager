@@ -21,6 +21,7 @@ import {
   TRANSACTION_TYPES,
   TransactionSource,
   TYPES_RECORDED_ELSEWHERE,
+  UNDO_TOKEN_FORMAT,
 } from "../../shared/constants";
 import { CATEGORY_ICONS } from "../../shared/icons";
 import { Locale, LOCALES } from "../../shared/locale";
@@ -1186,6 +1187,16 @@ export const notMeSchema = z.object({
           NOT_ME_TOKEN_FORMAT,
           "token must be the one of the email's link",
         ),
+    })
+    .strict(),
+});
+
+export const undoEmailChangeSchema = z.object({
+  body: z
+    .object({
+      token: z
+        .string()
+        .regex(UNDO_TOKEN_FORMAT, "token must be the one of the email's link"),
     })
     .strict(),
 });

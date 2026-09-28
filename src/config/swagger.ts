@@ -65,6 +65,7 @@ const requestBodies = {
   VerifyEmailInput: bodyOf(v.verifyEmailSchema),
   ResendVerificationInput: bodyOf(v.resendVerificationSchema),
   NotMeInput: bodyOf(v.notMeSchema),
+  UndoEmailChangeInput: bodyOf(v.undoEmailChangeSchema),
   RequestEmailChangeInput: bodyOf(v.requestEmailChangeSchema),
   ResendEmailChangeInput: bodyOf(v.resendEmailChangeSchema),
   ConfirmEmailChangeInput: bodyOf(v.confirmEmailChangeSchema),
@@ -344,6 +345,36 @@ const responseViews = {
     },
     ["accessToken", "refreshToken", "deviceToken"],
   ),
+  LoggedOutEverywhere: withRequired(
+    {
+      type: "object",
+      properties: {
+        message: { type: "string" },
+        deviceToken: {
+          type: "string",
+          description:
+            "This device's new device token, issued after every earlier one was forgotten: keep it in place of the old one. Absent when the account is gone.",
+        },
+      },
+    },
+    ["deviceToken"],
+  ),
+  EmailChangeUndone: withRequired({
+    type: "object",
+    properties: {
+      email: {
+        type: "string",
+        format: "email",
+        description:
+          "The address the account is back at: the one the link reached, where the code to choose a new password went.",
+      },
+      codeSent: {
+        type: "boolean",
+        description:
+          "Whether that code was accepted for delivery (or may still arrive). False when it could not go: Forgot your password? for this address is the way in.",
+      },
+    },
+  }),
   VerificationCodeSent: withRequired({
     type: "object",
     properties: {

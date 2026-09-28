@@ -36,7 +36,9 @@ Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the
 | `src/infrastructure/models/AuthCodeModel.ts`                                 | Mongoose model for `authcodes`, with its TTL                                  |
 | `src/app/middlewares/captchaMiddleware.ts`                                   | `requireCaptcha(action)`: the Turnstile check                                 |
 | `src/app/services/EmailVerificationService.ts`                               | Confirming the email: the code, the link, Resend, the sheet's state, It wasn't me |
-| `src/app/services/EmailChangeService.ts`                                     | The change of email: asking, Resend, cancelling, and the move by code or link |
+| `src/app/services/EmailChangeService.ts`                                     | The change of email: asking, Resend, cancelling, the move by code or link, and its undo |
+| `src/app/services/securityNotice.ts`                                         | Sending a security notice: only to a confirmed address, never failing what sent it |
+| `src/app/services/resetCode.ts`                                              | The reset code, for Forgot your password? and for the undo                    |
 | `src/domain/captcha/CaptchaVerifier.ts`                                      | The captcha port                                                              |
 | `src/infrastructure/captcha/TurnstileVerifier.ts`                            | Cloudflare Turnstile's `siteverify`                                           |
 
@@ -113,6 +115,26 @@ Authenticate and receive a token pair. Response shape is identical to register (
 
 Failed logins pay the same bcrypt cost whether the email exists or not, so timing cannot be used to enumerate users.
 
+**A sign-in from a device the account does not know sends `new-sign-in`** (T-211) to the account's email,
+once the session is open, with the moment and the device read from the user agent. A device is known when
+the `deviceToken` of the body is one this email gave (`AuthService.knownDevice`): a valid signature, the
+email as its subject, not expired, and issued no earlier than the account's `devicesResetAt` (to the
+millisecond: device tokens carry `issuedAtMs`; one from before T-211 has only `iat`, to the second).
+
+- **What forgets the devices** (sets `devicesResetAt`): a reset, an undo and **Log out everywhere**. Those
+  are what an owner does when somebody else may be in: after them a thief's device, which still holds its
+  one-year token, is unknown again, and signing in with the password it knows is told. Log out everywhere
+  answers this device a fresh `deviceToken`, issued after the forget, so its own next sign-in is known once
+  the client keeps it (the web client does not yet: until it does, that sign-in sends one notice).
+- **What does not**: a password change in Settings. Unlike the limiters' `recognizedDevice`, `knownDevice`
+  does not look at `tokenVersion`; the web client signs in again right after a password change with the
+  device token it had, and a notice about itself would teach the owner to ignore the real one. A thief would
+  need the new password.
+- **A move to another email** changes the token's subject: only the device that confirmed it has a token of
+  the new email, and every other device of the owner sends one notice on its next sign-in.
+- An account whose email is not confirmed gets no notice (the address may be a stranger's), and nothing
+  blocks the sign-in: a notice that cannot go stays in `emaildeliveries`.
+
 ### `POST /auth/refresh`
 
 Exchange a refresh token for a **new** access + refresh pair. Public (no access token needed); the body is `{ "refreshToken": "..." }`. The response carries no `user`.
@@ -188,7 +210,7 @@ A rotation in flight does not survive it (H-62). `rotate` and the `create` of th
 
 ### `POST /auth/logout-all`
 
-Global logout for the authenticated user. Bumps the user's `tokenVersion`, so every outstanding refresh token stops working, and marks the session rows revoked. Requires an access token.
+Global logout for the authenticated user. Bumps the user's `tokenVersion`, so every outstanding refresh token stops working, and marks the session rows revoked. Requires an access token. It also sets `devicesResetAt`: every device token issued before is unknown to `new-sign-in` ([`POST /auth/login`](#post-authlogin)), and the answer, `{ message, deviceToken }`, carries a fresh one for this device to keep.
 
 ### `GET /auth/sessions`
 
@@ -230,6 +252,13 @@ device token issued before stops working, as a password change does) and `emailV
 code or the link proved the inbox. The sessions are marked revoked as in logout-all, and the answer is a
 session like a login's: `{ accessToken, refreshToken, deviceToken, user }`. Using the code or the link
 spends every code of that request.
+
+The same write **cancels an email change that waits** (`emailChange: null`, and its code and link are
+discarded): it was asked for with a password that no longer works, and whoever took the account back must
+not see it moved by a link afterwards. It also sets `devicesResetAt`, so every device that signed in before
+is unknown to `new-sign-in`. Then `password-changed` goes to the address, which the reset just confirmed
+(T-211). The code of `password-reset-after-undo` ([below](#post-authemailundo)) is redeemed here too: it
+lives in the same row of the address.
 
 When the account **had never confirmed its email** and holds accounts or transactions, the same write
 opens "Keep what's in this account?" (the owner's decision 12): `user.keepOrStartFresh` carries when the
@@ -326,6 +355,20 @@ account. `200 { user, accessToken?, refreshToken?, deviceToken? }`.
   dropped and the account keeps its email).
 - Confirming touches the invitations waiting for the new address, as the verification does.
 
+### `POST /auth/email/undo`
+
+`{ "token" }` from "Undo the change" of `email-change-requested`, which went to the old address
+(`{APP_URL}/{locale}/undo#token=…`), no session. `200 { "email", "codeSent" }`. What it does, how the old
+address is kept for it and why every other undo link of the account stops with it:
+[users.md](users.md#undo-the-change-from-the-old-address). In short, the account is back at that address,
+signed out everywhere, with no working password, and `password-reset-after-undo` takes a code and a link to
+it for `POST /auth/password/reset`. `email` is that address, so the page opens the code screen without
+asking for a new code, which would cancel this one; `codeSent` is `false` when the code could not go
+(Forgot your password? for that address is the way in then). It also brings back an account deleted after
+the link was sent. A link used, past its 7 days, stopped by an earlier undo link of the account, or not one
+at all is `LINK_INVALID`. No captcha: the token is 32 random
+bytes that only that inbox received, and the route has its own limit per IP.
+
 ## Forgot your password? One answer for every address
 
 Anybody can type any address, so nothing the endpoint answers may tell an address with an account from
@@ -391,7 +434,6 @@ one without, a live account from a deleted one, or a send that worked from one t
 - **Factors of an account that never confirmed its email.** When passkeys, TOTP and recovery codes exist,
   a reset of an account whose `emailVerifiedAt` was null also removes them: whoever registered somebody
   else's address may have left one there. Today none exist.
-- **The "Password changed" notice** is sent by T-211 with the other security notices.
 
 ## The captcha
 
@@ -582,7 +624,7 @@ Only **failed** attempts burn the account budgets (`refundOnSuccess`), so real l
 **Nobody can lock another person out of a device they already use** (T-176, owner's decision of 2026-09-24). Until then the only account budget was one counter per email: ten wrong passwords from anyone locked the owner out for the window, and repeating it every fifteen minutes locked them out for good. The fix is a device token, the "device cookie" OWASP recommends against lockout attacks:
 
 - Every login and register answers a `deviceToken`: an HS256 JWT signed with `REFRESH_SECRET ?? JWT_SECRET`, audience `device`, a random `jti` (the device id), the user's `tokenVersion`, a `sub` that is the SHA-256 of the normalized email, and a one-year lifetime (`src/app/services/deviceToken.ts`). It proves only that this device once signed in to that email; it opens nothing, so it is not a session and survives logout. The web client keeps it in an httpOnly cookie and sends it back as `deviceToken` on the next login or register. Each success answers a new one, which the client keeps instead; the old one stays valid until it expires or is revoked.
-- **Recognizing** a device (`AuthService.recognizedDevice`, run once per request by `AuthController.recognizeDevice` before the limiters) takes a valid signature, the email the attempt is for, and a `tokenVersion` equal to the account's, which costs one indexed read. A password or email change and **Log out everywhere** bump `tokenVersion`, so they revoke every device token issued before; a deleted account recognizes none.
+- **Recognizing** a device (`AuthService.recognizedDevice`, run once per request by `AuthController.recognizeDevice` before the limiters) takes a valid signature, the email the attempt is for, and a `tokenVersion` equal to the account's, which costs one indexed read. A password or email change, a reset, an undo and **Log out everywhere** bump `tokenVersion`, so they revoke every device token issued before for the limiters; a deleted account recognizes none. `new-sign-in` reads the same token with a looser rule of its own ([`POST /auth/login`](#post-authlogin)).
 - An attempt from a recognized device counts only against that device (`AUTH_RATE_LIMIT_MAX` per 15 minutes). Someone else's failures never touch that budget. A stolen token, or one kept by somebody who once knew the password, is worth that budget of guesses, outside the per-email cap, until the owner changes the password or logs out everywhere.
 - Every other attempt counts twice: per email and client IP, so an attacker behind one address runs out of guesses without affecting anybody else; and per email across all addresses, so an attack that rotates addresses is capped at `AUTH_EMAIL_RATE_LIMIT_MAX` guesses an hour. Only that last one can still stop the real owner, and only on a device the account does not recognize, while the attack lasts.
 
@@ -602,10 +644,10 @@ The per-IP cap is shared by everyone behind that address — a carrier NAT holds
 | `REFRESH_REVOKED` | 401    | Reuse of a rotated token whose successor is already spent; a rotated token presented past its re-issue limit; a family already ended by a logout or `DELETE /auth/sessions/:id`; or a token that predates a logout-all / credential change |
 | `Unauthorized`    | 401    | Missing or malformed `Authorization` header, or an invalid/expired access token                                                                                                                                                            |
 | `NotFound`        | 404    | `DELETE /auth/sessions/:id` for a family that is not the user's                                                                                                                                                                            |
-| `EMAIL_TAKEN`     | 409    | Register with the email of a live account, of a soft-deleted one with a different password, or one a concurrent register just reactivated                                                                                                  |
+| `EMAIL_TAKEN`     | 409    | Register with the email of a live account, of a soft-deleted one with a different password, one a concurrent register just reactivated, or one kept for another account's undo link |
 | `RATE_LIMITED`    | 429    | Too many attempts in the window                                                                                                                                                                                                            |
 | `RESET_CODE_INVALID` | 400 | A reset code that does not work, whatever the reason (see above)                                                                                                                                                                         |
-| `LINK_INVALID`    | 400    | A reset or confirmation link that was used, expired or replaced, one for an address the account no longer has, or an It wasn't me that no longer applies |
+| `LINK_INVALID`    | 400    | A reset or confirmation link that was used, expired or replaced, one for an address the account no longer has, an It wasn't me that no longer applies, or an undo link used, past its 7 days or stopped by an earlier one |
 | `EMAIL_CODE_INVALID` | 400 | Confirming the email with a code that is not the one sent |
 | `EMAIL_CODE_EXPIRED` | 400 | Confirming the email when no code still works: expired, tried five times, or none sent |
 | `EMAIL_ALREADY_VERIFIED` | 409 | Resend when the email is already confirmed |
@@ -621,7 +663,7 @@ The per-IP cap is shared by everyone behind that address — a carrier NAT holds
 
 Two independent mechanisms invalidate refresh tokens:
 
-1. **`tokenVersion`** on the user document. `logout-all`, a password change, a password reset and an email change (on its confirmation) all bump it; every outstanding refresh token then fails with `REFRESH_REVOKED`. Access tokens already issued stay valid until they expire (≤ 15 min).
+1. **`tokenVersion`** on the user document. `logout-all`, a password change, a password reset, an email change (on its confirmation) and its undo all bump it; every outstanding refresh token then fails with `REFRESH_REVOKED`. Access tokens already issued stay valid until they expire (≤ 15 min).
 2. **Session families.** Each login opens a family (`familyId` = the first `jti`); each rotation adds a row pointing at the same family. Revoking a family kills that device only.
 
 Access tokens are stateless and are **not** checked against the session store — that is the deliberate trade-off for the short lifetime.

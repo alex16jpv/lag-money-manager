@@ -24,6 +24,12 @@ export interface IEmailChangeDocument {
   expiresAt: Date;
 }
 
+export interface IUndoLinkDocument {
+  email: string;
+  tokenHash: string;
+  expiresAt: Date;
+}
+
 export interface IUserDocument {
   _id: string;
   name: string;
@@ -38,6 +44,9 @@ export interface IUserDocument {
   firstVerifiedAt: Date | null;
   emailChangedAt: Date | null;
   emailChange: IEmailChangeDocument | null;
+  undoLinks: IUndoLinkDocument[];
+  heldEmails?: string[];
+  devicesResetAt: Date | null;
   keepOrStartFresh: IKeepOrStartFreshDocument | null;
   dataResetAt: Date | null;
   deletedAt: Date | null;
@@ -88,6 +97,29 @@ const UserSchema = new Schema<IUserDocument>(
       ),
       default: null,
     },
+    undoLinks: {
+      type: [
+        new Schema<IUndoLinkDocument>(
+          {
+            email: {
+              type: String,
+              required: true,
+              lowercase: true,
+              trim: true,
+            },
+            tokenHash: { type: String, required: true },
+            expiresAt: { type: Date, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
+    heldEmails: {
+      type: [{ type: String, lowercase: true, trim: true }],
+      default: undefined,
+    },
+    devicesResetAt: { type: Date, default: null },
     keepOrStartFresh: {
       type: new Schema<IKeepOrStartFreshDocument>(
         {
@@ -121,6 +153,12 @@ const UserSchema = new Schema<IUserDocument>(
     erasingAt: { type: Date, default: null },
   },
   { timestamps: true },
+);
+
+// With the email's own index, no address is ever one account's email and another's reserved one.
+UserSchema.index(
+  { heldEmails: 1 },
+  { unique: true, partialFilterExpression: { heldEmails: { $exists: true } } },
 );
 
 export const UserModel = mongoose.model<IUserDocument>(
