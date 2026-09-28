@@ -18,6 +18,12 @@ export interface IKeepOrStartFreshDocument {
   } | null;
 }
 
+export interface IEmailChangeDocument {
+  email: string;
+  sentAt: Date;
+  expiresAt: Date;
+}
+
 export interface IUserDocument {
   _id: string;
   name: string;
@@ -31,6 +37,7 @@ export interface IUserDocument {
   emailVerifiedAt: Date | null;
   firstVerifiedAt: Date | null;
   emailChangedAt: Date | null;
+  emailChange: IEmailChangeDocument | null;
   keepOrStartFresh: IKeepOrStartFreshDocument | null;
   dataResetAt: Date | null;
   deletedAt: Date | null;
@@ -70,6 +77,17 @@ const UserSchema = new Schema<IUserDocument>(
     emailVerifiedAt: { type: Date, default: null },
     firstVerifiedAt: { type: Date, default: null },
     emailChangedAt: { type: Date, default: null },
+    emailChange: {
+      type: new Schema<IEmailChangeDocument>(
+        {
+          email: { type: String, required: true, lowercase: true, trim: true },
+          sentAt: { type: Date, required: true },
+          expiresAt: { type: Date, required: true },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
     keepOrStartFresh: {
       type: new Schema<IKeepOrStartFreshDocument>(
         {

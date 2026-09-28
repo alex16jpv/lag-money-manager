@@ -1,28 +1,71 @@
 import { Request, Response } from "express";
 
+import { ENVIRONMENT } from "../../shared/constants";
+import { ApiError } from "../../shared/errors";
+import { createEmailChangeService } from "../factories/emailChangeFactory";
 import { createEmailVerificationService } from "../factories/emailVerificationFactory";
 import repositoryFactory from "../factories/RepositoryFactory";
 import { AuthPayload } from "../middlewares/authMiddleware";
 import { clientIp } from "../middlewares/clientIp";
+import { AuthService } from "../services/AuthService";
 import { CategoryService } from "../services/CategoryService";
+import { EmailChangeRequest } from "../services/EmailChangeService";
+import { EmailRequester } from "../services/EmailService";
 import { KeepOrStartFreshService } from "../services/KeepOrStartFreshService";
 import { UserService } from "../services/UserService";
+import { answerLimited, sendFailed } from "./emailOutcome";
 
+const categoryService = new CategoryService(
+  repositoryFactory.getCategoryRepository(),
+  repositoryFactory.getTransactionRepository(),
+);
+const authService = new AuthService(
+  repositoryFactory.getUserRepository(),
+  categoryService,
+  repositoryFactory.getRefreshSessionRepository(),
+);
+const emailChangeService = createEmailChangeService(authService);
 const userService = new UserService(
   repositoryFactory.getUserRepository(),
   repositoryFactory.getAccountRepository(),
   repositoryFactory.getSharedInvitationRepository(),
   createEmailVerificationService(),
+  emailChangeService,
+  repositoryFactory.getRefreshSessionRepository(),
 );
 const keepOrStartFreshService = new KeepOrStartFreshService(
   repositoryFactory.getUserRepository(),
   repositoryFactory.getSharedInvitationRepository(),
   repositoryFactory.getUserDataEraser(),
-  new CategoryService(
-    repositoryFactory.getCategoryRepository(),
-    repositoryFactory.getTransactionRepository(),
-  ),
+  categoryService,
 );
+
+const ownId = (req: Request): string => {
+  const { userId } = req.user as AuthPayload;
+  if (req.params.id !== userId)
+    throw new ApiError("NotFound", "User not found");
+  return userId;
+};
+
+const requesterOf = async (req: Request): Promise<EmailRequester> => ({
+  ip: clientIp(req),
+  recognizedDevice: await authService.recognizedDevice(
+    (req.body as { deviceToken?: unknown }).deviceToken,
+    (req.user as AuthPayload).email,
+  ),
+});
+
+const answerEmailChange = (res: Response, result: EmailChangeRequest): void => {
+  if (result.status === "limited") {
+    answerLimited(res, result.retryAfterSeconds);
+    return;
+  }
+  if (result.status === "failed") throw sendFailed(result.reason);
+  res.status(202).json({
+    resendAfterSeconds: ENVIRONMENT.EMAIL_ADDRESS_INTERVAL_SECONDS,
+    emailChange: result.emailChange,
+  });
+};
 
 export class UserController {
   static getUserById = async (req: Request, res: Response) => {
@@ -47,6 +90,41 @@ export class UserController {
     const id = req.params.id as string;
     await userService.deleteUser(id, userId, req.body.currentPassword);
     res.status(200).json({ message: "User deleted successfully" });
+  };
+
+  static requestEmailChange = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    const userId = ownId(req);
+    const { email, currentPassword } = req.body;
+    const result = await emailChangeService.request(
+      userId,
+      email,
+      currentPassword,
+      await requesterOf(req),
+    );
+    answerEmailChange(res, result);
+  };
+
+  static resendEmailChange = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    const userId = ownId(req);
+    const result = await emailChangeService.resend(
+      userId,
+      await requesterOf(req),
+    );
+    answerEmailChange(res, result);
+  };
+
+  static cancelEmailChange = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    await emailChangeService.cancel(ownId(req));
+    res.status(200).json({ message: "Email change cancelled" });
   };
 
   static keepOrStartFresh = async (

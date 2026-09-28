@@ -2,36 +2,23 @@ import bcryptjs from "bcryptjs";
 
 import { User } from "../../domain/entities/User";
 import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
+import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT, INVITATION_STATUSES } from "../../shared/constants";
 import { ApiError } from "../../shared/errors";
 import logger from "../../shared/logger";
 import {
+  EmailChangeView,
   EmailVerificationView,
   toUserResponse,
   UpdateUserDTO,
   UserResponseDTO,
 } from "../dtos/UserDTO";
+import { assertCurrentPassword } from "./currentPassword";
+import { EmailChangeService } from "./EmailChangeService";
 import { EmailRequester } from "./EmailService";
 import { EmailVerificationService } from "./EmailVerificationService";
-
-async function assertCurrentPassword(
-  user: User,
-  candidate: string | undefined,
-): Promise<void> {
-  const ok =
-    !!candidate &&
-    !!user.password &&
-    (await bcryptjs.compare(candidate, user.password));
-  if (!ok) {
-    throw new ApiError(
-      "Unauthorized",
-      "Current password is incorrect",
-      "CURRENT_PASSWORD_INVALID",
-    );
-  }
-}
 
 export class UserService {
   constructor(
@@ -39,13 +26,18 @@ export class UserService {
     private accountRepo: IAccountRepository,
     private invitationRepo: ISharedInvitationRepository,
     private verification: Pick<EmailVerificationService, "status" | "send">,
+    private emailChange: Pick<EmailChangeService, "view">,
+    private sessions: Pick<IRefreshSessionRepository, "revokeAllForUser">,
   ) {}
 
   async getUserById(
     id: string,
     userId: string,
   ): Promise<
-    UserResponseDTO & { emailVerification: EmailVerificationView | null }
+    UserResponseDTO & {
+      emailVerification: EmailVerificationView | null;
+      emailChange: EmailChangeView | null;
+    }
   > {
     if (id !== userId) {
       throw new ApiError("NotFound", "User not found");
@@ -57,6 +49,7 @@ export class UserService {
     return {
       ...toUserResponse(user),
       emailVerification: await this.verification.status(user),
+      emailChange: this.emailChange.view(user),
     };
   }
 
@@ -105,7 +98,11 @@ export class UserService {
         ...fields,
         // A confirmation proves the old address, never the new one.
         ...(movesEmail
-          ? { emailVerifiedAt: null, emailChangedAt: new Date() }
+          ? {
+              emailVerifiedAt: null,
+              emailChangedAt: new Date(),
+              emailChange: null,
+            }
           : {}),
         ...(dto.password
           ? {
@@ -118,6 +115,7 @@ export class UserService {
       };
       // Atomic bump: a concurrent logout-all must never lose a revocation.
       const updated = await this.repo.updateWithTokenBump(id, securedDto);
+      await this.sessions.revokeAllForUser(id);
       if (movesEmail) await this.askToConfirm(updated, requester);
       return toUserResponse(updated);
     }

@@ -1,4 +1,5 @@
-export type CaptchaAction = "forgot-password" | "register" | "verify-email";
+export type CaptchaAction =
+  "email-change" | "forgot-password" | "register" | "verify-email";
 
 export type CaptchaVerdict =
   | { passed: true }

@@ -215,6 +215,30 @@ export class AuthService {
     return { ...tokens, user: toUserResponse(user) };
   }
 
+  // Whether the token is a session of this account that nothing revoked, without rotating it.
+  async isLiveSessionOf(refreshToken: string, user: User): Promise<boolean> {
+    let payload: RefreshPayload;
+    try {
+      payload = this.verifyRefreshToken(refreshToken);
+    } catch {
+      // A token that does not verify only means this browser has no session of the account to keep.
+      return false;
+    }
+    if (
+      payload.userId !== user.id ||
+      payload.tokenVersion !== user.tokenVersion
+    ) {
+      return false;
+    }
+    const session = await this.sessions.findById(payload.jti);
+    return (
+      !!session &&
+      session.userId === user.id &&
+      !session.revokedAt &&
+      session.expiresAt > new Date()
+    );
+  }
+
   private verifyRefreshToken(refreshToken: string): RefreshPayload {
     let payload: unknown;
     try {

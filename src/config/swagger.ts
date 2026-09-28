@@ -65,6 +65,9 @@ const requestBodies = {
   VerifyEmailInput: bodyOf(v.verifyEmailSchema),
   ResendVerificationInput: bodyOf(v.resendVerificationSchema),
   NotMeInput: bodyOf(v.notMeSchema),
+  RequestEmailChangeInput: bodyOf(v.requestEmailChangeSchema),
+  ResendEmailChangeInput: bodyOf(v.resendEmailChangeSchema),
+  ConfirmEmailChangeInput: bodyOf(v.confirmEmailChangeSchema),
   KeepOrStartFreshInput: bodyOf(v.keepOrStartFreshSchema),
   UpdateUserInput: bodyOf(v.updateUserSchema),
   DeleteUserInput: bodyOf(v.deleteUserSchema),
@@ -282,11 +285,65 @@ const responseViews = {
             description:
               "What the sheet that confirms the email needs: which of its shapes, and Resend's countdown. Null once the email is confirmed.",
           },
+          emailChange: {
+            allOf: [{ $ref: "#/components/schemas/EmailChange" }],
+            nullable: true,
+            description:
+              "A new address waiting for its code (POST /users/{id}/email-change): the card of the pending address. Null when none waits, or once its 24 hours passed.",
+          },
         },
-        required: ["emailVerification"],
+        required: ["emailVerification", "emailChange"],
       },
     ],
   },
+  EmailChange: withRequired({
+    type: "object",
+    properties: {
+      email: {
+        type: "string",
+        format: "email",
+        description:
+          "The new address. The account keeps `email` until this one is confirmed.",
+      },
+      expiresAt: {
+        ...dateTime,
+        description:
+          "When the change is dropped if nobody confirms it: 24 hours after its last email.",
+      },
+      resendAvailableAt: {
+        ...nullableDateTime,
+        description:
+          "When Resend can go again, while that is ahead; null when it can go now. The daily limits can still answer 429 with its own Retry-After.",
+      },
+    },
+  }),
+  EmailChangeSent: withRequired({
+    type: "object",
+    properties: {
+      resendAfterSeconds: {
+        type: "integer",
+        minimum: 1,
+        description: "Seconds before Resend can go again.",
+      },
+      emailChange: { $ref: "#/components/schemas/EmailChange" },
+    },
+  }),
+  EmailChangeConfirmed: withRequired(
+    {
+      type: "object",
+      properties: {
+        user: { $ref: "#/components/schemas/User" },
+        accessToken: { type: "string" },
+        refreshToken: { type: "string" },
+        deviceToken: {
+          type: "string",
+          description:
+            "Replaces this device's device token: the ones issued before stopped working with the change.",
+        },
+      },
+    },
+    ["accessToken", "refreshToken", "deviceToken"],
+  ),
   VerificationCodeSent: withRequired({
     type: "object",
     properties: {

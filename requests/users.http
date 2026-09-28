@@ -60,14 +60,68 @@ Content-Type: application/json
 
 { "password": "NewSecureP@ss123", "currentPassword": "{{password}}" }
 
-### Cambio de email — también requiere currentPassword y revoca refresh. La dirección
-### nueva queda sin confirmar y recibe verify-email (T-209; ver auth.http).
+### Cambio de email por PUT (el camino viejo, mientras la app lo use) — también requiere
+### currentPassword y revoca refresh. La dirección nueva queda sin confirmar y recibe
+### verify-email (T-209; ver auth.http). El que espera a la dirección nueva, abajo (T-221).
 ### Ojo: cambia el @email de todos los archivos; descoméntalo solo a propósito.
 # PUT {{baseUrl}}/users/{{userId}}
 # Authorization: Bearer {{token}}
 # Content-Type: application/json
 #
 # { "email": "tester2@test.com", "currentPassword": "{{password}}" }
+
+### ---------- Cambio de email que espera a la dirección nueva (T-221) ----------
+### Con Mailpit (docker compose up -d mailpit, EMAIL_PROVIDERS=mailpit): el código y el
+### enlace se leen en http://localhost:8025. Nada se mueve hasta confirmar.
+
+### Pedir el cambio — currentPassword y captcha. 202 { resendAfterSeconds, emailChange }.
+### La cuenta sigue con su correo; email-change-confirm va a la dirección nueva.
+### Su propio correo: 400 VALIDATION; de otra cuenta (borrada incluida): 409 EMAIL_TAKEN;
+### contraseña mala: 401 CURRENT_PASSWORD_INVALID; si el correo no sale: 503/422 EMAIL_SEND_FAILED.
+### Pedirlo otra vez con otra dirección reemplaza al que esperaba.
+POST {{baseUrl}}/users/{{userId}}/email-change
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "email": "tester-new-{{$randomInt 100 999}}@test.com",
+  "currentPassword": "{{password}}",
+  "captcha": "XXXX.DUMMY.TOKEN.XXXX"
+}
+
+### El perfil lo muestra en emailChange { email, expiresAt, resendAvailableAt }
+GET {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+
+### Resend — antes de un minuto 429 RATE_LIMITED; sin nada que espere 409 EMAIL_CHANGE_NOT_PENDING
+POST {{baseUrl}}/users/{{userId}}/email-change/resend
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
+
+### Confirmar con el código (con sesión) — mueve la cuenta, cierra los demás dispositivos
+### y contesta una sesión nueva para este. Equivocado: 400 EMAIL_CODE_INVALID; gastado o
+### reemplazado: 400 EMAIL_CODE_EXPIRED; nada esperando: 409 EMAIL_CHANGE_NOT_PENDING;
+### la dirección ya es de otra cuenta: 409 EMAIL_TAKEN. Sustituye 123456 por el del correo.
+### Ojo: cambia el @email de todos los archivos.
+# POST {{baseUrl}}/auth/email/confirm-change
+# Authorization: Bearer {{token}}
+# Content-Type: application/json
+#
+# { "code": "123456" }
+
+### Confirmar con el enlace (sin sesión): el token tras #token= de /confirm-email. Con
+### refreshToken de una sesión viva de esa cuenta, la conserva (tokens nuevos); sin él,
+### no abre ninguna. Usado, vencido, reemplazado o cancelado: 400 LINK_INVALID.
+# POST {{baseUrl}}/auth/email/confirm-change
+# Content-Type: application/json
+#
+# { "token": "pega-aqui-el-token-del-enlace" }
+
+### Cancelar el cambio — 200 aunque no esperara nada
+DELETE {{baseUrl}}/users/{{userId}}/email-change
+Authorization: Bearer {{token}}
 
 ### ---------- Casos de error ----------
 

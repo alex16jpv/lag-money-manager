@@ -245,13 +245,13 @@ Cloudflare dashboard → _Turnstile → Add widget_:
 
 Keep the **site key** and the **secret key**. The secret goes in the Lambda as `TURNSTILE_SECRET`
 ([Environment Variables](./environment-vars.md)): the API checks with it every sign-up, every Forgot
-your password? and every Resend of the email's confirmation, and without it those answer `503`: nobody
-can sign up and nothing is sent. The site key goes in Vercel → the web client's project → _Settings →
+your password?, every Resend of the email's confirmation and every new email asked for in Password &
+email (and its Resend), and without it those answer `503`: nobody can sign up and nothing is sent. The site key goes in Vercel → the web client's project → _Settings →
 Environment Variables_ as `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, for **Production**, and the web client is
 redeployed (it is read at build time): without it, Sign in keeps "Forgot your password?" inactive with
-"(soon)" and Sign up sends no captcha, so the API turns every sign-up away. The same happens on
-Vercel's previews, whose hostnames the widget does not run for: nobody can sign up there, and signing in
-works. Development and the e2e suite use Cloudflare's test keys (site key `1x00000000000000000000AA`
+"(soon)" and Sign up says that an account can't be created there, with Create account turned off. The
+same happens on Vercel's previews, whose hostnames the widget does not run for: nobody can sign up there,
+and signing in works. Development and the e2e suite use Cloudflare's test keys (site key `1x00000000000000000000AA`
 and secret `1x0000000000000000000000000000000AA` always pass), never these; production refuses to start
 with a test secret.
 

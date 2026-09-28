@@ -9,6 +9,7 @@ import { requireCaptcha } from "../middlewares/captchaMiddleware";
 import { clientIp } from "../middlewares/clientIp";
 import { attemptedEmail } from "../middlewares/loginAttempt";
 import {
+  confirmEmailChangeSchema,
   forgotPasswordSchema,
   idParamSchema,
   loginSchema,
@@ -89,6 +90,11 @@ const verifyLimiter = authRateLimit({
 });
 const resendLimiter = authRateLimit({
   keyPrefix: "resend-verification",
+  max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
+  windowMs: AUTH_WINDOW_MS,
+});
+const confirmChangeLimiter = authRateLimit({
+  keyPrefix: "confirm-email-change",
   max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
@@ -460,6 +466,94 @@ router.post(
   validate(verifyEmailSchema),
   sessionForCode,
   AuthController.verifyEmail,
+);
+
+/**
+ * @openapi
+ * /auth/email/confirm-change:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Move the account to the new email with its code or link
+ *     description: >
+ *       Either `{ code }`, with the session (`Authorization`) of the account
+ *       that asked for the change, or `{ token }` from the link of
+ *       `email-change-confirm` (`/{locale}/confirm-email#token=…`) with no
+ *       session: it names the account. In one write the account takes the
+ *       new address, now confirmed, and `tokenVersion` goes up: every
+ *       refresh token and device token issued before stops working, so every
+ *       other device is signed out. The code answers a new session for this
+ *       device (`accessToken`, `refreshToken`, `deviceToken`). The link
+ *       answers one only when `refreshToken` is a live session of that same
+ *       account — the browser that opened it was signed in to it —, and
+ *       otherwise none: that browser stays as it was. A code takes five tries
+ *       and works for 24 hours; a code or a link works once. Confirming ends
+ *       the wait of the invitations addressed to the new email: they reach
+ *       the change feed on the next pull.
+ *     security:
+ *       - {}
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ConfirmEmailChangeInput'
+ *     responses:
+ *       200:
+ *         description: >
+ *           The account has its new email. The tokens come with the code,
+ *           and with the link only when it kept this browser's session
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/EmailChangeConfirmed'
+ *       400:
+ *         description: >
+ *           Validation error (code VALIDATION); a code that is not the one
+ *           sent (code EMAIL_CODE_INVALID); no code that still works — it
+ *           was tried five times or replaced by a newer one (code
+ *           EMAIL_CODE_EXPIRED: resend); or a link that no longer works —
+ *           used, expired, replaced, cancelled, or the change was confirmed
+ *           already (code LINK_INVALID)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: A code with a missing, invalid or expired access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: A code for an account that no longer exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: >
+ *           A code when no new email waits: it was confirmed, cancelled or
+ *           its 24 hours passed (code EMAIL_CHANGE_NOT_PENDING); or the new
+ *           address became another account's meanwhile (code EMAIL_TAKEN):
+ *           the change is dropped and the account keeps its email
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: Too many attempts from this IP (code RATE_LIMITED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/email/confirm-change",
+  confirmChangeLimiter,
+  validate(confirmEmailChangeSchema),
+  sessionForCode,
+  AuthController.confirmEmailChange,
 );
 
 /**

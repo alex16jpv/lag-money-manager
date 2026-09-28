@@ -258,6 +258,7 @@ export type EmailSuppressionReason = keyof typeof EMAIL_SUPPRESSION_REASONS;
 export const AUTH_CODE_PURPOSES = {
   reset: "reset",
   verify: "verify",
+  "email-change": "email-change",
 } as const;
 
 export type AuthCodePurpose = keyof typeof AUTH_CODE_PURPOSES;

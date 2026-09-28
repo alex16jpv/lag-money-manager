@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from "uuid";
 import {
   FreshStartDetails,
   KeepOrStartFresh,
+  PendingEmailChange,
   User,
 } from "../../../domain/entities/User";
 import { IUserRepository } from "../../../domain/repositories/user/IUserRepository";
@@ -31,6 +32,7 @@ export class UserRepository implements IUserRepository {
     emailVerifiedAt?: Date | null;
     firstVerifiedAt?: Date | null;
     emailChangedAt?: Date | null;
+    emailChange?: PendingEmailChange | null;
     keepOrStartFresh?: KeepOrStartFresh | null;
     dataResetAt?: Date | null;
     createdAt: Date;
@@ -49,6 +51,13 @@ export class UserRepository implements IUserRepository {
       emailVerifiedAt: doc.emailVerifiedAt,
       firstVerifiedAt: doc.firstVerifiedAt,
       emailChangedAt: doc.emailChangedAt,
+      emailChange: doc.emailChange
+        ? {
+            email: doc.emailChange.email,
+            sentAt: doc.emailChange.sentAt,
+            expiresAt: doc.emailChange.expiresAt,
+          }
+        : null,
       keepOrStartFresh: doc.keepOrStartFresh
         ? {
             askedAt: doc.keepOrStartFresh.askedAt,
@@ -200,6 +209,93 @@ export class UserRepository implements IUserRepository {
       .select("-password")
       .lean();
     return current?.emailVerifiedAt ? this.toEntity(current) : null;
+  }
+
+  async emailInUse(email: string): Promise<boolean> {
+    return (await UserModel.exists({ email })) !== null;
+  }
+
+  async startEmailChange(
+    id: string,
+    change: PendingEmailChange,
+  ): Promise<User | null> {
+    const doc = await UserModel.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      { $set: { emailChange: change } },
+      { returnDocument: "after", timestamps: false },
+    )
+      .select("-password")
+      .lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async renewEmailChange(
+    id: string,
+    email: string,
+    sentAt: Date,
+    expiresAt: Date,
+  ): Promise<User | null> {
+    const doc = await UserModel.findOneAndUpdate(
+      { _id: id, deletedAt: null, "emailChange.email": email },
+      {
+        $set: {
+          "emailChange.sentAt": sentAt,
+          "emailChange.expiresAt": expiresAt,
+        },
+      },
+      { returnDocument: "after", timestamps: false },
+    )
+      .select("-password")
+      .lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async dropEmailChange(id: string, email?: string): Promise<void> {
+    await UserModel.updateOne(
+      { _id: id, ...(email ? { "emailChange.email": email } : {}) },
+      { $set: { emailChange: null } },
+      { timestamps: false },
+    ).exec();
+  }
+
+  async applyEmailChange(
+    id: string,
+    email: string,
+    now: Date,
+  ): Promise<User | "taken" | null> {
+    try {
+      const doc = await UserModel.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          "emailChange.email": email,
+          "emailChange.expiresAt": { $gt: now },
+        },
+        [
+          {
+            $set: {
+              email: { $literal: email },
+              emailVerifiedAt: now,
+              firstVerifiedAt: { $ifNull: ["$firstVerifiedAt", now] },
+              emailChangedAt: now,
+              emailChange: null,
+              tokenVersion: { $add: [{ $ifNull: ["$tokenVersion", 0] }, 1] },
+              updatedAt: now,
+            },
+          },
+        ],
+        { returnDocument: "after", updatePipeline: true },
+      )
+        .select("-password")
+        .lean();
+      return doc ? this.toEntity(doc) : null;
+    } catch (err) {
+      const e = err as { code?: number; keyPattern?: Record<string, unknown> };
+      if (e.code === 11000 && !!e.keyPattern && "email" in e.keyPattern) {
+        return "taken";
+      }
+      throw err;
+    }
   }
 
   async getForErasure(id: string): Promise<User | null> {

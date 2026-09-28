@@ -36,6 +36,7 @@ Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the
 | `src/infrastructure/models/AuthCodeModel.ts`                                 | Mongoose model for `authcodes`, with its TTL                                  |
 | `src/app/middlewares/captchaMiddleware.ts`                                   | `requireCaptcha(action)`: the Turnstile check                                 |
 | `src/app/services/EmailVerificationService.ts`                               | Confirming the email: the code, the link, Resend, the sheet's state, It wasn't me |
+| `src/app/services/EmailChangeService.ts`                                     | The change of email: asking, Resend, cancelling, and the move by code or link |
 | `src/domain/captcha/CaptchaVerifier.ts`                                      | The captcha port                                                              |
 | `src/infrastructure/captcha/TurnstileVerifier.ts`                            | Cloudflare Turnstile's `siteverify`                                           |
 
@@ -242,9 +243,10 @@ invitations wait for it (3), there is no deadline, for old accounts or new (4), 
 inbox can delete an account that took the address without confirming it (11). Every account from before
 this existed has `emailVerifiedAt: null`: nothing is migrated.
 
-What confirms an address: its **code** (with the account's session), its **link** (without one), or a
-**password reset**, whose code proved the same inbox. Changing the email takes the confirmation away
-([users.md](users.md#put-usersid)).
+What confirms an address: its **code** (with the account's session), its **link** (without one), a
+**password reset**, whose code proved the same inbox, or **the move to a new email**, whose code or link
+proved the new one ([below](#post-authemailconfirm-change)). Changing the email with `PUT` takes the
+confirmation away ([users.md](users.md#put-usersid)).
 
 ### `POST /auth/email/verify`
 
@@ -297,6 +299,32 @@ the account that used the address, while it has never confirmed an address and s
 a token that is not one — is `LINK_INVALID`. What it erases, in which order, and why the token is signed
 rather than stored: [users.md](users.md#it-wasnt-me-an-account-that-used-somebody-elses-address).
 
+### `POST /auth/email/confirm-change`
+
+Moves the account to the email that waits ([users.md](users.md#changing-the-email)). `{ "code" }` with the
+access token of the account that asked, or `{ "token", "refreshToken"? }` from the link of
+`email-change-confirm` (`{APP_URL}/{locale}/confirm-email#token=…`) with no session: the token names the
+account. `200 { user, accessToken?, refreshToken?, deviceToken? }`.
+
+- **Every other device is signed out**: the move bumps `tokenVersion` in the same write, so every refresh
+  and device token issued before stops working, and every session row is revoked.
+- **The code keeps this device signed in**: the answer carries a new session (tokens and a device token),
+  like a reset. **The link keeps a session only when the browser had one of the account**: the web
+  client's server sends the refresh token it holds, and if it is a live session of that account
+  (`AuthService.isLiveSessionOf`: signature, account, current `tokenVersion`, a row nothing revoked, read
+  before the move) the answer carries a new one; otherwise none, and that browser stays as it was (the
+  spec's "if not it stays signed out").
+- **A code takes five tries and works 24 hours**, counted like the verification's; only the row this
+  account asked for counts (another account that asked for the same address since takes it over). Unlike
+  the verification, **the move is spent**: the code and the link work once, and after the move the link
+  answers `LINK_INVALID`, which the page reads as "This link no longer works".
+- Answers: `EMAIL_CODE_INVALID`, `EMAIL_CODE_EXPIRED` (tried five times, or replaced by a Resend),
+  `EMAIL_CHANGE_NOT_PENDING` (`409`, a code when nothing waits: confirmed, cancelled, or 24 hours past),
+  `LINK_INVALID` (a link used, expired, replaced by a newer change or a Resend, or cancelled) and
+  `EMAIL_TAKEN` (`409`: the address became another account's since it was asked for; the change is
+  dropped and the account keeps its email).
+- Confirming touches the invitations waiting for the new address, as the verification does.
+
 ## Forgot your password? One answer for every address
 
 Anybody can type any address, so nothing the endpoint answers may tell an address with an account from
@@ -328,7 +356,7 @@ one without, a live account from a deleted one, or a send that worked from one t
 
 | Field       | Meaning                                                                                     |
 | ----------- | ------------------------------------------------------------------------------------------- |
-| `purpose`   | `reset` or `verify` (the email change of T-221 will add its own)                            |
+| `purpose`   | `reset`, `verify` or `email-change` (the new address of a change of email)                  |
 | `toHash`    | SHA-256 of the normalized address; unique with `purpose`. Never the address                 |
 | `userId`    | The account the request found, `null` when there was none                                   |
 | `codes`     | At most two live codes, each `{ codeHash, tokenHash, expiresAt }`                           |
@@ -367,8 +395,9 @@ one without, a live account from a deleted one, or a send that worked from one t
 ## The captcha
 
 `requireCaptcha(action, verifier)` runs after `validate()`, on the routes that send an email: `POST
-/auth/register` (action `register`), `POST /auth/password/forgot` (`forgot-password`) and `POST
-/auth/email/resend` (`verify-email`). Each body requires its `captcha`. It asks Cloudflare Turnstile's `siteverify` (`TurnstileVerifier`, 3 s, no retry) with `TURNSTILE_SECRET`, the token and the
+/auth/register` (action `register`), `POST /auth/password/forgot` (`forgot-password`), `POST
+/auth/email/resend` (`verify-email`), and `POST /users/:id/email-change` and its `/resend`
+(`email-change`). Each body requires its `captcha`. It asks Cloudflare Turnstile's `siteverify` (`TurnstileVerifier`, 3 s, no retry) with `TURNSTILE_SECRET`, the token and the
 client's whole address (`clientAddress`: `clientIp` collapses IPv6 to its /56, which is right for a limit
 and wrong for Cloudflare).
 
@@ -544,6 +573,8 @@ sequenceDiagram
 | `POST /auth/email/verify`       | Client IP (`verify-email:<ip>`); a code also has its five tries | `AUTH_IP_RATE_LIMIT_MAX` per 15 min |
 | `POST /auth/email/resend`       | Client IP (`resend-verification:<ip>`), before the captcha; then the email's own brakes | `AUTH_IP_RATE_LIMIT_MAX` per 15 min |
 | `POST /auth/email/not-me`       | Client IP (`not-me:<ip>`)                             | `AUTH_IP_RATE_LIMIT_MAX` per 15 min       |
+| `POST /auth/email/confirm-change` | Client IP (`confirm-email-change:<ip>`); a code also has its five tries | `AUTH_IP_RATE_LIMIT_MAX` per 15 min |
+| `POST /users/:id/email-change` and `/resend` | Client IP (`email-change:<ip>`), before the captcha; then the email's own brakes | `AUTH_IP_RATE_LIMIT_MAX` per 15 min |
 
 Only **failed** attempts burn the account budgets (`refundOnSuccess`), so real logins cost nothing. Register spends the same ones, because registering with a deleted account's email tests its password: a failed register and a failed login spend one budget between them.
 
@@ -578,6 +609,8 @@ The per-IP cap is shared by everyone behind that address — a carrier NAT holds
 | `EMAIL_CODE_EXPIRED` | 400 | Confirming the email when no code still works: expired, tried five times, or none sent |
 | `EMAIL_ALREADY_VERIFIED` | 409 | Resend when the email is already confirmed |
 | `EMAIL_SEND_FAILED` | 422 / 503 | Resend whose email did not go: the address refuses our email (422), or no provider took it (503) |
+| `EMAIL_CHANGE_NOT_PENDING` | 409 | The code of a change of email when nothing waits |
+| `EMAIL_TAKEN`     | 409    | Also: the new email of a change became another account's before it was confirmed |
 | `CAPTCHA_INVALID` | 400    | Turnstile refused the captcha token                                                                                                                                                                                                        |
 | `CAPTCHA_UNAVAILABLE` | 503 | The captcha could not be checked; nothing was created or sent                                                                                                                                                                          |
 
@@ -587,7 +620,7 @@ The per-IP cap is shared by everyone behind that address — a carrier NAT holds
 
 Two independent mechanisms invalidate refresh tokens:
 
-1. **`tokenVersion`** on the user document. `logout-all`, a password change, a password reset and an email change all bump it; every outstanding refresh token then fails with `REFRESH_REVOKED`. Access tokens already issued stay valid until they expire (≤ 15 min).
+1. **`tokenVersion`** on the user document. `logout-all`, a password change, a password reset and an email change (on `PUT`, or its confirmation) all bump it; every outstanding refresh token then fails with `REFRESH_REVOKED`. Access tokens already issued stay valid until they expire (≤ 15 min).
 2. **Session families.** Each login opens a family (`familyId` = the first `jti`); each rotation adds a row pointing at the same family. Revoking a family kills that device only.
 
 Access tokens are stateless and are **not** checked against the session store — that is the deliberate trade-off for the short lifetime.
@@ -595,7 +628,7 @@ Access tokens are stateless and are **not** checked against the session store �
 ## How to Extend
 
 - To add OAuth/social login: add methods to `AuthService` that end in `openSession()`, so the session/rotation model stays uniform
-- To send a code for another purpose (the email change): add its purpose to `AUTH_CODE_PURPOSES` and reuse `authcodes`, the digests of `authCodes.ts` and, where the answer must not tell addresses apart, `holdBrakes`; `EmailVerificationService.send` is the shape of a send whose answer may say it failed
+- To send a code for another purpose: add its purpose to `AUTH_CODE_PURPOSES` and reuse `authcodes`, the digests of `authCodes.ts` and, where the answer must not tell addresses apart, `holdBrakes`; `EmailVerificationService.send` and `EmailChangeService.send` are the shape of a send whose answer may say it failed
 - To put the captcha on another route: add its action to `CaptchaAction` and mount `requireCaptcha(action, verifier)` after `validate()`
 - To make access tokens revocable immediately: check the session store in `authMiddleware` — accept the per-request read it costs
 - Always keep auth routes **before** the global `authMiddleware` in `src/app.ts`

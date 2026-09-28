@@ -57,6 +57,11 @@ const createMockRepo = (): jest.Mocked<IUserRepository> => ({
   getForErasure: jest.fn().mockResolvedValue(null),
   claimErasure: jest.fn().mockResolvedValue(null),
   eraseForGood: jest.fn().mockResolvedValue(undefined),
+  emailInUse: jest.fn().mockResolvedValue(false),
+  startEmailChange: jest.fn(),
+  renewEmailChange: jest.fn(),
+  dropEmailChange: jest.fn().mockResolvedValue(undefined),
+  applyEmailChange: jest.fn(),
   getByIdWithPassword: jest.fn().mockResolvedValue(null),
   bumpTokenVersion: jest.fn().mockResolvedValue(undefined),
   updateWithTokenBump: jest.fn(),
@@ -442,6 +447,87 @@ describe("AuthService", () => {
         service.login("john@example.com", "wrongpassword"),
       ).rejects.toThrow("Invalid email or password");
     });
+  });
+
+  describe("isLiveSessionOf [T-221]", () => {
+    const user = new User({
+      id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+      name: "John",
+      email: "john@example.com",
+      password: "hash",
+      tokenVersion: 2,
+    });
+    const sign = (
+      claims: Record<string, unknown> = {},
+      secret = "test-secret-key",
+    ): string =>
+      jwt.sign(
+        {
+          userId: user.id,
+          tokenVersion: 2,
+          type: "refresh",
+          jti: "jti-1",
+          ...claims,
+        },
+        secret,
+        { algorithm: "HS256", expiresIn: "30d" },
+      );
+    const row = (overrides: Partial<RefreshSession> = {}): RefreshSession => ({
+      jti: "jti-1",
+      userId: user.id,
+      familyId: "fam-1",
+      expiresAt: new Date(Date.now() + 86_400_000),
+      replacedBy: null,
+      revokedAt: null,
+      lastUsedAt: null,
+      reissueCount: 0,
+      reissuedAt: null,
+      ...overrides,
+    });
+
+    it("is true for a session of the account that nothing revoked, and rotates nothing", async () => {
+      sessions.findById.mockResolvedValue(row());
+
+      await expect(service.isLiveSessionOf(sign(), user)).resolves.toBe(true);
+      expect(sessions.findById).toHaveBeenCalledWith("jti-1");
+      expect(sessions.rotate).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["a token that does not verify", () => sign({}, "another-secret"), row()],
+      ["a token that is not a refresh", () => sign({ type: "access" }), row()],
+      [
+        "another account's session",
+        () => sign({ userId: "someone-else" }),
+        row(),
+      ],
+      [
+        "a token from before the last tokenVersion",
+        () => sign({ tokenVersion: 1 }),
+        row(),
+      ],
+      ["a revoked session", () => sign(), row({ revokedAt: new Date() })],
+      [
+        "an expired session",
+        () => sign(),
+        row({ expiresAt: new Date(Date.now() - 1) }),
+      ],
+      [
+        "a session row of someone else",
+        () => sign(),
+        row({ userId: "someone-else" }),
+      ],
+      ["a session with no row", () => sign(), null],
+    ] as [string, () => string, RefreshSession | null][])(
+      "is false for %s",
+      async (_label, token, found) => {
+        sessions.findById.mockResolvedValue(found);
+
+        await expect(service.isLiveSessionOf(token(), user)).resolves.toBe(
+          false,
+        );
+      },
+    );
   });
 
   describe("refresh [M3]", () => {

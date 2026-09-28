@@ -25,6 +25,13 @@ export interface StartFreshClaim extends FreshStartDetails {
   claimedUntil: Date;
 }
 
+// A new address waiting for its code: the account keeps its email until it is confirmed.
+export interface PendingEmailChange {
+  email: string;
+  sentAt: Date;
+  expiresAt: Date;
+}
+
 export interface UserProps {
   id?: string;
   name: string;
@@ -45,6 +52,7 @@ export interface UserProps {
   firstVerifiedAt?: Date | null;
   // An It wasn't me issued before it no longer works.
   emailChangedAt?: Date | null;
+  emailChange?: PendingEmailChange | null;
   keepOrStartFresh?: KeepOrStartFresh | null;
   // When Start fresh last erased the account: a sync cursor from before it names rows that are gone.
   dataResetAt?: Date | null;
@@ -65,6 +73,7 @@ export class User {
   emailVerifiedAt: Date | null;
   firstVerifiedAt: Date | null;
   emailChangedAt: Date | null;
+  emailChange: PendingEmailChange | null;
   keepOrStartFresh: KeepOrStartFresh | null;
   dataResetAt: Date | null;
   createdAt: Date;
@@ -83,6 +92,7 @@ export class User {
     emailVerifiedAt,
     firstVerifiedAt,
     emailChangedAt,
+    emailChange,
     keepOrStartFresh,
     dataResetAt,
     createdAt,
@@ -100,6 +110,7 @@ export class User {
     this.emailVerifiedAt = emailVerifiedAt ?? null;
     this.firstVerifiedAt = firstVerifiedAt ?? null;
     this.emailChangedAt = emailChangedAt ?? null;
+    this.emailChange = emailChange ?? null;
     this.keepOrStartFresh = keepOrStartFresh ?? null;
     this.dataResetAt = dataResetAt ?? null;
     this.createdAt = createdAt ?? new Date();

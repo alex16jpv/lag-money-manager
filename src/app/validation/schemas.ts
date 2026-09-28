@@ -1191,6 +1191,37 @@ export const notMeSchema = z.object({
     .strict(),
 });
 
+export const requestEmailChangeSchema = z.object({
+  params: idParamSchema.shape.params,
+  body: z.object({
+    email: emailField,
+    currentPassword: z.string().min(1, "currentPassword is required").max(128),
+    captcha: captchaField,
+    deviceToken: deviceTokenField,
+  }),
+});
+
+export const resendEmailChangeSchema = z.object({
+  params: idParamSchema.shape.params,
+  body: z.object({
+    captcha: captchaField,
+    deviceToken: deviceTokenField,
+  }),
+});
+
+// The code travels with the session; the link's token names the account, and a refresh token keeps this browser's session.
+export const confirmEmailChangeSchema = z.object({
+  body: z.union([
+    z.object({ code: emailCodeField }).strict(),
+    z
+      .object({
+        token: linkTokenField,
+        refreshToken: z.string().min(1).max(4096).optional(),
+      })
+      .strict(),
+  ]),
+});
+
 export const keepOrStartFreshSchema = z.object({
   params: idParamSchema.shape.params,
   body: z.discriminatedUnion("choice", [
