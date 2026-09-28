@@ -7,6 +7,7 @@ import {
 } from "crypto";
 
 import { ENVIRONMENT, NOT_ME_TOKEN_FORMAT } from "../../shared/constants";
+import { hashEmailAddress } from "../../shared/emailHash";
 
 export const RESET_CODE_LIFETIME_MS = 30 * 60 * 1000;
 export const VERIFY_CODE_LIFETIME_MS = 24 * 60 * 60 * 1000;
@@ -21,6 +22,12 @@ export const newLinkToken = (): string => randomBytes(32).toString("base64url");
 export const codeDigest = (toHash: string, code: string): string =>
   createHmac("sha256", ENVIRONMENT.JWT_SECRET)
     .update(`auth-code:${toHash}:${code}`)
+    .digest("hex");
+
+// Many accounts can ask for the same new address, so its row belongs to one account and that address.
+export const emailChangeKey = (userId: string, email: string): string =>
+  createHash("sha256")
+    .update(`email-change:${userId}:${hashEmailAddress(email)}`)
     .digest("hex");
 
 export const tokenDigest = (token: string): string =>

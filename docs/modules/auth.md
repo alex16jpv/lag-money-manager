@@ -311,11 +311,11 @@ account. `200 { user, accessToken?, refreshToken?, deviceToken? }`.
 - **The code keeps this device signed in**: the answer carries a new session (tokens and a device token),
   like a reset. **The link keeps a session only when the browser had one of the account**: the web
   client's server sends the refresh token it holds, and if it is a live session of that account
-  (`AuthService.isLiveSessionOf`: signature, account, current `tokenVersion`, a row nothing revoked, read
-  before the move) the answer carries a new one; otherwise none, and that browser stays as it was (the
+  (`AuthService.isLiveSessionOf`: signature, account, current `tokenVersion`, the tip of its chain that
+  nothing revoked, so a token already rotated away does not count, read before the move) the answer carries a new one; otherwise none, and that browser stays as it was (the
   spec's "if not it stays signed out").
-- **A code takes five tries and works 24 hours**, counted like the verification's; only the row this
-  account asked for counts (another account that asked for the same address since takes it over). Unlike
+- **A code takes five tries and works 24 hours**, counted like the verification's, on a row of this account
+  and this address: another account asking for the same address has a row of its own. Unlike
   the verification, **the move is spent**: the code and the link work once, and after the move the link
   answers `LINK_INVALID`, which the page reads as "This link no longer works".
 - Answers: `EMAIL_CODE_INVALID`, `EMAIL_CODE_EXPIRED` (tried five times, or replaced by a Resend),
@@ -357,7 +357,7 @@ one without, a live account from a deleted one, or a send that worked from one t
 | Field       | Meaning                                                                                     |
 | ----------- | ------------------------------------------------------------------------------------------- |
 | `purpose`   | `reset`, `verify` or `email-change` (the new address of a change of email)                  |
-| `toHash`    | SHA-256 of the normalized address; unique with `purpose`. Never the address                 |
+| `toHash`    | SHA-256 of the normalized address; unique with `purpose`. Never the address. For `email-change`, of the account and the address |
 | `userId`    | The account the request found, `null` when there was none                                   |
 | `codes`     | At most two live codes, each `{ codeHash, tokenHash, expiresAt }`                           |
 | `attempts`  | Tries of a code since the last one was issued                                               |

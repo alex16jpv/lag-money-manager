@@ -215,7 +215,7 @@ export class AuthService {
     return { ...tokens, user: toUserResponse(user) };
   }
 
-  // Whether the token is a session of this account that nothing revoked, without rotating it.
+  // Whether the token is the live tip of a session of this account, without rotating it.
   async isLiveSessionOf(refreshToken: string, user: User): Promise<boolean> {
     let payload: RefreshPayload;
     try {
@@ -234,6 +234,7 @@ export class AuthService {
     return (
       !!session &&
       session.userId === user.id &&
+      !session.replacedBy &&
       !session.revokedAt &&
       session.expiresAt > new Date()
     );

@@ -230,6 +230,7 @@ const mockAuthCodeRepo = {
   redeemToken: jest.fn().mockResolvedValue(null),
   find: jest.fn().mockResolvedValue(null),
   findByLiveToken: jest.fn().mockResolvedValue(null),
+  discard: jest.fn().mockResolvedValue(undefined),
 };
 
 const CAPTCHA = "XXXX.DUMMY.TOKEN.XXXX";

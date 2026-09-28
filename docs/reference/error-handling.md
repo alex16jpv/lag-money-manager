@@ -341,7 +341,7 @@ Codes raised by the services and middleware. Anything not listed here has no `co
 | `RATE_LIMITED`                    | 429    | `/auth` per-key rate limit exceeded                                                                                                                                                                            |
 | `INTERNAL`                        | 500    | Unhandled error                                                                                                                                                                                                |
 | `CAPTCHA_UNAVAILABLE`             | 503    | The captcha could not be checked (Cloudflare did not answer, or no secret is set): nothing was done — retryable                                                                                            |
-| `EMAIL_SEND_FAILED`               | 503    | Resend of the confirmation code, or a new email asked for or resent in Password & email, when no provider took the email, or one timed out and it may not have gone; a code live before still works — retryable |
+| `EMAIL_SEND_FAILED`               | 503    | Resend of the confirmation code when no provider took the email, or one timed out and it may not have gone (a new email in Password & email only when none took it: one that may have gone counts as sent); a code live before still works — retryable |
 | `DB_UNAVAILABLE`                  | 503    | MongoDB unreachable — retryable                                                                                                                                                                                |
 
 ## How to Add a New Error Type

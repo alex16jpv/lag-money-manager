@@ -1209,7 +1209,6 @@ export const resendEmailChangeSchema = z.object({
   }),
 });
 
-// The code travels with the session; the link's token names the account, and a refresh token keeps this browser's session.
 export const confirmEmailChangeSchema = z.object({
   body: z.union([
     z.object({ code: emailCodeField }).strict(),

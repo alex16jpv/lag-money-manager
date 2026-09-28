@@ -7,16 +7,18 @@
  */
 import request from "supertest";
 
+import { emailChangeKey } from "../../app/services/authCodes";
 import { OutgoingEmail } from "../../domain/email/EmailProvider";
 import { AuthCodeModel } from "../../infrastructure/models/AuthCodeModel";
+import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
 import { RefreshSessionModel } from "../../infrastructure/models/RefreshSessionModel";
 import { SharedInvitationModel } from "../../infrastructure/models/SharedInvitationModel";
 import { UserModel } from "../../infrastructure/models/UserModel";
-import { hashEmailAddress } from "../../shared/emailHash";
 import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
 const mockSent: OutgoingEmail[] = [];
 const mockUnreachable = new Set<string>();
+const mockMaybeSent = new Set<string>();
 
 jest.mock("../../shared/constants", () => {
   process.env.EMAIL_VERIFICATION_REQUIRED = "true";
@@ -47,6 +49,12 @@ jest.mock("../../app/factories/emailServiceFactory", () => {
               if (mockUnreachable.has(email.to)) {
                 throw new EmailProviderError("mailpit", "transport", "down", {
                   outcome: "neverLeft",
+                });
+              }
+              if (mockMaybeSent.has(email.to)) {
+                mockSent.push(email);
+                throw new EmailProviderError("mailpit", "transport", "reset", {
+                  outcome: "mayHaveSent",
                 });
               }
               mockSent.push(email);
@@ -175,6 +183,11 @@ function lastEmailTo(address: string): {
   if (!code || !token) throw new Error("the email has no code or no link");
   return { template: email.template, code, token };
 }
+
+// The address's own brake allows one email a minute, whichever account asks.
+const minutePasses = async (): Promise<void> => {
+  await RateLimitModel.deleteMany({});
+};
 
 const sentTo = (address: string): number =>
   mockSent.filter((sent) => sent.to === address).length;
@@ -341,6 +354,11 @@ describe("Changing the email against mongod [T-221]", () => {
     expect((await cancelChange(fede)).status).toBe(200);
 
     expect((await profile(fede)).emailChange).toBeNull();
+    const row = await AuthCodeModel.findOne({
+      purpose: "email-change",
+      toHash: emailChangeKey(fede.userId, "fede.new@change.test"),
+    }).lean();
+    expect(row?.codes).toEqual([]);
     expect((await confirmLink(token)).body.code).toBe("LINK_INVALID");
     const byCode = await confirmCode(fede, code);
     expect(byCode.status).toBe(409);
@@ -418,7 +436,7 @@ describe("Changing the email against mongod [T-221]", () => {
     expect(after.body.code).toBe("EMAIL_CODE_EXPIRED");
     const row = await AuthCodeModel.findOne({
       purpose: "email-change",
-      toHash: hashEmailAddress("juan.new@change.test"),
+      toHash: emailChangeKey(juan.userId, "juan.new@change.test"),
     }).lean();
     expect(row?.attempts).toBe(5);
     expect((await UserModel.findById(juan.userId).lean())?.email).toBe(
@@ -507,5 +525,70 @@ describe("Changing the email against mongod [T-221]", () => {
         (one) => one.id,
       ),
     ).toEqual([invited.body.id]);
+  });
+
+  it("keeps each account's code and link its own when two ask for the same address [review]", async () => {
+    const nora = await register("nora@change.test", "Nora Paz");
+    const otto = await register("otto@change.test", "Otto Gil");
+
+    expect((await askToMove(nora, "shared@change.test")).status).toBe(202);
+    const noras = lastEmailTo("shared@change.test");
+    await minutePasses();
+    expect((await askToMove(otto, "shared@change.test")).status).toBe(202);
+    const ottos = lastEmailTo("shared@change.test");
+
+    const moved = await confirmCode(nora, noras.code);
+    expect(moved.status).toBe(200);
+    expect(moved.body.user.email).toBe("shared@change.test");
+    const late = await confirmLink(ottos.token);
+    expect(late.status).toBe(409);
+    expect(late.body.code).toBe("EMAIL_TAKEN");
+    expect((await UserModel.findById(otto.userId).lean())?.email).toBe(
+      "otto@change.test",
+    );
+  });
+
+  it("never lets another account's request turn somebody's link into its own move [review]", async () => {
+    const pia = await register("pia@change.test", "Pia Sol");
+    const quim = await register("quim@change.test", "Quim Ros");
+
+    expect((await askToMove(pia, "inbox@change.test")).status).toBe(202);
+    const pias = lastEmailTo("inbox@change.test");
+    await minutePasses();
+    mockMaybeSent.add("inbox@change.test");
+    try {
+      expect((await askToMove(quim, "inbox@change.test")).status).toBe(202);
+    } finally {
+      mockMaybeSent.delete("inbox@change.test");
+    }
+
+    const confirmed = await confirmLink(pias.token);
+    expect(confirmed.status).toBe(200);
+    expect((await UserModel.findById(pia.userId).lean())?.email).toBe(
+      "inbox@change.test",
+    );
+    expect((await UserModel.findById(quim.userId).lean())?.email).toBe(
+      "quim@change.test",
+    );
+  });
+
+  it("asks a code for the session and takes one proof at a time", async () => {
+    const rosa = await register("rosa@change.test", "Rosa Mar");
+    expect((await askToMove(rosa, "rosa.new@change.test")).status).toBe(202);
+    const { code, token } = lastEmailTo("rosa.new@change.test");
+
+    const anonymous = await request(app)
+      .post("/auth/email/confirm-change")
+      .send({ code });
+    expect(anonymous.status).toBe(401);
+    const both = await as(
+      rosa,
+      request(app).post("/auth/email/confirm-change").send({ code, token }),
+    );
+    expect(both.status).toBe(400);
+    expect(both.body.code).toBe("VALIDATION");
+    expect((await UserModel.findById(rosa.userId).lean())?.email).toBe(
+      "rosa@change.test",
+    );
   });
 });

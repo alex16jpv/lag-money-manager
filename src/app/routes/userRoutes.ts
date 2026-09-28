@@ -30,7 +30,6 @@ const currentPasswordLimiter = authRateLimit({
       : null,
 });
 
-// A volume brake ahead of the captcha, which costs a call to Cloudflare; the email's own brakes come after.
 const emailChangeLimiter = authRateLimit({
   keyPrefix: "email-change",
   max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
@@ -327,8 +326,8 @@ router.post(
  *       link (`/{locale}/confirm-email#token=…`), both for 24 hours. The
  *       account moves once POST /auth/email/confirm-change receives either;
  *       then every other device is signed out. The change is saved only once
- *       its email was accepted, so a send that fails leaves any earlier one
- *       as it was. Asking again replaces a change that was waiting: its code
+ *       its email was accepted, or may have gone (a provider timed out), so a
+ *       send that fails leaves any earlier one as it was. Asking again replaces a change that was waiting: its code
  *       and its link stop working. `currentPassword` re-authenticates, as a
  *       credential change on PUT /users/{id} does; `captcha` is a Cloudflare
  *       Turnstile token for the action `email-change`; `deviceToken`, from
@@ -352,8 +351,8 @@ router.post(
  *     responses:
  *       202:
  *         description: >
- *           The email was accepted for delivery and the change waits for its
- *           code. `resendAfterSeconds` is the countdown before Resend
+ *           The email was accepted for delivery, or may have gone, and the
+ *           change waits for its code. `resendAfterSeconds` is the countdown before Resend
  *         content:
  *           application/json:
  *             schema:
@@ -503,8 +502,8 @@ router.delete(
  *     responses:
  *       202:
  *         description: >
- *           The email was accepted for delivery. `resendAfterSeconds` is the
- *           countdown before Resend
+ *           The email was accepted for delivery, or may have gone.
+ *           `resendAfterSeconds` is the countdown before Resend
  *         content:
  *           application/json:
  *             schema:

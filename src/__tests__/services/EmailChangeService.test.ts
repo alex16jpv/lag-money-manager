@@ -1,6 +1,10 @@
 import bcryptjs from "bcryptjs";
 
-import { codeDigest, tokenDigest } from "../../app/services/authCodes";
+import {
+  codeDigest,
+  emailChangeKey,
+  tokenDigest,
+} from "../../app/services/authCodes";
 import { EmailChangeService } from "../../app/services/EmailChangeService";
 import { EmailOutcome } from "../../app/services/EmailService";
 import { PendingEmailChange, User } from "../../domain/entities/User";
@@ -16,7 +20,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const USER_ID = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
 const EMAIL = "ana@example.com";
 const NEW_EMAIL = "ana.ruiz@example.org";
-const NEW_HASH = hashEmailAddress(NEW_EMAIL);
+const NEW_KEY = emailChangeKey(USER_ID, NEW_EMAIL);
 const PASSWORD = "Offline!2026";
 const PASSWORD_HASH = bcryptjs.hashSync(PASSWORD, 4);
 const REQUESTER = { ip: "203.0.113.7", recognizedDevice: null };
@@ -60,11 +64,11 @@ const moved = (): User =>
 const record = (overrides: Partial<AuthCodeRecord> = {}): AuthCodeRecord => ({
   id: "code-row",
   purpose: "email-change",
-  toHash: NEW_HASH,
+  toHash: NEW_KEY,
   userId: USER_ID,
   codes: [
     {
-      codeHash: codeDigest(NEW_HASH, "123456"),
+      codeHash: codeDigest(NEW_KEY, "123456"),
       tokenHash: tokenDigest("link-token-of-the-email"),
       expiresAt: new Date(NOW.getTime() + DAY_MS),
     },
@@ -121,6 +125,7 @@ const build = (): Harness => {
     redeemToken: jest.fn().mockResolvedValue(record()),
     find: jest.fn().mockResolvedValue(null),
     findByLiveToken: jest.fn().mockResolvedValue(null),
+    discard: jest.fn().mockResolvedValue(undefined),
   };
   const email = { sendCode: jest.fn().mockResolvedValue(sent) };
   const invitations = {
@@ -182,15 +187,15 @@ describe("EmailChangeService [T-221]", () => {
       expect(code).toMatch(/^\d{6}$/);
       expect(codes.recordRequest).toHaveBeenCalledWith(
         "email-change",
-        NEW_HASH,
+        NEW_KEY,
         USER_ID,
         new Date(NOW.getTime() + DAY_MS),
       );
       expect(codes.issue).toHaveBeenCalledWith(
         "email-change",
-        NEW_HASH,
+        NEW_KEY,
         {
-          codeHash: codeDigest(NEW_HASH, code),
+          codeHash: codeDigest(NEW_KEY, code),
           tokenHash: tokenDigest(token),
           expiresAt: new Date(NOW.getTime() + DAY_MS),
         },
@@ -210,6 +215,50 @@ describe("EmailChangeService [T-221]", () => {
           resendAvailableAt: new Date(NOW.getTime() + 60_000),
         },
       });
+    });
+
+    it("keys the codes by the account and the address, so another account asking for it keeps its own [review]", () => {
+      expect(emailChangeKey(USER_ID, NEW_EMAIL)).not.toBe(
+        emailChangeKey("019576a0-d7b6-7d6d-af6a-2b7545f5ac71", NEW_EMAIL),
+      );
+      expect(emailChangeKey(USER_ID, " Ana.Ruiz@Example.org ")).toBe(NEW_KEY);
+      expect(NEW_KEY).not.toBe(hashEmailAddress(NEW_EMAIL));
+    });
+
+    it("stops the code and link of the address it replaces, once the new one is saved", async () => {
+      const { service, users, codes } = build();
+      users.getByIdWithPassword.mockResolvedValue(
+        ana({ emailChange: pendingChange({ email: "first@example.org" }) }),
+      );
+
+      await service.request(USER_ID, NEW_EMAIL, PASSWORD, REQUESTER);
+
+      expect(codes.discard).toHaveBeenCalledWith(
+        "email-change",
+        emailChangeKey(USER_ID, "first@example.org"),
+      );
+      expect(codes.discard.mock.invocationCallOrder[0]).toBeGreaterThan(
+        users.startEmailChange.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("discards nothing when it asks again for the address that waits, or when the email did not go", async () => {
+      const { service, users, codes, email } = build();
+      users.getByIdWithPassword.mockResolvedValue(
+        ana({ emailChange: pendingChange() }),
+      );
+
+      await service.request(USER_ID, NEW_EMAIL, PASSWORD, REQUESTER);
+      users.getByIdWithPassword.mockResolvedValue(
+        ana({ emailChange: pendingChange({ email: "first@example.org" }) }),
+      );
+      email.sendCode.mockResolvedValue({
+        status: "failed",
+        reason: "rejected",
+      });
+      await service.request(USER_ID, NEW_EMAIL, PASSWORD, REQUESTER);
+
+      expect(codes.discard).not.toHaveBeenCalled();
     });
 
     it("moves nothing and sends nothing without the current password", async () => {
@@ -358,12 +407,22 @@ describe("EmailChangeService [T-221]", () => {
   });
 
   describe("cancel", () => {
-    it("drops whatever waits", async () => {
-      const { service, users } = build();
+    it("drops whatever waits, and its code and link stop working", async () => {
+      const { service, users, codes } = build();
 
       await service.cancel(USER_ID);
 
       expect(users.dropEmailChange).toHaveBeenCalledWith(USER_ID);
+      expect(codes.discard).toHaveBeenCalledWith("email-change", NEW_KEY);
+    });
+
+    it("discards nothing when nothing waited", async () => {
+      const { service, users, codes } = build();
+      users.getById.mockResolvedValue(ana());
+
+      await service.cancel(USER_ID);
+
+      expect(codes.discard).not.toHaveBeenCalled();
     });
   });
 
@@ -407,12 +466,12 @@ describe("EmailChangeService [T-221]", () => {
 
       expect(codes.countAttempt).toHaveBeenCalledWith(
         "email-change",
-        NEW_HASH,
+        NEW_KEY,
         5,
       );
       expect(codes.redeemCode).toHaveBeenCalledWith(
         "code-row",
-        codeDigest(NEW_HASH, "123456"),
+        codeDigest(NEW_KEY, "123456"),
         NOW,
       );
       expect(users.applyEmailChange).toHaveBeenCalledWith(
@@ -480,11 +539,12 @@ describe("EmailChangeService [T-221]", () => {
     });
 
     it("drops the change and says EMAIL_TAKEN when the address became another account's", async () => {
-      const { service, users, sessions, auth } = build();
+      const { service, users, sessions, auth, codes } = build();
       users.applyEmailChange.mockResolvedValue("taken");
 
       await rejects(service.confirmCode(USER_ID, "123456"), "EMAIL_TAKEN", 409);
       expect(users.dropEmailChange).toHaveBeenCalledWith(USER_ID, NEW_EMAIL);
+      expect(codes.discard).toHaveBeenCalledWith("email-change", NEW_KEY);
       expect(sessions.revokeAllForUser).not.toHaveBeenCalled();
       expect(auth.openSession).not.toHaveBeenCalled();
     });
@@ -561,7 +621,11 @@ describe("EmailChangeService [T-221]", () => {
       ["a row with no account", { redeemed: record({ userId: null }) }],
       [
         "a change replaced by another address",
-        { redeemed: record({ toHash: hashEmailAddress("first@example.org") }) },
+        {
+          redeemed: record({
+            toHash: emailChangeKey(USER_ID, "first@example.org"),
+          }),
+        },
       ],
       ["a change cancelled or expired", { user: ana() }],
       ["an account that is gone", { user: null }],

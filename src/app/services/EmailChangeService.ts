@@ -4,7 +4,6 @@ import { IRefreshSessionRepository } from "../../domain/repositories/refreshSess
 import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { AuthCodePurpose } from "../../shared/constants";
-import { hashEmailAddress } from "../../shared/emailHash";
 import { ApiError } from "../../shared/errors";
 import {
   EmailChangeView,
@@ -14,6 +13,7 @@ import {
 import {
   CODE_MAX_ATTEMPTS,
   codeDigest,
+  emailChangeKey,
   newCode,
   newLinkToken,
   tokenDigest,
@@ -26,7 +26,6 @@ import { EmailOutcome, EmailRequester, EmailService } from "./EmailService";
 const PURPOSE: AuthCodePurpose = "email-change";
 
 export interface EmailChangeConfig {
-  // The per-address interval of the email brakes: when Resend can go again.
   resendAfterSeconds: number;
 }
 
@@ -125,6 +124,13 @@ export class EmailChangeService {
     if (outcome.status !== "sent") return outcome.result;
     const saved = await this.users.startEmailChange(user.id, outcome.change);
     if (!saved) throw notFound();
+    const replaced = user.emailChange;
+    if (replaced && replaced.email !== email) {
+      await this.codes.discard(
+        PURPOSE,
+        emailChangeKey(user.id, replaced.email),
+      );
+    }
     return { status: "sent", emailChange: this.viewOf(outcome.change) };
   }
 
@@ -154,6 +160,12 @@ export class EmailChangeService {
     const user = await this.users.getById(userId);
     if (!user) throw notFound();
     await this.users.dropEmailChange(user.id);
+    if (user.emailChange) {
+      await this.codes.discard(
+        PURPOSE,
+        emailChangeKey(user.id, user.emailChange.email),
+      );
+    }
   }
 
   async confirmCode(
@@ -166,7 +178,7 @@ export class EmailChangeService {
     const pending = this.pending(user);
     if (!pending) throw notPending();
 
-    const toHash = hashEmailAddress(pending.email);
+    const toHash = emailChangeKey(user.id, pending.email);
     const counted = await this.codes.countAttempt(
       PURPOSE,
       toHash,
@@ -203,7 +215,7 @@ export class EmailChangeService {
     if (
       !user ||
       !pending ||
-      hashEmailAddress(pending.email) !== record.toHash
+      emailChangeKey(user.id, pending.email) !== record.toHash
     ) {
       throw linkInvalid();
     }
@@ -226,6 +238,7 @@ export class EmailChangeService {
     const applied = await this.users.applyEmailChange(user.id, email, now);
     if (applied === "taken") {
       await this.users.dropEmailChange(user.id, email);
+      await this.codes.discard(PURPOSE, emailChangeKey(user.id, email));
       throw emailTaken();
     }
     if (!applied) throw gone();
@@ -242,7 +255,7 @@ export class EmailChangeService {
     | { status: "sent"; change: PendingEmailChange }
     | { status: "refused"; result: Exclude<EmailOutcome, { status: "sent" }> }
   > {
-    const toHash = hashEmailAddress(email);
+    const toHash = emailChangeKey(user.id, email);
     const code = newCode();
     const token = newLinkToken();
     const outcome = await this.email.sendCode({

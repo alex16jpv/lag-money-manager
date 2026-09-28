@@ -508,6 +508,11 @@ describe("AuthService", () => {
       ],
       ["a revoked session", () => sign(), row({ revokedAt: new Date() })],
       [
+        "a token already rotated away",
+        () => sign(),
+        row({ replacedBy: "jti-2", lastUsedAt: new Date() }),
+      ],
+      [
         "an expired session",
         () => sign(),
         row({ expiresAt: new Date(Date.now() - 1) }),

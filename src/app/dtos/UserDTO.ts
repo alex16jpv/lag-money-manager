@@ -36,7 +36,6 @@ export interface EmailVerificationView {
   resendAvailableAt: Date | null;
 }
 
-// A new address waiting for its code, for the card in Password & email.
 export interface EmailChangeView {
   email: string;
   expiresAt: Date;
