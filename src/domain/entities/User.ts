@@ -4,27 +4,6 @@ import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { DEFAULT_LOCALE, Locale } from "../../shared/locale";
 import { DEFAULT_TIMEZONE } from "../../shared/timezone";
 
-export interface FreshStartDetails {
-  name: string;
-  locale: Locale;
-  currency: string;
-  timezone: string;
-}
-
-// Opened by a reset of an account whose email was never confirmed and that holds something (decision 12).
-export interface KeepOrStartFresh {
-  askedAt: Date;
-  accounts: number;
-  transactions: number;
-  // Set once Start fresh is chosen, so a retry after a failure resumes it instead of asking again.
-  startFresh: StartFreshClaim | null;
-}
-
-// claimedUntil: one request erases at a time; a request that died frees it when the lease runs out.
-export interface StartFreshClaim extends FreshStartDetails {
-  claimedUntil: Date;
-}
-
 // A new address waiting for its code: the account keeps its email until it is confirmed.
 export interface PendingEmailChange {
   email: string;
@@ -37,6 +16,23 @@ export interface UndoLink {
   email: string;
   tokenHash: string;
   expiresAt: Date;
+}
+
+// The "Restore account" link of account-deleted: it works for its 7 days even once the account is back.
+export interface RestoreLink {
+  tokenHash: string;
+  expiresAt: Date;
+}
+
+// The 14 days an account from before email existed has to confirm it (decision 17).
+export interface ConfirmDeadline {
+  // The last day, "YYYY-MM-DD" in the account's time zone when the deadline was set.
+  day: string;
+  // The end of that day: from this instant the API asks for the confirmation first.
+  endsAt: Date;
+  remindedAt: Date | null;
+  // One per deadline email, each for the address it went to.
+  links: { email: string; tokenHash: string }[];
 }
 
 export interface UserProps {
@@ -55,17 +51,17 @@ export interface UserProps {
   // Last session open (login/register); impossible to reconstruct later.
   lastLoginAt?: Date | null;
   emailVerifiedAt?: Date | null;
-  // Set by the first confirmation and never cleared, unlike emailVerifiedAt.
-  firstVerifiedAt?: Date | null;
-  // An It wasn't me issued before it no longer works.
-  emailChangedAt?: Date | null;
+  confirmDeadline?: ConfirmDeadline | null;
   emailChange?: PendingEmailChange | null;
   undoLinks?: UndoLink[];
   // A device token issued before it no longer marks a known device for new-sign-in.
   devicesResetAt?: Date | null;
-  keepOrStartFresh?: KeepOrStartFresh | null;
-  // When Start fresh last erased the account: a sync cursor from before it names rows that are gone.
+  // When Start fresh last erased the account, before T-238 removed it: a sync cursor from before it names rows that are gone.
   dataResetAt?: Date | null;
+  deletedAt?: Date | null;
+  // The end of the last day a deleted account is kept: the first nightly pass after it erases it.
+  keptUntil?: Date | null;
+  restoreLinks?: RestoreLink[];
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -81,13 +77,14 @@ export class User {
   locale: Locale;
   lastLoginAt: Date | null;
   emailVerifiedAt: Date | null;
-  firstVerifiedAt: Date | null;
-  emailChangedAt: Date | null;
+  confirmDeadline: ConfirmDeadline | null;
   emailChange: PendingEmailChange | null;
   undoLinks: UndoLink[];
   devicesResetAt: Date | null;
-  keepOrStartFresh: KeepOrStartFresh | null;
   dataResetAt: Date | null;
+  deletedAt: Date | null;
+  keptUntil: Date | null;
+  restoreLinks: RestoreLink[];
   createdAt: Date;
   updatedAt: Date;
 
@@ -102,13 +99,14 @@ export class User {
     locale,
     lastLoginAt,
     emailVerifiedAt,
-    firstVerifiedAt,
-    emailChangedAt,
+    confirmDeadline,
     emailChange,
     undoLinks,
     devicesResetAt,
-    keepOrStartFresh,
     dataResetAt,
+    deletedAt,
+    keptUntil,
+    restoreLinks,
     createdAt,
     updatedAt,
   }: UserProps) {
@@ -122,13 +120,14 @@ export class User {
     this.locale = locale ?? DEFAULT_LOCALE;
     this.lastLoginAt = lastLoginAt ?? null;
     this.emailVerifiedAt = emailVerifiedAt ?? null;
-    this.firstVerifiedAt = firstVerifiedAt ?? null;
-    this.emailChangedAt = emailChangedAt ?? null;
+    this.confirmDeadline = confirmDeadline ?? null;
     this.emailChange = emailChange ?? null;
     this.undoLinks = undoLinks ?? [];
     this.devicesResetAt = devicesResetAt ?? null;
-    this.keepOrStartFresh = keepOrStartFresh ?? null;
     this.dataResetAt = dataResetAt ?? null;
+    this.deletedAt = deletedAt ?? null;
+    this.keptUntil = keptUntil ?? null;
+    this.restoreLinks = restoreLinks ?? [];
     this.createdAt = createdAt ?? new Date();
     this.updatedAt = updatedAt ?? new Date();
   }

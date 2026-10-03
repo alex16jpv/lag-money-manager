@@ -17,7 +17,9 @@ Four rules, three of them the owner's (2026-09-22):
 
 An invitation takes the sender's address to somebody else, and finds the invited person by theirs, so
 **both have to be proven** (the owner's decision 3 of 2026-09-26). It closes the risk accepted on
-2026-09-22, that whoever registered somebody else's address received what was sent to it. With
+2026-09-22, that whoever registered somebody else's address received what was sent to it. Every account
+created since T-238 is confirmed from its first moment; what follows is about the accounts from before
+email, until they confirm. With
 `EMAIL_VERIFICATION_REQUIRED` on, until the account's email is confirmed ([auth.md](auth.md#confirming-the-email)):
 
 - **Inviting** answers `403 EMAIL_NOT_VERIFIED`, before anything is looked at. Withdrawing and stopping
@@ -94,12 +96,12 @@ What ends a live invitation, and what each one ends:
 | Their contact's email changes, or is cleared            | ✓       | —                                                        | `ContactService.updateContact`, same transaction         |
 | They leave (`POST /invitations/{id}/leave`)             | —       | ✓ (`LEFT`)                                               | This module                                              |
 | Either account is deleted                               | ✓       | ✓ (`WITHDRAWN` for the owner's, `LEFT` for the joiner's) | `UserService.deleteUser`                                 |
-| Either account starts fresh                             | ✓       | ✓ (the same)                                             | `KeepOrStartFreshService.startFresh`                     |
 
 Restoring a group or a contact brings none of them back: inviting again is how somebody comes back.
 
-**Start fresh** ([users.md](users.md#what-start-fresh-does)) erases the groups the account created, and so
-keeps the invitations it sent as the only trace the guests' copies learn the end from: once withdrawn,
+**The erasure at 30 days** ([users.md](users.md#the-nightly-pass)) removes the groups the account created
+(Start fresh did the same until T-238), and so keeps the invitations it sent as the only trace the guests'
+copies learn the end from: once withdrawn,
 their `userId` becomes `retired:<userId>`. The guests read them as ever, `WITHDRAWN`; the account's own
 feed no longer carries them, since the addresses and group names in them are what somebody else typed;
 and a group that no longer exists is dropped from the guests' reading, like one whose owner is deleted.

@@ -29,6 +29,7 @@ const SLOW_SEND_SHARE_OF_TIMEOUT = 0.5;
 const DAY_MS = 24 * HOUR_MS;
 
 export interface EmailRecipient {
+  // The account; for sign-up, the pending sign-up's id, since no account exists yet.
   userId: string;
   email: string;
   locale: Locale;
@@ -181,6 +182,7 @@ export class EmailService {
       timezone: recipient.timezone,
       appUrl: this.config.appUrl,
       contact: this.config.replyTo,
+      now: this.now(),
     });
 
     let suppressed: boolean;

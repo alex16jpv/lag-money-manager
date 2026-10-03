@@ -190,27 +190,12 @@ Content-Type: application/json
 
 { "currentPassword": "wrong" }
 
-### Delete (soft) — requiere currentPassword; revoca refresh tokens. El email
-### se REACTIVA registrándose de nuevo con él y la MISMA password (ver auth.http)
+### Delete — requiere currentPassword; cierra todas las sesiones. 200 { message,
+### keptUntil }: se conserva 30 días (hasta el final de ese día en su zona) y después la
+### pasada nocturna la borra para siempre. Vuelve entrando con su contraseña (auth.http),
+### con Forgot your password? o con el enlace "Restaurar la cuenta" de account-deleted.
 # DELETE {{baseUrl}}/users/{{userId}}
 # Authorization: Bearer {{token}}
 # Content-Type: application/json
 #
 # { "currentPassword": "{{password}}" }
-
-### Keep what's in this account? — solo abierta tras un reset de una cuenta que nunca
-### confirmó su correo y tenía algo (user.keepOrStartFresh). Sin pregunta abierta:
-### 409 KEEP_OR_START_FRESH_CLOSED
-POST {{baseUrl}}/users/{{userId}}/keep-or-start-fresh
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{ "choice": "keep" }
-
-### Start fresh — BORRA DE VERDAD cuentas, movimientos, budgets, categorías, contactos
-### y los grupos de la cuenta, y deja el perfil del cuerpo. Descomenta para correrlo.
-# POST {{baseUrl}}/users/{{userId}}/keep-or-start-fresh
-# Authorization: Bearer {{token}}
-# Content-Type: application/json
-#
-# { "choice": "start-fresh", "name": "Tester", "locale": "en", "currency": "COP", "timezone": "America/Bogota" }

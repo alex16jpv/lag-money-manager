@@ -104,20 +104,30 @@ curl http://localhost:3000/           # {"hello":"world!"}
 curl http://localhost:3000/health/db  # {"database":"ok"}
 ```
 
-### Register a user
+### Create an account
 
-Registration is also a login: it returns a token pair, so there is no second
-round-trip. It needs a captcha: with Cloudflare's test secret in `.env`
-(`TURNSTILE_SECRET=1x0000000000000000000000000000000AA`, as in `.env.example`),
-the test token below passes; without a secret it answers `503 CAPTCHA_UNAVAILABLE`.
+An account exists once the code emailed to its address is typed
+([auth.md](../modules/auth.md#creating-an-account)), so this needs Mailpit
+(`docker compose up -d mailpit`, `EMAIL_PROVIDERS=mailpit` in `.env`) and a captcha: with
+Cloudflare's test secret in `.env` (`TURNSTILE_SECRET=1x0000000000000000000000000000000AA`, as in
+`.env.example`), the test token below passes; without a secret it answers `503 CAPTCHA_UNAVAILABLE`.
 
 ```bash
-curl -X POST http://localhost:3000/auth/register \
+curl -X POST http://localhost:3000/auth/sign-up \
   -H "Content-Type: application/json" \
   -d '{"name":"Test User","email":"test@example.com","password":"password123","timezone":"America/Bogota","currency":"COP","captcha":"XXXX.DUMMY.TOKEN.XXXX"}'
+# 202 { "signUpToken": "...", "expiresAt": "...", "resendAfterSeconds": 60 }
 ```
 
-Expected response (201):
+Read the 6-digit code of the email `sign-up` in Mailpit (http://localhost:8025), then:
+
+```bash
+curl -X POST http://localhost:3000/auth/sign-up/confirm \
+  -H "Content-Type: application/json" \
+  -d '{"signUpToken":"<signUpToken>","code":"<code>"}'
+```
+
+Expected response (201), a session like a login's:
 
 ```json
 {
@@ -129,8 +139,10 @@ Expected response (201):
     "email": "test@example.com",
     "timezone": "America/Bogota",
     "currency": "COP",
+    "emailVerified": true,
+    "confirmBy": null,
+    "emailConfirmationRequired": false,
     "lastLoginAt": "2026-08-31T...",
-    "keepOrStartFresh": null,
     "createdAt": "2026-08-31T...",
     "updatedAt": "2026-08-31T..."
   }
@@ -146,7 +158,7 @@ locks once the user has accounts.
 ```bash
 TOKEN="<accessToken from the response>"
 
-# The 11 default categories seeded at registration
+# The 11 default categories seeded when the account was created
 curl http://localhost:3000/categories -H "Authorization: Bearer $TOKEN"
 
 # First account becomes the default one automatically

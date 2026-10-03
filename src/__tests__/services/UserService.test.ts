@@ -37,8 +37,10 @@ import { IAccountRepository } from "../../domain/repositories/account/IAccountRe
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../shared/errors";
 import { mockInvitationRepo } from "./invitationRepoMock";
+import { mockUserRepo } from "./userRepoMock";
 
 const testUserId = "019576a0-d7b6-7d6d-af6a-2b7545f5ac70";
+const NOW = new Date("2026-09-28T15:00:00Z");
 
 const mockUser: User = new User({
   id: testUserId,
@@ -47,40 +49,6 @@ const mockUser: User = new User({
   password: "hashedpassword",
   createdAt: new Date("2026-01-01"),
   updatedAt: new Date("2026-01-01"),
-});
-
-const createMockRepo = (): jest.Mocked<IUserRepository> => ({
-  getManyByIds: jest.fn().mockResolvedValue([]),
-  getAll: jest.fn(),
-  getById: jest.fn(),
-  getByEmail: jest.fn(),
-  getDeletedByEmail: jest.fn().mockResolvedValue(null),
-  markEmailVerified: jest.fn(),
-  getForErasure: jest.fn().mockResolvedValue(null),
-  claimErasure: jest.fn().mockResolvedValue(null),
-  eraseForGood: jest.fn().mockResolvedValue(undefined),
-  emailInUse: jest.fn().mockResolvedValue(false),
-  startEmailChange: jest.fn(),
-  renewEmailChange: jest.fn(),
-  dropEmailChange: jest.fn().mockResolvedValue(undefined),
-  applyEmailChange: jest.fn(),
-  dropUndoLink: jest.fn().mockResolvedValue(undefined),
-  addUndoLink: jest.fn().mockResolvedValue(true),
-  getForUndo: jest.fn().mockResolvedValue(null),
-  undoEmailChange: jest.fn(),
-  getByIdWithPassword: jest.fn().mockResolvedValue(null),
-  forgetDevices: jest.fn().mockResolvedValue(null),
-  updateWithTokenBump: jest.fn(),
-  recordLogin: jest.fn().mockResolvedValue(undefined),
-  reactivate: jest.fn(),
-  resetPassword: jest.fn(),
-  keepEverything: jest.fn(),
-  chooseStartFresh: jest.fn(),
-  finishStartFresh: jest.fn(),
-  releaseStartFresh: jest.fn(),
-  create: jest.fn(),
-  update: jest.fn(),
-  delete: jest.fn(),
 });
 
 describe("UserService", () => {
@@ -94,7 +62,7 @@ describe("UserService", () => {
   let email: { sendNotice: jest.Mock };
 
   beforeEach(() => {
-    repo = createMockRepo();
+    repo = mockUserRepo();
     accountRepo = {
       countByUserId: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<IAccountRepository>;
@@ -122,6 +90,7 @@ describe("UserService", () => {
       emailChange,
       sessions,
       email,
+      () => NOW,
     );
   });
 
@@ -388,40 +357,58 @@ describe("UserService", () => {
   describe("deleteUser", () => {
     const withPassword = new User({
       ...mockUser,
+      timezone: "America/Bogota",
       password: bcryptjs.hashSync("oldpassword", 4),
     });
 
-    it("should delete the authenticated user", async () => {
+    beforeEach(() => {
+      repo.markDeleted.mockImplementation(
+        async () => new User({ ...withPassword, deletedAt: NOW }),
+      );
+    });
+
+    it("keeps the account 30 days, to the end of the last day where it lives [T-238]", async () => {
       repo.getByIdWithPassword.mockResolvedValue(withPassword);
-      repo.delete.mockResolvedValue();
+
+      await expect(
+        service.deleteUser(testUserId, testUserId, "oldpassword"),
+      ).resolves.toEqual({ keptUntil: "2026-10-28" });
+
+      expect(repo.markDeleted).toHaveBeenCalledWith(
+        testUserId,
+        new Date("2026-10-29T05:00:00Z"),
+        {
+          tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          expiresAt: new Date("2026-10-05T15:00:00Z"),
+        },
+        NOW,
+      );
+    });
+
+    it("ends every session now", async () => {
+      repo.getByIdWithPassword.mockResolvedValue(withPassword);
 
       await service.deleteUser(testUserId, testUserId, "oldpassword");
 
-      expect(repo.getByIdWithPassword).toHaveBeenCalledWith(testUserId);
-      expect(repo.delete).toHaveBeenCalledWith(testUserId);
+      expect(sessions.revokeAllForUser).toHaveBeenCalledWith(testUserId);
     });
 
     it("ends what it shared and what it joined, so nobody keeps reading a deleted account", async () => {
       repo.getByIdWithPassword.mockResolvedValue(withPassword);
-      repo.delete.mockResolvedValue();
 
       await service.deleteUser(testUserId, testUserId, "oldpassword");
 
       expect(invitations.withdrawAll).toHaveBeenCalledWith(
         { userId: testUserId, statuses: ["PENDING", "ACCEPTED"] },
-        expect.any(Date),
+        NOW,
       );
-      expect(invitations.leaveAll).toHaveBeenCalledWith(
-        testUserId,
-        expect.any(Date),
-      );
+      expect(invitations.leaveAll).toHaveBeenCalledWith(testUserId, NOW);
     });
 
-    it("tells a confirmed address its account was deleted, once it is [T-211]", async () => {
+    it("tells a confirmed address the day it is erased, with its restore link [T-238]", async () => {
       repo.getByIdWithPassword.mockResolvedValue(
         new User({ ...withPassword, emailVerifiedAt: new Date("2026-02-01") }),
       );
-      repo.delete.mockResolvedValue();
 
       await service.deleteUser(
         testUserId,
@@ -432,17 +419,26 @@ describe("UserService", () => {
 
       expect(email.sendNotice).toHaveBeenCalledWith({
         template: "account-deleted",
-        data: { at: expect.any(Date), userAgent: "Mozilla/5.0" },
+        data: {
+          at: NOW,
+          userAgent: "Mozilla/5.0",
+          keptUntil: "2026-10-28",
+          restoreToken: expect.stringMatching(/^[A-Za-z0-9_-]{64}$/),
+        },
         recipient: expect.objectContaining({ email: "john@example.com" }),
       });
+      const { restoreToken } = email.sendNotice.mock.calls[0][0].data;
+      const { createHash } = await import("crypto");
+      expect(repo.markDeleted.mock.calls[0][2].tokenHash).toBe(
+        createHash("sha256").update(restoreToken).digest("hex"),
+      );
       expect(email.sendNotice.mock.invocationCallOrder[0]).toBeGreaterThan(
-        repo.delete.mock.invocationCallOrder[0],
+        repo.markDeleted.mock.invocationCallOrder[0],
       );
     });
 
     it("tells an address that was never confirmed nothing when its account is deleted [T-211]", async () => {
       repo.getByIdWithPassword.mockResolvedValue(withPassword);
-      repo.delete.mockResolvedValue();
 
       await service.deleteUser(testUserId, testUserId, "oldpassword");
 
@@ -458,9 +454,19 @@ describe("UserService", () => {
         statusCode: 401,
         code: "CURRENT_PASSWORD_INVALID",
       });
-      expect(repo.delete).not.toHaveBeenCalled();
+      expect(repo.markDeleted).not.toHaveBeenCalled();
       expect(invitations.withdrawAll).not.toHaveBeenCalled();
       expect(invitations.leaveAll).not.toHaveBeenCalled();
+    });
+
+    it("answers NotFound when another request deleted it first", async () => {
+      repo.getByIdWithPassword.mockResolvedValue(withPassword);
+      repo.markDeleted.mockResolvedValue(null);
+
+      await expect(
+        service.deleteUser(testUserId, testUserId, "oldpassword"),
+      ).rejects.toThrow("User not found");
+      expect(email.sendNotice).not.toHaveBeenCalled();
     });
 
     it("should throw Forbidden when deleting another user", async () => {
@@ -498,7 +504,7 @@ describe("UserService", () => {
           password: bcryptjs.hashSync("oldpassword", 4),
         }),
       );
-      repo.delete.mockRejectedValue(new Error("DB delete failed"));
+      repo.markDeleted.mockRejectedValue(new Error("DB delete failed"));
 
       await expect(
         service.deleteUser(testUserId, testUserId, "oldpassword"),

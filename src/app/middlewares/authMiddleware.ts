@@ -13,6 +13,8 @@ export interface AuthPayload {
   sid?: string;
   // Seconds since the epoch, set by jsonwebtoken on every token it signs.
   iat?: number;
+  // Milliseconds since the epoch: the end of an unconfirmed account's deadline (decision 17).
+  confirmBy?: number;
 }
 
 declare global {
@@ -30,7 +32,9 @@ const isAuthPayload = (payload: unknown): payload is AuthPayload =>
   typeof (payload as AuthPayload).userId === "string" &&
   typeof (payload as AuthPayload).email === "string" &&
   ((payload as AuthPayload).sid === undefined ||
-    typeof (payload as AuthPayload).sid === "string");
+    typeof (payload as AuthPayload).sid === "string") &&
+  ((payload as AuthPayload).confirmBy === undefined ||
+    typeof (payload as AuthPayload).confirmBy === "number");
 
 export const authMiddleware = (
   req: Request,

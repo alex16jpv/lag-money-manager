@@ -14,6 +14,7 @@ import { SharedExpenseRepository } from "../../../infrastructure/repositories/sh
 import { SharedGroupRepository } from "../../../infrastructure/repositories/sharedGroup/SharedGroupRepository";
 import { SharedInvitationRepository } from "../../../infrastructure/repositories/sharedInvitation/SharedInvitationRepository";
 import { SharedSettlementRepository } from "../../../infrastructure/repositories/sharedSettlement/SharedSettlementRepository";
+import { SignUpRepository } from "../../../infrastructure/repositories/signUp/SignUpRepository";
 import { SyncOpRepository } from "../../../infrastructure/repositories/syncOp/SyncOpRepository";
 import { TransactionRepository } from "../../../infrastructure/repositories/transaction/TransactionRepository";
 import { UserRepository } from "../../../infrastructure/repositories/user/UserRepository";
@@ -57,4 +58,5 @@ export function registerRepositories(factory: RegistryTarget): void {
   factory.register("rateCounter", () => new RateCounterRepository());
   factory.register("authCode", () => new AuthCodeRepository());
   factory.register("userDataEraser", () => new UserDataEraser());
+  factory.register("signUp", () => new SignUpRepository());
 }

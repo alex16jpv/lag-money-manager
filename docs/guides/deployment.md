@@ -241,7 +241,8 @@ That strictness is deliberate: several correctness guarantees live in the databa
 
 | Index                                                                                   | What it enforces                               | What its absence costs                                                                                                          |
 | --------------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `users.email` unique                                                                    | One account per email                          | The same email registers over and over — `register` deliberately has no application-level check, so the index is the only guard |
+| `users.email` unique                                                                    | One account per email                          | The same email registers over and over — creating an account deliberately has no application-level check, so the index is the only guard |
+| `signups.toHash` unique, TTL on `signups.expiresAt`                                     | One sign-up waiting per address, for 24 hours  | An older sign-up of the address keeps working beside the newer one; the collection grows forever                               |
 | `accounts.userId` unique, partial on `isDefault`                                        | One default account per user                   | Two defaults; quick-add picks an arbitrary one                                                                                  |
 | `budgets` unique, partial on `archivedAt`                                               | No overlapping budgets per category and period | Duplicate budgets double-counting the same spending                                                                             |
 | `categories.(userId, name)` unique, collation `es` strength 2                           | Case-insensitive unique names                  | "Comida" and "comida" coexist                                                                                                   |
@@ -322,7 +323,7 @@ The script (`scripts/setup-keepalive.sh`) is idempotent, uses the same credentia
 2. Grants EventBridge permission to invoke the function
 3. Targets the function with the payload `{"source":"lag.keepalive"}`
 
-`src/lambda.ts` recognizes that payload and runs a database ping instead of routing through Express. Cost: ~30 invocations/month — effectively $0 (Lambda free tier: 1M requests/month; EventBridge scheduled invocations: $1 per million).
+`src/lambda.ts` recognizes that payload and runs a database ping instead of routing through Express, and then **the nightly pass** (T-238, [users.md](../modules/users.md#the-nightly-pass)): it erases the accounts deleted more than 30 days ago and, with `EMAIL_CONFIRMATION_DEADLINES` on, sends the deadline emails of the accounts from before email. It stops starting work with 3 seconds of the invocation left (10 seconds at most of the 15), and a pass that fails is logged `NIGHTLY_PASS_FAILED` without failing the keepalive; what it leaves is done the next night. Its three error codes (`ACCOUNT_ERASE_FAILED`, `ACCOUNT_ERASE_BACKLOG`, `NIGHTLY_PASS_FAILED`) reach the "server needs attention" alarm of `infra/email.yaml` ([Email in Production](./email.md)). This is option A of the owner's plan of 2026-09-28: no new AWS resource. Cost: ~30 invocations/month — effectively $0 (Lambda free tier: 1M requests/month and 400,000 GB-s; the pass adds a few seconds a night; EventBridge scheduled invocations: $1 per million). **Without the keepalive rule nothing is erased**: a deleted account stays deleted (out of every read) until a new account takes its address.
 
 To verify it works end to end:
 
@@ -331,7 +332,7 @@ aws lambda invoke --function-name <name> \
   --payload '{"source":"lag.keepalive"}' \
   --cli-binary-format raw-in-base64-out \
   --profile <profile> --region <region> /dev/stdout
-# Expected output: {"ok":true}
+# Expected output: {"ok":true,"lambdaDetected":true}, and a "Nightly pass done" log line with its counts
 ```
 
 ### Health Check Endpoint
@@ -460,7 +461,7 @@ Two layers, both with a 15-minute window. **Only one of them is a ceiling** — 
 | Layer                                               | Applies to                                       | Limit                                                                                                                                                            | Store                                                                |
 | --------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | Global limiter (`express-rate-limit`, `src/app.ts`) | Every mounted route, `/` and `/health/db` too    | `RATE_LIMIT_MAX` per user, or per client IP where there is no session (default `1000`)                                                                           | In-memory — **per Lambda instance**, so it is a brake, not a ceiling |
-| Auth limiter (`authRateLimitMiddleware.ts`)         | `/auth/login`, `/auth/register`, `/auth/refresh` | `AUTH_IP_RATE_LIMIT_MAX` per IP (default `60`), `AUTH_RATE_LIMIT_MAX` per recognized device or per email and IP (default `10`) and `AUTH_EMAIL_RATE_LIMIT_MAX` per email per hour (default `50`); refresh uses `REFRESH_RATE_LIMIT_MAX` (default `60`) | MongoDB (`RateLimitModel`), so the limit holds across instances      |
+| Auth limiter (`authRateLimitMiddleware.ts`)         | `/auth/login`, `/auth/login/restore`, `/auth/sign-up`, `/auth/register`, `/auth/refresh` | `AUTH_IP_RATE_LIMIT_MAX` per IP (default `60`), `AUTH_RATE_LIMIT_MAX` per recognized device or per email and IP (default `10`) and `AUTH_EMAIL_RATE_LIMIT_MAX` per email per hour (default `50`); refresh uses `REFRESH_RATE_LIMIT_MAX` (default `60`) | MongoDB (`RateLimitModel`), so the limit holds across instances      |
 
 Login is limited on two dimensions: per IP and per target email. The per-email counter is refunded on success, so only failed logins burn that budget. Over-limit responses are `429` with `code: "RATE_LIMITED"` and a `Retry-After` header; the store failing open is deliberate — a Mongo error must not lock everyone out of login.
 

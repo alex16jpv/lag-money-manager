@@ -5,18 +5,18 @@ jest.mock("../../shared/logger", () => ({
 
 import {
   codeDigest,
-  readNotMeToken,
-  signNotMeToken,
+  newAccountLinkToken,
   tokenDigest,
 } from "../../app/services/authCodes";
 import { EmailOutcome } from "../../app/services/EmailService";
 import { EmailVerificationService } from "../../app/services/EmailVerificationService";
-import { User } from "../../domain/entities/User";
+import { ConfirmDeadline, User } from "../../domain/entities/User";
 import {
   AuthCodeRecord,
   IAuthCodeRepository,
 } from "../../domain/repositories/authCode/IAuthCodeRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
+import { AuthCodePurpose } from "../../shared/constants";
 import { hashEmailAddress } from "../../shared/emailHash";
 
 const NOW = new Date("2026-09-27T12:00:00.000Z");
@@ -61,22 +61,11 @@ const sent: EmailOutcome = {
 
 interface Harness {
   service: EmailVerificationService;
-  users: Record<
-    | "getById"
-    | "markEmailVerified"
-    | "getForErasure"
-    | "claimErasure"
-    | "eraseForGood",
-    jest.Mock
-  >;
+  users: Record<"getById" | "markEmailVerified", jest.Mock>;
   codes: jest.Mocked<IAuthCodeRepository>;
   email: { sendCode: jest.Mock };
-  invitations: Record<
-    "touchUnansweredFor" | "withdrawAll" | "leaveAll",
-    jest.Mock
-  >;
-  sessions: { revokeAllForUser: jest.Mock };
-  eraser: { eraseAccount: jest.Mock };
+  invitations: { touchUnansweredFor: jest.Mock };
+  signUps: { confirmLink: jest.Mock };
 }
 
 const build = (): Harness => {
@@ -85,9 +74,6 @@ const build = (): Harness => {
     markEmailVerified: jest.fn(async () =>
       ana({ emailVerifiedAt: NOW, updatedAt: NOW }),
     ),
-    getForErasure: jest.fn().mockResolvedValue(ana()),
-    claimErasure: jest.fn(async () => ana({ deletedAt: NOW } as never)),
-    eraseForGood: jest.fn().mockResolvedValue(undefined),
   };
   const codes: jest.Mocked<IAuthCodeRepository> = {
     recordRequest: jest.fn().mockResolvedValue(undefined),
@@ -96,33 +82,32 @@ const build = (): Harness => {
     redeemCode: jest.fn(),
     redeemToken: jest.fn(),
     find: jest.fn().mockResolvedValue(null),
-    findByLiveToken: jest.fn().mockResolvedValue(record()),
+    findByLiveToken: jest.fn(
+      async (purpose: AuthCodePurpose, _hash: string, _now: Date) =>
+        purpose === "verify" ? record() : null,
+    ),
     discard: jest.fn().mockResolvedValue(undefined),
   };
   const email = { sendCode: jest.fn().mockResolvedValue(sent) };
   const invitations = {
     touchUnansweredFor: jest.fn().mockResolvedValue(undefined),
-    withdrawAll: jest.fn().mockResolvedValue(0),
-    leaveAll: jest.fn().mockResolvedValue(0),
   };
-  const sessions = { revokeAllForUser: jest.fn().mockResolvedValue(undefined) };
-  const eraser = { eraseAccount: jest.fn().mockResolvedValue(undefined) };
+  const signUps = { confirmLink: jest.fn().mockResolvedValue(undefined) };
   const service = new EmailVerificationService(
     users as unknown as IUserRepository,
     codes,
     email,
     invitations,
-    sessions,
-    eraser,
+    signUps,
     { resendAfterSeconds: 60 },
     () => NOW,
   );
-  return { service, users, codes, email, invitations, sessions, eraser };
+  return { service, users, codes, email, invitations, signUps };
 };
 
 describe("EmailVerificationService", () => {
   describe("send", () => {
-    it("emails a code, a link and an It wasn't me, and keeps only their hashes, for 24 hours", async () => {
+    it("emails a code and a link, and keeps only their hashes, for 24 hours", async () => {
       const { service, email, codes } = build();
 
       await expect(service.send(ana(), REQUESTER)).resolves.toEqual(sent);
@@ -138,9 +123,9 @@ describe("EmailVerificationService", () => {
         },
         requester: REQUESTER,
       });
-      const { code, token, notMeToken } = request.data;
+      const { code, token } = request.data;
       expect(code).toMatch(/^\d{6}$/);
-      expect(readNotMeToken(notMeToken)?.userId).toBe(USER_ID);
+      expect(Object.keys(request.data).sort()).toEqual(["code", "token"]);
 
       const expiresAt = new Date(NOW.getTime() + DAY_MS);
       expect(codes.recordRequest).toHaveBeenCalledWith(
@@ -159,16 +144,6 @@ describe("EmailVerificationService", () => {
         },
         false,
         NOW,
-      );
-    });
-
-    it("offers no It wasn't me to an account that was confirmed once", async () => {
-      const { service, email } = build();
-
-      await service.send(ana({ firstVerifiedAt: NOW }), REQUESTER);
-
-      expect(email.sendCode.mock.calls[0][0].data).not.toHaveProperty(
-        "notMeToken",
       );
     });
 
@@ -413,7 +388,9 @@ describe("EmailVerificationService", () => {
     it("confirms the account the link names, without a session", async () => {
       const { service, codes, users } = build();
 
-      await service.verifyLink("link-token-of-the-email");
+      await expect(service.verifyLink("link-token-of-the-email")).resolves.toBe(
+        "email-confirmed",
+      );
 
       expect(codes.findByLiveToken).toHaveBeenCalledWith(
         "verify",
@@ -428,7 +405,7 @@ describe("EmailVerificationService", () => {
       users.getById.mockResolvedValue(ana({ emailVerifiedAt: NOW }));
 
       await expect(service.verifyLink("link-token-of-the-email")).resolves.toBe(
-        undefined,
+        "email-confirmed",
       );
       expect(users.markEmailVerified).not.toHaveBeenCalled();
     });
@@ -438,7 +415,9 @@ describe("EmailVerificationService", () => {
       ["for no account", () => record({ userId: null })],
     ])("refuses a link %s", async (_label, row) => {
       const { service, codes } = build();
-      codes.findByLiveToken.mockResolvedValue(row());
+      codes.findByLiveToken.mockImplementation(async (purpose) =>
+        purpose === "verify" ? row() : null,
+      );
 
       await expect(service.verifyLink("t".repeat(43))).rejects.toMatchObject({
         statusCode: 400,
@@ -457,138 +436,82 @@ describe("EmailVerificationService", () => {
     });
   });
 
-  describe("notMe", () => {
-    const token = (): string => signNotMeToken(USER_ID, TO_HASH, NOW);
-
-    it("erases the account and what it left, invitations ended first, then frees the address", async () => {
-      const { service, users, sessions, invitations, eraser } = build();
-      const order: string[] = [];
-      users.claimErasure.mockImplementation(async () => {
-        order.push("claim");
-        return ana();
-      });
-      sessions.revokeAllForUser.mockImplementation(async () => {
-        order.push("sessions");
-      });
-      invitations.withdrawAll.mockImplementation(async () => {
-        order.push("withdraw");
-        return 0;
-      });
-      invitations.leaveAll.mockImplementation(async () => {
-        order.push("leave");
-        return 0;
-      });
-      eraser.eraseAccount.mockImplementation(async () => {
-        order.push("erase");
-      });
-      users.eraseForGood.mockImplementation(async () => {
-        order.push("account");
-      });
-
-      await service.notMe(token());
-
-      expect(users.claimErasure).toHaveBeenCalledWith(USER_ID, EMAIL, NOW, NOW);
-      expect(invitations.withdrawAll).toHaveBeenCalledWith(
-        { userId: USER_ID, statuses: ["PENDING", "ACCEPTED"] },
-        NOW,
+  describe("verifyLink, for a sign-up [T-238]", () => {
+    it("lets the sign-up create its account, and says so", async () => {
+      const { service, codes, signUps, users } = build();
+      const signUp = record({ purpose: "sign-up", userId: "pending-id" });
+      codes.findByLiveToken.mockImplementation(async (purpose) =>
+        purpose === "sign-up" ? signUp : null,
       );
-      expect(eraser.eraseAccount).toHaveBeenCalledWith(USER_ID, TO_HASH);
-      expect(order).toEqual([
-        "claim",
-        "sessions",
-        "withdraw",
-        "leave",
-        "erase",
-        "account",
-      ]);
+
+      await expect(service.verifyLink("t".repeat(43))).resolves.toBe(
+        "account-ready",
+      );
+      expect(signUps.confirmLink).toHaveBeenCalledWith(signUp);
+      expect(users.markEmailVerified).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("verifyLink, for a deadline email [T-238]", () => {
+    const token = newAccountLinkToken(USER_ID);
+    const deadline = (extra: object = {}): ConfirmDeadline => ({
+      day: "2026-10-11",
+      endsAt: new Date("2026-10-12T05:00:00Z"),
+      remindedAt: null,
+      links: [{ email: EMAIL, tokenHash: tokenDigest(token) }],
+      ...extra,
     });
 
-    it("refuses a token for the address the account no longer has", async () => {
-      const { service, users, eraser } = build();
-      users.getForErasure.mockResolvedValue(ana({ email: "new@example.com" }));
+    it("confirms the account until its deadline, without reading the codes", async () => {
+      const { service, users, codes } = build();
+      users.getById.mockResolvedValue(ana({ confirmDeadline: deadline() }));
 
-      await expect(service.notMe(token())).rejects.toMatchObject({
-        code: "LINK_INVALID",
-      });
-      expect(users.claimErasure).not.toHaveBeenCalled();
-      expect(eraser.eraseAccount).not.toHaveBeenCalled();
+      await expect(service.verifyLink(token)).resolves.toBe("email-confirmed");
+      expect(users.markEmailVerified).toHaveBeenCalledWith(USER_ID, EMAIL, NOW);
+      expect(codes.findByLiveToken).not.toHaveBeenCalled();
     });
 
-    it("refuses once the account is confirmed, or gone", async () => {
-      const { service, users, eraser } = build();
-      users.getForErasure.mockResolvedValue(null);
-
-      await expect(service.notMe(token())).rejects.toMatchObject({
-        code: "LINK_INVALID",
-      });
-      expect(eraser.eraseAccount).not.toHaveBeenCalled();
-    });
-
-    it("erases nothing when the account was confirmed between the read and the claim", async () => {
-      const { service, users, sessions, eraser } = build();
-      users.claimErasure.mockResolvedValue(null as never);
-
-      await expect(service.notMe(token())).rejects.toMatchObject({
-        code: "LINK_INVALID",
-      });
-      expect(sessions.revokeAllForUser).not.toHaveBeenCalled();
-      expect(eraser.eraseAccount).not.toHaveBeenCalled();
-      expect(users.eraseForGood).not.toHaveBeenCalled();
-    });
-
-    it("refuses a forged or malformed token before reading anything", async () => {
+    it("answers success when the account was confirmed already", async () => {
       const { service, users } = build();
-      const bytes = Buffer.from(token(), "base64url");
-      bytes[63] ^= 1;
-
-      await expect(
-        service.notMe(bytes.toString("base64url")),
-      ).rejects.toMatchObject({ code: "LINK_INVALID" });
-      await expect(service.notMe("not-a-token")).rejects.toMatchObject({
-        code: "LINK_INVALID",
-      });
-      expect(users.claimErasure).not.toHaveBeenCalled();
-      expect(users.getForErasure).toHaveBeenCalledTimes(1);
-    });
-
-    it("reads what the token carries, and nothing of another length", () => {
-      expect(readNotMeToken(token())).toMatchObject({
-        userId: USER_ID,
-        issuedAt: NOW,
-      });
-      expect(readNotMeToken(token().slice(1))).toBeNull();
-    });
-
-    it("refuses a token issued before the account last changed its address, and takes a later one", async () => {
-      const { service, users, eraser } = build();
-      const before = token();
-      users.getForErasure.mockResolvedValue(
-        ana({ emailChangedAt: new Date(NOW.getTime() + 1) }),
+      users.getById.mockResolvedValue(
+        ana({ confirmDeadline: deadline(), emailVerifiedAt: NOW }),
       );
 
-      await expect(service.notMe(before)).rejects.toMatchObject({
-        code: "LINK_INVALID",
-      });
-      expect(users.claimErasure).not.toHaveBeenCalled();
-
-      const after = signNotMeToken(
-        USER_ID,
-        TO_HASH,
-        new Date(NOW.getTime() + 5),
-      );
-      await service.notMe(after);
-      expect(eraser.eraseAccount).toHaveBeenCalledTimes(1);
+      await expect(service.verifyLink(token)).resolves.toBe("email-confirmed");
+      expect(users.markEmailVerified).not.toHaveBeenCalled();
     });
 
-    it("gives every email its own link, and all of them work", async () => {
-      const first = token();
-      const second = token();
-      expect(first).not.toBe(second);
+    it.each([
+      ["past its deadline", { endsAt: NOW }],
+      ["of another email", { links: [{ email: EMAIL, tokenHash: "x" }] }],
+      [
+        "for the address the account had",
+        {
+          links: [{ email: "old@example.com", tokenHash: tokenDigest(token) }],
+        },
+      ],
+    ])("refuses a link %s", async (_label, extra) => {
+      const { service, users } = build();
+      users.getById.mockResolvedValue(
+        ana({ confirmDeadline: deadline(extra) }),
+      );
 
-      const { service, eraser } = build();
-      await service.notMe(first);
-      await service.notMe(second);
-      expect(eraser.eraseAccount).toHaveBeenCalledTimes(2);
+      await expect(service.verifyLink(token)).rejects.toMatchObject({
+        code: "LINK_INVALID",
+      });
+      expect(users.markEmailVerified).not.toHaveBeenCalled();
+    });
+
+    it("refuses a link of an account that is gone or has no deadline", async () => {
+      const { service, users } = build();
+      users.getById.mockResolvedValueOnce(null);
+      await expect(service.verifyLink(token)).rejects.toMatchObject({
+        code: "LINK_INVALID",
+      });
+      users.getById.mockResolvedValueOnce(ana());
+      await expect(service.verifyLink(token)).rejects.toMatchObject({
+        code: "LINK_INVALID",
+      });
     });
   });
 });

@@ -97,7 +97,7 @@ The alternative — a `ChangeLog` collection with a monotonic `seq` per user —
 
 ### A copy from before Start fresh
 
-**The feed learns of a removed row only from its tombstone**, and Start fresh ([users.md](users.md#what-start-fresh-does)) erases an account's rows for good, leaving none. So a cursor also carries the account's `dataResetAt` at the moment it was issued, and a request whose cursor names another one — issued before the reset, or under an earlier one — answers **`409 RESYNC_REQUIRED`**: that copy holds rows that no longer exist, and its next pages would never say so. The client drops the copy and asks again with no cursor. A `since`, which cannot say which copy it belongs to, is answered only when it starts after the reset.
+**The feed learns of a removed row only from its tombstone**, and Start fresh erased an account's rows for good, leaving none. Start fresh went with T-238; the accounts it reset keep their `dataResetAt`, and their devices that have not pulled since still need this ([users.md](users.md#soft-delete-restore-and-erasure)). So a cursor also carries the account's `dataResetAt` at the moment it was issued, and a request whose cursor names another one — issued before the reset, or under an earlier one — answers **`409 RESYNC_REQUIRED`**: that copy holds rows that no longer exist, and its next pages would never say so. The client drops the copy and asks again with no cursor. A `since`, which cannot say which copy it belongs to, is answered only when it starts after the reset.
 
 Cursors of an account that was never reset keep their first format; one that went through Start fresh gets a second one that also carries the reset. Both are opaque, and both are read.
 

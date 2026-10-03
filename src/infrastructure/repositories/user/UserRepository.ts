@@ -1,13 +1,16 @@
 import { v7 as uuidv7 } from "uuid";
 
 import {
-  FreshStartDetails,
-  KeepOrStartFresh,
+  ConfirmDeadline,
   PendingEmailChange,
+  RestoreLink,
   UndoLink,
   User,
 } from "../../../domain/entities/User";
-import { IUserRepository } from "../../../domain/repositories/user/IUserRepository";
+import {
+  AddressHolder,
+  IUserRepository,
+} from "../../../domain/repositories/user/IUserRepository";
 import { ApiError } from "../../../shared/errors";
 import { Locale } from "../../../shared/locale";
 import {
@@ -16,7 +19,11 @@ import {
   PaginatedResult,
   PaginationParams,
 } from "../../../shared/pagination";
-import { UserModel } from "../../models/UserModel";
+import {
+  IConfirmDeadlineDocument,
+  IUserDocument,
+  UserModel,
+} from "../../models/UserModel";
 import { ID_CURSOR_SORT, idCursorFilter } from "../keysetCursor";
 
 const duplicateOn = (err: unknown, field: string): boolean => {
@@ -31,32 +38,69 @@ const liveUndoLinks = (now: Date): Record<string, unknown> => ({
   },
 });
 
+const liveRestoreLinks = (now: Date): Record<string, unknown> => ({
+  $filter: {
+    input: { $ifNull: ["$restoreLinks", []] },
+    cond: { $gt: ["$$this.expiresAt", now] },
+  },
+});
+
 const heldBy = (email: unknown, links: unknown): Record<string, unknown> => ({
   $setUnion: [[email], { $map: { input: links, in: "$$this.email" } }],
 });
 
+const bumpedTokenVersion = {
+  $add: [{ $ifNull: ["$tokenVersion", 0] }, 1],
+};
+
+// Deleted and not erased yet; one deleted before keptUntil existed is kept until the nightly pass dates it.
+const keptDeleted = (now: Date): Record<string, unknown> => ({
+  deletedAt: { $ne: null },
+  erasingAt: null,
+  $or: [{ keptUntil: null }, { keptUntil: { $gt: now } }],
+});
+
+const reachable = (now: Date): Record<string, unknown> => ({
+  erasingAt: null,
+  $or: [
+    { deletedAt: null },
+    { deletedAt: { $ne: null }, keptUntil: null },
+    { deletedAt: { $ne: null }, keptUntil: { $gt: now } },
+  ],
+});
+
+const erasable = (now: Date): Record<string, unknown> => ({
+  $or: [
+    { erasingAt: { $type: "date" } },
+    { deletedAt: { $ne: null }, keptUntil: { $lte: now } },
+  ],
+});
+
+const notIn = (ids: string[]): Record<string, unknown> =>
+  ids.length > 0 ? { _id: { $nin: ids } } : {};
+
+type UserDocument = Omit<IUserDocument, "password" | "deletedAt"> & {
+  password?: string;
+  deletedAt?: Date | null;
+};
+
+const deadlineOf = (
+  doc: IConfirmDeadlineDocument | null | undefined,
+): ConfirmDeadline | null =>
+  doc
+    ? {
+        day: doc.day,
+        endsAt: doc.endsAt,
+        remindedAt: doc.remindedAt ?? null,
+        links: (doc.links ?? []).map((link) => ({
+          email: link.email,
+          tokenHash: link.tokenHash,
+        })),
+      }
+    : null;
+
 export class UserRepository implements IUserRepository {
-  private toEntity(doc: {
-    _id: string;
-    name: string;
-    email: string;
-    password?: string;
-    tokenVersion?: number;
-    timezone?: string;
-    currency?: string;
-    locale?: Locale;
-    lastLoginAt?: Date | null;
-    emailVerifiedAt?: Date | null;
-    firstVerifiedAt?: Date | null;
-    emailChangedAt?: Date | null;
-    emailChange?: PendingEmailChange | null;
-    undoLinks?: UndoLink[];
-    devicesResetAt?: Date | null;
-    keepOrStartFresh?: KeepOrStartFresh | null;
-    dataResetAt?: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }): User {
+  private toEntity(doc: UserDocument): User {
     return new User({
       id: doc._id,
       name: doc.name,
@@ -65,11 +109,10 @@ export class UserRepository implements IUserRepository {
       tokenVersion: doc.tokenVersion,
       timezone: doc.timezone,
       currency: doc.currency,
-      locale: doc.locale,
+      locale: doc.locale as Locale,
       lastLoginAt: doc.lastLoginAt,
       emailVerifiedAt: doc.emailVerifiedAt,
-      firstVerifiedAt: doc.firstVerifiedAt,
-      emailChangedAt: doc.emailChangedAt,
+      confirmDeadline: deadlineOf(doc.confirmDeadline),
       emailChange: doc.emailChange
         ? {
             email: doc.emailChange.email,
@@ -83,15 +126,13 @@ export class UserRepository implements IUserRepository {
         expiresAt: link.expiresAt,
       })),
       devicesResetAt: doc.devicesResetAt,
-      keepOrStartFresh: doc.keepOrStartFresh
-        ? {
-            askedAt: doc.keepOrStartFresh.askedAt,
-            accounts: doc.keepOrStartFresh.accounts,
-            transactions: doc.keepOrStartFresh.transactions,
-            startFresh: doc.keepOrStartFresh.startFresh ?? null,
-          }
-        : null,
       dataResetAt: doc.dataResetAt,
+      deletedAt: doc.deletedAt,
+      keptUntil: doc.keptUntil,
+      restoreLinks: (doc.restoreLinks ?? []).map((link) => ({
+        tokenHash: link.tokenHash,
+        expiresAt: link.expiresAt,
+      })),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });
@@ -125,6 +166,56 @@ export class UserRepository implements IUserRepository {
     return this.toEntity(doc);
   }
 
+  async getReachableByEmail(email: string, now: Date): Promise<User | null> {
+    const doc = await UserModel.findOne({ email, ...reachable(now) }).lean();
+    return doc ? this.toEntity(doc) : null;
+  }
+
+  async holderOf(
+    email: string,
+    now: Date,
+    exceptUserId?: string,
+  ): Promise<AddressHolder | null> {
+    const owner = await UserModel.findOne({ email, ...reachable(now) })
+      .select("-password")
+      .lean();
+    if (owner) {
+      const user = this.toEntity(owner);
+      return user.deletedAt
+        ? { state: "deleted", user }
+        : { state: "live", user };
+    }
+    const keeper = await UserModel.findOne({
+      heldEmails: email,
+      email: { $ne: email },
+      undoLinks: { $elemMatch: { email, expiresAt: { $gt: now } } },
+      erasingAt: null,
+      ...(exceptUserId ? { _id: { $ne: exceptUserId } } : {}),
+    })
+      .select("-password")
+      .lean();
+    if (!keeper) return null;
+    const user = this.toEntity(keeper);
+    const freeAt = Math.max(
+      ...user.undoLinks
+        .filter((link) => link.email === email && link.expiresAt > now)
+        .map((link) => link.expiresAt.getTime()),
+    );
+    return { state: "held", user, freeAt: new Date(freeAt) };
+  }
+
+  async releaseLapsedDeletion(email: string, now: Date): Promise<void> {
+    const lapsed = await UserModel.findOne({
+      email,
+      deletedAt: { $ne: null },
+      erasingAt: null,
+      keptUntil: { $lte: now },
+    })
+      .select("_id")
+      .lean();
+    if (lapsed) await this.claimErasure(lapsed._id, now);
+  }
+
   async recordLogin(id: string): Promise<void> {
     await UserModel.updateOne(
       { _id: id, deletedAt: null },
@@ -155,57 +246,22 @@ export class UserRepository implements IUserRepository {
     return doc ? this.toEntity(doc) : null;
   }
 
-  async getDeletedByEmail(email: string): Promise<User | null> {
-    const doc = await UserModel.findOne({
-      email,
-      deletedAt: { $ne: null },
-      erasingAt: null,
-    }).lean();
-    if (!doc) return null;
-    return this.toEntity(doc);
-  }
-
   async resetPassword(
     id: string,
     passwordHash: string,
-    question: { accounts: number; transactions: number } | null,
     now: Date,
   ): Promise<User | null> {
-    const neverConfirmed = {
-      $eq: [{ $ifNull: ["$emailVerifiedAt", null] }, null],
-    };
-    const keepQuestion = { $ifNull: ["$keepOrStartFresh", null] };
     const doc = await UserModel.findOneAndUpdate(
-      { _id: id, deletedAt: null },
+      { _id: id, ...reachable(now) },
       [
         {
           $set: {
             password: { $literal: passwordHash },
-            tokenVersion: { $add: [{ $ifNull: ["$tokenVersion", 0] }, 1] },
-            keepOrStartFresh: question
-              ? {
-                  $cond: [
-                    neverConfirmed,
-                    {
-                      $ifNull: [
-                        "$keepOrStartFresh",
-                        {
-                          $literal: {
-                            askedAt: now,
-                            ...question,
-                            startFresh: null,
-                          },
-                        },
-                      ],
-                    },
-                    keepQuestion,
-                  ],
-                }
-              : keepQuestion,
+            tokenVersion: bumpedTokenVersion,
             emailVerifiedAt: { $ifNull: ["$emailVerifiedAt", now] },
-            firstVerifiedAt: { $ifNull: ["$firstVerifiedAt", now] },
             emailChange: null,
-            devicesResetAt: now,
+            deletedAt: null,
+            keptUntil: null,
             updatedAt: now,
           },
         },
@@ -222,16 +278,8 @@ export class UserRepository implements IUserRepository {
   ): Promise<User | null> {
     const doc = await UserModel.findOneAndUpdate(
       { _id: id, email, deletedAt: null, emailVerifiedAt: null },
-      [
-        {
-          $set: {
-            emailVerifiedAt: now,
-            firstVerifiedAt: { $ifNull: ["$firstVerifiedAt", now] },
-            updatedAt: now,
-          },
-        },
-      ],
-      { returnDocument: "after", updatePipeline: true },
+      { $set: { emailVerifiedAt: now, updatedAt: now } },
+      { returnDocument: "after", timestamps: false },
     )
       .select("-password")
       .lean();
@@ -240,24 +288,6 @@ export class UserRepository implements IUserRepository {
       .select("-password")
       .lean();
     return current?.emailVerifiedAt ? this.toEntity(current) : null;
-  }
-
-  async emailInUse(
-    email: string,
-    now: Date,
-    exceptUserId?: string,
-  ): Promise<boolean> {
-    const held = await UserModel.exists({
-      $or: [
-        { email },
-        {
-          heldEmails: email,
-          undoLinks: { $elemMatch: { email, expiresAt: { $gt: now } } },
-          ...(exceptUserId ? { _id: { $ne: exceptUserId } } : {}),
-        },
-      ],
-    });
-    return held !== null;
   }
 
   async startEmailChange(
@@ -331,10 +361,12 @@ export class UserRepository implements IUserRepository {
     try {
       return await this.moveTo(id, email, now);
     } catch (err) {
-      if (duplicateOn(err, "email")) return "taken";
-      if (!duplicateOn(err, "heldEmails")) throw err;
+      if (!duplicateOn(err, "email") && !duplicateOn(err, "heldEmails")) {
+        throw err;
+      }
     }
     await this.releaseLapsedHolds(email, now);
+    await this.releaseLapsedDeletion(email, now);
     try {
       return await this.moveTo(id, email, now);
     } catch (err) {
@@ -363,12 +395,10 @@ export class UserRepository implements IUserRepository {
           $set: {
             email: { $literal: email },
             emailVerifiedAt: now,
-            firstVerifiedAt: { $ifNull: ["$firstVerifiedAt", now] },
-            emailChangedAt: now,
             emailChange: null,
             undoLinks: links,
             heldEmails: heldBy({ $literal: email }, links),
-            tokenVersion: { $add: [{ $ifNull: ["$tokenVersion", 0] }, 1] },
+            tokenVersion: bumpedTokenVersion,
             updatedAt: now,
           },
         },
@@ -424,22 +454,15 @@ export class UserRepository implements IUserRepository {
       [
         {
           $set: {
-            emailChangedAt: {
-              $cond: [
-                { $eq: ["$email", link.email] },
-                { $ifNull: ["$emailChangedAt", null] },
-                now,
-              ],
-            },
             email: { $literal: link.email },
             emailVerifiedAt: now,
-            firstVerifiedAt: { $ifNull: ["$firstVerifiedAt", now] },
             emailChange: null,
             undoLinks: earlier,
             heldEmails: heldBy({ $literal: link.email }, earlier),
             deletedAt: null,
+            keptUntil: null,
             password: { $literal: unusablePasswordHash },
-            tokenVersion: { $add: [{ $ifNull: ["$tokenVersion", 0] }, 1] },
+            tokenVersion: bumpedTokenVersion,
             devicesResetAt: now,
             updatedAt: now,
           },
@@ -452,40 +475,24 @@ export class UserRepository implements IUserRepository {
     return doc ? this.toEntity(doc) : null;
   }
 
-  async getForErasure(id: string): Promise<User | null> {
-    const doc = await UserModel.findOne({
-      _id: id,
-      emailVerifiedAt: null,
-      firstVerifiedAt: null,
-    })
-      .select("-password")
-      .lean();
-    return doc ? this.toEntity(doc) : null;
-  }
-
-  async claimErasure(
+  async markDeleted(
     id: string,
-    email: string,
-    tokenIssuedAt: Date,
+    keptUntil: Date,
+    link: RestoreLink,
     now: Date,
   ): Promise<User | null> {
     const doc = await UserModel.findOneAndUpdate(
-      {
-        _id: id,
-        email,
-        emailVerifiedAt: null,
-        firstVerifiedAt: null,
-        $or: [
-          { emailChangedAt: null },
-          { emailChangedAt: { $lte: tokenIssuedAt } },
-        ],
-      },
+      { _id: id, deletedAt: null },
       [
         {
           $set: {
-            deletedAt: { $ifNull: ["$deletedAt", now] },
-            erasingAt: { $ifNull: ["$erasingAt", now] },
-            tokenVersion: { $add: [{ $ifNull: ["$tokenVersion", 0] }, 1] },
+            deletedAt: now,
+            keptUntil: { $literal: keptUntil },
+            restoreLinks: {
+              $concatArrays: [liveRestoreLinks(now), [{ $literal: link }]],
+            },
+            emailChange: null,
+            tokenVersion: bumpedTokenVersion,
             updatedAt: now,
           },
         },
@@ -497,103 +504,192 @@ export class UserRepository implements IUserRepository {
     return doc ? this.toEntity(doc) : null;
   }
 
-  async eraseForGood(id: string): Promise<void> {
-    await UserModel.deleteOne({ _id: id, erasingAt: { $ne: null } }).exec();
-  }
-
-  async keepEverything(id: string, now: Date): Promise<User | null> {
+  async restoreDeleted(id: string, now: Date): Promise<User | null> {
     const doc = await UserModel.findOneAndUpdate(
-      {
-        _id: id,
-        deletedAt: null,
-        keepOrStartFresh: { $ne: null },
-        "keepOrStartFresh.startFresh": null,
-      },
-      { $set: { keepOrStartFresh: null, updatedAt: now } },
+      { _id: id, ...keptDeleted(now) },
+      { $set: { deletedAt: null, keptUntil: null, updatedAt: now } },
       { returnDocument: "after", timestamps: false },
-    ).lean();
+    )
+      .select("-password")
+      .lean();
     return doc ? this.toEntity(doc) : null;
   }
 
-  async chooseStartFresh(
+  async restoreFromLink(
     id: string,
-    details: FreshStartDetails,
+    tokenHash: string,
+    unusablePasswordHash: string,
     now: Date,
-    leaseMs: number,
   ): Promise<User | null> {
     const doc = await UserModel.findOneAndUpdate(
       {
         _id: id,
-        deletedAt: null,
-        keepOrStartFresh: { $ne: null },
-        $or: [
-          { "keepOrStartFresh.startFresh": null },
-          { "keepOrStartFresh.startFresh.claimedUntil": { $lte: now } },
-        ],
-      },
-      {
-        $set: {
-          "keepOrStartFresh.startFresh": {
-            ...details,
-            claimedUntil: new Date(now.getTime() + leaseMs),
-          },
-          updatedAt: now,
-        },
-      },
-      { returnDocument: "after", timestamps: false },
-    ).lean();
-    return doc ? this.toEntity(doc) : null;
-  }
-
-  async releaseStartFresh(id: string, now: Date): Promise<void> {
-    await UserModel.updateOne(
-      { _id: id, "keepOrStartFresh.startFresh": { $ne: null } },
-      { $set: { "keepOrStartFresh.startFresh.claimedUntil": now } },
-      { timestamps: false },
-    ).exec();
-  }
-
-  async finishStartFresh(id: string, now: Date): Promise<User | null> {
-    const chosen = "$keepOrStartFresh.startFresh";
-    const doc = await UserModel.findOneAndUpdate(
-      {
-        _id: id,
-        deletedAt: null,
-        "keepOrStartFresh.startFresh": { $ne: null },
+        ...reachable(now),
+        restoreLinks: { $elemMatch: { tokenHash, expiresAt: { $gt: now } } },
       },
       [
         {
           $set: {
-            name: `${chosen}.name`,
-            locale: `${chosen}.locale`,
-            currency: `${chosen}.currency`,
-            timezone: `${chosen}.timezone`,
-            keepOrStartFresh: null,
-            dataResetAt: now,
+            deletedAt: null,
+            keptUntil: null,
+            password: { $literal: unusablePasswordHash },
+            tokenVersion: bumpedTokenVersion,
+            devicesResetAt: now,
+            emailChange: null,
+            restoreLinks: {
+              $filter: {
+                input: liveRestoreLinks(now),
+                cond: { $ne: ["$$this.tokenHash", tokenHash] },
+              },
+            },
             updatedAt: now,
           },
         },
       ],
       { returnDocument: "after", updatePipeline: true },
-    ).lean();
+    )
+      .select("-password")
+      .lean();
     return doc ? this.toEntity(doc) : null;
   }
 
-  async reactivate(
+  async listUndatedDeletions(limit: number): Promise<User[]> {
+    const docs = await UserModel.find({
+      deletedAt: { $ne: null },
+      keptUntil: null,
+      erasingAt: null,
+    })
+      .select("-password")
+      .sort({ deletedAt: 1 })
+      .limit(limit)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
+  async setKeptUntil(id: string, keptUntil: Date): Promise<void> {
+    await UserModel.updateOne(
+      { _id: id, deletedAt: { $ne: null }, keptUntil: null, erasingAt: null },
+      { $set: { keptUntil } },
+      { timestamps: false },
+    ).exec();
+  }
+
+  async listErasable(
+    now: Date,
+    limit: number,
+    exceptIds: string[],
+  ): Promise<string[]> {
+    const docs = await UserModel.find({
+      ...erasable(now),
+      ...notIn(exceptIds),
+    })
+      .select("_id")
+      .limit(limit)
+      .lean();
+    return docs.map((doc) => doc._id);
+  }
+
+  async claimErasure(id: string, now: Date): Promise<boolean> {
+    const result = await UserModel.updateOne(
+      { _id: id, ...erasable(now) },
+      [
+        {
+          $set: {
+            erasingAt: { $ifNull: ["$erasingAt", now] },
+            email: { $concat: ["$_id", "@erasing.invalid"] },
+            heldEmails: "$$REMOVE",
+            undoLinks: [],
+            restoreLinks: [],
+            emailChange: null,
+            tokenVersion: bumpedTokenVersion,
+          },
+        },
+      ],
+      { timestamps: false, updatePipeline: true },
+    ).exec();
+    return result.matchedCount > 0;
+  }
+
+  async eraseForGood(id: string): Promise<void> {
+    await UserModel.deleteOne({ _id: id, erasingAt: { $ne: null } }).exec();
+  }
+
+  async listWithoutDeadline(
+    limit: number,
+    exceptIds: string[],
+  ): Promise<User[]> {
+    const docs = await UserModel.find({
+      emailVerifiedAt: null,
+      confirmDeadline: null,
+      deletedAt: null,
+      erasingAt: null,
+      ...notIn(exceptIds),
+    })
+      .select("-password")
+      .sort({ _id: 1 })
+      .limit(limit)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
+  async startConfirmDeadline(
     id: string,
-    updates: Pick<User, "name" | "password"> &
-      Partial<Pick<User, "timezone" | "locale">>,
-  ): Promise<User> {
-    // tokenVersion bump keeps any pre-deletion refresh tokens revoked.
-    const doc = await UserModel.findOneAndUpdate(
-      { _id: id, deletedAt: { $ne: null }, erasingAt: null },
-      { $set: { ...updates, deletedAt: null }, $inc: { tokenVersion: 1 } },
-      { new: true },
-    ).lean();
-    if (!doc) {
-      throw new ApiError("NotFound", "User not found");
-    }
-    return this.toEntity(doc);
+    email: string,
+    deadline: ConfirmDeadline,
+  ): Promise<boolean> {
+    const result = await UserModel.updateOne(
+      {
+        _id: id,
+        email,
+        emailVerifiedAt: null,
+        confirmDeadline: null,
+        deletedAt: null,
+      },
+      { $set: { confirmDeadline: deadline } },
+      { timestamps: false },
+    ).exec();
+    return result.matchedCount > 0;
+  }
+
+  async listDueReminders(
+    now: Date,
+    endsBy: Date,
+    limit: number,
+    exceptIds: string[],
+  ): Promise<User[]> {
+    const docs = await UserModel.find({
+      emailVerifiedAt: null,
+      "confirmDeadline.endsAt": { $gt: now, $lte: endsBy },
+      "confirmDeadline.remindedAt": null,
+      deletedAt: null,
+      erasingAt: null,
+      ...notIn(exceptIds),
+    })
+      .select("-password")
+      .limit(limit)
+      .lean();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
+  async markReminded(
+    id: string,
+    link: { email: string; tokenHash: string },
+    now: Date,
+  ): Promise<boolean> {
+    const result = await UserModel.updateOne(
+      {
+        _id: id,
+        email: link.email,
+        emailVerifiedAt: null,
+        "confirmDeadline.remindedAt": null,
+      },
+      {
+        $set: { "confirmDeadline.remindedAt": now },
+        $push: { "confirmDeadline.links": link },
+      },
+      { timestamps: false },
+    ).exec();
+    return result.matchedCount > 0;
   }
 
   async getAll(pagination: PaginationParams): Promise<PaginatedResult<User>> {
@@ -628,9 +724,17 @@ export class UserRepository implements IUserRepository {
     try {
       return this.toEntity(await UserModel.create(fields));
     } catch (err) {
-      if (!user.email || !duplicateOn(err, "heldEmails")) throw err;
+      if (
+        !user.email ||
+        (!duplicateOn(err, "heldEmails") && !duplicateOn(err, "email"))
+      ) {
+        throw err;
+      }
     }
-    await this.releaseLapsedHolds(user.email.trim().toLowerCase(), new Date());
+    const email = user.email.trim().toLowerCase();
+    const now = new Date();
+    await this.releaseLapsedHolds(email, now);
+    await this.releaseLapsedDeletion(email, now);
     return this.toEntity(await UserModel.create(fields));
   }
 
@@ -644,17 +748,5 @@ export class UserRepository implements IUserRepository {
       throw new ApiError("NotFound", "User not found");
     }
     return this.toEntity(doc);
-  }
-
-  async delete(id: string): Promise<void> {
-    // The access token still survives its remaining ~15 min: the middleware is stateless by design.
-    const doc = await UserModel.findOneAndUpdate(
-      { _id: id, deletedAt: null },
-      { $set: { deletedAt: new Date() }, $inc: { tokenVersion: 1 } },
-      { new: true },
-    ).lean();
-    if (!doc) {
-      throw new ApiError("NotFound", "User not found");
-    }
   }
 }

@@ -73,7 +73,6 @@ describe("OpenAPI response views", () => {
   });
 
   it.each([
-    ["User", "reactivated"],
     ["Category", "seedKey"],
     ["Session", "userAgent"],
     ["Account", "creditLimit"],

@@ -62,7 +62,10 @@ const record = (overrides: Partial<AuthCodeRecord> = {}): AuthCodeRecord => ({
 
 interface Harness {
   service: PasswordResetService;
-  users: Record<"getByEmail" | "getById" | "resetPassword", jest.Mock>;
+  users: Record<
+    "getReachableByEmail" | "getForUndo" | "resetPassword" | "setKeptUntil",
+    jest.Mock
+  >;
   codes: jest.Mocked<IAuthCodeRepository>;
   email: {
     holdBrakes: jest.Mock;
@@ -70,8 +73,6 @@ interface Harness {
     sendNotice: jest.Mock;
     providerCeilingMs: number;
   };
-  accounts: { countByUserId: jest.Mock };
-  transactions: { countByUserId: jest.Mock };
   sessions: { revokeAllForUser: jest.Mock };
   invitations: { touchUnansweredFor: jest.Mock };
   auth: { openSession: jest.Mock };
@@ -80,24 +81,13 @@ interface Harness {
 
 const build = (): Harness => {
   const users = {
-    getByEmail: jest.fn().mockResolvedValue(null),
-    getById: jest.fn().mockResolvedValue(null),
+    getReachableByEmail: jest.fn().mockResolvedValue(null),
+    getForUndo: jest.fn().mockResolvedValue(null),
     resetPassword: jest.fn(
-      async (
-        id: string,
-        password: string,
-        question: { accounts: number; transactions: number } | null,
-      ): Promise<User> =>
-        ana({
-          id,
-          password,
-          keepOrStartFresh: question && {
-            askedAt: NOW,
-            ...question,
-            startFresh: null,
-          },
-        }),
+      async (id: string, password: string): Promise<User> =>
+        ana({ id, password }),
     ),
+    setKeptUntil: jest.fn().mockResolvedValue(undefined),
   };
   const codes: jest.Mocked<IAuthCodeRepository> = {
     recordRequest: jest.fn().mockResolvedValue(undefined),
@@ -123,8 +113,6 @@ const build = (): Harness => {
     } satisfies EmailOutcome),
     providerCeilingMs: 1500,
   };
-  const accounts = { countByUserId: jest.fn().mockResolvedValue(0) };
-  const transactions = { countByUserId: jest.fn().mockResolvedValue(0) };
   const sessions = { revokeAllForUser: jest.fn().mockResolvedValue(undefined) };
   const invitations = {
     touchUnansweredFor: jest.fn().mockResolvedValue(undefined),
@@ -141,8 +129,6 @@ const build = (): Harness => {
     users as unknown as IUserRepository,
     codes,
     email,
-    accounts,
-    transactions,
     sessions,
     invitations,
     auth,
@@ -155,8 +141,6 @@ const build = (): Harness => {
     users,
     codes,
     email,
-    accounts,
-    transactions,
     sessions,
     invitations,
     auth,
@@ -169,7 +153,7 @@ describe("PasswordResetService.forgot", () => {
 
   it("gives the same answer for an address with an account and one without", async () => {
     const withAccount = build();
-    withAccount.users.getByEmail.mockResolvedValue(ana());
+    withAccount.users.getReachableByEmail.mockResolvedValue(ana());
     const without = build();
 
     const a = await withAccount.service.forgot(EMAIL, REQUESTER);
@@ -207,12 +191,12 @@ describe("PasswordResetService.forgot", () => {
       email: "nobody@example.com",
       requester: REQUESTER,
     });
-    expect(users.getByEmail).not.toHaveBeenCalled();
+    expect(users.getReachableByEmail).not.toHaveBeenCalled();
   });
 
   it("sends the code in the account's language with the brakes already held", async () => {
     const { service, users, email, codes } = build();
-    users.getByEmail.mockResolvedValue(ana());
+    users.getReachableByEmail.mockResolvedValue(ana());
 
     await service.forgot(EMAIL, REQUESTER);
 
@@ -245,7 +229,7 @@ describe("PasswordResetService.forgot", () => {
 
   it("keeps the previous code alive when the email may or may not have gone", async () => {
     const { service, users, email, codes } = build();
-    users.getByEmail.mockResolvedValue(ana());
+    users.getReachableByEmail.mockResolvedValue(ana());
     email.sendCode.mockResolvedValue({
       status: "failed",
       reason: "unconfirmed",
@@ -271,7 +255,7 @@ describe("PasswordResetService.forgot", () => {
     "leaves the old code in place and still answers the same when the send is %s",
     async (_label, outcome) => {
       const { service, users, email, codes } = build();
-      users.getByEmail.mockResolvedValue(ana());
+      users.getReachableByEmail.mockResolvedValue(ana());
       email.sendCode.mockResolvedValue(outcome);
 
       await expect(service.forgot(EMAIL, REQUESTER)).resolves.toEqual({
@@ -284,7 +268,7 @@ describe("PasswordResetService.forgot", () => {
 
   it("never shows a failure past the brakes, and logs it", async () => {
     const { service, users, email } = build();
-    users.getByEmail.mockResolvedValue(ana());
+    users.getReachableByEmail.mockResolvedValue(ana());
     email.sendCode.mockRejectedValue(new Error("database gone"));
 
     await expect(service.forgot(EMAIL, REQUESTER)).resolves.toEqual({
@@ -295,6 +279,41 @@ describe("PasswordResetService.forgot", () => {
       expect.objectContaining({ code: "PASSWORD_RESET_NOT_SENT" }),
       expect.any(String),
     );
+  });
+
+  it("sends a deleted account still kept its own words, with its two days [T-238]", async () => {
+    const { service, users, email } = build();
+    users.getReachableByEmail.mockResolvedValue(
+      ana({
+        deletedAt: new Date("2026-09-20T03:00:00Z"),
+        keptUntil: new Date("2026-10-21T05:00:00Z"),
+      }),
+    );
+
+    await service.forgot(EMAIL, REQUESTER);
+
+    expect(email.sendCode.mock.calls[0][0].data).toMatchObject({
+      deleted: { deletedOn: "2026-09-19", keptUntil: "2026-10-20" },
+    });
+    expect(users.setKeptUntil).not.toHaveBeenCalled();
+  });
+
+  it("gives an account deleted before T-238 its 30 days before telling them [T-238]", async () => {
+    const { service, users, email } = build();
+    users.getReachableByEmail.mockResolvedValue(
+      ana({ deletedAt: new Date("2026-03-01T15:00:00Z"), keptUntil: null }),
+    );
+
+    await service.forgot(EMAIL, REQUESTER);
+
+    expect(users.setKeptUntil).toHaveBeenCalledWith(
+      ana().id,
+      new Date("2026-10-28T05:00:00Z"),
+    );
+    expect(email.sendCode.mock.calls[0][0].data.deleted).toEqual({
+      deletedOn: "2026-03-01",
+      keptUntil: "2026-10-27",
+    });
   });
 
   it("waits until the providers' ceiling plus a margin, so the time tells nothing", async () => {
@@ -317,7 +336,7 @@ describe("PasswordResetService.reset", () => {
     const { service, users, codes, sessions, auth } = build();
     codes.countAttempt.mockResolvedValue(record());
     codes.redeemCode.mockResolvedValue(record());
-    users.getById.mockResolvedValue(ana());
+    users.getForUndo.mockResolvedValue(ana());
 
     const result = await service.reset(withCode, "new password 1", "Mozilla");
 
@@ -327,10 +346,10 @@ describe("PasswordResetService.reset", () => {
       codeDigest(TO_HASH, "482913"),
       NOW,
     );
-    const [id, hash, question] = users.resetPassword.mock.calls[0];
+    const [id, hash, when] = users.resetPassword.mock.calls[0];
     expect(id).toBe(ana().id);
     expect(await bcryptjs.compare("new password 1", hash)).toBe(true);
-    expect(question).toBeNull();
+    expect(when).toBe(NOW);
     expect(sessions.revokeAllForUser).toHaveBeenCalledWith(ana().id);
     expect(auth.openSession).toHaveBeenCalledWith(
       expect.objectContaining({ id: ana().id }),
@@ -340,7 +359,8 @@ describe("PasswordResetService.reset", () => {
       accessToken: "access",
       refreshToken: "refresh",
       deviceToken: "device",
-      user: { id: ana().id, keepOrStartFresh: null },
+      user: { id: ana().id },
+      restored: false,
     });
     expect(result.user).not.toHaveProperty("password");
   });
@@ -349,7 +369,7 @@ describe("PasswordResetService.reset", () => {
     const { service, users, codes, email } = build();
     codes.countAttempt.mockResolvedValue(record());
     codes.redeemCode.mockResolvedValue(record());
-    users.getById.mockResolvedValue(ana({ emailVerifiedAt: null }));
+    users.getForUndo.mockResolvedValue(ana({ emailVerifiedAt: null }));
 
     await service.reset(withCode, "new password 1", "Mozilla");
 
@@ -370,7 +390,7 @@ describe("PasswordResetService.reset", () => {
     const { service, users, codes, email } = build();
     codes.countAttempt.mockResolvedValue(record());
     codes.redeemCode.mockResolvedValue(record());
-    users.getById.mockResolvedValue(ana());
+    users.getForUndo.mockResolvedValue(ana());
     email.sendNotice.mockRejectedValue(new Error("render bug"));
 
     const result = await service.reset(withCode, "new password 1");
@@ -394,7 +414,7 @@ describe("PasswordResetService.reset", () => {
       sentAt: NOW,
       expiresAt: new Date(NOW.getTime() + 60_000),
     };
-    users.getById.mockResolvedValue(ana({ emailChange: waiting }));
+    users.getForUndo.mockResolvedValue(ana({ emailChange: waiting }));
 
     await service.reset(withCode, "new password 1");
 
@@ -408,61 +428,18 @@ describe("PasswordResetService.reset", () => {
     const { service, users, codes } = build();
     codes.countAttempt.mockResolvedValue(record());
     codes.redeemCode.mockResolvedValue(record());
-    users.getById.mockResolvedValue(ana());
+    users.getForUndo.mockResolvedValue(ana());
 
     await service.reset(withCode, "new password 1");
 
     expect(codes.discard).not.toHaveBeenCalled();
   });
 
-  it("asks keep or start fresh when the account never confirmed its email and holds something", async () => {
-    const { service, users, codes, accounts, transactions } = build();
-    codes.countAttempt.mockResolvedValue(record());
-    codes.redeemCode.mockResolvedValue(record());
-    users.getById.mockResolvedValue(ana({ emailVerifiedAt: null }));
-    accounts.countByUserId.mockResolvedValue(2);
-    transactions.countByUserId.mockResolvedValue(31);
-
-    const result = await service.reset(withCode, "new password 1");
-
-    expect(users.resetPassword.mock.calls[0][2]).toEqual({
-      accounts: 2,
-      transactions: 31,
-    });
-    expect(result.user.keepOrStartFresh).toEqual({
-      createdAt: new Date("2025-06-01T00:00:00.000Z"),
-      accounts: 2,
-      transactions: 31,
-    });
-  });
-
-  it("does not ask when the never-confirmed account is empty", async () => {
-    const { service, users, codes } = build();
-    codes.countAttempt.mockResolvedValue(record());
-    codes.redeemCode.mockResolvedValue(record());
-    users.getById.mockResolvedValue(ana({ emailVerifiedAt: null }));
-
-    await service.reset(withCode, "new password 1");
-
-    expect(users.resetPassword.mock.calls[0][2]).toBeNull();
-  });
-
-  it("does not count what a confirmed account holds", async () => {
-    const { service, users, codes, accounts } = build();
-    codes.countAttempt.mockResolvedValue(record());
-    codes.redeemCode.mockResolvedValue(record());
-    users.getById.mockResolvedValue(ana());
-
-    await service.reset(withCode, "new password 1");
-
-    expect(accounts.countByUserId).not.toHaveBeenCalled();
-  });
-
   it("lets the invitations that waited for a never-confirmed address reach the feed [T-209]", async () => {
     const { service, users, codes, invitations } = build();
     codes.countAttempt.mockResolvedValue(record());
     codes.redeemCode.mockResolvedValue(record());
-    users.getById.mockResolvedValue(ana({ emailVerifiedAt: null }));
+    users.getForUndo.mockResolvedValue(ana({ emailVerifiedAt: null }));
 
     await service.reset(withCode, "new password 1");
 
@@ -473,11 +450,39 @@ describe("PasswordResetService.reset", () => {
     const { service, users, codes, invitations } = build();
     codes.countAttempt.mockResolvedValue(record());
     codes.redeemCode.mockResolvedValue(record());
-    users.getById.mockResolvedValue(ana());
+    users.getForUndo.mockResolvedValue(ana());
 
     await service.reset(withCode, "new password 1");
 
     expect(invitations.touchUnansweredFor).not.toHaveBeenCalled();
+  });
+
+  it("restores a deleted account and tells it so, instead of password-changed [T-238]", async () => {
+    const { service, users, codes, email } = build();
+    codes.countAttempt.mockResolvedValue(record());
+    codes.redeemCode.mockResolvedValue(record());
+    users.getForUndo.mockResolvedValue(
+      ana({
+        deletedAt: new Date("2026-09-20T03:00:00Z"),
+        keptUntil: new Date("2026-10-21T05:00:00Z"),
+      }),
+    );
+
+    const result = await service.reset(withCode, "new password 1", "Mozilla");
+
+    expect(result.restored).toBe(true);
+    expect(email.sendNotice).toHaveBeenCalledTimes(1);
+    expect(email.sendNotice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        template: "account-restored",
+        data: {
+          at: NOW,
+          userAgent: "Mozilla",
+          deletedOn: "2026-09-19",
+          by: "reset",
+        },
+      }),
+    );
   });
 
   const refusedWith = async (
@@ -523,7 +528,7 @@ describe("PasswordResetService.reset", () => {
     const { service, codes, users } = build();
     codes.countAttempt.mockResolvedValue(record());
     codes.redeemCode.mockResolvedValue(record());
-    users.getById.mockResolvedValue(ana({ email: "moved@example.com" }));
+    users.getForUndo.mockResolvedValue(ana({ email: "moved@example.com" }));
 
     await refusedWith(
       service.reset(withCode, "new password 1"),
@@ -532,11 +537,17 @@ describe("PasswordResetService.reset", () => {
     expect(users.resetPassword).not.toHaveBeenCalled();
   });
 
-  it("refuses when the account was deleted between the code and the reset", async () => {
-    const { service, codes } = build();
+  it("refuses when the account is gone, or no longer kept, by the time of the reset", async () => {
+    const { service, codes, users } = build();
     codes.countAttempt.mockResolvedValue(record());
     codes.redeemCode.mockResolvedValue(record());
+    await refusedWith(
+      service.reset(withCode, "new password 1"),
+      "RESET_CODE_INVALID",
+    );
 
+    users.getForUndo.mockResolvedValue(ana({ deletedAt: NOW }));
+    users.resetPassword.mockResolvedValue(null);
     await refusedWith(
       service.reset(withCode, "new password 1"),
       "RESET_CODE_INVALID",
@@ -559,7 +570,7 @@ describe("PasswordResetService.reset", () => {
     expect(codes.countAttempt).not.toHaveBeenCalled();
 
     codes.redeemToken.mockResolvedValue(record());
-    users.getById.mockResolvedValue(ana());
+    users.getForUndo.mockResolvedValue(ana());
     await expect(
       service.reset({ token }, "new password 1"),
     ).resolves.toMatchObject({

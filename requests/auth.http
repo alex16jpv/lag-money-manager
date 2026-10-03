@@ -1,8 +1,11 @@
 ### ==========================================================
-### AUTH — registro (devuelve tokens), login, refresh con rotación,
-### logout por dispositivo, logout-all, sesiones activas
-### Corre "register" una vez, luego "login". El resto encadena.
-### Todo registro lleva captcha: en local pasa con
+### AUTH — crear la cuenta con el código del correo (sign-up), login,
+### restaurar una cuenta borrada, refresh con rotación, logout por
+### dispositivo, logout-all, sesiones activas.
+### Corre "signUp", copia el código de Mailpit (docker compose up -d mailpit,
+### EMAIL_PROVIDERS=mailpit, http://localhost:8025) en "signUpConfirm", y
+### luego "login". El resto encadena.
+### Crear cuenta lleva captcha: en local pasa con
 ### TURNSTILE_SECRET=1x0000000000000000000000000000000AA en .env y el
 ### token de prueba de Cloudflare (sin el secreto, 503 CAPTCHA_UNAVAILABLE).
 ### ==========================================================
@@ -10,10 +13,12 @@
 @email = tester@test.com
 @password = SecureP@ss123
 
-### Register (éxito) — timezone y currency opcionales (defaults America/Bogota, COP)
-### Devuelve { accessToken, refreshToken, user, deviceToken } — ya no hace falta login aparte.
-# @name register
-POST {{baseUrl}}/auth/register
+### Crear cuenta — no crea nada todavía: guarda lo escrito 24 h y manda sign-up
+### (código y enlace). timezone y currency opcionales (America/Bogota, COP).
+### 202 { signUpToken, expiresAt, resendAfterSeconds }, IGUAL para un correo que ya
+### tiene cuenta (a ese le llega account-exists, sin código) y en el mismo tiempo (~2 s).
+# @name signUp
+POST {{baseUrl}}/auth/sign-up
 Content-Type: application/json
 
 {
@@ -26,10 +31,36 @@ Content-Type: application/json
   "captcha": "XXXX.DUMMY.TOKEN.XXXX"
 }
 
-### Register con email de una cuenta borrada (soft delete) — REACTIVA la cuenta
-### con todo su historial SOLO con la password que tenía; la respuesta trae
-### user.reactivated: true. Con otra password: 409 EMAIL_TAKEN, como una viva.
-# (mismo request de arriba tras un DELETE /users/:id)
+###
+
+@signUpToken = {{signUp.response.body.signUpToken}}
+
+### Crear la cuenta con el código del correo (sustituye 123456). 201 con la sesión,
+### como un login. Código malo, vencido, ya usado o de un correo con cuenta:
+### 400 SIGN_UP_CODE_INVALID (una sola respuesta).
+POST {{baseUrl}}/auth/sign-up/confirm
+Content-Type: application/json
+
+{ "signUpToken": "{{signUpToken}}", "code": "123456" }
+
+### Reenviar el correo del registro (202; antes de un minuto 429).
+### Registro vencido o reemplazado por uno más nuevo: 409 SIGN_UP_EXPIRED.
+POST {{baseUrl}}/auth/sign-up/resend
+Content-Type: application/json
+
+{ "signUpToken": "{{signUpToken}}", "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
+
+### Register (solo hasta T-239) — crea la cuenta sin confirmar y devuelve tokens.
+### Correo con cuenta (viva o borrada): 409 EMAIL_TAKEN.
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Tester",
+  "email": "old-{{$randomInt 100 999}}@test.com",
+  "password": "{{password}}",
+  "captcha": "XXXX.DUMMY.TOKEN.XXXX"
+}
 
 ### Login (éxito) — captura accessToken, refreshToken y deviceToken
 # @name login
@@ -57,6 +88,21 @@ Content-Type: application/json
   "password": "{{password}}",
   "deviceToken": "{{deviceToken}}"
 }
+
+### Login con la contraseña de una cuenta borrada (tras DELETE /users/:id en users.http):
+### 409 ACCOUNT_DELETED con deletedAccount { deletedOn, keptUntil }; no abre sesión.
+### Contraseña mala: 401, igual que para cualquier correo.
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+### Restaurarla ("Restore account" del paso "Restore your account?"): los mismos datos.
+### 200 con la sesión y manda account-restored. Una cuenta viva simplemente entra.
+POST {{baseUrl}}/auth/login/restore
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
 
 ### Refresh (éxito) — ROTA de verdad: el refresh viejo queda invalidado.
 ### Guarda SIEMPRE el par nuevo.
@@ -237,8 +283,8 @@ Content-Type: application/json
 { "email": "{{email}}", "code": "000000", "newPassword": "{{password}}" }
 
 ### Cambiar la contraseña con el código de Mailpit — sesión como un login; cierra
-### las demás. Si la cuenta nunca confirmó su correo y tiene algo, user.keepOrStartFresh
-### viene lleno (ver users.http). Sustituye 123456 por el código del correo.
+### las demás. Si la cuenta estaba borrada (en sus 30 días), la restaura: restored: true
+### y le llega account-restored. Sustituye 123456 por el código del correo.
 POST {{baseUrl}}/auth/password/reset
 Content-Type: application/json
 
@@ -252,12 +298,13 @@ Content-Type: application/json
 { "token": "pega-aqui-el-token-del-enlace", "newPassword": "{{password}}" }
 
 ### ==========================================================
-### CONFIRMAR EL CORREO (T-209) — con Mailpit (docker compose up -d mailpit,
-### EMAIL_PROVIDERS=mailpit): el código y los enlaces se leen en http://localhost:8025
+### CONFIRMAR EL CORREO de una cuenta de antes (T-209, T-238) — con Mailpit
+### (docker compose up -d mailpit, EMAIL_PROVIDERS=mailpit): el código y los
+### enlaces se leen en http://localhost:8025
 ### ==========================================================
 
-### Register — además de la sesión, manda verify-email (código, enlace y
-### "No fui yo"). Si el envío falla, la cuenta se crea igual sin código vivo.
+### Register (hasta T-239) — además de la sesión, manda verify-email (código y
+### enlace). Si el envío falla, la cuenta se crea igual sin código vivo.
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
 
@@ -287,18 +334,22 @@ Content-Type: application/json
 { "code": "123456" }
 
 ### Confirmar con el enlace (sin sesión): el token es lo que va tras #token= de /verify.
-### Vencido, reemplazado o de otra dirección: 400 LINK_INVALID. Ya confirmado: 200.
+### 200 { message, result }: result "account-ready" si el enlace era de sign-up (crea la
+### cuenta, sin sesión), "email-confirmed" si era de verify-email o de un correo del plazo.
+### Vencido, reemplazado, pasado el plazo o de otra dirección: 400 LINK_INVALID.
 POST {{baseUrl}}/auth/email/verify
 Content-Type: application/json
 
 { "token": "pega-aqui-el-token-del-enlace" }
 
-### "No fui yo" (sin sesión): el token tras #token= de /not-me. BORRA DE VERDAD la
-### cuenta y libera el correo, solo si nunca se confirmó. Si no: 400 LINK_INVALID.
-POST {{baseUrl}}/auth/email/not-me
+### "Restaurar la cuenta" (sin sesión): el token tras #token= de /restore, en el aviso
+### account-deleted. La devuelve aunque ya se hubiera restaurado, cierra todas las
+### sesiones, deja sin servir la contraseña y manda password-reset-after-undo (en sus
+### palabras de restaurar). 200 { email, codeSent }; usado o pasados 7 días: 400 LINK_INVALID.
+POST {{baseUrl}}/auth/email/restore
 Content-Type: application/json
 
-{ "token": "pega-aqui-el-token-de-no-fui-yo" }
+{ "token": "pega-aqui-el-token-de-restaurar" }
 
 ### "Deshacer el cambio" (sin sesión): el token tras #token= de /undo, en el aviso
 ### email-change-requested que llega a la dirección vieja. Devuelve la cuenta a esa

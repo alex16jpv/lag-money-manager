@@ -15,6 +15,7 @@
  */
 import "dotenv/config";
 
+import bcryptjs from "bcryptjs";
 import { DateTime } from "luxon";
 import mongoose from "mongoose";
 
@@ -270,16 +271,20 @@ export async function seed(): Promise<Record<string, unknown>> {
   if (sweptUsers > 0)
     console.log(`Swept ${sweptUsers} users the browser suite left behind`);
 
-  // The DTO types do not declare `id` because no API client may set one; the entities accept it.
-  await authService.register({
+  // Confirmed, like every account made by sign-up: an unconfirmed one would meet the deadline of decision 17.
+  await authService.createAccount({
     id: SEED_USER.id,
     name: SEED_USER.name,
     email: SEED_USER.email,
-    password: SEED_USER.password,
+    passwordHash: await bcryptjs.hash(
+      SEED_USER.password,
+      ENVIRONMENT.BCRYPT_SALT_ROUNDS,
+    ),
     timezone: SEED_USER.timezone,
     currency: SEED_USER.currency,
     locale: SEED_USER.locale,
-  } as never);
+    emailVerifiedAt: new Date(),
+  });
 
   // Rebuilt with fixed ids — a changing id cannot anchor a fixture — keeping each seedKey.
   await CategoryModel.deleteMany({ userId: SEED_USER.id });

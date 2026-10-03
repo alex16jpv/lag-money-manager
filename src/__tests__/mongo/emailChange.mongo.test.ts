@@ -255,7 +255,6 @@ describe("Changing the email against mongod [T-221]", () => {
       tokenVersion: 1,
     });
     expect(stored?.emailVerifiedAt).toBeInstanceOf(Date);
-    expect(stored?.emailChangedAt).toBeInstanceOf(Date);
 
     expect(
       (
@@ -316,7 +315,7 @@ describe("Changing the email against mongod [T-221]", () => {
     expect(moved.status).toBe(200);
     expect(moved.body.user.emailVerified).toBe(true);
     const stored = await UserModel.findById(dani.userId).lean();
-    expect(stored?.firstVerifiedAt).toBeInstanceOf(Date);
+    expect(stored?.emailVerifiedAt).toBeInstanceOf(Date);
     expect(sentTo("dani@change.test")).toBe(1);
   });
 
@@ -386,9 +385,14 @@ describe("Changing the email against mongod [T-221]", () => {
     });
     expect((await refresh(gina.refreshToken)).status).toBe(200);
 
+    await minutePasses();
     const asked = await askToMove(gina, "taken@change.test");
-    expect(asked.status).toBe(409);
-    expect(asked.body.code).toBe("EMAIL_TAKEN");
+    expect(asked.status).toBe(202);
+    expect(asked.body.emailChange.email).toBe("taken@change.test");
+    expect(
+      [...mockSent].reverse().find((sent) => sent.to === "taken@change.test")
+        ?.template,
+    ).toBe("email-change-taken");
   });
 
   it("saves nothing when the email to the new address cannot go out", async () => {

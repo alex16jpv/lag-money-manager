@@ -5,6 +5,7 @@ import { IRefreshSessionRepository } from "../../domain/repositories/refreshSess
 import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT, INVITATION_STATUSES } from "../../shared/constants";
+import { lastDayKeyOf } from "../../shared/dayKey";
 import { ApiError } from "../../shared/errors";
 import {
   EmailChangeView,
@@ -13,7 +14,13 @@ import {
   UpdateUserDTO,
   UserResponseDTO,
 } from "../dtos/UserDTO";
+import {
+  newAccountLinkToken,
+  RESTORE_LINK_LIFETIME_MS,
+  tokenDigest,
+} from "./authCodes";
 import { assertCurrentPassword } from "./currentPassword";
+import { keptUntilFrom } from "./deletedAccount";
 import { EmailChangeService } from "./EmailChangeService";
 import { EmailService } from "./EmailService";
 import { EmailVerificationService } from "./EmailVerificationService";
@@ -28,6 +35,7 @@ export class UserService {
     private emailChange: Pick<EmailChangeService, "view" | "cancel">,
     private sessions: Pick<IRefreshSessionRepository, "revokeAllForUser">,
     private email: Pick<EmailService, "sendNotice">,
+    private now: () => Date = () => new Date(),
   ) {}
 
   async getUserById(
@@ -114,12 +122,13 @@ export class UserService {
     return toUserResponse(updated);
   }
 
+  // Kept 30 days and then erased by the nightly pass (decision 19); keptUntil is its last day where the account lives.
   async deleteUser(
     id: string,
     userId: string,
     currentPassword: string,
     userAgent?: string,
-  ): Promise<void> {
+  ): Promise<{ keptUntil: string }> {
     if (id !== userId) {
       throw new ApiError("NotFound", "User not found");
     }
@@ -128,8 +137,22 @@ export class UserService {
       throw new ApiError("NotFound", "User not found");
     }
     await assertCurrentPassword(existing, currentPassword);
-    await this.repo.delete(id);
-    const now = new Date();
+    const now = this.now();
+    const keptUntil = keptUntilFrom(now, existing.timezone);
+    const restoreToken = newAccountLinkToken(id);
+    const deleted = await this.repo.markDeleted(
+      id,
+      keptUntil,
+      {
+        tokenHash: tokenDigest(restoreToken),
+        expiresAt: new Date(now.getTime() + RESTORE_LINK_LIFETIME_MS),
+      },
+      now,
+    );
+    if (!deleted) {
+      throw new ApiError("NotFound", "User not found");
+    }
+    await this.sessions.revokeAllForUser(id);
     await this.invitationRepo.withdrawAll(
       {
         userId: id,
@@ -138,9 +161,13 @@ export class UserService {
       now,
     );
     await this.invitationRepo.leaveAll(id, now);
+    const lastDay = lastDayKeyOf(keptUntil, existing.timezone);
     await sendSecurityNotice(this.email, existing, "account-deleted", {
       at: now,
       userAgent,
+      keptUntil: lastDay,
+      restoreToken,
     });
+    return { keptUntil: lastDay };
   }
 }

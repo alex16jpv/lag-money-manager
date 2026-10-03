@@ -1,11 +1,11 @@
 import bcryptjs from "bcryptjs";
 
 import {
+  accountLinkOwner,
   codeDigest,
   emailChangeKey,
-  newUndoToken,
+  newAccountLinkToken,
   tokenDigest,
-  undoTokenAccount,
 } from "../../app/services/authCodes";
 import { EmailChangeService } from "../../app/services/EmailChangeService";
 import { EmailOutcome } from "../../app/services/EmailService";
@@ -61,7 +61,6 @@ const moved = (): User =>
   ana({
     email: NEW_EMAIL,
     emailVerifiedAt: NOW,
-    emailChangedAt: NOW,
     tokenVersion: 1,
   });
 
@@ -93,7 +92,7 @@ interface Harness {
   users: Record<
     | "getById"
     | "getByIdWithPassword"
-    | "emailInUse"
+    | "holderOf"
     | "startEmailChange"
     | "renewEmailChange"
     | "dropEmailChange"
@@ -115,7 +114,7 @@ const build = (): Harness => {
   const users = {
     getById: jest.fn().mockResolvedValue(ana({ emailChange: pendingChange() })),
     getByIdWithPassword: jest.fn().mockResolvedValue(ana()),
-    emailInUse: jest.fn().mockResolvedValue(false),
+    holderOf: jest.fn().mockResolvedValue(null),
     startEmailChange: jest.fn(async (_id: string, change: PendingEmailChange) =>
       ana({ emailChange: change }),
     ),
@@ -303,17 +302,51 @@ describe("EmailChangeService [T-221]", () => {
       expect(email.sendCode).not.toHaveBeenCalled();
     });
 
-    it("says EMAIL_TAKEN for an address another account holds, and mails nobody", async () => {
-      const { service, users, email } = build();
-      users.emailInUse.mockResolvedValue(true);
+    it("waits for an address another account holds as for any other, telling that inbox instead of sending a code [T-238]", async () => {
+      const { service, users, email, codes } = build();
+      users.holderOf.mockResolvedValue({ state: "live", user: ana() });
 
-      await rejects(
-        service.request(USER_ID, NEW_EMAIL, PASSWORD, REQUESTER),
-        "EMAIL_TAKEN",
-        409,
+      const result = await service.request(
+        USER_ID,
+        NEW_EMAIL,
+        PASSWORD,
+        REQUESTER,
       );
-      expect(users.emailInUse).toHaveBeenCalledWith(NEW_EMAIL, NOW, USER_ID);
-      expect(email.sendCode).not.toHaveBeenCalled();
+
+      expect(users.holderOf).toHaveBeenCalledWith(NEW_EMAIL, NOW, USER_ID);
+      expect(email.sendCode).toHaveBeenCalledTimes(1);
+      expect(email.sendCode.mock.calls[0][0]).toMatchObject({
+        template: "email-change-taken",
+        data: {},
+        recipient: { email: NEW_EMAIL },
+        requester: REQUESTER,
+      });
+      expect(codes.issue).toHaveBeenCalledWith(
+        "email-change",
+        NEW_KEY,
+        expect.objectContaining({ codeHash: expect.any(String) }),
+        false,
+        NOW,
+      );
+      expect(email.sendNotice).toHaveBeenCalledWith(
+        expect.objectContaining({ template: "email-change-requested" }),
+      );
+      expect(result).toEqual({
+        status: "sent",
+        emailChange: {
+          email: NEW_EMAIL,
+          expiresAt: new Date(NOW.getTime() + DAY_MS),
+          resendAvailableAt: new Date(NOW.getTime() + 60_000),
+        },
+      });
+    });
+
+    it("names the account that moves, by its current address, in the code email [T-236]", async () => {
+      const { service, email } = build();
+
+      await service.request(USER_ID, NEW_EMAIL, PASSWORD, REQUESTER);
+
+      expect(email.sendCode.mock.calls[0][0].data.currentEmail).toBe(EMAIL);
     });
 
     it("answers 404 for an account that is gone", async () => {
@@ -383,7 +416,7 @@ describe("EmailChangeService [T-221]", () => {
         },
       });
       const { undoToken } = notice.data;
-      expect(undoTokenAccount(undoToken)).toBe(USER_ID);
+      expect(accountLinkOwner(undoToken)).toBe(USER_ID);
       expect(users.addUndoLink).toHaveBeenCalledWith(
         USER_ID,
         {
@@ -507,14 +540,14 @@ describe("EmailChangeService [T-221]", () => {
   });
 
   describe("undo [T-211]", () => {
-    const token = newUndoToken(USER_ID);
+    const token = newAccountLinkToken(USER_ID);
     const link = {
       email: EMAIL,
       tokenHash: tokenDigest(token),
       expiresAt: new Date(NOW.getTime() + WEEK_MS - 1000),
     };
     const movedWithLink = (): User =>
-      ana({ email: NEW_EMAIL, emailChangedAt: NOW, undoLinks: [link] });
+      ana({ email: NEW_EMAIL, undoLinks: [link] });
 
     it("puts the account back at the address the link reached and mails it a code to choose a password", async () => {
       const { service, users, sessions, codes, email, invitations } = build();
@@ -574,17 +607,21 @@ describe("EmailChangeService [T-221]", () => {
       const { service, users } = build();
       users.getForUndo.mockResolvedValue(movedWithLink());
 
-      await rejects(service.undo(newUndoToken(USER_ID)), "LINK_INVALID", 400);
+      await rejects(
+        service.undo(newAccountLinkToken(USER_ID)),
+        "LINK_INVALID",
+        400,
+      );
       await rejects(service.undo("x".repeat(64)), "LINK_INVALID");
       expect(users.undoEmailChange).not.toHaveBeenCalled();
     });
 
     it("names its account in a token of 64 characters, and reads nothing else as one", () => {
       expect(token).toMatch(/^[A-Za-z0-9_-]{64}$/);
-      expect(undoTokenAccount(token)).toBe(USER_ID);
-      expect(newUndoToken(USER_ID)).not.toBe(token);
-      expect(undoTokenAccount(token.slice(0, 63))).toBeNull();
-      expect(undoTokenAccount(`${token.slice(0, 63)}!`)).toBeNull();
+      expect(accountLinkOwner(token)).toBe(USER_ID);
+      expect(newAccountLinkToken(USER_ID)).not.toBe(token);
+      expect(accountLinkOwner(token.slice(0, 63))).toBeNull();
+      expect(accountLinkOwner(`${token.slice(0, 63)}!`)).toBeNull();
     });
 
     it("says LINK_INVALID once the link's 7 days passed", async () => {

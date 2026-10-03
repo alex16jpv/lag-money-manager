@@ -335,7 +335,7 @@ describe("EmailService", () => {
       const svc = service();
       await svc.sendCode({
         template: "verify-email",
-        data: { ...CODE, notMeToken: "q7Xk2mVb9RtL4wPzNM" },
+        data: CODE,
         recipient: RECIPIENT,
         requester: REQUESTER,
       });
@@ -392,7 +392,7 @@ describe("EmailService", () => {
     const verify = (svc: EmailService, email: string): Promise<EmailOutcome> =>
       svc.sendCode({
         template: "email-change-confirm",
-        data: CODE,
+        data: { ...CODE, currentEmail: RECIPIENT.email },
         recipient: { ...RECIPIENT, email },
         requester: { ...REQUESTER, recognizedDevice: "device-1" },
       });

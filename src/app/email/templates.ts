@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { z } from "zod";
 
 import { EmailBudget } from "../../shared/emailBudgets";
@@ -21,18 +22,39 @@ interface NoticeFacts {
   userAgent: string | undefined;
 }
 
+// A day is "YYYY-MM-DD" in the account's time zone, whole: "kept until" means to the end of it.
+type Day = string;
+
+export type AccountExists =
+  | { state: "live" }
+  | { state: "deleted"; deletedOn: Day; keptUntil: Day }
+  | { state: "held"; freeOn: Day };
+
 export interface EmailTemplateData {
-  "verify-email": CodeLink & { notMeToken?: string };
-  "password-reset": CodeLink;
-  "password-reset-after-undo": CodeLink;
-  "email-change-confirm": CodeLink;
+  "sign-up": CodeLink;
+  "account-exists": AccountExists;
+  "verify-email": CodeLink;
+  "confirm-deadline": { token: string; deadline: Day };
+  "confirm-deadline-reminder": {
+    token: string;
+    deadline: Day;
+    daysLeft: number;
+  };
+  "password-reset": CodeLink & { deleted?: { deletedOn: Day; keptUntil: Day } };
+  "password-reset-after-undo": CodeLink & { restored?: boolean };
+  "email-change-confirm": CodeLink & { currentEmail: string };
+  "email-change-taken": Record<string, never>;
   "password-changed": NoticeFacts;
   "email-change-requested": NoticeFacts & {
     newEmail: string;
     undoToken: string;
   };
   "new-sign-in": NoticeFacts;
-  "account-deleted": NoticeFacts;
+  "account-deleted": NoticeFacts & { keptUntil: Day; restoreToken: string };
+  "account-restored": NoticeFacts & {
+    deletedOn: Day;
+    by: "sign-in" | "reset";
+  };
   "passkey-added": NoticeFacts & { undoToken: string };
   "two-factor-on": NoticeFacts & { undoToken: string };
   "passkey-removed": NoticeFacts;
@@ -46,7 +68,8 @@ export interface EmailTemplateData {
 export type EmailTemplate = keyof EmailTemplateData;
 
 interface TemplateMeta {
-  kind: "code" | "notice";
+  // code and link go out on request, with the requester's brakes; a notice tells what already happened.
+  kind: "code" | "link" | "notice";
   budget: EmailBudget;
   purpose: string;
   addressDaily: boolean;
@@ -54,12 +77,40 @@ interface TemplateMeta {
 }
 
 export const EMAIL_TEMPLATE_META = {
+  "sign-up": {
+    kind: "code",
+    budget: "security",
+    purpose: "sign-up",
+    addressDaily: true,
+    perUser: false,
+  },
+  "account-exists": {
+    kind: "link",
+    budget: "security",
+    purpose: "sign-up",
+    addressDaily: true,
+    perUser: false,
+  },
   "verify-email": {
     kind: "code",
     budget: "security",
     purpose: "verify",
     addressDaily: true,
     perUser: true,
+  },
+  "confirm-deadline": {
+    kind: "link",
+    budget: "security",
+    purpose: "confirm-deadline",
+    addressDaily: true,
+    perUser: false,
+  },
+  "confirm-deadline-reminder": {
+    kind: "link",
+    budget: "security",
+    purpose: "confirm-deadline",
+    addressDaily: true,
+    perUser: false,
   },
   "password-reset": {
     kind: "code",
@@ -82,10 +133,18 @@ export const EMAIL_TEMPLATE_META = {
     addressDaily: true,
     perUser: true,
   },
+  "email-change-taken": {
+    kind: "link",
+    budget: "security",
+    purpose: "email-change",
+    addressDaily: true,
+    perUser: true,
+  },
   "password-changed": notice("password-changed"),
   "email-change-requested": notice("email-change-requested"),
   "new-sign-in": notice("new-sign-in"),
   "account-deleted": notice("account-deleted"),
+  "account-restored": notice("account-restored"),
   "passkey-added": notice("passkey-added"),
   "two-factor-on": notice("two-factor-on"),
   "passkey-removed": notice("passkey-removed"),
@@ -113,17 +172,20 @@ function notice<P extends string>(
 
 type Meta = typeof EMAIL_TEMPLATE_META;
 
-export type CodeTemplate = {
-  [K in EmailTemplate]: Meta[K]["kind"] extends "code" ? K : never;
+export type NoticeTemplate = {
+  [K in EmailTemplate]: Meta[K]["kind"] extends "notice" ? K : never;
 }[EmailTemplate];
 
-export type NoticeTemplate = Exclude<EmailTemplate, CodeTemplate>;
+// Everything sent on someone's request: through sendCode, with that requester's brakes.
+export type CodeTemplate = Exclude<EmailTemplate, NoticeTemplate>;
 
 export interface RenderContext {
   locale: Locale;
   timezone: string;
   appUrl: string;
   contact: string;
+  // When it is sent: a date in this year is written without its year.
+  now: Date;
 }
 
 export interface RenderedEmail {
@@ -149,6 +211,9 @@ const SHARED = {
     notYou: "Not you?",
     reset: "Reset password",
     undo: "Undo the change",
+    restore: "Restore account",
+    signIn: "Sign in",
+    confirmEmail: "Confirm email",
     resetBox: "Reset your password now. It signs out every device.",
     undoFactorBox:
       "Undo it: we remove every passkey, authenticator app and recovery code added since then, sign out every device, and you choose a new password. This link works for 7 days.",
@@ -159,21 +224,24 @@ const SHARED = {
     fallback: "Si el botón no funciona, abre este enlace:",
     codeNote:
       "Escribe este código solo en Ledger Flow. Nadie de Ledger Flow te lo va a pedir.",
-    code24h: "Sirve 24 horas. Si pides otro, este deja de servir.",
-    code30m: "Sirve 30 minutos. Si pides otro, este deja de servir.",
+    code24h: "Vale por 24 horas. Si pides otro, este deja de valer.",
+    code30m: "Vale por 30 minutos. Si pides otro, este deja de valer.",
     when: "Cuándo",
     device: "Dispositivo",
-    why: (reason: string) => `Te llega porque ${reason}.`,
+    why: (reason: string) => `Recibes este correo porque ${reason}.`,
     security:
       "Es un aviso de seguridad de tu cuenta de Ledger Flow. Estos avisos no se pueden desactivar: así te contamos lo que pasa con tu cuenta.",
     contact: "¿Dudas?",
     notYou: "¿No fuiste tú?",
     reset: "Restablecer contraseña",
     undo: "Deshacer el cambio",
+    restore: "Restaurar la cuenta",
+    signIn: "Entrar",
+    confirmEmail: "Confirmar correo",
     resetBox:
       "Restablece tu contraseña ya. Se cierra la sesión en todos los dispositivos.",
     undoFactorBox:
-      "Deshazlo: quitamos las llaves de acceso, la app de autenticación y los códigos de recuperación añadidos desde entonces, se cierra la sesión en todos los dispositivos y eliges una contraseña nueva. El enlace sirve 7 días.",
+      "Deshazlo: quitamos las llaves de acceso, la app de autenticación y los códigos de recuperación añadidos desde entonces, se cierra la sesión en todos los dispositivos y eliges una contraseña nueva. El enlace vale por 7 días.",
     undoPreview: "Si no fuiste tú, deshazlo desde este correo.",
     resetPreview: "Si no fuiste tú, restablece tu contraseña ya.",
   },
@@ -181,159 +249,490 @@ const SHARED = {
 
 type Shared = (typeof SHARED)[Locale];
 
-interface CodeWords {
-  subject: string;
-  preview: string;
-  title: string;
-  lead: string;
-  button: string;
-  boxHeading: string;
-  boxBody: string;
-  boxAction?: string;
-  reason: string;
+interface Box {
+  heading: string;
+  body: string;
+  action?: EmailButton;
 }
 
-interface NoticeWords {
+interface Words {
   subject: string;
   preview: string;
   title: string;
   lead: Inline[];
-  extra?: string;
-  box: { heading?: string; body: string; action: string };
+  line?: string;
+  box?: Box;
 }
 
-const CODE_WORDS: Record<CodeTemplate, Record<Locale, CodeWords>> = {
-  "verify-email": {
-    en: {
-      subject: "Confirm your email for Ledger Flow",
-      preview:
-        "Type the code in the app or use the button. It works for 24 hours.",
-      title: "Confirm your email",
-      lead: "Type this code in Ledger Flow to confirm this address is yours.",
-      button: "Confirm email",
-      boxHeading: "Didn’t sign up?",
-      boxBody:
-        "Someone typed your address when signing up. Use “It wasn’t me” to delete that account and free your address.",
-      boxAction: "It wasn’t me",
-      reason: "someone signed up for Ledger Flow with this address",
-    },
-    es: {
-      subject: "Confirma tu correo en Ledger Flow",
-      preview: "Escribe el código en la app o usa el botón. Sirve 24 horas.",
-      title: "Confirma tu correo",
-      lead: "Escribe este código en Ledger Flow para confirmar que esta dirección es tuya.",
-      button: "Confirmar correo",
-      boxHeading: "¿No te registraste?",
-      boxBody:
-        "Alguien escribió tu dirección al registrarse. Usa «No fui yo» para eliminar esa cuenta y liberar tu correo.",
-      boxAction: "No fui yo",
-      reason: "alguien se registró en Ledger Flow con esta dirección",
-    },
-  },
-  "password-reset": {
-    en: {
-      subject: "Reset your Ledger Flow password",
-      preview:
-        "The code works for 30 minutes. If you didn’t ask for it, ignore this email.",
-      title: "Reset your password",
-      lead: "Type this code in Ledger Flow to choose a new password. Your other devices will be signed out.",
-      button: "Choose a new password",
-      boxHeading: "Didn’t ask for this?",
-      boxBody:
-        "Ignore this email. Your password stays the same, and the code and the link stop working in 30 minutes.",
-      reason:
-        "someone asked to reset the password of the Ledger Flow account with this address",
-    },
-    es: {
-      subject: "Restablece tu contraseña de Ledger Flow",
-      preview:
-        "El código sirve 30 minutos. Si no lo pediste, ignora este correo.",
-      title: "Restablece tu contraseña",
-      lead: "Escribe este código en Ledger Flow para elegir una contraseña nueva. Se cerrará la sesión en tus otros dispositivos.",
-      button: "Elegir una contraseña nueva",
-      boxHeading: "¿No lo pediste?",
-      boxBody:
-        "Ignora este correo. Tu contraseña sigue igual, y el código y el enlace dejan de servir en 30 minutos.",
-      reason:
-        "alguien pidió restablecer la contraseña de la cuenta de Ledger Flow con esta dirección",
-    },
-  },
-  "password-reset-after-undo": {
-    en: {
-      subject: "Choose a new password for Ledger Flow",
-      preview:
-        "You undid a change to your account. The code works for 30 minutes.",
-      title: "Choose a new password",
-      lead: "You undid a change to your account from this address, and every device was signed out. Type this code in Ledger Flow to choose a new password: the old one no longer works.",
-      button: "Choose a new password",
-      boxHeading: "Code expired?",
-      boxBody:
-        "Ask for another one with “Forgot your password?” on the Sign in screen.",
-      reason:
-        "you undid a change to your Ledger Flow account from this address",
-    },
-    es: {
-      subject: "Elige una contraseña nueva para Ledger Flow",
-      preview: "Deshiciste un cambio en tu cuenta. El código sirve 30 minutos.",
-      title: "Elige una contraseña nueva",
-      lead: "Deshiciste un cambio en tu cuenta desde esta dirección y se cerró la sesión en todos los dispositivos. Escribe este código en Ledger Flow para elegir una contraseña nueva: la anterior ya no sirve.",
-      button: "Elegir una contraseña nueva",
-      boxHeading: "¿Se venció el código?",
-      boxBody:
-        "Pide otro con «¿Olvidaste tu contraseña?» en la pantalla de Entrar.",
-      reason:
-        "deshiciste un cambio en tu cuenta de Ledger Flow desde esta dirección",
-    },
-  },
-  "email-change-confirm": {
-    en: {
-      subject: "Confirm your new email for Ledger Flow",
-      preview:
-        "Your account moves to this address once you confirm it. It works for 24 hours.",
-      title: "Confirm your new email",
-      lead: "Type this code in Ledger Flow to move your account to this address. Until you do, it keeps its current email. Confirming signs out your other devices.",
-      button: "Confirm new email",
-      boxHeading: "Didn’t ask for this?",
-      boxBody:
-        "Ignore this email. Nothing changes, and this address isn’t added to any account.",
-      reason: "someone asked to use this address for a Ledger Flow account",
-    },
-    es: {
-      subject: "Confirma tu correo nuevo de Ledger Flow",
-      preview:
-        "Tu cuenta pasa a esta dirección cuando la confirmes. Sirve 24 horas.",
-      title: "Confirma tu correo nuevo",
-      lead: "Escribe este código en Ledger Flow para pasar tu cuenta a esta dirección. Mientras no lo hagas, sigue con su correo actual. Al confirmar se cierra la sesión en tus otros dispositivos.",
-      button: "Confirmar correo nuevo",
-      boxHeading: "¿No lo pediste?",
-      boxBody:
-        "Ignora este correo. No cambia nada y esta dirección no se añade a ninguna cuenta.",
-      reason: "alguien pidió usar esta dirección en una cuenta de Ledger Flow",
-    },
-  },
-};
+interface CodeWords extends Words {
+  button: string;
+  reason: string;
+}
 
-const CODE_LINKS: Record<
-  CodeTemplate,
-  { path: string; lifetime: "code24h" | "code30m"; boxPath?: string }
+interface LinkWords extends Words {
+  button?: EmailButton;
+  reason: string;
+}
+
+interface Tools {
+  shared: Shared;
+  context: RenderContext;
+  link: (path: string, token?: string) => string;
+  day: (day: Day) => string;
+}
+
+type Builder<W, T extends EmailTemplate> = (
+  data: EmailTemplateData[T],
+  tools: Tools,
+) => W;
+
+type ByLocale<W, T extends EmailTemplate> = Record<Locale, Builder<W, T>>;
+
+const CODE_ROUTES: Record<
+  Exclude<CodeTemplate, LinkTemplate>,
+  { path: string; lifetime: "code24h" | "code30m" }
 > = {
-  "verify-email": { path: "verify", lifetime: "code24h", boxPath: "not-me" },
+  "sign-up": { path: "verify", lifetime: "code24h" },
+  "verify-email": { path: "verify", lifetime: "code24h" },
   "password-reset": { path: "reset", lifetime: "code30m" },
   "password-reset-after-undo": { path: "reset", lifetime: "code30m" },
   "email-change-confirm": { path: "confirm-email", lifetime: "code24h" },
 };
 
-type NoticeWordBuilder<T extends NoticeTemplate> = (
-  data: EmailTemplateData[T],
-  shared: Shared,
-  context: RenderContext,
-) => NoticeWords;
+type LinkTemplate = {
+  [K in EmailTemplate]: Meta[K]["kind"] extends "link" ? K : never;
+}[EmailTemplate];
 
-const NOTICE_WORDS: {
-  [T in NoticeTemplate]: Record<Locale, NoticeWordBuilder<T>>;
-} = {
+type OnlyCode = Exclude<CodeTemplate, LinkTemplate>;
+
+const CODE_WORDS: { [T in OnlyCode]: ByLocale<CodeWords, T> } = {
+  "sign-up": {
+    en: () => ({
+      subject: "Finish creating your Ledger Flow account",
+      preview: "Type the code in the app or use the button.",
+      title: "Welcome to Ledger Flow",
+      lead: [
+        "Type this code in the app to confirm this address and finish creating your account.",
+      ],
+      line: "Didn’t sign up? Ignore this email: without the code, no account is created.",
+      button: "Confirm email",
+      reason:
+        "someone started creating a Ledger Flow account with this address",
+    }),
+    es: () => ({
+      subject: "Termina de crear tu cuenta de Ledger Flow",
+      preview: "Escribe el código en la app o usa el botón.",
+      title: "Te damos la bienvenida a Ledger Flow",
+      lead: [
+        "Escribe este código en la app para confirmar esta dirección y terminar de crear tu cuenta.",
+      ],
+      line: "¿No te registraste? Ignora este correo: sin el código no se crea ninguna cuenta.",
+      button: "Confirmar correo",
+      reason:
+        "alguien empezó a crear una cuenta de Ledger Flow con esta dirección",
+    }),
+  },
+  "verify-email": {
+    en: () => ({
+      subject: "Confirm your email for Ledger Flow",
+      preview: "Type the code in the app or use the button.",
+      title: "Confirm your email",
+      lead: ["Type this code in Ledger Flow to confirm this address is yours."],
+      button: "Confirm email",
+      reason: "someone asked to confirm this address for a Ledger Flow account",
+    }),
+    es: () => ({
+      subject: "Confirma tu correo en Ledger Flow",
+      preview: "Escribe el código en la app o usa el botón.",
+      title: "Confirma tu correo",
+      lead: [
+        "Escribe este código en Ledger Flow para confirmar que esta dirección es tuya.",
+      ],
+      button: "Confirmar correo",
+      reason:
+        "alguien pidió confirmar esta dirección en una cuenta de Ledger Flow",
+    }),
+  },
+  "password-reset": {
+    en: (data, { day }) => ({
+      subject: "Reset your Ledger Flow password",
+      preview: "If you didn’t ask for it, ignore this email.",
+      title: "Reset your password",
+      lead: [
+        data.deleted
+          ? `Type this code in Ledger Flow to choose a new password. This account was deleted on ${day(data.deleted.deletedOn)}: choosing one restores it.`
+          : "Type this code in Ledger Flow to choose a new password. Your other devices will be signed out.",
+      ],
+      button: "Choose a new password",
+      box: {
+        heading: "Didn’t ask for this?",
+        body: data.deleted
+          ? `Ignore this email: nothing changes, and the account is erased on ${day(data.deleted.keptUntil)} as planned.`
+          : "Ignore this email: your password stays the same.",
+      },
+      reason:
+        "someone asked to reset the password of the Ledger Flow account with this address",
+    }),
+    es: (data, { day }) => ({
+      subject: "Restablece tu contraseña de Ledger Flow",
+      preview: "Si no lo pediste, ignora este correo.",
+      title: "Restablece tu contraseña",
+      lead: [
+        data.deleted
+          ? `Escribe este código en Ledger Flow para elegir una contraseña nueva. Esta cuenta se eliminó el ${day(data.deleted.deletedOn)}: al elegirla, la restauras.`
+          : "Escribe este código en Ledger Flow para elegir una contraseña nueva. Se cerrará la sesión en tus otros dispositivos.",
+      ],
+      button: "Elegir una contraseña nueva",
+      box: {
+        heading: "¿No lo pediste?",
+        body: data.deleted
+          ? `Ignora este correo: no cambia nada y la cuenta se borra el ${day(data.deleted.keptUntil)}, como estaba previsto.`
+          : "Ignora este correo: tu contraseña sigue igual.",
+      },
+      reason:
+        "alguien pidió restablecer la contraseña de la cuenta de Ledger Flow con esta dirección",
+    }),
+  },
+  "password-reset-after-undo": {
+    en: (data) => ({
+      subject: "Choose a new password for Ledger Flow",
+      preview: data.restored
+        ? "You restored your account."
+        : "You undid a change to your account.",
+      title: "Choose a new password",
+      lead: [
+        data.restored
+          ? "You restored your account from this address, and every device was signed out. Type this code in Ledger Flow to choose a new password: the old one no longer works."
+          : "You undid a change to your account from this address, and every device was signed out. Type this code in Ledger Flow to choose a new password: the old one no longer works.",
+      ],
+      button: "Choose a new password",
+      box: {
+        heading: "Code expired?",
+        body: "Ask for another one with “Forgot your password?” on the Sign in screen.",
+      },
+      reason: data.restored
+        ? "you restored your Ledger Flow account from this address"
+        : "you undid a change to your Ledger Flow account from this address",
+    }),
+    es: (data) => ({
+      subject: "Elige una contraseña nueva para Ledger Flow",
+      preview: data.restored
+        ? "Restauraste tu cuenta."
+        : "Deshiciste un cambio en tu cuenta.",
+      title: "Elige una contraseña nueva",
+      lead: [
+        data.restored
+          ? "Restauraste tu cuenta desde esta dirección y se cerró la sesión en todos los dispositivos. Escribe este código en Ledger Flow para elegir una contraseña nueva: la anterior ya no sirve."
+          : "Deshiciste un cambio en tu cuenta desde esta dirección y se cerró la sesión en todos los dispositivos. Escribe este código en Ledger Flow para elegir una contraseña nueva: la anterior ya no sirve.",
+      ],
+      button: "Elegir una contraseña nueva",
+      box: {
+        heading: "¿Se venció el código?",
+        body: "Pide otro con «¿Olvidaste tu contraseña?» en la pantalla de Entrar.",
+      },
+      reason: data.restored
+        ? "restauraste tu cuenta de Ledger Flow desde esta dirección"
+        : "deshiciste un cambio en tu cuenta de Ledger Flow desde esta dirección",
+    }),
+  },
+  "email-change-confirm": {
+    en: (data) => ({
+      subject: "Confirm your new email for Ledger Flow",
+      preview: "Your account moves to this address once you confirm it.",
+      title: "Confirm your new email",
+      lead: [
+        "Type this code in Ledger Flow to move the account ",
+        { strong: maskEmail(data.currentEmail) },
+        " to this address. Until you do, it keeps that email. Confirming signs out your other devices.",
+      ],
+      button: "Confirm new email",
+      box: {
+        heading: "Didn’t ask for this, or isn’t that your account?",
+        body: "Don’t use the code or the button: ignore this email. Nothing changes, and this address isn’t added to any account.",
+      },
+      reason: "someone asked to use this address for a Ledger Flow account",
+    }),
+    es: (data) => ({
+      subject: "Confirma tu nuevo correo en Ledger Flow",
+      preview: "Tu cuenta pasa a esta dirección cuando la confirmes.",
+      title: "Confirma tu nuevo correo",
+      lead: [
+        "Escribe este código en Ledger Flow para pasar la cuenta ",
+        { strong: maskEmail(data.currentEmail) },
+        " a esta dirección. Mientras no lo hagas, sigue con ese correo. Al confirmar se cierra la sesión en tus otros dispositivos.",
+      ],
+      button: "Confirmar nuevo correo",
+      box: {
+        heading: "¿No lo pediste, o esa no es tu cuenta?",
+        body: "No uses el código ni el botón: ignora este correo. No cambia nada y esta dirección no se añade a ninguna cuenta.",
+      },
+      reason: "alguien pidió usar esta dirección en una cuenta de Ledger Flow",
+    }),
+  },
+};
+
+const ACCOUNT_EXISTS_LIVE = {
+  en: {
+    subject: "You already have a Ledger Flow account",
+    reason: "someone tried to sign up for Ledger Flow with this address",
+    boxHeading: "Forgot your password?",
+  },
+  es: {
+    subject: "Ya tienes una cuenta de Ledger Flow",
+    reason: "alguien intentó registrarse en Ledger Flow con esta dirección",
+    boxHeading: "¿Olvidaste tu contraseña?",
+  },
+} as const;
+
+const DEADLINE = {
+  en: {
+    preview: "It takes one tap, and nothing in your account changes.",
+    line: (date: string) =>
+      `The button works until ${date}. After that, signing in first asks for a code sent to this address.`,
+    box: {
+      heading: "Don’t have a Ledger Flow account?",
+      body: "Don’t use the button: ignore this email. Nothing in anybody’s account changes.",
+    },
+    reason: "a Ledger Flow account uses this address and hasn’t confirmed it",
+  },
+  es: {
+    preview: "Es un toque, y en tu cuenta no cambia nada.",
+    line: (date: string) =>
+      `El botón vale hasta el ${date}. Después, para entrar te pediremos primero un código enviado a esta dirección.`,
+    box: {
+      heading: "¿No tienes cuenta en Ledger Flow?",
+      body: "No uses el botón: ignora este correo. No cambia nada en ninguna cuenta.",
+    },
+    reason:
+      "una cuenta de Ledger Flow usa esta dirección y todavía no la confirma",
+  },
+} as const;
+
+const daysLeft = (locale: Locale, days: number): string =>
+  locale === "en"
+    ? `${days} ${days === 1 ? "day" : "days"} left`
+    : `${days === 1 ? "Queda" : "Quedan"} ${days} ${days === 1 ? "día" : "días"}`;
+
+const LINK_WORDS: { [T in LinkTemplate]: ByLocale<LinkWords, T> } = {
+  "account-exists": {
+    en: (data, { shared, link, day }) => {
+      const base = ACCOUNT_EXISTS_LIVE.en;
+      if (data.state === "held") {
+        return {
+          subject: "This address is kept for a Ledger Flow account",
+          preview: `This address can’t be used for a new account until ${day(data.freeOn)}.`,
+          title: "This address is kept for an account",
+          lead: [
+            "Someone tried to create a Ledger Flow account with this address. An account moved away from it in the last few days and can still come back to it, so it’s kept for that account until ",
+            { strong: day(data.freeOn) },
+            ".",
+          ],
+          line: "If that account is yours, the email about the change has a link to undo it. If not, ignore this email.",
+          reason: base.reason,
+        };
+      }
+      const signIn = { label: shared.signIn, url: link("login") };
+      const forgot = { label: shared.reset, url: link("forgot") };
+      if (data.state === "deleted") {
+        return {
+          subject: base.subject,
+          preview: `Sign in by ${day(data.keptUntil)} to restore it.`,
+          title: "Your deleted account can still come back",
+          lead: [
+            `Someone tried to create a Ledger Flow account with this address. It has one, deleted on ${day(data.deletedOn)}: it’s kept until `,
+            { strong: day(data.keptUntil) },
+            ", and signing in by then restores it.",
+          ],
+          line: "After that it’s erased for good, and this address is free for a new account. If it wasn’t you, ignore this email.",
+          button: signIn,
+          box: {
+            heading: base.boxHeading,
+            body: "Choosing a new one restores it too. It signs out every device.",
+            action: forgot,
+          },
+          reason: base.reason,
+        };
+      }
+      return {
+        subject: base.subject,
+        preview: "Sign in with it, or choose a new password if you forgot it.",
+        title: "You already have an account",
+        lead: [
+          "Someone tried to create a Ledger Flow account with this address, and it already has one. If it was you, sign in with it.",
+        ],
+        line: "If it wasn’t you, ignore this email: nothing changed.",
+        button: signIn,
+        box: {
+          heading: base.boxHeading,
+          body: "Choose a new one with a code sent here. It signs out every device.",
+          action: forgot,
+        },
+        reason: base.reason,
+      };
+    },
+    es: (data, { shared, link, day }) => {
+      const base = ACCOUNT_EXISTS_LIVE.es;
+      if (data.state === "held") {
+        return {
+          subject:
+            "Esta dirección está reservada para una cuenta de Ledger Flow",
+          preview: `Esta dirección no se puede usar para una cuenta nueva hasta el ${day(data.freeOn)}.`,
+          title: "Esta dirección está reservada para una cuenta",
+          lead: [
+            "Alguien intentó crear una cuenta de Ledger Flow con esta dirección. Una cuenta dejó de usarla hace pocos días y todavía puede volver a ella, así que queda reservada para esa cuenta hasta el ",
+            { strong: day(data.freeOn) },
+            ".",
+          ],
+          line: "Si esa cuenta es tuya, el correo sobre el cambio tiene un enlace para deshacerlo. Si no, ignora este correo.",
+          reason: base.reason,
+        };
+      }
+      const signIn = { label: shared.signIn, url: link("login") };
+      const forgot = { label: shared.reset, url: link("forgot") };
+      if (data.state === "deleted") {
+        return {
+          subject: base.subject,
+          preview: `Entra a más tardar el ${day(data.keptUntil)} para restaurarla.`,
+          title: "Tu cuenta eliminada todavía puede volver",
+          lead: [
+            `Alguien intentó crear una cuenta de Ledger Flow con esta dirección. Tiene una, eliminada el ${day(data.deletedOn)}: se conserva hasta el `,
+            { strong: day(data.keptUntil) },
+            ", y si entras a más tardar ese día la restauras.",
+          ],
+          line: "Después se borra para siempre y esta dirección queda libre para una cuenta nueva. Si no fuiste tú, ignora este correo.",
+          button: signIn,
+          box: {
+            heading: base.boxHeading,
+            body: "Al elegir una nueva también la restauras. Se cierra la sesión en todos los dispositivos.",
+            action: forgot,
+          },
+          reason: base.reason,
+        };
+      }
+      return {
+        subject: base.subject,
+        preview:
+          "Entra con ella, o elige una contraseña nueva si la olvidaste.",
+        title: "Ya tienes una cuenta",
+        lead: [
+          "Alguien intentó crear una cuenta de Ledger Flow con esta dirección, y ya tiene una. Si fuiste tú, entra con ella.",
+        ],
+        line: "Si no fuiste tú, ignora este correo: no cambió nada.",
+        button: signIn,
+        box: {
+          heading: base.boxHeading,
+          body: "Elige una nueva con un código que llega aquí. Se cierra la sesión en todos los dispositivos.",
+          action: forgot,
+        },
+        reason: base.reason,
+      };
+    },
+  },
+  "confirm-deadline": {
+    en: (data, { shared, link, day }) => ({
+      subject: `Confirm your email for Ledger Flow by ${day(data.deadline)}`,
+      preview: DEADLINE.en.preview,
+      title: `Confirm your email by ${day(data.deadline)}`,
+      lead: [
+        "Ledger Flow now asks every account to confirm its email: that way nobody else can use your address, and our security notices reach you. Nothing in your account changes.",
+      ],
+      line: DEADLINE.en.line(day(data.deadline)),
+      button: { label: shared.confirmEmail, url: link("verify", data.token) },
+      box: DEADLINE.en.box,
+      reason: DEADLINE.en.reason,
+    }),
+    es: (data, { shared, link, day }) => ({
+      subject: `Confirma tu correo de Ledger Flow a más tardar el ${day(data.deadline)}`,
+      preview: DEADLINE.es.preview,
+      title: `Confirma tu correo a más tardar el ${day(data.deadline)}`,
+      lead: [
+        "Ledger Flow ahora pide a todas las cuentas confirmar su correo: así nadie más puede usar tu dirección y te llegan nuestros avisos de seguridad. En tu cuenta no cambia nada.",
+      ],
+      line: DEADLINE.es.line(day(data.deadline)),
+      button: { label: shared.confirmEmail, url: link("verify", data.token) },
+      box: DEADLINE.es.box,
+      reason: DEADLINE.es.reason,
+    }),
+  },
+  "confirm-deadline-reminder": {
+    en: (data, { shared, link, day }) => ({
+      subject: `${daysLeft("en", data.daysLeft)} to confirm your email for Ledger Flow`,
+      preview: DEADLINE.en.preview,
+      title: `${daysLeft("en", data.daysLeft)} to confirm your email`,
+      lead: [
+        "Confirm it by ",
+        { strong: day(data.deadline) },
+        " to keep signing in as usual. Nothing in your account changes.",
+      ],
+      line: DEADLINE.en.line(day(data.deadline)),
+      button: { label: shared.confirmEmail, url: link("verify", data.token) },
+      box: DEADLINE.en.box,
+      reason: DEADLINE.en.reason,
+    }),
+    es: (data, { shared, link, day }) => ({
+      subject: `${daysLeft("es", data.daysLeft)} para confirmar tu correo de Ledger Flow`,
+      preview: DEADLINE.es.preview,
+      title: `${daysLeft("es", data.daysLeft)} para confirmar tu correo`,
+      lead: [
+        "Confírmalo a más tardar el ",
+        { strong: day(data.deadline) },
+        " para seguir entrando como siempre. En tu cuenta no cambia nada.",
+      ],
+      line: DEADLINE.es.line(day(data.deadline)),
+      button: { label: shared.confirmEmail, url: link("verify", data.token) },
+      box: DEADLINE.es.box,
+      reason: DEADLINE.es.reason,
+    }),
+  },
+  "email-change-taken": {
+    en: (_data, { shared, link }) => ({
+      subject: "Your address was asked for by another Ledger Flow account",
+      preview: "Nothing changes: this address already has an account.",
+      title: "This address already has an account",
+      lead: [
+        "Someone asked to move another Ledger Flow account to this address. It already has one, so nothing changes.",
+      ],
+      line: "If it was you, sign in with this address instead. If it wasn’t, ignore this email.",
+      button: { label: shared.signIn, url: link("login") },
+      reason: "someone asked to use this address for a Ledger Flow account",
+    }),
+    es: (_data, { shared, link }) => ({
+      subject: "Otra cuenta de Ledger Flow pidió usar tu dirección",
+      preview: "No cambia nada: esta dirección ya tiene una cuenta.",
+      title: "Esta dirección ya tiene una cuenta",
+      lead: [
+        "Alguien pidió pasar otra cuenta de Ledger Flow a esta dirección. Ya tiene una, así que no cambia nada.",
+      ],
+      line: "Si fuiste tú, entra con esta dirección. Si no, ignora este correo.",
+      button: { label: shared.signIn, url: link("login") },
+      reason: "alguien pidió usar esta dirección en una cuenta de Ledger Flow",
+    }),
+  },
+};
+
+interface NoticeWords extends Words {
+  box: Box;
+}
+
+const resetBox = ({ shared, link }: Tools): Box => ({
+  heading: shared.notYou,
+  body: shared.resetBox,
+  action: { label: shared.reset, url: link("forgot") },
+});
+
+const undoBox = (
+  body: string,
+  token: string,
+  { shared, link }: Tools,
+): Box => ({
+  heading: shared.notYou,
+  body,
+  action: { label: shared.undo, url: link("undo", token) },
+});
+
+const NOTICE_WORDS: { [T in NoticeTemplate]: ByLocale<NoticeWords, T> } = {
   "password-changed": {
-    en: (_data, s) => ({
+    en: (_data, tools) => ({
       subject: "Your Ledger Flow password was changed",
       preview: "If it wasn’t you, reset it now.",
       title: "Your password was changed",
@@ -341,11 +740,11 @@ const NOTICE_WORDS: {
         "Your other devices were signed out. If you made this change, there’s nothing else to do.",
       ],
       box: {
+        ...resetBox(tools),
         body: "Reset your password now. It signs out every device, including the one that changed it.",
-        action: s.reset,
       },
     }),
-    es: (_data, s) => ({
+    es: (_data, tools) => ({
       subject: "Se cambió la contraseña de tu cuenta de Ledger Flow",
       preview: "Si no fuiste tú, restablécela ya.",
       title: "Se cambió tu contraseña",
@@ -353,167 +752,199 @@ const NOTICE_WORDS: {
         "Se cerró la sesión en tus otros dispositivos. Si fuiste tú, no tienes que hacer nada más.",
       ],
       box: {
+        ...resetBox(tools),
         body: "Restablece tu contraseña ya. Se cierra la sesión en todos los dispositivos, también en el que la cambió.",
-        action: s.reset,
       },
     }),
   },
   "email-change-requested": {
-    en: (data, s) => ({
-      subject: "Your Ledger Flow email is being changed",
-      preview: s.undoPreview,
-      title: "Your email is being changed",
+    en: (data, tools) => ({
+      subject: "Someone asked to change your Ledger Flow email",
+      preview: tools.shared.undoPreview,
+      title: "A change to your email was requested",
       lead: [
-        "Someone asked to move your account to ",
+        "A request was made to change your account’s email to ",
         { strong: data.newEmail },
-        ". It moves once that address is confirmed.",
+        ". It changes once that address is confirmed.",
       ],
-      box: {
-        body: "Undo it: your account keeps this address, every device is signed out and you choose a new password. This link works for 7 days, even if the change was already confirmed.",
-        action: s.undo,
-      },
+      box: undoBox(
+        "Undo it: your account keeps this address, every device is signed out and you choose a new password. This link works for 7 days, even if the change was already confirmed.",
+        data.undoToken,
+        tools,
+      ),
     }),
-    es: (data, s) => ({
+    es: (data, tools) => ({
       subject: "Se pidió cambiar el correo de tu cuenta de Ledger Flow",
-      preview: s.undoPreview,
+      preview: tools.shared.undoPreview,
       title: "Se pidió cambiar tu correo",
       lead: [
-        "Se pidió pasar tu cuenta a ",
+        "Se pidió cambiar el correo de tu cuenta a ",
         { strong: data.newEmail },
         ". El cambio se hace cuando se confirme esa dirección.",
       ],
-      box: {
-        body: "Deshazlo: tu cuenta se queda con esta dirección, se cierra la sesión en todos los dispositivos y eliges una contraseña nueva. El enlace sirve 7 días, aunque el cambio ya se haya confirmado.",
-        action: s.undo,
-      },
+      box: undoBox(
+        "Deshazlo: tu cuenta se queda con esta dirección, se cierra la sesión en todos los dispositivos y eliges una contraseña nueva. El enlace vale por 7 días, aunque el cambio ya se haya confirmado.",
+        data.undoToken,
+        tools,
+      ),
     }),
   },
   "new-sign-in": {
-    en: (data, s, context) => ({
-      subject: `New sign-in to Ledger Flow: ${describeDevice(data.userAgent, context.locale)}`,
+    en: (data, tools) => ({
+      subject: `New sign-in to Ledger Flow: ${describeDevice(data.userAgent, "en")}`,
       preview: "If it was you, there’s nothing to do.",
       title: "New sign-in to your account",
       lead: [
         "Your account was signed in on a device we don’t recognize. If it was you, there’s nothing to do.",
       ],
-      box: { body: s.resetBox, action: s.reset },
+      box: resetBox(tools),
     }),
-    es: (data, s, context) => ({
-      subject: `Nuevo acceso a Ledger Flow: ${describeDevice(data.userAgent, context.locale)}`,
+    es: (data, tools) => ({
+      subject: `Nuevo acceso a Ledger Flow: ${describeDevice(data.userAgent, "es")}`,
       preview: "Si fuiste tú, no tienes que hacer nada.",
       title: "Nuevo acceso a tu cuenta",
       lead: [
         "Se inició sesión en tu cuenta desde un dispositivo que no reconocemos. Si fuiste tú, no tienes que hacer nada.",
       ],
-      box: { body: s.resetBox, action: s.reset },
+      box: resetBox(tools),
     }),
   },
   "account-deleted": {
-    en: (_data, _s, context) => ({
+    en: (data, { shared, link, day }) => ({
       subject: "Your Ledger Flow account was deleted",
-      preview:
-        "Signing up again with this email and the password it had brings it back.",
+      preview: `It’s kept until ${day(data.keptUntil)}. Signing in before then restores it.`,
       title: "Your account was deleted",
       lead: [
-        "Every device was signed out. Your account and your financial history are kept for a while: signing up again with this email and the password it had brings everything back.",
+        "Every device was signed out. Your account and everything in it are kept until ",
+        { strong: day(data.keptUntil) },
+        ", and then erased for good. If you change your mind, sign in with this email and your password before then.",
       ],
-      extra: `To have it erased for good, write to ${context.contact}: it’s done within 15 business days.`,
       box: {
         heading: "Didn’t delete it?",
-        body: "Signing up again with this email and the password it had when it was deleted brings it back. Then change the password in Settings.",
-        action: "Create account",
+        body: `Restore it now: every device is signed out and you choose a new password. This link works for 7 days; after that, Forgot your password? also restores it until ${day(data.keptUntil)}.`,
+        action: {
+          label: shared.restore,
+          url: link("restore", data.restoreToken),
+        },
       },
     }),
-    es: (_data, _s, context) => ({
+    es: (data, { shared, link, day }) => ({
       subject: "Tu cuenta de Ledger Flow se eliminó",
-      preview:
-        "Si te registras de nuevo con este correo y la contraseña que tenía, la recuperas.",
+      preview: `Se conserva hasta el ${day(data.keptUntil)}. Si entras antes, la restauras.`,
       title: "Tu cuenta se eliminó",
       lead: [
-        "Se cerró la sesión en todos los dispositivos. Tu cuenta y tu historial financiero se conservan un tiempo: si te registras de nuevo con este correo y la contraseña que tenía, lo recuperas todo.",
+        "Se cerró la sesión en todos los dispositivos. Tu cuenta y todo lo que tiene se conservan hasta el ",
+        { strong: day(data.keptUntil) },
+        ", y después se borran para siempre. Si cambias de idea, entra con este correo y tu contraseña antes de esa fecha.",
       ],
-      extra: `Para borrarla del todo, escribe a ${context.contact}: se hace en 15 días hábiles.`,
       box: {
         heading: "¿No la eliminaste?",
-        body: "Si te registras de nuevo con este correo y la contraseña que tenía al eliminarse, la recuperas. Después cambia la contraseña en Ajustes.",
-        action: "Crear cuenta",
+        body: `Restáurala ya: se cierra la sesión en todos los dispositivos y eliges una contraseña nueva. El enlace vale por 7 días; después, «¿Olvidaste tu contraseña?» también la restaura hasta el ${day(data.keptUntil)}.`,
+        action: {
+          label: shared.restore,
+          url: link("restore", data.restoreToken),
+        },
       },
     }),
   },
+  "account-restored": {
+    en: (data, tools) => ({
+      subject: "Your Ledger Flow account was restored",
+      preview: tools.shared.resetPreview,
+      title: "Your account was restored",
+      lead: [
+        data.by === "sign-in"
+          ? `Your account, deleted on ${tools.day(data.deletedOn)}, was restored by signing in: everything in it is back except the shared groups it left, and it won’t be erased.`
+          : `Your account, deleted on ${tools.day(data.deletedOn)}, was restored by choosing a new password: everything in it is back except the shared groups it left, and it won’t be erased. Every other device was signed out.`,
+      ],
+      box: resetBox(tools),
+    }),
+    es: (data, tools) => ({
+      subject: "Tu cuenta de Ledger Flow se restauró",
+      preview: tools.shared.resetPreview,
+      title: "Se restauró tu cuenta",
+      lead: [
+        data.by === "sign-in"
+          ? `Tu cuenta, eliminada el ${tools.day(data.deletedOn)}, se restauró al entrar: vuelve todo lo que tenía menos los grupos compartidos que dejó, y ya no se va a borrar.`
+          : `Tu cuenta, eliminada el ${tools.day(data.deletedOn)}, se restauró al elegir una contraseña nueva: vuelve todo lo que tenía menos los grupos compartidos que dejó, y ya no se va a borrar. Se cerró la sesión en los demás dispositivos.`,
+      ],
+      box: resetBox(tools),
+    }),
+  },
   "passkey-added": {
-    en: (_data, s) => ({
+    en: (data, tools) => ({
       subject: "A passkey was added to your Ledger Flow account",
-      preview: s.undoPreview,
+      preview: tools.shared.undoPreview,
       title: "A passkey was added",
       lead: [
         "A new passkey can now sign in to your account without a password.",
       ],
-      box: { body: s.undoFactorBox, action: s.undo },
+      box: undoBox(tools.shared.undoFactorBox, data.undoToken, tools),
     }),
-    es: (_data, s) => ({
+    es: (data, tools) => ({
       subject: "Se añadió una llave de acceso a tu cuenta de Ledger Flow",
-      preview: s.undoPreview,
+      preview: tools.shared.undoPreview,
       title: "Se añadió una llave de acceso",
       lead: [
         "Una llave de acceso nueva ya puede entrar a tu cuenta sin contraseña.",
       ],
-      box: { body: s.undoFactorBox, action: s.undo },
+      box: undoBox(tools.shared.undoFactorBox, data.undoToken, tools),
     }),
   },
   "two-factor-on": {
-    en: (_data, s) => ({
+    en: (data, tools) => ({
       subject: "Two-step verification is on for Ledger Flow",
-      preview: s.undoPreview,
+      preview: tools.shared.undoPreview,
       title: "Two-step verification is on",
       lead: [
         "Signing in now also asks for a code from your authenticator app.",
       ],
-      box: { body: s.undoFactorBox, action: s.undo },
+      box: undoBox(tools.shared.undoFactorBox, data.undoToken, tools),
     }),
-    es: (_data, s) => ({
+    es: (data, tools) => ({
       subject: "La verificación en dos pasos está activa en Ledger Flow",
-      preview: s.undoPreview,
+      preview: tools.shared.undoPreview,
       title: "La verificación en dos pasos está activa",
       lead: ["Entrar ahora pide también un código de tu app de autenticación."],
-      box: { body: s.undoFactorBox, action: s.undo },
+      box: undoBox(tools.shared.undoFactorBox, data.undoToken, tools),
     }),
   },
   "passkey-removed": {
-    en: (_data, s) => ({
+    en: (_data, tools) => ({
       subject: "A passkey was removed from your Ledger Flow account",
-      preview: s.resetPreview,
+      preview: tools.shared.resetPreview,
       title: "A passkey was removed",
       lead: ["That passkey can no longer sign in to your account."],
-      box: { body: s.resetBox, action: s.reset },
+      box: resetBox(tools),
     }),
-    es: (_data, s) => ({
+    es: (_data, tools) => ({
       subject: "Se quitó una llave de acceso de tu cuenta de Ledger Flow",
-      preview: s.resetPreview,
+      preview: tools.shared.resetPreview,
       title: "Se quitó una llave de acceso",
       lead: ["Esa llave de acceso ya no puede entrar a tu cuenta."],
-      box: { body: s.resetBox, action: s.reset },
+      box: resetBox(tools),
     }),
   },
   "two-factor-off": {
-    en: (_data, s) => ({
+    en: (_data, tools) => ({
       subject: "Two-step verification is off for Ledger Flow",
-      preview: s.resetPreview,
+      preview: tools.shared.resetPreview,
       title: "Two-step verification is off",
       lead: [
         "Signing in no longer asks for a code from your authenticator app.",
       ],
-      box: { body: s.resetBox, action: s.reset },
+      box: resetBox(tools),
     }),
-    es: (_data, s) => ({
+    es: (_data, tools) => ({
       subject: "La verificación en dos pasos se desactivó en Ledger Flow",
-      preview: s.resetPreview,
+      preview: tools.shared.resetPreview,
       title: "La verificación en dos pasos se desactivó",
       lead: ["Entrar ya no pide un código de tu app de autenticación."],
-      box: { body: s.resetBox, action: s.reset },
+      box: resetBox(tools),
     }),
   },
   "recovery-code-used": {
-    en: (data, s) => {
+    en: (data, tools) => {
       const usedTo =
         data.usedTo === "sign-in" ? "sign in" : "reset your password";
       const rest =
@@ -522,16 +953,16 @@ const NOTICE_WORDS: {
           : `You have ${data.left} left, and each one works once.`;
       return {
         subject: "A recovery code was used on your Ledger Flow account",
-        preview: `${data.left === 0 ? "None left." : `You have ${data.left} left.`} ${s.resetPreview}`,
+        preview: `${data.left === 0 ? "None left." : `You have ${data.left} left.`} ${tools.shared.resetPreview}`,
         title: "A recovery code was used",
         lead: [`One of your recovery codes was used to ${usedTo}. ${rest}`],
         box: {
+          ...resetBox(tools),
           body: "Reset your password now, then create new codes in Settings › Security.",
-          action: s.reset,
         },
       };
     },
-    es: (data, s) => {
+    es: (data, tools) => {
       const usedTo =
         data.usedTo === "sign-in" ? "entrar" : "restablecer la contraseña";
       const left = data.left === 1 ? "Te queda 1" : `Te quedan ${data.left}`;
@@ -541,38 +972,37 @@ const NOTICE_WORDS: {
           : `${left} y cada uno sirve una vez.`;
       return {
         subject: "Se usó un código de recuperación en tu cuenta de Ledger Flow",
-        preview: `${data.left === 0 ? "No te queda ninguno." : `${left}.`} ${s.resetPreview}`,
+        preview: `${data.left === 0 ? "No te queda ninguno." : `${left}.`} ${tools.shared.resetPreview}`,
         title: "Se usó un código de recuperación",
         lead: [
           `Se usó uno de tus códigos de recuperación para ${usedTo}. ${rest}`,
         ],
         box: {
+          ...resetBox(tools),
           body: "Restablece tu contraseña ya y después crea códigos nuevos en Ajustes › Seguridad.",
-          action: s.reset,
         },
       };
     },
   },
 };
 
-const NOTICE_BOX_PATH: Record<NoticeTemplate, "forgot" | "undo" | "register"> =
-  {
-    "password-changed": "forgot",
-    "email-change-requested": "undo",
-    "new-sign-in": "forgot",
-    "account-deleted": "register",
-    "passkey-added": "undo",
-    "two-factor-on": "undo",
-    "passkey-removed": "forgot",
-    "two-factor-off": "forgot",
-    "recovery-code-used": "forgot",
-  };
-
 const CODE_FORMAT = /^\d{6}$/;
 const TOKEN_FORMAT = /^[A-Za-z0-9_-]{16,}$/;
+const DAY_FORMAT = /^\d{4}-\d{2}-\d{2}$/;
 const strictEmail = z.email();
 
 const LOCALE_TAGS: Record<Locale, string> = { en: "en-US", es: "es-CO" };
+
+const MASK = "•••";
+
+// The account's own address in email-change-confirm: enough for its owner to tell it apart, not enough to learn it.
+export function maskEmail(email: string): string {
+  strictEmail.parse(email);
+  const at = email.lastIndexOf("@");
+  const local = email.slice(0, at);
+  const kept = local.length <= 3 ? 1 : 2;
+  return `${local.slice(0, kept)}${MASK}${email.slice(at)}`;
+}
 
 function assertFormat(value: string, format: RegExp, field: string): void {
   if (!format.test(value)) {
@@ -580,16 +1010,26 @@ function assertFormat(value: string, format: RegExp, field: string): void {
   }
 }
 
-function link(
-  context: RenderContext,
-  path: string,
-  token?: string,
-): EmailButton["url"] {
+function linkTo(context: RenderContext, path: string, token?: string): string {
   const base = context.appUrl.replace(/\/+$/, "");
   const url = `${base}/${context.locale}/${path}`;
   if (token === undefined) return url;
   assertFormat(token, TOKEN_FORMAT, "token");
   return `${url}#token=${token}`;
+}
+
+function formatDay(day: Day, context: RenderContext): string {
+  assertFormat(day, DAY_FORMAT, "day");
+  const [year, month, date] = day.split("-").map(Number);
+  const thisYear = DateTime.fromJSDate(context.now, {
+    zone: context.timezone,
+  }).year;
+  return new Intl.DateTimeFormat(LOCALE_TAGS[context.locale], {
+    ...(year === thisYear ? {} : { year: "numeric" }),
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, date, 12)));
 }
 
 function formatWhen(at: Date, context: RenderContext): string[] {
@@ -609,111 +1049,110 @@ function formatWhen(at: Date, context: RenderContext): string[] {
 }
 
 function frame(
-  context: RenderContext,
-  shared: Shared,
+  tools: Tools,
   footer: string,
 ): Pick<
   EmailContent,
   "locale" | "fallbackLabel" | "footer" | "site" | "contact"
 > {
+  const { context, shared } = tools;
   return {
     locale: context.locale,
     fallbackLabel: shared.fallback,
     footer,
     site: {
       label: new URL(context.appUrl).host,
-      url: link(context, "").replace(/\/$/, ""),
+      url: tools.link("").replace(/\/$/, ""),
     },
     contact: { label: shared.contact, address: context.contact },
   };
 }
 
-function codeContent(
-  template: CodeTemplate,
-  data: CodeLink & { notMeToken?: string },
-  context: RenderContext,
-): EmailContent {
-  assertFormat(data.code, CODE_FORMAT, "code");
-  const shared = SHARED[context.locale];
-  const words = CODE_WORDS[template][context.locale];
-  const links = CODE_LINKS[template];
-  let boxAction: EmailButton | undefined;
-  const withoutBox = !!links.boxPath && data.notMeToken === undefined;
-  if (links.boxPath && words.boxAction && data.notMeToken !== undefined) {
-    boxAction = {
-      label: words.boxAction,
-      url: link(context, links.boxPath, data.notMeToken),
-    };
-  }
-  return {
-    ...frame(context, shared, shared.why(words.reason)),
-    subject: words.subject,
-    preview: words.preview,
-    title: words.title,
-    lead: [words.lead],
-    middle: {
-      kind: "code",
-      code: data.code,
-      note: `${shared[links.lifetime]} ${shared.codeNote}`,
-      button: {
-        label: words.button,
-        url: link(context, links.path, data.token),
-      },
-    },
-    box: withoutBox
-      ? undefined
-      : { heading: words.boxHeading, body: words.boxBody, action: boxAction },
-  };
-}
+const visible = (
+  words: Words,
+): Pick<
+  EmailContent,
+  "subject" | "preview" | "title" | "lead" | "extra" | "box"
+> => ({
+  subject: words.subject,
+  preview: words.preview,
+  title: words.title,
+  lead: words.lead,
+  extra: words.line,
+  box: words.box,
+});
 
-function noticeContent<T extends NoticeTemplate>(
+const isNotice = (template: EmailTemplate): template is NoticeTemplate =>
+  EMAIL_TEMPLATE_META[template].kind === "notice";
+
+const isLink = (template: EmailTemplate): template is LinkTemplate =>
+  EMAIL_TEMPLATE_META[template].kind === "link";
+
+function content<T extends EmailTemplate>(
   template: T,
   data: EmailTemplateData[T],
-  context: RenderContext,
+  tools: Tools,
 ): EmailContent {
-  const shared = SHARED[context.locale];
-  const builder = NOTICE_WORDS[template][
-    context.locale
-  ] as NoticeWordBuilder<T>;
-  const words = builder(data, shared, context);
-  const boxPath = NOTICE_BOX_PATH[template];
-  const undoToken =
-    "undoToken" in data && typeof data.undoToken === "string"
-      ? data.undoToken
-      : undefined;
-  if (boxPath === "undo" && undoToken === undefined) {
-    throw new Error(`Email template ${template} needs an undo token`);
+  const { shared, context } = tools;
+  if (isNotice(template)) {
+    const build = NOTICE_WORDS[template][context.locale] as Builder<
+      NoticeWords,
+      typeof template
+    >;
+    const words = build(data as EmailTemplateData[typeof template], tools);
+    const facts = data as unknown as NoticeFacts;
+    return {
+      ...frame(tools, shared.security),
+      ...visible(words),
+      middle: {
+        kind: "facts",
+        facts: [
+          { label: shared.when, value: formatWhen(facts.at, context) },
+          {
+            label: shared.device,
+            value: [describeDevice(facts.userAgent, context.locale)],
+          },
+        ],
+      },
+    };
   }
+  if (isLink(template)) {
+    const build = LINK_WORDS[template][context.locale] as Builder<
+      LinkWords,
+      typeof template
+    >;
+    const words = build(data as EmailTemplateData[typeof template], tools);
+    return {
+      ...frame(tools, shared.why(words.reason)),
+      ...visible(words),
+      middle: words.button
+        ? { kind: "action", button: words.button }
+        : undefined,
+    };
+  }
+  const codeTemplate = template as OnlyCode;
+  const build = CODE_WORDS[codeTemplate][context.locale] as Builder<
+    CodeWords,
+    typeof codeTemplate
+  >;
+  const codeData = data as unknown as CodeLink;
+  assertFormat(codeData.code, CODE_FORMAT, "code");
+  const words = build(data as EmailTemplateData[typeof codeTemplate], tools);
+  const route = CODE_ROUTES[codeTemplate];
   return {
-    ...frame(context, shared, shared.security),
-    subject: words.subject,
-    preview: words.preview,
-    title: words.title,
-    lead: words.lead,
-    extra: words.extra,
+    ...frame(tools, shared.why(words.reason)),
+    ...visible(words),
     middle: {
-      kind: "facts",
-      facts: [
-        { label: shared.when, value: formatWhen(data.at, context) },
-        {
-          label: shared.device,
-          value: [describeDevice(data.userAgent, context.locale)],
-        },
-      ],
-    },
-    box: {
-      heading: words.box.heading ?? shared.notYou,
-      body: words.box.body,
-      action: {
-        label: words.box.action,
-        url: link(context, boxPath, boxPath === "undo" ? undoToken : undefined),
+      kind: "code",
+      code: codeData.code,
+      note: `${shared[route.lifetime]} ${shared.codeNote}`,
+      button: {
+        label: words.button,
+        url: tools.link(route.path, codeData.token),
       },
     },
   };
 }
-
-const isCodeTemplate = (template: EmailTemplate): template is CodeTemplate =>
-  EMAIL_TEMPLATE_META[template].kind === "code";
 
 export function renderEmail<T extends EmailTemplate>(
   template: T,
@@ -731,16 +1170,23 @@ export function renderEmail<T extends EmailTemplate>(
       throw new Error("Email template input left is malformed");
     }
   }
-  const content = isCodeTemplate(template)
-    ? codeContent(template, data as CodeLink, context)
-    : noticeContent(
-        template as NoticeTemplate,
-        data as EmailTemplateData[NoticeTemplate],
-        context,
-      );
+  if (template === "confirm-deadline-reminder") {
+    const { daysLeft: days } =
+      data as EmailTemplateData["confirm-deadline-reminder"];
+    if (!Number.isInteger(days) || days < 1) {
+      throw new Error("Email template input daysLeft is malformed");
+    }
+  }
+  const tools: Tools = {
+    shared: SHARED[context.locale],
+    context,
+    link: (path, token) => linkTo(context, path, token),
+    day: (day) => formatDay(day, context),
+  };
+  const built = content(template, data, tools);
   return {
-    subject: content.subject,
-    html: renderHtml(content),
-    text: renderText(content),
+    subject: built.subject,
+    html: renderHtml(built),
+    text: renderText(built),
   };
 }

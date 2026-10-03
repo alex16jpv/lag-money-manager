@@ -52,3 +52,14 @@ export class StaleUpdateError extends ApiError {
     );
   }
 }
+
+/** The right password of a deleted account that is still kept: the answer to Sign in says until when. */
+export class AccountDeletedError extends ApiError {
+  constructor(public deletedAccount: { deletedOn: string; keptUntil: string }) {
+    super(
+      "Conflict",
+      "This account was deleted: restoring it brings everything back",
+      "ACCOUNT_DELETED",
+    );
+  }
+}

@@ -14,8 +14,9 @@ export interface EmailContent {
   title: string;
   lead: Inline[];
   extra?: string;
-  middle:
+  middle?:
     | { kind: "code"; code: string; note: string; button: EmailButton }
+    | { kind: "action"; button: EmailButton }
     | { kind: "facts"; facts: { label: string; value: string[] }[] };
   box?: { heading: string; body: string; action?: EmailButton };
   fallbackLabel: string;
@@ -146,7 +147,11 @@ const facts = (rows: { label: string; value: string[] }[]): string =>
 
 const middlePieces = (content: EmailContent): string[] => {
   const middle = content.middle;
+  if (!middle) return [];
   if (middle.kind === "facts") return [facts(middle.facts)];
+  if (middle.kind === "action") {
+    return [button(middle.button, false), fallbackLink(content, middle.button)];
+  }
   return [
     `<table ${TABLE} width="100%"><tr><td class="lf-code" align="center" bgcolor="${LIGHT.surface2}" style="padding:16px;border-radius:10px;background-color:${LIGHT.surface2};font-family:${MONO};font-size:32px;line-height:1.2;font-weight:600;letter-spacing:0.3em;color:${LIGHT.text};text-align:center">${escapeHtml(middle.code)}</td></tr></table>`,
     paragraph(escapeHtml(middle.note), 13),
@@ -213,8 +218,9 @@ export function renderHtml(content: EmailContent): string {
 
 export function renderText(content: EmailContent): string {
   const middle = content.middle;
-  const middleLines =
-    middle.kind === "code"
+  const middleLines = !middle
+    ? []
+    : middle.kind === "code"
       ? [
           `    ${middle.code}`,
           "",
@@ -222,7 +228,9 @@ export function renderText(content: EmailContent): string {
           "",
           `${middle.button.label}: ${middle.button.url}`,
         ]
-      : middle.facts.map((row) => `${row.label}: ${row.value.join(" ")}`);
+      : middle.kind === "action"
+        ? [`${middle.button.label}: ${middle.button.url}`]
+        : middle.facts.map((row) => `${row.label}: ${row.value.join(" ")}`);
   const boxLines = content.box
     ? [
         "",
@@ -240,8 +248,7 @@ export function renderText(content: EmailContent): string {
     "",
     inlineText(content.lead),
     ...(content.extra ? ["", content.extra] : []),
-    "",
-    ...middleLines,
+    ...(middleLines.length > 0 ? ["", ...middleLines] : []),
     ...boxLines,
     "",
     "--",

@@ -1,14 +1,15 @@
 import { DomainValidationError } from "../domain/errors";
 import { ErrorCode } from "./errorCodes";
-import { ApiError, StaleUpdateError } from "./errors";
+import { AccountDeletedError, ApiError, StaleUpdateError } from "./errors";
 
-/** The body every error answer has; `current` only rides on STALE_UPDATE. */
+/** The body every error answer has; `current` only rides on STALE_UPDATE, `deletedAccount` on ACCOUNT_DELETED. */
 export interface ErrorBody {
   error: string;
   message: string;
   code?: ErrorCode;
   details?: unknown;
   current?: unknown;
+  deletedAccount?: { deletedOn: string; keptUntil: string };
 }
 
 export interface DescribedFailure {
@@ -39,6 +40,9 @@ export function describeFailure(error: Error): DescribedFailure | null {
         ...(error.details !== undefined && { details: error.details }),
         // The server's version, so a stale write is resolved without a second round trip.
         ...(error instanceof StaleUpdateError && { current: error.current }),
+        ...(error instanceof AccountDeletedError && {
+          deletedAccount: error.deletedAccount,
+        }),
       },
     };
   }

@@ -6,9 +6,11 @@ import { createEmailChangeService } from "../factories/emailChangeFactory";
 import { createEmailService } from "../factories/emailServiceFactory";
 import { createEmailVerificationService } from "../factories/emailVerificationFactory";
 import repositoryFactory from "../factories/RepositoryFactory";
+import { createSignUpService } from "../factories/signUpFactory";
 import { AuthPayload } from "../middlewares/authMiddleware";
 import { clientIp } from "../middlewares/clientIp";
 import { attemptedEmail } from "../middlewares/loginAttempt";
+import { AccountRestoreService } from "../services/AccountRestoreService";
 import { AuthService } from "../services/AuthService";
 import { CategoryService } from "../services/CategoryService";
 import { EmailOutcome, EmailRequester } from "../services/EmailService";
@@ -32,8 +34,6 @@ const passwordResetService = new PasswordResetService(
   repositoryFactory.getUserRepository(),
   repositoryFactory.getAuthCodeRepository(),
   createEmailService(),
-  repositoryFactory.getAccountRepository(),
-  repositoryFactory.getTransactionRepository(),
   repositoryFactory.getRefreshSessionRepository(),
   repositoryFactory.getSharedInvitationRepository(),
   authService,
@@ -43,8 +43,15 @@ const passwordResetService = new PasswordResetService(
   },
 );
 
-const verification = createEmailVerificationService();
+const verification = createEmailVerificationService(authService);
 const emailChange = createEmailChangeService(authService);
+const signUp = createSignUpService(authService);
+const accountRestore = new AccountRestoreService(
+  repositoryFactory.getUserRepository(),
+  repositoryFactory.getAuthCodeRepository(),
+  createEmailService(),
+  repositoryFactory.getRefreshSessionRepository(),
+);
 
 const requesterOf = (req: Request): EmailRequester => ({
   ip: clientIp(req),
@@ -66,6 +73,44 @@ export class AuthController {
       if (device) req.recognizedDevice = device;
     }
     next();
+  };
+
+  static signUp = async (req: Request, res: Response): Promise<void> => {
+    const outcome = await signUp.start(req.body, requesterOf(req));
+    if (outcome.status === "limited") {
+      answerLimited(res, outcome.retryAfterSeconds);
+      return;
+    }
+    res.status(202).json({
+      signUpToken: outcome.signUpToken,
+      expiresAt: outcome.expiresAt,
+      resendAfterSeconds: outcome.resendAfterSeconds,
+    });
+  };
+
+  static resendSignUp = async (req: Request, res: Response): Promise<void> => {
+    const outcome = await signUp.resend(
+      (req.body as { signUpToken: string }).signUpToken,
+      requesterOf(req),
+    );
+    if (outcome.status === "limited") {
+      answerLimited(res, outcome.retryAfterSeconds);
+      return;
+    }
+    res.status(202).json({ resendAfterSeconds: outcome.resendAfterSeconds });
+  };
+
+  static confirmSignUp = async (req: Request, res: Response): Promise<void> => {
+    const { signUpToken, code } = req.body as {
+      signUpToken: string;
+      code: string;
+    };
+    const result = await signUp.confirmCode(
+      signUpToken,
+      code,
+      req.get("User-Agent") ?? undefined,
+    );
+    res.status(201).json(result);
   };
 
   static register = async (req: Request, res: Response): Promise<void> => {
@@ -93,10 +138,19 @@ export class AuthController {
         (req.user as AuthPayload).userId,
         body.code,
       );
-    } else {
-      await verification.verifyLink(body.token);
+      res
+        .status(200)
+        .json({ message: "Email confirmed", result: "email-confirmed" });
+      return;
     }
-    res.status(200).json({ message: "Email confirmed" });
+    const result = await verification.verifyLink(body.token);
+    res.status(200).json({
+      message:
+        result === "account-ready"
+          ? "Account ready: sign in"
+          : "Email confirmed",
+      result,
+    });
   };
 
   static resendVerification = async (
@@ -144,9 +198,28 @@ export class AuthController {
     res.status(200).json(result);
   };
 
-  static notMe = async (req: Request, res: Response): Promise<void> => {
-    await verification.notMe((req.body as { token: string }).token);
-    res.status(200).json({ message: "That account is gone" });
+  static restoreFromLink = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    const result = await accountRestore.restore(
+      (req.body as { token: string }).token,
+    );
+    res.status(200).json(result);
+  };
+
+  static restoreAccount = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    const { email, password, deviceToken } = req.body;
+    const result = await authService.restore(
+      email,
+      password,
+      req.get("User-Agent") ?? undefined,
+      deviceToken,
+    );
+    res.status(200).json(result);
   };
 
   static undoEmailChange = async (

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  ACCOUNT_LINK_TOKEN_FORMAT,
   ACCOUNT_TYPES,
   BUDGET_PERIOD_TYPES,
   BUDGET_TYPES,
@@ -10,7 +11,6 @@ import {
   MAX_BUDGET_CATEGORIES,
   MAX_EXPENSE_GUESTS,
   MAX_GROUP_PARTICIPANTS,
-  NOT_ME_TOKEN_FORMAT,
   SHARE_PARTIES,
   SPENDING_GROUP_BY,
   SPENDING_SPLIT_BY,
@@ -21,7 +21,6 @@ import {
   TRANSACTION_TYPES,
   TransactionSource,
   TYPES_RECORDED_ELSEWHERE,
-  UNDO_TOKEN_FORMAT,
 } from "../../shared/constants";
 import { CATEGORY_ICONS } from "../../shared/icons";
 import { Locale, LOCALES } from "../../shared/locale";
@@ -1149,6 +1148,25 @@ export const registerSchema = z.object({
   }),
 });
 
+export const signUpSchema = registerSchema;
+
+// The token the BFF keeps for the browser that typed the password; a newer sign-up replaces it.
+const signUpTokenField = linkTokenField;
+
+export const signUpResendSchema = z.object({
+  body: z.object({
+    signUpToken: signUpTokenField,
+    captcha: captchaField,
+    deviceToken: deviceTokenField,
+  }),
+});
+
+export const signUpConfirmSchema = z.object({
+  body: z
+    .object({ signUpToken: signUpTokenField, code: emailCodeField })
+    .strict(),
+});
+
 export const forgotPasswordSchema = z.object({
   body: z.object({
     email: emailField,
@@ -1191,28 +1209,21 @@ export const resendVerificationSchema = z.object({
   }),
 });
 
-export const notMeSchema = z.object({
-  body: z
-    .object({
-      token: z
-        .string()
-        .regex(
-          NOT_ME_TOKEN_FORMAT,
-          "token must be the one of the email's link",
-        ),
-    })
-    .strict(),
-});
+const accountLinkTokenField = z
+  .string()
+  .regex(
+    ACCOUNT_LINK_TOKEN_FORMAT,
+    "token must be the one of the email's link",
+  );
 
 export const undoEmailChangeSchema = z.object({
-  body: z
-    .object({
-      token: z
-        .string()
-        .regex(UNDO_TOKEN_FORMAT, "token must be the one of the email's link"),
-    })
-    .strict(),
+  body: z.object({ token: accountLinkTokenField }).strict(),
 });
+
+export const restoreFromLinkSchema = undoEmailChangeSchema;
+
+// The same credentials again: "Restore your account?" keeps no ticket of its own.
+export const restoreAccountSchema = loginSchema;
 
 export const requestEmailChangeSchema = z.object({
   params: idParamSchema.shape.params,
@@ -1239,22 +1250,6 @@ export const confirmEmailChangeSchema = z.object({
       .object({
         token: linkTokenField,
         refreshToken: z.string().min(1).max(4096).optional(),
-      })
-      .strict(),
-  ]),
-});
-
-export const keepOrStartFreshSchema = z.object({
-  params: idParamSchema.shape.params,
-  body: z.discriminatedUnion("choice", [
-    z.object({ choice: z.literal("keep") }).strict(),
-    z
-      .object({
-        choice: z.literal("start-fresh"),
-        name: z.string().trim().min(1, "Name is required").max(255),
-        locale: localeField.unwrap(),
-        currency: currencyField.unwrap(),
-        timezone: timezoneField.unwrap(),
       })
       .strict(),
   ]),
