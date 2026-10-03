@@ -20,13 +20,15 @@ Beyond name/email/password, the profile carries three settings that shape the re
 | `src/app/dtos/UserDTO.ts`                                    | `CreateUserDTO`, `UpdateUserDTO`, `UserResponseDTO`                                                 |
 | `src/app/validation/schemas.ts`                              | `updateUserSchema`, `deleteUserSchema`, `idParamSchema`                                             |
 | `src/domain/entities/User.ts`                                | User domain entity (`tokenVersion`, `timezone`, `currency`, `locale`, `lastLoginAt`)                |
-| `src/domain/repositories/user/IUserRepository.ts`            | Repository interface (adds `getByEmail`, `recordLogin`, `updateWithTokenBump`, `reactivate`, …)     |
+| `src/domain/repositories/user/IUserRepository.ts`            | Repository interface (adds `getByEmail`, `recordLogin`, `updateWithTokenBump`, `markDeleted`, …)    |
 | `src/infrastructure/repositories/user/UserRepository.ts`     | Mongoose implementation (soft delete, atomic token-version bumps)                                   |
 | `src/infrastructure/models/UserModel.ts`                     | Mongoose model (unique lowercase `email`)                                                           |
-| `src/app/services/KeepOrStartFreshService.ts`                | The answer to "Keep what's in this account?": keep, or start fresh                                  |
-| `src/domain/repositories/userData/IUserDataEraser.ts`        | What Start fresh and It wasn't me erase (the port)                                                  |
+| `src/app/services/deletedAccount.ts`                         | The days of a deleted account: `keptUntil`, and the two days its answers carry                      |
+| `src/app/services/AccountRestoreService.ts`                  | "Restore account" of `account-deleted` ([below](#restoring-a-deleted-account))                      |
+| `src/app/services/NightlyPassService.ts`                     | The nightly pass: the erasure at 30 days, and the deadline emails ([below](#the-nightly-pass))      |
+| `src/domain/repositories/userData/IUserDataEraser.ts`        | What the erasure at 30 days erases (the port)                                                       |
 | `src/infrastructure/repositories/userData/UserDataEraser.ts` | The erasure itself, collection by collection                                                        |
-| `src/app/services/EmailVerificationService.ts`               | The confirmation of the email, and It wasn't me ([auth.md](auth.md#confirming-the-email))           |
+| `src/app/services/EmailVerificationService.ts`               | The confirmation of the email ([auth.md](auth.md#confirming-the-email))                             |
 | `src/app/services/EmailChangeService.ts`                     | The change of email that waits for the new address ([below](#changing-the-email))                   |
 
 ## Public API
@@ -37,19 +39,18 @@ Beyond name/email/password, the profile carries three settings that shape the re
 | ------------------------------------- | ------------------ | -------------------- | --------------------------------------------------------------------------- |
 | `GET /users/:id`                      | Yes (access token) | Yes                  | `id` must match the authenticated user's ID, otherwise **404**.             |
 | `PUT /users/:id`                      | Yes (access token) | Yes                  | Partial updates. A password change needs `currentPassword`.                 |
-| `DELETE /users/:id`                   | Yes (access token) | Yes                  | Soft delete; needs `currentPassword`; responds `200` with a message.        |
+| `DELETE /users/:id`                   | Yes (access token) | Yes                  | Kept 30 days, then erased; needs `currentPassword`; answers `keptUntil`.    |
 | `POST /users/:id/email-change`        | Yes (access token) | Yes                  | A new email that waits for its code; needs `currentPassword` and a captcha. |
 | `POST /users/:id/email-change/resend` | Yes (access token) | Yes                  | Mails the waiting address again; needs a captcha.                           |
 | `DELETE /users/:id/email-change`      | Yes (access token) | Yes                  | Cancels what waits; `200` even when nothing did.                            |
-| `POST /users/:id/keep-or-start-fresh` | Yes (access token) | Yes                  | Only while `keepOrStartFresh` is open.                                      |
 
 > There is **no `GET /users`** endpoint — listing users was removed. Self-access failures return `404 User not found`, not `403`, so a user id cannot be confirmed by probing.
 
 ### `GET /users/:id`
 
-Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `email`, `emailVerified`, `timezone`, `currency`, `locale`, `lastLoginAt`, `keepOrStartFresh`, `createdAt`, `updatedAt`, and, on this route only, `emailVerification` and `emailChange` ([below](#changing-the-email)). The password is never returned, and neither are `emailVerifiedAt` and `dataResetAt`, which stay internal.
+Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `email`, `emailVerified`, `confirmBy`, `emailConfirmationRequired`, `timezone`, `currency`, `locale`, `lastLoginAt`, `createdAt`, `updatedAt`, and, on this route only, `emailVerification` and `emailChange` ([below](#changing-the-email)). The password is never returned, and neither are `emailVerifiedAt`, `confirmDeadline`, `deletedAt`, `keptUntil` and `dataResetAt`, which stay internal.
 
-`keepOrStartFresh` is `null`, or `{ createdAt, accounts, transactions }` while "Keep what's in this account?" is open (below).
+`confirmBy` is the last day of an unconfirmed account from before email existed (`YYYY-MM-DD`, whole, in its time zone; `null` otherwise), and `emailConfirmationRequired` whether that day is over: then every route but this one, the change of email and the auth routes answers `403 EMAIL_CONFIRMATION_REQUIRED` ([auth.md](auth.md#the-deadline-of-the-accounts-from-before-email)). This route stays open past the deadline, so the app learns why.
 
 `emailVerified` is in every profile answer (register, login, the reset, the sync feed): whether the address is confirmed ([auth.md](auth.md#confirming-the-email)). `emailVerification` is what the sheet that confirms it needs, and costs one indexed read of `authcodes`, so only this route carries it — `null` once the email is confirmed, otherwise:
 
@@ -69,7 +70,7 @@ Update the profile. Partial updates over `name`, `password`, `timezone`, `curren
 
 `currency` can only change while the user has **no accounts** (`CURRENCY_LOCKED`). No accounts implies no transactions — every transaction type requires one — so a single account count settles it.
 
-**Accounts the old `PUT` moved are still around.** It left the new address unconfirmed (`emailVerifiedAt: null`, `emailChangedAt` set) and sent it `verify-email`; an account confirmed before (`firstVerifiedAt`) keeps getting that email without "It wasn't me", and every "It wasn't me" issued before the move stays dead ([below](#it-wasnt-me-an-account-that-used-somebody-elses-address)). Those rules stay for them.
+**Accounts the old `PUT` moved are still around**, with the new address unconfirmed (`emailVerifiedAt: null`): like every account from before email, they get a deadline to confirm it ([auth.md](auth.md#the-deadline-of-the-accounts-from-before-email)).
 
 ### Changing the email
 
@@ -77,7 +78,8 @@ The account moves to a new address only once that address proves it is reached: 
 
 1. **`POST /users/:id/email-change`** `{ email, currentPassword, captcha, deviceToken? }` — Save changes with a new email. `currentPassword` re-authenticates (with the per-user limiter of `PUT`), `captcha` is Turnstile's for the action `email-change`, and `deviceToken` lets the email brakes count this device instead of its IP. Nothing moves: the account keeps `email`, and `email-change-confirm` goes to the new address with a 6-digit code and a link (`{APP_URL}/{locale}/confirm-email#token=…`), both for 24 hours. `202 { resendAfterSeconds, emailChange }`.
    - **The change is saved only once its email was accepted, or may have gone** (`sent`, or `failed / unconfirmed`: a provider timed out; the `202` is the same, and the code live before is kept next to the new one): a send that fails leaves the account as it was, with any earlier change still waiting. Unlike Forgot your password?, a failure is said (`EMAIL_SEND_FAILED`, `503` or `422`): the address is the one the person typed.
-   - **Refused before anything is sent:** the account's own address (`400 VALIDATION`, on the field `email`), an address any other account holds, a deleted one included (`409 EMAIL_TAKEN`), a wrong password (`401 CURRENT_PASSWORD_INVALID`).
+   - **Refused before anything is sent:** the account's own address (`400 VALIDATION`, on the field `email`) and a wrong password (`401 CURRENT_PASSWORD_INVALID`).
+   - **An address another account holds answers the same as any other** (T-237: before, its `409 EMAIL_TAKEN` told anyone with an account and a minute whether an address had one). When another account has it — live, deleted and still kept, or kept by an undo link ([below](#how-an-address-is-kept)) — `email-change-taken` goes there instead of `email-change-confirm`, and everything else is the same: the change waits, `email-change-requested` goes to the old address, a code row is written with a code nobody receives (so a typed code answers `EMAIL_CODE_INVALID` as for any address, not `EMAIL_CODE_EXPIRED`), and Resend does the same again. The change simply never confirms, and goes after its 24 hours. A deleted account past its 30 days does not hold the address.
    - **Asking again replaces what waits**: once the new one is saved, the first address's codes are discarded (they would fail anyway, being checked against the address that waits now). Cancel discards them too.
 2. **`POST /users/:id/email-change/resend`** `{ captcha, deviceToken? }` — a new code and link to the address that waits, replacing the old ones once accepted; the change then waits 24 hours from this send. `409 EMAIL_CHANGE_NOT_PENDING` when nothing waits.
 3. **`DELETE /users/:id/email-change`** — Cancel change. `200` also when nothing waited.
@@ -85,7 +87,7 @@ The account moves to a new address only once that address proves it is reached: 
 
 **What is kept.** `emailChange: { email, sentAt, expiresAt }` on the user document, `null` when nothing waits; it is never in the sync feed and bumps no `updatedAt`. `GET /users/:id` shows it as `emailChange: { email, expiresAt, resendAvailableAt }`, or `null` once its 24 hours passed (a change past `expiresAt` is read as none; the field is simply overwritten by the next one). The codes live in `authcodes` with the purpose `email-change`, but **keyed by the account and the address** (`emailChangeKey`: SHA-256 of the account id and the address's hash), not by the address alone like the others: many accounts can ask for the same new address, and each keeps its own code, tries and link, so one account asking can neither cancel another's code nor turn another's link into its own move ([auth.md](auth.md#the-codes-authcodes)). The email brakes still count the address itself.
 
-**The move is one write** (`UserRepository.applyEmailChange`), guarded by the address that waits and its `expiresAt`: `email`, `emailVerifiedAt` and `firstVerifiedAt` (the new address is proven), `emailChangedAt` (every "It wasn't me" issued before stops working), `emailChange: null` and `tokenVersion + 1`. **The unique index on `email` decides a race**: if another account took the address meanwhile, the write fails on it, the change is dropped and the answer is `409 EMAIL_TAKEN`, with the account untouched. Then every session row is revoked, the invitations waiting for the new address are touched so they reach the feed (`touchUnansweredFor`), and, when this device keeps its session, a new one is opened.
+**The move is one write** (`UserRepository.applyEmailChange`), guarded by the address that waits and its `expiresAt`: `email`, `emailVerifiedAt` (the new address is proven), `emailChange: null` and `tokenVersion + 1`. **The unique index on `email` decides a race**: if another account took the address meanwhile, the write fails on it, the change is dropped and the answer is `409 EMAIL_TAKEN`, with the account untouched — only whoever holds the code or the link sees it. A deleted account past its 30 days that still has the address gives it up first ([below](#the-nightly-pass)). Then every session row is revoked, the invitations waiting for the new address are touched so they reach the feed (`touchUnansweredFor`), and, when this device keeps its session, a new one is opened.
 
 **The old address hears of it, or nothing is saved** (T-211). When the account's address is confirmed at the moment of asking, once `email-change-confirm` went, an **undo link** for that address is written (`undoLinks: [{ email, tokenHash, expiresAt }]`, 7 days; the same write puts the address in `heldEmails`, below), and `email-change-requested` goes to it with the new address and "Undo the change" (`{APP_URL}/{locale}/undo#token=…`). Only then is the change saved. An address that was never confirmed hears nothing and gets no link: it is usually a typo being corrected, and it may be a stranger's, who must not be handed the new address.
 
@@ -94,18 +96,18 @@ The account moves to a new address only once that address proves it is reached: 
 - A notice that may still arrive (`unconfirmed`) keeps its link.
 - Resend does not mail the old address again; asking for another address does, with a link of its own, and every link works until it is used, an earlier one is used, or its 7 days end.
 
-**While a link works, its address stays the account's**, even after the move and even if the account is deleted: nobody can sign up with it or move another account to it, so the undo never finds it taken ([below](#how-an-address-is-kept)). The account itself may ask for it back (`emailInUse` does not count its own links). A reset of the account, and a password change, also cancel a change that waits ([auth.md](auth.md#post-authpasswordreset)).
+**While a link works, its address stays the account's**, even after the move and even if the account is deleted: nobody can sign up with it or move another account to it, so the undo never finds it taken ([below](#how-an-address-is-kept)). The account itself may ask for it back (`holderOf` does not count its own links). A reset of the account, and a password change, also cancel a change that waits ([auth.md](auth.md#post-authpasswordreset)).
 
 ### Undo the change, from the old address
 
 `POST /auth/email/undo` `{ "token" }`, no session ([auth.md](auth.md#post-authemailundo)). The token is the account's id followed by 32 random bytes, in base64url (64 characters): the id finds the account with no index to scan, and only the SHA-256 of the whole token is kept, in the link. While the link works (7 days), **one write** (`UserRepository.undoEmailChange`, guarded by that link still being there and alive):
 
-- puts `email` back to the link's address, confirmed (`emailVerifiedAt`: the tap proves the inbox), with `emailChangedAt` when it had moved;
+- puts `email` back to the link's address, confirmed (`emailVerifiedAt`: the tap proves the inbox);
 - cancels any change that waits (`emailChange: null`; its code and link are discarded after the write);
 - **stops the password**: it becomes the bcrypt hash of 32 random bytes, which nobody knows, because whoever made the change knows the old one;
 - bumps `tokenVersion` (every refresh and device token), and sets `devicesResetAt`, so every device that signed in before is unknown to `new-sign-in`;
 - **drops this link and every one issued after it**, and with them the addresses they kept; the links issued before it survive, with their addresses. A thief who moves the account to their own address and then on again receives the second link at that address: used first, it keeps the account there, but the owner's link, older, still works and, used after, drops the thief's. Used first, the owner's link drops every later one. So the first link an account's owner received always wins;
-- **brings back an account deleted after the link was sent** (`deletedAt: null`; the owner's decision of 2026-09-28, an exception to "a deleted account comes back only with the password it had", for this link only): a thief who moves the account and deletes it must not leave the owner with nothing. What the deletion ended (invitations, groups left) stays ended, as when a deleted account is reactivated.
+- **brings back an account deleted after the link was sent and still kept** (`deletedAt` and `keptUntil` cleared; the owner's decision 13 of 2026-09-28): a thief who moves the account and deletes it must not leave the owner with nothing. What the deletion ended (invitations, groups left) stays ended, as with any restore.
 
 Then every session row is revoked, the invitations waiting for the address are touched when the account moved back to it, and `password-reset-after-undo` takes a code and a link to that address in the `reset` row of `authcodes`, so `POST /auth/password/reset` redeems it as any reset code (30 minutes, 5 tries). That email has no per-address daily brake and no IP or device brake: the single-use link is its brake. `codeSent: false` when it did not go; the undo stands, and Forgot your password? for that address sends another. No `password-changed` or `new-sign-in` follows the undo: its own email says what happened.
 
@@ -113,9 +115,9 @@ Then every session row is revoked, the invitations waiting for the address are t
 
 The unique index on `email` guards one address per account. An undo link needs a second address to be guarded the same way, atomically, against a register or a move by another account landing in the same millisecond, and one field's unique index cannot see another field. So every account written since T-211 holds **`heldEmails`**: its email and every address an undo link of it keeps, under a **unique multikey index** (partial, on accounts that have the field). Whoever takes an address writes it into its own `heldEmails` in the same write (a register, a move), so the index refuses it while another account keeps it, and a move keeps the old address in the same write that leaves it. An account from before T-211 has no `heldEmails` until it moves, and needs none: its email is guarded by the `email` index, and no address could be kept before T-211.
 
-- **An address stays in `heldEmails` after its links lapse**, until somebody needs it: a register or a move refused by `heldEmails` lets go of the addresses whose links all lapsed (`releaseLapsedHolds`) and tries once more. `emailInUse` reads only live links, so the change of email does not refuse a lapsed one up front.
-- **Delete account** keeps the undo links and `heldEmails`: the undo brings the account back.
-- `EMAIL_TAKEN` is the answer for a kept address, the same as for a taken one: a register or a change of email cannot tell them apart, and must not.
+- **An address stays in `heldEmails` after its links lapse**, until somebody needs it: an account created or moved and refused by `heldEmails` lets go of the addresses whose links all lapsed (`releaseLapsedHolds`) and tries once more. `holderOf` reads only live links, so neither Create account nor the change of email counts a lapsed one.
+- **Delete account** keeps the undo links and `heldEmails`: the undo brings the account back. The erasure at 30 days lets every one of them go.
+- **A kept address answers like a taken one**, and neither like a free one only to whoever holds it: Create account sends `account-exists` in its held words, with the day the address is free ([auth.md](auth.md#creating-an-account)), and a change of email waits and sends `email-change-taken`. Neither the screen nor its time tells them apart, and must not. `POST /auth/register`, kept until T-239, still answers `409 EMAIL_TAKEN` for both.
 
 ### `DELETE /users/:id`
 
@@ -123,137 +125,31 @@ The unique index on `email` guards one address per account. An undo link needs a
 
 **Password guesses are limited per user.** Every `PUT` or `DELETE /users/:id` that carries `currentPassword` spends a `current-password:<userId>` counter with the login's per-device cap (`AUTH_RATE_LIMIT_MAX` per 15 minutes, refunded on success): a stolen token gets the same budget of guesses as the login, not the API's general one. Past it, `429 RATE_LIMITED`.
 
-**Soft delete.** Sets `deletedAt` and bumps `tokenVersion`; the account and its financial history are kept, and registering again with the same email **and the password it had** reactivates it. Its undo links keep working, and so do the addresses they keep: an undo within their 7 days brings the account back at the old address ([above](#undo-the-change-from-the-old-address)). Responds `200` with a message, and `account-deleted` goes to its email when it is confirmed (T-211). The only hard deletes in the API are the owner's two named exceptions: Start fresh (below) and "It wasn't me" of the verification email ([below](#it-wasnt-me-an-account-that-used-somebody-elses-address)).
+**Kept 30 days, then erased for good** (the owner's decisions 19 and 20 of 2026-09-28). One write (`markDeleted`) sets `deletedAt`, `keptUntil` — the end of the 30th day after today where the account lives, so "kept until October 28" lasts all of that day there —, a restore link (below), `emailChange: null` and `tokenVersion + 1`. Then every session row is revoked, what it shared and joined ends (its invitations are withdrawn and it leaves every group, as before), and `account-deleted` goes to its email when it is confirmed, with that day and "Restore account". The answer is `200 { message, keptUntil }`, the day as `YYYY-MM-DD`. Its undo links keep working, and so do the addresses they keep: an undo within their 7 days brings the account back at the old address ([above](#undo-the-change-from-the-old-address)). Every read filters `deletedAt`, so a deleted account disappears from the API while everything it holds stays.
 
-### Keep what's in this account?
+This is the only way an account is deleted: no link in any email deletes anything (decision 18).
 
-Somebody can register with an address that is not theirs and never confirm it. Whoever holds the inbox
-takes the account back with Forgot your password? ([auth.md](auth.md#post-authpasswordreset)), and then may
-not want what the other person put in it (the owner's decision 12 of 2026-09-26). So a reset of an account
-whose email **was never confirmed** and that holds accounts or transactions opens a question, in the same
-atomic write as the new password:
+### Restoring a deleted account
 
-```json
-"keepOrStartFresh": { "createdAt": "2025-06-01T…", "accounts": 2, "transactions": 31 }
-```
+Every way back tells the inbox (decision 20). What the deletion ended — invitations, the shared groups it left — stays ended.
 
-- **When the account was created and what it held then**: never a name or anything somebody typed. An
-  account with neither accounts nor transactions has nothing to keep and is not asked. A confirmed
-  account is never asked. Every account that existed before `emailVerifiedAt` counts as never confirmed
-  (decision 4); the reset confirms one, like its code or link ([auth.md](auth.md#confirming-the-email)).
-  The old `PUT` with a new email took it away before T-232 ([above](#put-usersid)); a move through
-  [Changing the email](#changing-the-email) confirms the new address.
-- **It stays open until it is answered**, in every profile answer (login, `GET /users/:id`, the sync
-  feed), so a client that closes lands on it again. A second reset before the answer keeps the first
-  question and its facts.
+1. **Signing in with its password.** `POST /auth/login` with the right password of a deleted account still kept answers `409 ACCOUNT_DELETED` with `deletedAccount: { deletedOn, keptUntil }` and opens nothing; "Restore account" sends the same credentials to `POST /auth/login/restore`, which clears `deletedAt` and `keptUntil`, signs in like a login and sends `account-restored` ([auth.md](auth.md#post-authloginrestore)). A wrong password reads the same as for any address.
+2. **Forgot your password?** reaches a deleted account still kept, in its own words, and the reset brings it back: `restored: true`, and `account-restored` instead of `password-changed` ([auth.md](auth.md#post-authpasswordreset)).
+3. **"Restore account" in `account-deleted`** (`{APP_URL}/{locale}/restore#token=…`, `POST /auth/email/restore`), for whoever did not delete it. The token is built like an undo link's (the account's id and 32 random bytes; only its SHA-256 is kept, in `restoreLinks: [{ tokenHash, expiresAt }]`, 7 days). It works once and **even if the account was restored meanwhile**, by whoever deleted it and knows the password: **one write** (`restoreFromLink`) clears `deletedAt` and `keptUntil`, makes the password the hash of 32 random bytes, bumps `tokenVersion`, sets `devicesResetAt`, cancels a change of email that waits and spends the link. Then every session row is revoked and `password-reset-after-undo`, in its restore words, takes a code and a link to the address, which `POST /auth/password/reset` redeems; the answer is `{ email, codeSent }`, as the undo's.
 
-`POST /users/:id/keep-or-start-fresh` answers it, and answers the profile. **Only a session opened by
-the reset or after it may answer**: the access token's `iat` must not be older than the question
-(`401` otherwise). An access token of whoever created the account lives up to 15 minutes after the
-reset; without this, their app could show them the question and let them press Keep before the owner
-of the inbox ever saw it.
+**An account deleted before T-238** has no `keptUntil`: its 30 days start the first time anything reaches it — the nightly pass, a sign-in, Forgot your password? or Create account with its address — (the owner's decision of 2026-10-03) and nothing is mailed about it: the email it got said it was kept with no date, and many of those addresses were never confirmed.
 
-- **`{ "choice": "keep" }`** closes it. Nothing else changes.
-- **`{ "choice": "start-fresh", "name", "locale", "currency", "timezone" }`** empties the account and
-  gives it the profile of the body, as a new account would have: nothing from before stays, not even the
-  name. The email and the password just chosen stay.
+### The nightly pass
 
-With no question open: `409 KEEP_OR_START_FRESH_CLOSED` (never asked, already answered, or `keep` after
-Start fresh was chosen).
+`NightlyPassService`, inside the daily keepalive invocation of the Lambda (`src/lambda.ts`, after the ping, with a budget of 10 seconds under the Lambda's 15; option A of the owner's AWS plan of 2026-09-28). In order:
 
-#### What Start fresh does
+1. **Dates** the accounts deleted before T-238 (above).
+2. **Erases the accounts past `keptUntil`**, one at a time: a claim (`claimErasure`) sets `erasingAt`, gives the address up (`email` becomes `<id>@erasing.invalid`, `heldEmails` goes, with every undo and restore link) and bumps `tokenVersion`; then `UserDataEraser.eraseAccount` removes everything it holds (below); then the user document goes. Each step is idempotent, and an account whose erasure was claimed is finished by the next pass. One that fails is logged `ACCOUNT_ERASE_FAILED` and left for the next night; a pass that runs out of time with accounts left logs `ACCOUNT_ERASE_BACKLOG`. Both reach the alarm of `infra/email.yaml` ("the server needs attention").
+3. **Sends the deadline emails** of the accounts from before email, when `EMAIL_CONFIRMATION_DEADLINES` is on ([auth.md](auth.md#the-deadline-of-the-accounts-from-before-email)).
 
-It is **not one transaction**: an account with years of movements does not fit one. Every step is
-idempotent instead, one request runs them at a time, and the question stays open until the last one
-lands, so a request that fails half-way is sent again and finishes the job:
+**The address is free the moment the 30 days end**, whenever the pass runs: creating an account or moving one to an address that a deleted account past `keptUntil` still has claims that account's erasure first (`releaseLapsedDeletion`), in the same request; the pass then finishes erasing what it held. Nothing is sent when an account is erased: `account-deleted` already gave the day.
 
-1. **The choice is written first, as a claim** (`keepOrStartFresh.startFresh`, with the new profile and
-   `claimedUntil`, five minutes on). From then on `keep` is refused, so two tabs cannot answer both
-   ways. A second start-fresh while the claim holds is `409 START_FRESH_IN_PROGRESS`, so a double tap
-   cannot erase what the first one's account already got afterwards. A request that fails frees its
-   claim on the way out; one that dies frees it when the five minutes pass. Either way the retry
-   resumes.
-2. **Shared, as deleting an account does:** every invitation it sent that is waiting or joined is
-   `WITHDRAWN`, so the guests' copies drop those groups; every group it joined reads `LEFT` to its
-   owner, who keeps the person and the money as they stood ([invitations.md](invitations.md)).
-3. **The erasure, for good** (`UserDataEraser`): transactions, settlements, shared expenses, the shared
-   ledger rows (`sharedcounterparties`) and budgets; then shared groups, contacts, accounts and
-   categories; then the first ones again, since a write that landed before its account, category or
-   group went would point at nothing (a write after that finds no parent and is refused).
-   - The invitations it sent are **kept, and handed to `retired:<userId>`**, any still live becoming
-     `WITHDRAWN` in the same write: the guests' copies learn from them that the groups ended, and this
-     account's own feed no longer carries the addresses and names somebody else typed.
-   - The invitations it answered stay with their owners, who read `LEFT` or `DECLINED`, and their
-     `inviteeId` becomes `retired:<userId>` too, so the account no longer finds them. The ones still
-     waiting for its address are the address's, and stay.
-   - Kept on purpose: sync operations and idempotency keys (they expire on their own, and without them a
-     retried write from an old device would be applied again), refresh sessions, rate counters and the
-     email records.
-4. **The default categories are seeded again**, by `seedKey`, so a retry adds none twice.
-5. **The profile and the close, in one write:** name, locale, currency (free again: there are no accounts)
-   and time zone from the choice, `keepOrStartFresh: null`, and `dataResetAt`, the instant of the reset.
-
-**Every copy synced before is out of date**, and the feed cannot say so row by row: an erased row leaves
-no tombstone. So a cursor carries the `dataResetAt` it was issued under, and `GET /sync/changes` with one
-from before answers `409 RESYNC_REQUIRED`: the client drops its copy and asks for a snapshot
-([sync.md](sync.md)).
-
-**Why hard delete here.** The screen promises "Everything in this account is deleted for good", and the
-owner chose it over hiding the rows (2026-09-26): archived accounts and categories would come back in
-Archived, and what somebody else put in the account would stay in it. It is the first of the two named
-exceptions to "nothing is deleted" (`CLAUDE.md` §2).
-
-An access token of the person who created the account lives up to 15 minutes after the reset, like any
-access token after a revocation ([auth.md](auth.md#token-revocation-model)). It cannot answer the
-question, and what it writes before Start fresh finishes is erased with the rest; what it writes after,
-within those minutes, stays. It could also call `POST /auth/logout-all` and sign the owner out once,
-which a new sign-in with the new password undoes.
-
-### It wasn't me: an account that used somebody else's address
-
-The `verify-email` of an account that **never confirmed any address** carries "It wasn't me" (the owner's
-decision 11 of 2026-09-26): whoever holds the inbox can delete, for good, an account that signed up with
-it and never confirmed it, and have the address free at once, without going through Forgot your
-password?. An account confirmed once is not an occupation, whatever its address today: `firstVerifiedAt`
-is set by its first confirmation and never cleared (unlike `emailVerifiedAt`, which the old `PUT` with a new email dropped),
-and its `verify-email` goes without the "Didn't sign up?" box. Without that, whoever held a mistyped new
-address could erase an account with years in it. `POST /auth/email/not-me { token }`
-([auth.md](auth.md#post-authemailnot-me)).
-
-**The token is signed, not stored.** It must keep working in every verification email for as long as the
-account stays unconfirmed — with no deadline, and Resend must not cancel it — which outlives every code,
-so a row in `authcodes` (24 hours) cannot hold it. It is 72 bytes in base64url (96 characters): the
-account's id, when it was issued (ms), 16 random bytes (so each email has its own link) and an
-HMAC-SHA256 with `JWT_SECRET` over the id, the SHA-256 of the address it went to, and those two. So it
-names one account **and** one address: for another address the HMAC does not match; one issued before
-the account's last change of address (`emailChangedAt`, stamped by every new email) is refused, so
-moving away and back does not bring old links back; once the account is confirmed, it is refused; once
-it is gone, there is nothing to name. A rotated `JWT_SECRET` ends every one of them, which Forgot
-your password? still covers.
-
-**It works on a deleted account too**, as long as it never confirmed its email: a soft-deleted account
-keeps its address taken (only its password brings it back, T-153), and the inbox's owner could otherwise
-never register with it.
-
-What it does, in order — not one transaction, like Start fresh; each step is idempotent and a retry
-finishes the job:
-
-1. **The claim** (`claimErasure`): one conditional write, only while the account still has that address,
-   has never been confirmed and has not changed its address since the token was issued, sets `deletedAt` (if not set) and `erasingAt`, and bumps `tokenVersion`.
-   From then on no read finds it (every read filters `deletedAt`), no login, refresh or device token
-   works, no confirmation can land, and no register brings it back (`getDeletedByEmail` skips
-   `erasingAt`). A confirmation that lands first makes the claim match nothing: `LINK_INVALID`, nothing
-   erased. A retry finds the account by its `erasingAt` and goes on.
-2. **Its sessions revoked**, and **its invitations ended as when an account is deleted**: what it sent,
-   waiting or joined, `WITHDRAWN`; what it joined, `LEFT`.
-3. **The erasure** (`UserDataEraser.eraseAccount`): what Start fresh erases ([below](#what-start-fresh-does)),
-   then its refresh sessions and every `authcodes` row of its address.
-4. **The account itself** (`eraseForGood`), a `deleteOne` guarded by `erasingAt`: the unique index on
-   `email` lets the next register take the address at once. No `account-deleted` is sent: the account
-   was never that address's.
-
-An access token of the account lives up to 15 minutes after the claim, as after any revocation; what it
-writes after the erasure belongs to an account that no longer exists and nobody can reach.
+**What the erasure removes** (`UserDataEraser.eraseAccount`): transactions, settlements, shared expenses, its shared counterparties, budgets, the shared groups it created, contacts, accounts and categories (dependents twice, before and after their parents, so a write that landed late points at nothing); its sync operations and session rows. The invitations it sent stay for their guests, who learn the end from them, under `userId: retired:<id>` (live ones `WITHDRAWN`); the ones it answered stay with their owners under `inviteeId: retired:<id>`. Codes, rate counters, delivery records and idempotency keys lapse by their own TTL. **It is the one hard delete of an account** (`CLAUDE.md` §2), the owner's decision 19.
 
 ## Internal Flow
 
@@ -340,16 +236,15 @@ sequenceDiagram
 | `Unauthorized`                       | 401     | Missing, invalid or expired access token                                                |
 | `CURRENT_PASSWORD_INVALID`           | 401     | `currentPassword` is wrong (credential change or delete)                                |
 | `NotFound`                           | 404     | User does not exist, **or the id is not the authenticated user's**                      |
-| `EMAIL_TAKEN`                        | 409     | The new email belongs to another account: asking for it, or confirming it once taken    |
+| `EMAIL_TAKEN`                        | 409     | Confirming a change whose new address another account took meanwhile                    |
 | `EMAIL_CHANGE_NOT_PENDING`           | 409     | Resend, or the code of a change, when nothing waits (confirmed, cancelled, 24 h past)   |
 | `EMAIL_SEND_FAILED`                  | 422/503 | The email to the new address did not go: nothing was saved, or the old code still works |
-| `KEEP_OR_START_FRESH_CLOSED`         | 409     | Answering "Keep what's in this account?" when it is not open                            |
 
-## Soft Delete and Reactivation
+## Soft Delete, Restore and Erasure
 
-`UserRepository.delete()` sets `deletedAt` and increments `tokenVersion` — it never removes the document (Start fresh, above, removes what an account holds, never the account; only It wasn't me removes an account, and only one that never confirmed its email). Every read path filters on `deletedAt: null`, so a deleted user disappears from the API while their accounts, transactions, categories, and budgets stay intact.
+`UserRepository.markDeleted()` sets `deletedAt` and `keptUntil` and increments `tokenVersion` — it never removes the document. Every normal read filters on `deletedAt: null`, so a deleted user disappears from the API while their accounts, transactions, categories and budgets stay intact for the 30 days; `getReachableByEmail` (Sign in, Forgot your password?) and `getForUndo` (the undo and restore links) are the reads that still find it. The original `currency` comes back with the account, because its history is denominated in it. Only the nightly pass, or a new account taking the address once the 30 days are over, removes an account ([above](#the-nightly-pass)).
 
-`AuthService.register()` looks up soft-deleted accounts by email first. Only when the password sent matches the one the account had (the owner's decision of 2026-09-23, T-153) does it call `reactivate()`, which clears `deletedAt`, applies the new name (and timezone and locale, if sent), bumps `tokenVersion` again, and returns `user.reactivated: true`; any other password answers `409 EMAIL_TAKEN`, exactly like a live account, so a recycled email or someone who deleted the account through a stolen session never gets the history. The original `currency` is preserved, because the restored history is denominated in it.
+`dataResetAt` is what Start fresh, removed in T-238, stamped on the accounts it erased: the sync feed still answers `RESYNC_REQUIRED` to a cursor from before it ([sync.md](sync.md)), for the devices of those accounts that have not pulled since.
 
 ## How to Extend
 

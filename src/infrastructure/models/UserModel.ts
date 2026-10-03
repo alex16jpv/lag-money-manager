@@ -5,19 +5,6 @@ import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { DEFAULT_LOCALE, Locale, LOCALES } from "../../shared/locale";
 import { DEFAULT_TIMEZONE } from "../../shared/timezone";
 
-export interface IKeepOrStartFreshDocument {
-  askedAt: Date;
-  accounts: number;
-  transactions: number;
-  startFresh: {
-    name: string;
-    locale: Locale;
-    currency: string;
-    timezone: string;
-    claimedUntil: Date;
-  } | null;
-}
-
 export interface IEmailChangeDocument {
   email: string;
   sentAt: Date;
@@ -28,6 +15,18 @@ export interface IUndoLinkDocument {
   email: string;
   tokenHash: string;
   expiresAt: Date;
+}
+
+export interface IRestoreLinkDocument {
+  tokenHash: string;
+  expiresAt: Date;
+}
+
+export interface IConfirmDeadlineDocument {
+  day: string;
+  endsAt: Date;
+  remindedAt: Date | null;
+  links: { email: string; tokenHash: string }[];
 }
 
 export interface IUserDocument {
@@ -41,15 +40,15 @@ export interface IUserDocument {
   locale: Locale;
   lastLoginAt: Date | null;
   emailVerifiedAt: Date | null;
-  firstVerifiedAt: Date | null;
-  emailChangedAt: Date | null;
+  confirmDeadline: IConfirmDeadlineDocument | null;
   emailChange: IEmailChangeDocument | null;
   undoLinks: IUndoLinkDocument[];
   heldEmails?: string[];
   devicesResetAt: Date | null;
-  keepOrStartFresh: IKeepOrStartFreshDocument | null;
   dataResetAt: Date | null;
   deletedAt: Date | null;
+  keptUntil: Date | null;
+  restoreLinks: IRestoreLinkDocument[];
   erasingAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -84,8 +83,34 @@ const UserSchema = new Schema<IUserDocument>(
     },
     lastLoginAt: { type: Date, default: null },
     emailVerifiedAt: { type: Date, default: null },
-    firstVerifiedAt: { type: Date, default: null },
-    emailChangedAt: { type: Date, default: null },
+    confirmDeadline: {
+      type: new Schema<IConfirmDeadlineDocument>(
+        {
+          day: { type: String, required: true },
+          endsAt: { type: Date, required: true },
+          remindedAt: { type: Date, default: null },
+          links: {
+            type: [
+              new Schema(
+                {
+                  email: {
+                    type: String,
+                    required: true,
+                    lowercase: true,
+                    trim: true,
+                  },
+                  tokenHash: { type: String, required: true },
+                },
+                { _id: false },
+              ),
+            ],
+            default: [],
+          },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
     emailChange: {
       type: new Schema<IEmailChangeDocument>(
         {
@@ -120,36 +145,21 @@ const UserSchema = new Schema<IUserDocument>(
       default: undefined,
     },
     devicesResetAt: { type: Date, default: null },
-    keepOrStartFresh: {
-      type: new Schema<IKeepOrStartFreshDocument>(
-        {
-          askedAt: { type: Date, required: true },
-          accounts: { type: Number, required: true },
-          transactions: { type: Number, required: true },
-          startFresh: {
-            type: new Schema(
-              {
-                name: { type: String, required: true },
-                locale: {
-                  type: String,
-                  required: true,
-                  enum: Object.keys(LOCALES),
-                },
-                currency: { type: String, required: true },
-                timezone: { type: String, required: true },
-                claimedUntil: { type: Date, required: true },
-              },
-              { _id: false },
-            ),
-            default: null,
-          },
-        },
-        { _id: false },
-      ),
-      default: null,
-    },
     dataResetAt: { type: Date, default: null },
     deletedAt: { type: Date, default: null },
+    keptUntil: { type: Date, default: null },
+    restoreLinks: {
+      type: [
+        new Schema<IRestoreLinkDocument>(
+          {
+            tokenHash: { type: String, required: true },
+            expiresAt: { type: Date, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     erasingAt: { type: Date, default: null },
   },
   { timestamps: true },
@@ -160,6 +170,12 @@ UserSchema.index(
   { heldEmails: 1 },
   { unique: true, partialFilterExpression: { heldEmails: { $exists: true } } },
 );
+
+// The nightly pass: the accounts past their days, the ones claimed by an erasure, the ones still undated.
+UserSchema.index({ keptUntil: 1 });
+UserSchema.index({ erasingAt: 1 });
+UserSchema.index({ deletedAt: 1 });
+UserSchema.index({ emailVerifiedAt: 1, "confirmDeadline.endsAt": 1 });
 
 export const UserModel = mongoose.model<IUserDocument>(
   MODEL_NAMES.USER,

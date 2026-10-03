@@ -259,15 +259,13 @@ export const AUTH_CODE_PURPOSES = {
   reset: "reset",
   verify: "verify",
   "email-change": "email-change",
+  "sign-up": "sign-up",
 } as const;
 
 export type AuthCodePurpose = keyof typeof AUTH_CODE_PURPOSES;
 
-// The "It wasn't me" link's token: 72 bytes in base64url (src/app/services/authCodes.ts).
-export const NOT_ME_TOKEN_FORMAT = /^[A-Za-z0-9_-]{96}$/;
-
-// The "Undo the change" link's token: 48 bytes in base64url (src/app/services/authCodes.ts).
-export const UNDO_TOKEN_FORMAT = /^[A-Za-z0-9_-]{64}$/;
+// A link kept on the account (undo, restore, a deadline): 48 bytes in base64url (src/app/services/authCodes.ts).
+export const ACCOUNT_LINK_TOKEN_FORMAT = /^[A-Za-z0-9_-]{64}$/;
 
 // Cloudflare's published test secrets: they pass, fail or report a spent token whatever the token is.
 export const TURNSTILE_TEST_SECRET = /^[123]x0{31}AA$/;
@@ -307,6 +305,7 @@ const emailEnvSchema = z.object({
   EMAIL_PROVIDERS: emailProviderList,
   EMAIL_SENDING_ENABLED: envFlag,
   EMAIL_VERIFICATION_REQUIRED: envFlagDefaulting("false"),
+  EMAIL_CONFIRMATION_DEADLINES: envFlagDefaulting("false"),
   EMAIL_FROM_NAME: z
     .string()
     .regex(
@@ -428,6 +427,14 @@ const mongoEnvSchema = baseEnvSchema
         path: ["EMAIL_VERIFICATION_REQUIRED"],
         message:
           "invitations would wait for a confirmation nobody can receive: set EMAIL_PROVIDERS first",
+      });
+    }
+    if (env.EMAIL_CONFIRMATION_DEADLINES && env.EMAIL_PROVIDERS.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["EMAIL_CONFIRMATION_DEADLINES"],
+        message:
+          "a deadline starts with the email that announces it: set EMAIL_PROVIDERS first",
       });
     }
     if (env.EMAIL_PROVIDERS.length > 0 && !env.TURNSTILE_SECRET) {

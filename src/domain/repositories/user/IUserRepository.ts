@@ -1,36 +1,44 @@
-import { TxSession } from "../../../shared/unitOfWork";
 import {
-  FreshStartDetails,
+  ConfirmDeadline,
   PendingEmailChange,
+  RestoreLink,
   UndoLink,
   User,
 } from "../../entities/User";
 import { IRepository } from "../IRepository";
 
-export interface IUserRepository extends IRepository<User> {
-  delete(id: string, session?: TxSession): Promise<void>;
+// Who an address belongs to: an account (live, or deleted and still kept), or one whose working undo link keeps it.
+export type AddressHolder =
+  | { state: "live"; user: User }
+  | { state: "deleted"; user: User }
+  | { state: "held"; user: User; freeAt: Date };
+
+export interface IUserRepository extends Omit<IRepository<User>, "delete"> {
   getByEmail(email: string): Promise<User | null>;
   getManyByIds(ids: string[]): Promise<User[]>;
   // Unlike getById, keeps the password hash (current-password verification).
   getByIdWithPassword(id: string): Promise<User | null>;
+  // Live, or deleted and still kept: what Sign in and Forgot your password? reach. With the password hash.
+  getReachableByEmail(email: string, now: Date): Promise<User | null>;
+  holderOf(
+    email: string,
+    now: Date,
+    exceptUserId?: string,
+  ): Promise<AddressHolder | null>;
   // Atomic $inc of tokenVersion, and every device token issued before is unknown to new-sign-in.
   forgetDevices(id: string, now: Date): Promise<User | null>;
   // Fields and tokenVersion in one atomic write, so a concurrent logout-all cannot lose a revocation.
   updateWithTokenBump(id: string, fields: Partial<User>): Promise<User>;
   // Stamps lastLoginAt; fire-and-forget semantics (no error surfaced).
   recordLogin(id: string): Promise<void>;
-  getDeletedByEmail(email: string): Promise<User | null>;
-  // One atomic write: password, tokenVersion, email confirmed, no change waiting, and the question only if it never was.
+  // One atomic write: password, tokenVersion, email confirmed, no change waiting, and back if it was deleted and still kept.
   resetPassword(
     id: string,
     passwordHash: string,
-    question: { accounts: number; transactions: number } | null,
     now: Date,
   ): Promise<User | null>;
   // Null when the account no longer has this address; the account as it is when it was already confirmed.
   markEmailVerified(id: string, email: string, now: Date): Promise<User | null>;
-  // Any account holding the address, deleted ones included, or another one keeping it for a working undo link.
-  emailInUse(email: string, now: Date, exceptUserId?: string): Promise<boolean>;
   startEmailChange(
     id: string,
     change: PendingEmailChange,
@@ -53,7 +61,7 @@ export interface IUserRepository extends IRepository<User> {
     email: string,
     now: Date,
   ): Promise<User | "taken" | null>;
-  // Live or soft-deleted: an undo link also brings back an account deleted after it was sent.
+  // Live or deleted: an undo or restore link also brings back an account deleted after it was sent.
   getForUndo(id: string): Promise<User | null>;
   // One write: back to the link's address, not deleted, no password; the links issued before it survive. Null once it no longer works.
   undoEmailChange(
@@ -62,32 +70,53 @@ export interface IUserRepository extends IRepository<User> {
     unusablePasswordHash: string,
     now: Date,
   ): Promise<User | null>;
-  // Never confirmed, deleted or not, including one whose erasure started and has to finish.
-  getForErasure(id: string): Promise<User | null>;
-  // Takes the account out of every read; null once it was confirmed, or moved after the token was issued.
-  claimErasure(
+  // Delete account: out of every read, tokenVersion bumped, kept until keptUntil with its restore link.
+  markDeleted(
     id: string,
-    email: string,
-    tokenIssuedAt: Date,
+    keptUntil: Date,
+    link: RestoreLink,
     now: Date,
   ): Promise<User | null>;
+  // Signing in with its password; null unless it is deleted and still kept.
+  restoreDeleted(id: string, now: Date): Promise<User | null>;
+  // One write: back, no usable password, every device forgotten, the link spent. Also when it was already back.
+  restoreFromLink(
+    id: string,
+    tokenHash: string,
+    unusablePasswordHash: string,
+    now: Date,
+  ): Promise<User | null>;
+  // Deleted before keptUntil existed: each gets its day from the nightly pass.
+  listUndatedDeletions(limit: number): Promise<User[]>;
+  setKeptUntil(id: string, keptUntil: Date): Promise<void>;
+  // Past keptUntil, or claimed by an erasure that has to finish.
+  listErasable(
+    now: Date,
+    limit: number,
+    exceptIds: string[],
+  ): Promise<string[]>;
+  // Takes the account out of every read and frees its address; false when it is not erasable any more.
+  claimErasure(id: string, now: Date): Promise<boolean>;
   // The one hard delete of an account: only one claimErasure marked.
   eraseForGood(id: string): Promise<void>;
-  // Each resolves null when the question is not open for that answer.
-  keepEverything(id: string, now: Date): Promise<User | null>;
-  // Null also while another request holds the claim and its lease has not run out.
-  chooseStartFresh(
+  // Live accounts from before email existed that were never given a deadline.
+  listWithoutDeadline(limit: number, exceptIds: string[]): Promise<User[]>;
+  // False when the account was confirmed, moved or given a deadline meanwhile.
+  startConfirmDeadline(
     id: string,
-    details: FreshStartDetails,
+    email: string,
+    deadline: ConfirmDeadline,
+  ): Promise<boolean>;
+  // Unconfirmed, not reminded, and the deadline ends after now and no later than endsBy.
+  listDueReminders(
     now: Date,
-    leaseMs: number,
-  ): Promise<User | null>;
-  releaseStartFresh(id: string, now: Date): Promise<void>;
-  finishStartFresh(id: string, now: Date): Promise<User | null>;
-  // Clears the soft delete; the account keeps its financial history.
-  reactivate(
+    endsBy: Date,
+    limit: number,
+    exceptIds: string[],
+  ): Promise<User[]>;
+  markReminded(
     id: string,
-    updates: Pick<User, "name" | "password"> &
-      Partial<Pick<User, "timezone" | "locale">>,
-  ): Promise<User>;
+    link: { email: string; tokenHash: string },
+    now: Date,
+  ): Promise<boolean>;
 }

@@ -1,26 +1,15 @@
 /**
- * What the mocked suite cannot see about Forgot your password? and Start fresh
- * (T-207): the per-address rows written for every address, the atomic single
- * use of a code, its five tries, the pipeline that opens "Keep what's in this
- * account?" only on a never-confirmed account, and the erasure behind Start
- * fresh with what it leaves for the other people in Shared.
+ * What the mocked suite cannot see about Forgot your password? (T-207, T-238):
+ * the per-address rows written for every address, the atomic single use of a
+ * code, its five tries, and the reset that brings a deleted account back.
  */
-import jwt from "jsonwebtoken";
 import request from "supertest";
 
 import { OutgoingEmail } from "../../domain/email/EmailProvider";
 import { IssuedCode } from "../../domain/repositories/authCode/IAuthCodeRepository";
-import { AccountModel } from "../../infrastructure/models/AccountModel";
 import { AuthCodeModel } from "../../infrastructure/models/AuthCodeModel";
-import { CategoryModel } from "../../infrastructure/models/CategoryModel";
-import { ContactModel } from "../../infrastructure/models/ContactModel";
-import { SharedExpenseModel } from "../../infrastructure/models/SharedExpenseModel";
-import { SharedGroupModel } from "../../infrastructure/models/SharedGroupModel";
-import { SharedInvitationModel } from "../../infrastructure/models/SharedInvitationModel";
-import { TransactionModel } from "../../infrastructure/models/TransactionModel";
 import { UserModel } from "../../infrastructure/models/UserModel";
 import { AuthCodeRepository } from "../../infrastructure/repositories/authCode/AuthCodeRepository";
-import { DEFAULT_CATEGORIES } from "../../shared/defaultCategories";
 import { hashEmailAddress } from "../../shared/emailHash";
 import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
@@ -91,12 +80,6 @@ async function register(email: string, name: string): Promise<Session> {
 const as = (session: Session, req: request.Test): request.Test =>
   req.set("Authorization", `Bearer ${session.token}`);
 
-async function created(req: request.Test): Promise<string> {
-  const res = await req;
-  expect(res.status).toBe(201);
-  return res.body.id as string;
-}
-
 const forgot = (email: string): request.Test =>
   request(app)
     .post("/auth/password/forgot")
@@ -159,7 +142,7 @@ describe("Forgot your password? against mongod [T-207]", () => {
     expect(Number(againWithout.headers["retry-after"])).toBeGreaterThan(0);
   });
 
-  it("mails nothing to a deleted account, and answers it like any other address", async () => {
+  it("mails a deleted account its own words, and the new password restores it [T-238]", async () => {
     const gabi = await register("gabi@reset.test", "Gabi Borra");
     const deleted = await as(
       gabi,
@@ -170,17 +153,31 @@ describe("Forgot your password? against mongod [T-207]", () => {
     expect(deleted.status).toBe(200);
 
     const res = await forgot("gabi@reset.test");
-
     expect(res.status).toBe(202);
     expect(res.body).toEqual({ resendAfterSeconds: 60 });
-    expect(resetsSent().some((email) => email.to === "gabi@reset.test")).toBe(
-      false,
-    );
-    const row = await AuthCodeModel.findOne({
-      purpose: "reset",
-      toHash: hashEmailAddress("gabi@reset.test"),
-    }).lean();
-    expect(row).toMatchObject({ userId: null, codes: [] });
+    const email = [...mockSent]
+      .reverse()
+      .find((sent) => sent.to === "gabi@reset.test");
+    expect(email?.text).toContain("This account was deleted on");
+    expect(email?.text).toContain(`erased on`);
+
+    const { code } = lastEmailTo("gabi@reset.test");
+    const restored = await reset({
+      email: "gabi@reset.test",
+      code,
+      newPassword: "Restored!2026",
+    });
+    expect(restored.status).toBe(200);
+    expect(restored.body.restored).toBe(true);
+    const stored = await UserModel.findById(gabi.userId).lean();
+    expect(stored).toMatchObject({ deletedAt: null, keptUntil: null });
+    expect(
+      (
+        await request(app)
+          .post("/auth/login")
+          .send({ email: "gabi@reset.test", password: "Restored!2026" })
+      ).status,
+    ).toBe(200);
   });
 
   it("changes the password once, signs every old session out and confirms the email", async () => {
@@ -193,7 +190,7 @@ describe("Forgot your password? against mongod [T-207]", () => {
     expect(done.status).toBe(200);
     expect(typeof done.body.accessToken).toBe("string");
     expect(typeof done.body.deviceToken).toBe("string");
-    expect(done.body.user.keepOrStartFresh).toBeNull();
+    expect(done.body.restored).toBe(false);
 
     const stored = await UserModel.findOne({ email: "ana@reset.test" }).lean();
     expect(stored?.emailVerifiedAt).toBeInstanceOf(Date);
@@ -292,271 +289,5 @@ describe("Forgot your password? against mongod [T-207]", () => {
     );
     await codes.issue("reset", toHash, code("e"), true, new Date());
     expect(await live()).toEqual(["e"]);
-  });
-
-  describe("an account whose email was never confirmed", () => {
-    let dani: Session;
-    let eli: Session;
-    let fede: Session;
-    let staleCursor: string;
-
-    beforeAll(async () => {
-      dani = await register("dani@reset.test", "Dani Ocupa");
-      eli = await register("eli@reset.test", "Eli Invitada");
-      fede = await register("fede@reset.test", "Fede Dueño");
-
-      const account = await created(
-        as(
-          dani,
-          request(app)
-            .post("/accounts")
-            .send({ name: "Wallet", type: "CASH", balance: 100000 }),
-        ),
-      );
-      const categories = await as(dani, request(app).get("/categories"));
-      const expense = (
-        categories.body.data as { id: string; type: string }[]
-      ).find((c) => c.type === "EXPENSE")?.id;
-      await created(
-        as(
-          dani,
-          request(app).post("/transactions").send({
-            type: "EXPENSE",
-            amount: 25000,
-            date: "2026-09-20T15:00:00.000Z",
-            fromAccountId: account,
-            categoryId: expense,
-            description: "Lunch",
-          }),
-        ),
-      );
-
-      const eliContact = await created(
-        as(
-          dani,
-          request(app)
-            .post("/contacts")
-            .send({ name: "Eli", email: "eli@reset.test" }),
-        ),
-      );
-      const group = await created(
-        as(
-          dani,
-          request(app)
-            .post("/shared-groups")
-            .send({ name: "Trip", contactIds: [eliContact] }),
-        ),
-      );
-      await created(
-        as(
-          dani,
-          request(app).post(`/shared-groups/${group}/expenses`).send({
-            description: "Cabin",
-            date: "2026-09-19T15:00:00.000Z",
-            amount: 90000,
-          }),
-        ),
-      );
-      const invitation = await as(
-        dani,
-        request(app)
-          .post(`/shared-groups/${group}/invitations`)
-          .send({ contactId: eliContact }),
-      );
-      expect(
-        (
-          await as(
-            eli,
-            request(app).post(`/invitations/${invitation.body.id}/accept`),
-          )
-        ).status,
-      ).toBe(200);
-
-      const daniContact = await created(
-        as(
-          fede,
-          request(app)
-            .post("/contacts")
-            .send({ name: "Dani", email: "dani@reset.test" }),
-        ),
-      );
-      const fedeGroup = await created(
-        as(
-          fede,
-          request(app)
-            .post("/shared-groups")
-            .send({ name: "Flat", contactIds: [daniContact] }),
-        ),
-      );
-      const toDani = await as(
-        fede,
-        request(app)
-          .post(`/shared-groups/${fedeGroup}/invitations`)
-          .send({ contactId: daniContact }),
-      );
-      expect(
-        (
-          await as(
-            dani,
-            request(app).post(`/invitations/${toDani.body.id}/accept`),
-          )
-        ).status,
-      ).toBe(200);
-
-      const pulled = await as(
-        dani,
-        request(app).get("/sync/changes").query({ limit: 1000 }),
-      );
-      staleCursor = pulled.body.pagination.nextCursor;
-    });
-
-    it("opens Keep what's in this account? with what it held, and keeps it open", async () => {
-      expect((await forgot("dani@reset.test")).status).toBe(202);
-      const { code } = lastEmailTo("dani@reset.test");
-
-      const done = await reset({ email: "dani@reset.test", code });
-
-      expect(done.status).toBe(200);
-      expect(done.body.user.keepOrStartFresh).toEqual({
-        createdAt: expect.any(String),
-        accounts: 1,
-        transactions: 1,
-      });
-      dani = {
-        token: done.body.accessToken,
-        refreshToken: done.body.refreshToken,
-        userId: dani.userId,
-      };
-      const profile = await as(dani, request(app).get(`/users/${dani.userId}`));
-      expect(profile.body.keepOrStartFresh).toMatchObject({
-        accounts: 1,
-        transactions: 1,
-      });
-    });
-
-    it("lets no access token from before the reset answer it", async () => {
-      const before = jwt.sign(
-        {
-          userId: dani.userId,
-          email: "dani@reset.test",
-          iat: Math.floor(Date.now() / 1000) - 120,
-        },
-        process.env.JWT_SECRET as string,
-        { algorithm: "HS256", expiresIn: "15m" },
-      );
-
-      const res = await request(app)
-        .post(`/users/${dani.userId}/keep-or-start-fresh`)
-        .set("Authorization", `Bearer ${before}`)
-        .send({ choice: "keep" });
-
-      expect(res.status).toBe(401);
-      const stored = await UserModel.findById(dani.userId).lean();
-      expect(stored?.keepOrStartFresh).not.toBeNull();
-    });
-
-    it("starts fresh: erases for good, leaves Shared, and sends every older copy back to the start", async () => {
-      const startFresh = (): request.Test =>
-        as(
-          dani,
-          request(app).post(`/users/${dani.userId}/keep-or-start-fresh`).send({
-            choice: "start-fresh",
-            name: "Dani Real",
-            locale: "es",
-            currency: "EUR",
-            timezone: "Europe/Madrid",
-          }),
-        );
-
-      const [first, second] = await Promise.all([startFresh(), startFresh()]);
-      const [res, other] =
-        first.status === 200 ? [first, second] : [second, first];
-
-      expect(res.status).toBe(200);
-      expect(other.status).toBe(409);
-      expect([
-        "START_FRESH_IN_PROGRESS",
-        "KEEP_OR_START_FRESH_CLOSED",
-      ]).toContain(other.body.code);
-      expect(res.body).toMatchObject({
-        name: "Dani Real",
-        locale: "es",
-        currency: "EUR",
-        timezone: "Europe/Madrid",
-        keepOrStartFresh: null,
-        email: "dani@reset.test",
-      });
-
-      const userId = dani.userId;
-      expect(await AccountModel.countDocuments({ userId })).toBe(0);
-      expect(await TransactionModel.countDocuments({ userId })).toBe(0);
-      expect(await ContactModel.countDocuments({ userId })).toBe(0);
-      expect(await SharedGroupModel.countDocuments({ userId })).toBe(0);
-      expect(await SharedExpenseModel.countDocuments({ userId })).toBe(0);
-      expect(await CategoryModel.countDocuments({ userId })).toBe(
-        DEFAULT_CATEGORIES.length,
-      );
-
-      const toEli = await SharedInvitationModel.findOne({
-        email: "eli@reset.test",
-      }).lean();
-      expect(toEli).toMatchObject({
-        status: "WITHDRAWN",
-        userId: `retired:${userId}`,
-      });
-      const fromFede = await SharedInvitationModel.findOne({
-        userId: fede.userId,
-      }).lean();
-      expect(fromFede).toMatchObject({
-        status: "LEFT",
-        inviteeId: `retired:${userId}`,
-      });
-
-      const stale = await as(
-        dani,
-        request(app).get("/sync/changes").query({ cursor: staleCursor }),
-      );
-      expect(stale.status).toBe(409);
-      expect(stale.body.code).toBe("RESYNC_REQUIRED");
-
-      const snapshot = await as(
-        dani,
-        request(app).get("/sync/changes").query({ limit: 1000 }),
-      );
-      expect(snapshot.status).toBe(200);
-      expect(snapshot.body.changes.accounts).toEqual([]);
-      expect(snapshot.body.changes.invitationsSent).toEqual([]);
-      expect(snapshot.body.changes.invitationsReceived).toEqual([]);
-      expect(snapshot.body.changes.categories).toHaveLength(
-        DEFAULT_CATEGORIES.length,
-      );
-      const next = await as(
-        dani,
-        request(app)
-          .get("/sync/changes")
-          .query({ cursor: snapshot.body.pagination.nextCursor }),
-      );
-      expect(next.status).toBe(200);
-
-      const eliFeed = await as(
-        eli,
-        request(app).get("/sync/changes").query({ limit: 1000 }),
-      );
-      expect(
-        (eliFeed.body.changes.invitationsReceived as { status: string }[]).map(
-          (row) => row.status,
-        ),
-      ).toEqual(["WITHDRAWN"]);
-      expect(eliFeed.body.changes.joinedGroups).toEqual([]);
-
-      const again = await as(
-        dani,
-        request(app)
-          .post(`/users/${dani.userId}/keep-or-start-fresh`)
-          .send({ choice: "keep" }),
-      );
-      expect(again.status).toBe(409);
-      expect(again.body.code).toBe("KEEP_OR_START_FRESH_CLOSED");
-    });
   });
 });

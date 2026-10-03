@@ -2,8 +2,7 @@
  * What the mocked suite cannot see about confirming an email (T-209): the
  * codes and links as a person reads them from the email, the tries counted
  * in mongod, the invitations that wait for a confirmed address and reach the
- * change feed once it is, and "It wasn't me" erasing an account for good and
- * freeing its address under the unique index.
+ * change feed once it is.
  */
 import request from "supertest";
 
@@ -12,14 +11,10 @@ import repositoryFactory from "../../app/factories/RepositoryFactory";
 import { AuthService } from "../../app/services/AuthService";
 import { CategoryService } from "../../app/services/CategoryService";
 import { OutgoingEmail } from "../../domain/email/EmailProvider";
-import { AccountModel } from "../../infrastructure/models/AccountModel";
 import { AuthCodeModel } from "../../infrastructure/models/AuthCodeModel";
-import { ContactModel } from "../../infrastructure/models/ContactModel";
 import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
-import { RefreshSessionModel } from "../../infrastructure/models/RefreshSessionModel";
 import { SharedInvitationModel } from "../../infrastructure/models/SharedInvitationModel";
 import { UserModel } from "../../infrastructure/models/UserModel";
-import { UserDataEraser } from "../../infrastructure/repositories/userData/UserDataEraser";
 import { hashEmailAddress } from "../../shared/emailHash";
 import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
 
@@ -158,51 +153,22 @@ const resend = (session: Session): request.Test =>
     request(app).post("/auth/email/resend").send({ captcha: TEST_CAPTCHA }),
   );
 
-const notMe = (token: string): request.Test =>
-  request(app).post("/auth/email/not-me").send({ token });
-
 function lastEmailTo(address: string): {
   code: string;
   token: string;
-  notMeToken: string | undefined;
   text: string;
 } {
   const email = [...mockSent].reverse().find((sent) => sent.to === address);
   if (!email) throw new Error(`nothing was sent to ${address}`);
   const code = email.text.match(/\b(\d{6})\b/)?.[1];
   const token = email.text.match(/\/verify#token=([A-Za-z0-9_-]+)/)?.[1];
-  const notMeToken = email.text.match(/\/not-me#token=([A-Za-z0-9_-]+)/)?.[1];
   if (!code || !token) throw new Error("the email has no code or no link");
-  return { code, token, notMeToken, text: email.text };
+  expect(email.text).not.toContain("/not-me");
+  return { code, token, text: email.text };
 }
-
-const notMeOf = (address: string): string => {
-  const { notMeToken } = lastEmailTo(address);
-  if (!notMeToken)
-    throw new Error(`the last email to ${address} has no It wasn't me`);
-  return notMeToken;
-};
 
 const sentTo = (address: string): number =>
   mockSent.filter((sent) => sent.to === address).length;
-
-// What PUT /users/{id} with an email wrote before T-232, bar the tokenVersion that would end the session.
-const movedByTheOldPut = async (
-  session: Session,
-  email: string,
-): Promise<void> => {
-  await UserModel.updateOne(
-    { _id: session.userId },
-    {
-      $set: {
-        email,
-        emailVerifiedAt: null,
-        emailChangedAt: new Date(),
-        emailChange: null,
-      },
-    },
-  );
-};
 
 describe("Confirming an email against mongod [T-209]", () => {
   beforeAll(async () => {
@@ -337,7 +303,6 @@ describe("Confirming an email against mongod [T-209]", () => {
     ).toBe(0);
     expect(await UserModel.findById(eva.userId).lean()).toMatchObject({
       email: "eva@verify.test",
-      emailChangedAt: null,
     });
 
     expect((await verifyLink(old.token)).status).toBe(200);
@@ -443,181 +408,5 @@ describe("Confirming an email against mongod [T-209]", () => {
     );
     expect(joined.status).toBe(200);
     expect(joined.body.status).toBe("ACCEPTED");
-  });
-
-  it("erases the account that used somebody else's address, for good, and frees the address", async () => {
-    const occupant = await register("gina@verify.test", "Not Gina");
-    const notMeToken = notMeOf("gina@verify.test");
-    const account = await as(
-      occupant,
-      request(app)
-        .post("/accounts")
-        .send({ name: "Wallet", type: "CASH", balance: 50_000 }),
-    );
-    expect(account.status).toBe(201);
-    await as(
-      occupant,
-      request(app).post("/contacts").send({ name: "Somebody" }),
-    );
-
-    const gone = await notMe(notMeToken);
-    expect(gone.status).toBe(200);
-
-    expect(await UserModel.findById(occupant.userId).lean()).toBeNull();
-    expect(await AccountModel.countDocuments({ userId: occupant.userId })).toBe(
-      0,
-    );
-    expect(await ContactModel.countDocuments({ userId: occupant.userId })).toBe(
-      0,
-    );
-    expect(
-      await RefreshSessionModel.countDocuments({ userId: occupant.userId }),
-    ).toBe(0);
-    expect(
-      await AuthCodeModel.countDocuments({
-        toHash: hashEmailAddress("gina@verify.test"),
-      }),
-    ).toBe(0);
-    const refresh = await request(app)
-      .post("/auth/refresh")
-      .send({ refreshToken: occupant.refreshToken });
-    expect(refresh.status).toBe(401);
-
-    const gina = await request(app).post("/auth/register").send({
-      captcha: TEST_CAPTCHA,
-      name: "Gina",
-      email: "gina@verify.test",
-      password: "Gina's own 2026",
-      currency: "COP",
-    });
-    expect(gina.status).toBe(201);
-    expect(gina.body.user.reactivated).toBeUndefined();
-    expect(gina.body.user.id).not.toBe(occupant.userId);
-
-    const twice = await notMe(notMeToken);
-    expect(twice.status).toBe(400);
-    expect(twice.body.code).toBe("LINK_INVALID");
-    expect(await UserModel.countDocuments({ email: "gina@verify.test" })).toBe(
-      1,
-    );
-  });
-
-  it("stops It wasn't me once the address is confirmed", async () => {
-    const hugo = await register("hugo@verify.test", "Hugo Sol");
-    const { code } = lastEmailTo("hugo@verify.test");
-    const notMeToken = notMeOf("hugo@verify.test");
-    expect((await verifyCode(hugo, code)).status).toBe(200);
-
-    const refused = await notMe(notMeToken);
-
-    expect(refused.status).toBe(400);
-    expect(refused.body.code).toBe("LINK_INVALID");
-    expect(await UserModel.findById(hugo.userId).lean()).not.toBeNull();
-  });
-
-  it("frees an address a deleted, never-confirmed account was still holding", async () => {
-    const ivan = await register("ivan@verify.test", "Not Ivan");
-    const notMeToken = notMeOf("ivan@verify.test");
-    const deleted = await as(
-      ivan,
-      request(app)
-        .delete(`/users/${ivan.userId}`)
-        .send({ currentPassword: PASSWORD }),
-    );
-    expect(deleted.status).toBe(200);
-    const taken = await request(app).post("/auth/register").send({
-      captcha: TEST_CAPTCHA,
-      name: "Ivan",
-      email: "ivan@verify.test",
-      password: "Ivan's own 2026",
-    });
-    expect(taken.body.code).toBe("EMAIL_TAKEN");
-
-    expect((await notMe(notMeToken)).status).toBe(200);
-
-    const mine = await request(app).post("/auth/register").send({
-      captcha: TEST_CAPTCHA,
-      name: "Ivan",
-      email: "ivan@verify.test",
-      password: "Ivan's own 2026",
-    });
-    expect(mine.status).toBe(201);
-  });
-
-  it("finishes It wasn't me on a retry after it failed half-way", async () => {
-    const jose = await register("jose@verify.test", "Not Jose");
-    const notMeToken = notMeOf("jose@verify.test");
-    const spy = jest
-      .spyOn(UserDataEraser.prototype, "eraseAccount")
-      .mockRejectedValueOnce(new Error("mongod went away"));
-
-    const failed = await notMe(notMeToken);
-    expect(failed.status).toBe(500);
-    const halfway = await UserModel.findById(jose.userId).lean();
-    expect(halfway?.erasingAt).toBeInstanceOf(Date);
-    const login = await request(app)
-      .post("/auth/login")
-      .send({ email: "jose@verify.test", password: PASSWORD });
-    expect(login.status).toBe(401);
-    const revive = await request(app).post("/auth/register").send({
-      captcha: TEST_CAPTCHA,
-      name: "Not Jose",
-      email: "jose@verify.test",
-      password: PASSWORD,
-    });
-    expect(revive.body.code).toBe("EMAIL_TAKEN");
-
-    expect((await notMe(notMeToken)).status).toBe(200);
-    spy.mockRestore();
-    expect(await UserModel.findById(jose.userId).lean()).toBeNull();
-    const mine = await request(app).post("/auth/register").send({
-      captcha: TEST_CAPTCHA,
-      name: "Jose",
-      email: "jose@verify.test",
-      password: "Jose's own 2026",
-    });
-    expect(mine.status).toBe(201);
-  });
-
-  it("never lets It wasn't me erase an account that was confirmed once and moved by the old PUT", async () => {
-    const kike = await register("kike@verify.test", "Kike Mar");
-    const first = lastEmailTo("kike@verify.test");
-    const firstNotMe = notMeOf("kike@verify.test");
-    expect((await verifyCode(kike, first.code)).status).toBe(200);
-
-    await movedByTheOldPut(kike, "kike.typo@verify.test");
-    expect((await resend(kike)).status).toBe(202);
-    const toNew = lastEmailTo("kike.typo@verify.test");
-    expect(toNew.notMeToken).toBeUndefined();
-    expect(toNew.text).not.toMatch(/Didn.t sign up/);
-    await movedByTheOldPut(kike, "kike@verify.test");
-
-    const refused = await notMe(firstNotMe);
-    expect(refused.body.code).toBe("LINK_INVALID");
-    expect(await UserModel.findById(kike.userId).lean()).not.toBeNull();
-  });
-
-  it("stops an old It wasn't me once the old PUT moved the address, even back to the same one", async () => {
-    const lola = await register("lola@verify.test", "Not Lola");
-    const oldNotMe = notMeOf("lola@verify.test");
-    await movedByTheOldPut(lola, "lola.else@verify.test");
-    await movedByTheOldPut(lola, "lola@verify.test");
-
-    expect((await notMe(oldNotMe)).body.code).toBe("LINK_INVALID");
-    expect(await UserModel.findById(lola.userId).lean()).not.toBeNull();
-
-    // The per-address minute of the sign-up email would hold back Resend.
-    await RateLimitModel.deleteMany({
-      _id: new RegExp(hashEmailAddress("lola@verify.test")),
-    });
-    const again = await as(
-      lola,
-      request(app).post("/auth/email/resend").send({ captcha: TEST_CAPTCHA }),
-    );
-    expect(again.status).toBe(202);
-    const fresh = notMeOf("lola@verify.test");
-    expect(fresh).not.toBe(oldNotMe);
-    expect((await notMe(fresh)).status).toBe(200);
-    expect(await UserModel.findById(lola.userId).lean()).toBeNull();
   });
 });

@@ -9,7 +9,8 @@ import {
 } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { ENVIRONMENT } from "../../shared/constants";
-import { ApiError } from "../../shared/errors";
+import { dayKeyOf } from "../../shared/dayKey";
+import { AccountDeletedError, ApiError } from "../../shared/errors";
 import logger from "../../shared/logger";
 import { SessionView } from "../dtos/SessionDTO";
 import {
@@ -18,6 +19,7 @@ import {
   UserResponseDTO,
 } from "../dtos/UserDTO";
 import { CategoryService } from "./CategoryService";
+import { datedDeletion, deletedDays } from "./deletedAccount";
 import { readDeviceToken, signDeviceToken } from "./deviceToken";
 import { EmailService } from "./EmailService";
 import { sendSecurityNotice } from "./securityNotice";
@@ -57,6 +59,17 @@ export interface OpenedSession extends AuthTokens {
   deviceToken: string;
 }
 
+export interface NewAccount {
+  id?: string;
+  name: string;
+  email: string;
+  passwordHash: string;
+  timezone?: string;
+  currency?: string;
+  locale?: User["locale"];
+  emailVerifiedAt: Date | null;
+}
+
 interface RefreshPayload {
   userId: string;
   tokenVersion: number;
@@ -69,16 +82,19 @@ export class AuthService {
     private categoryService: CategoryService,
     private sessions: IRefreshSessionRepository,
     private email: Pick<EmailService, "sendNotice">,
+    private now: () => Date = () => new Date(),
   ) {}
 
   // `sid` is the refresh family, so the sessions list marks the caller's device with no DB lookup.
   private signAccessToken(user: User, familyId: string): string {
+    const deadline = user.emailVerifiedAt ? null : user.confirmDeadline;
     return jwt.sign(
       {
         userId: user.id,
         email: user.email,
         timezone: user.timezone,
         sid: familyId,
+        ...(deadline ? { confirmBy: deadline.endsAt.getTime() } : {}),
       },
       ENVIRONMENT.JWT_SECRET,
       {
@@ -129,55 +145,18 @@ export class AuthService {
     };
   }
 
-  // The request just proved possession of the new password, so a follow-up login adds nothing.
-  async register(
-    dto: CreateUserDTO,
-    userAgent?: string,
-  ): Promise<OpenedSession & { user: UserResponseDTO }> {
-    // Owner decisions R2-09 and T-153: a soft-deleted account comes back only with the password it had.
-    const deleted = await this.repo.getDeletedByEmail(dto.email);
-    if (deleted) {
-      if (
-        !deleted.password ||
-        !(await bcryptjs.compare(dto.password, deleted.password))
-      ) {
-        throw emailTaken();
-      }
-      try {
-        const reactivated = await this.repo.reactivate(deleted.id, {
-          name: dto.name,
-          password: deleted.password,
-          ...(dto.timezone ? { timezone: dto.timezone } : {}),
-          ...(dto.locale ? { locale: dto.locale } : {}),
-        });
-        const tokens = await this.openSession(reactivated, userAgent);
-        return {
-          ...tokens,
-          user: { ...toUserResponse(reactivated), reactivated: true },
-        };
-      } catch (err) {
-        // Concurrent register already reactivated it: surface as a conflict.
-        if (err instanceof ApiError && err.statusCode === 404) {
-          throw emailTaken();
-        }
-        throw err;
-      }
-    }
-
-    const hashedPassword = await bcryptjs.hash(
-      dto.password,
-      ENVIRONMENT.BCRYPT_SALT_ROUNDS,
-    );
-    const user = new User({ ...dto, password: hashedPassword });
-
+  // Categories are seeded best-effort: an account without them still works and can create its own.
+  async createAccount(account: NewAccount): Promise<User> {
+    const { passwordHash, ...fields } = account;
     let created: User;
     try {
-      created = await this.repo.create(user);
+      created = await this.repo.create(
+        new User({ ...fields, password: passwordHash }),
+      );
     } catch (err) {
       if (isDuplicateEmailError(err)) throw emailTaken();
       throw err;
     }
-
     try {
       await this.categoryService.seedDefaultCategories(created.id);
     } catch (error) {
@@ -186,7 +165,21 @@ export class AuthService {
         "Failed to seed default categories",
       );
     }
+    return created;
+  }
 
+  async register(
+    dto: CreateUserDTO,
+    userAgent?: string,
+  ): Promise<OpenedSession & { user: UserResponseDTO }> {
+    const created = await this.createAccount({
+      ...dto,
+      passwordHash: await bcryptjs.hash(
+        dto.password,
+        ENVIRONMENT.BCRYPT_SALT_ROUNDS,
+      ),
+      emailVerifiedAt: null,
+    });
     const tokens = await this.openSession(created, userAgent);
     return { ...tokens, user: toUserResponse(created) };
   }
@@ -209,21 +202,29 @@ export class AuthService {
     return !user.devicesResetAt || claim.issuedAt >= user.devicesResetAt;
   }
 
+  // A deleted account answers the wrong password like any other: only its right password learns it was deleted.
+  private async signingIn(email: string, password: string): Promise<User> {
+    const user = await this.repo.getReachableByEmail(email, this.now());
+    if (!user || !user.password) {
+      await bcryptjs.compare(password, TIMING_EQUALIZATION_HASH);
+      throw new ApiError("Unauthorized", "Invalid email or password");
+    }
+    if (!(await bcryptjs.compare(password, user.password))) {
+      throw new ApiError("Unauthorized", "Invalid email or password");
+    }
+    return user;
+  }
+
   async login(
     email: string,
     password: string,
     userAgent?: string,
     deviceToken?: unknown,
   ): Promise<OpenedSession & { user: UserResponseDTO }> {
-    const user = await this.repo.getByEmail(email);
-    if (!user || !user.password) {
-      await bcryptjs.compare(password, TIMING_EQUALIZATION_HASH);
-      throw new ApiError("Unauthorized", "Invalid email or password");
-    }
-
-    const isValidPassword = await bcryptjs.compare(password, user.password);
-    if (!isValidPassword) {
-      throw new ApiError("Unauthorized", "Invalid email or password");
+    const user = await this.signingIn(email, password);
+    if (user.deletedAt) {
+      const dated = await datedDeletion(this.repo, user, this.now());
+      throw new AccountDeletedError(deletedDays(dated));
     }
 
     const tokens = await this.openSession(user, userAgent);
@@ -234,6 +235,33 @@ export class AuthService {
       });
     }
     return { ...tokens, user: toUserResponse(user) };
+  }
+
+  // "Restore your account?" after Sign in: the same password again, so the step holds no secret of its own.
+  async restore(
+    email: string,
+    password: string,
+    userAgent?: string,
+    deviceToken?: unknown,
+  ): Promise<OpenedSession & { user: UserResponseDTO }> {
+    const user = await this.signingIn(email, password);
+    if (!user.deletedAt) {
+      return this.login(email, password, userAgent, deviceToken);
+    }
+    const now = this.now();
+    const wasDeletedOn = dayKeyOf(user.deletedAt, user.timezone);
+    const restored = await this.repo.restoreDeleted(user.id, now);
+    if (!restored) {
+      throw new ApiError("Unauthorized", "Invalid email or password");
+    }
+    const tokens = await this.openSession(restored, userAgent);
+    await sendSecurityNotice(this.email, restored, "account-restored", {
+      at: now,
+      userAgent,
+      deletedOn: wasDeletedOn,
+      by: "sign-in",
+    });
+    return { ...tokens, user: toUserResponse(restored, now) };
   }
 
   // Whether the token is the live tip of a session of this account, without rotating it.

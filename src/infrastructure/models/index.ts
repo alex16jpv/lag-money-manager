@@ -14,6 +14,7 @@ export { SharedExpenseModel } from "./SharedExpenseModel";
 export { SharedGroupModel } from "./SharedGroupModel";
 export { SharedInvitationModel } from "./SharedInvitationModel";
 export { SharedSettlementModel } from "./SharedSettlementModel";
+export { SignUpModel } from "./SignUpModel";
 export { SyncOpModel } from "./SyncOpModel";
 export { TransactionModel } from "./TransactionModel";
 export { UserModel } from "./UserModel";

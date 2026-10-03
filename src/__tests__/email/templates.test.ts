@@ -3,6 +3,7 @@ import {
   EMAIL_TEMPLATE_META,
   EmailTemplate,
   EmailTemplateData,
+  maskEmail,
   RenderContext,
   RenderedEmail,
   renderEmail,
@@ -19,11 +20,21 @@ const AT = new Date("2026-09-27T00:42:00Z");
 
 const facts = { at: AT, userAgent: CHROME_WINDOWS };
 const code = { code: CODE, token: TOKEN };
+const deleted = { deletedOn: "2026-09-19", keptUntil: "2026-10-20" };
 const SAMPLES: EmailTemplateData = {
-  "verify-email": { ...code, notMeToken: `${TOKEN}n` },
+  "sign-up": code,
+  "account-exists": { state: "live" },
+  "verify-email": code,
+  "confirm-deadline": { token: TOKEN, deadline: "2026-10-11" },
+  "confirm-deadline-reminder": {
+    token: TOKEN,
+    deadline: "2026-10-11",
+    daysLeft: 4,
+  },
   "password-reset": code,
   "password-reset-after-undo": code,
-  "email-change-confirm": code,
+  "email-change-confirm": { ...code, currentEmail: "ana.ruiz@work.example" },
+  "email-change-taken": {},
   "password-changed": facts,
   "email-change-requested": {
     ...facts,
@@ -31,7 +42,8 @@ const SAMPLES: EmailTemplateData = {
     undoToken: TOKEN,
   },
   "new-sign-in": facts,
-  "account-deleted": facts,
+  "account-deleted": { ...facts, keptUntil: "2026-10-20", restoreToken: TOKEN },
+  "account-restored": { ...facts, deletedOn: "2026-09-19", by: "sign-in" },
   "passkey-added": { ...facts, undoToken: TOKEN },
   "two-factor-on": { ...facts, undoToken: TOKEN },
   "passkey-removed": facts,
@@ -47,6 +59,7 @@ const context = (locale: Locale): RenderContext => ({
   timezone: "America/Bogota",
   appUrl: APP_URL,
   contact: CONTACT,
+  now: AT,
 });
 
 const render = <T extends EmailTemplate>(
@@ -122,14 +135,26 @@ describe("email templates", () => {
         `Elegir una contraseña nueva: ${APP_URL}/es/reset#token=${TOKEN}`,
       );
       expect(email.text).toContain(
-        "Sirve 30 minutos. Si pides otro, este deja de servir.",
+        "Vale por 30 minutos. Si pides otro, este deja de valer.",
       );
     });
 
-    it("gives verify-email its own not-me link", () => {
-      const hrefs = hrefsOf(render("verify-email", "en").html);
-      expect(hrefs).toContain(`${APP_URL}/en/verify#token=${TOKEN}`);
-      expect(hrefs).toContain(`${APP_URL}/en/not-me#token=${TOKEN}n`);
+    it("says how long a code works once, in its note, never in the preview or the lead [F]", () => {
+      for (const template of [
+        "sign-up",
+        "verify-email",
+        "password-reset",
+        "password-reset-after-undo",
+        "email-change-confirm",
+      ] as const) {
+        for (const locale of LOCALES) {
+          const email = render(template, locale);
+          expect(previewOf(email.html)).not.toMatch(/24|30|hour|hora|minut/);
+          expect(
+            email.text.match(/24 hours|24 horas|30 minutes|30 minutos/g),
+          ).toHaveLength(1);
+        }
+      }
     });
 
     it("says why it arrived in the footer", () => {
@@ -150,15 +175,233 @@ describe("email templates", () => {
       expect(() => render("password-reset", "en", data)).toThrow(/malformed/);
     });
 
-    it("leaves the Didn't sign up? box out of verify-email without its not-me token", () => {
-      const data: EmailTemplateData["verify-email"] = {
-        code: CODE,
-        token: TOKEN,
-      };
-      const email = render("verify-email", "en", data);
+    it("gives verify-email no box and only its /verify link [T-237]", () => {
+      const email = render("verify-email", "en");
+      expect(email.html).not.toContain('class="lf-box"');
       expect(email.text).not.toMatch(/Didn.t sign up\?|not-me/);
-      expect(email.html).not.toMatch(/class="lf-box"|not-me/);
-      expect(email.text).toContain(`/en/verify#token=${TOKEN}`);
+      expect(hrefsOf(email.html)).toContain(
+        `${APP_URL}/en/verify#token=${TOKEN}`,
+      );
+    });
+  });
+
+  describe("sign-up [T-238]", () => {
+    it("carries the code that creates the account, its link, and no box", () => {
+      const email = render("sign-up", "es");
+      expect(email.subject).toBe("Termina de crear tu cuenta de Ledger Flow");
+      expect(email.html).toContain(`>${CODE}</td>`);
+      expect(hrefsOf(email.html)).toContain(
+        `${APP_URL}/es/verify#token=${TOKEN}`,
+      );
+      expect(email.text).toContain(
+        "¿No te registraste? Ignora este correo: sin el código no se crea ninguna cuenta.",
+      );
+      expect(email.html).not.toContain('class="lf-box"');
+      expect(email.text).toContain(
+        "Recibes este correo porque alguien empezó a crear una cuenta de Ledger Flow con esta dirección.",
+      );
+    });
+  });
+
+  describe("account-exists [T-238]", () => {
+    it("sends a live account to Sign in, with Forgot your password? in the box", () => {
+      const email = render("account-exists", "en");
+      expect(email.subject).toBe("You already have a Ledger Flow account");
+      expect(email.html).not.toMatch(/\d{6}<\/td>/);
+      expect(email.html).toContain('class="lf-btn"');
+      expect(hrefsOf(email.html)).toEqual(
+        expect.arrayContaining([`${APP_URL}/en/login`, `${APP_URL}/en/forgot`]),
+      );
+      expect(email.text).toContain(
+        "If it wasn’t you, ignore this email: nothing changed.",
+      );
+    });
+
+    it("gives a deleted account its two days, the year left out in the year it is sent", () => {
+      const en = render("account-exists", "en", {
+        state: "deleted",
+        ...deleted,
+      });
+      expect(en.subject).toBe("You already have a Ledger Flow account");
+      expect(previewOf(en.html)).toBe("Sign in by October 20 to restore it.");
+      expect(en.text).toContain(
+        "It has one, deleted on September 19: it’s kept until October 20, and signing in by then restores it.",
+      );
+      expect(en.html).toContain(
+        '<strong style="font-weight:600">October 20</strong>',
+      );
+      const es = render("account-exists", "es", {
+        state: "deleted",
+        ...deleted,
+      });
+      expect(es.text).toContain(
+        "Tiene una, eliminada el 19 de septiembre: se conserva hasta el 20 de octubre, y si entras a más tardar ese día la restauras.",
+      );
+    });
+
+    it("writes the year of a day in another year", () => {
+      const email = render("account-exists", "en", {
+        state: "deleted",
+        deletedOn: "2026-12-20",
+        keptUntil: "2027-01-19",
+      });
+      expect(email.text).toContain(
+        "deleted on December 20: it’s kept until January 19, 2027",
+      );
+    });
+
+    it("gives an address kept by an undo link its day, and nothing to sign in to", () => {
+      const email = render("account-exists", "en", {
+        state: "held",
+        freeOn: "2026-10-03",
+      });
+      expect(email.subject).toBe(
+        "This address is kept for a Ledger Flow account",
+      );
+      expect(email.text).toContain("kept for that account until October 3.");
+      expect(email.html).not.toMatch(/class="lf-btn2?"/);
+      expect(email.html).not.toContain('class="lf-box"');
+    });
+
+    it.each(["2026-1-03", "next week", "2026-10-03T00:00"])(
+      "refuses the day %p",
+      (freeOn) => {
+        expect(() =>
+          render("account-exists", "en", { state: "held", freeOn }),
+        ).toThrow(/malformed/);
+      },
+    );
+  });
+
+  describe("the deadline emails [T-238]", () => {
+    it("puts the deadline in the subject and the title, and links /verify with no code", () => {
+      const email = render("confirm-deadline", "es");
+      expect(email.subject).toBe(
+        "Confirma tu correo de Ledger Flow a más tardar el 11 de octubre",
+      );
+      expect(email.text).toContain(
+        "Confirma tu correo a más tardar el 11 de octubre",
+      );
+      expect(email.text).toContain(
+        "El botón vale hasta el 11 de octubre. Después, para entrar te pediremos primero un código enviado a esta dirección.",
+      );
+      expect(email.html).not.toMatch(/\d{6}<\/td>/);
+      expect(hrefsOf(email.html)).toContain(
+        `${APP_URL}/es/verify#token=${TOKEN}`,
+      );
+      expect(email.text).toContain("¿No tienes cuenta en Ledger Flow?");
+      expect(email.html).not.toContain('class="lf-btn2"');
+    });
+
+    it("counts the days left of the reminder as a number, one day in the singular", () => {
+      expect(render("confirm-deadline-reminder", "en").subject).toBe(
+        "4 days left to confirm your email for Ledger Flow",
+      );
+      const one = (locale: Locale): RenderedEmail =>
+        render("confirm-deadline-reminder", locale, {
+          token: TOKEN,
+          deadline: "2026-10-11",
+          daysLeft: 1,
+        });
+      expect(one("en").subject).toBe(
+        "1 day left to confirm your email for Ledger Flow",
+      );
+      expect(one("es").subject).toBe(
+        "Queda 1 día para confirmar tu correo de Ledger Flow",
+      );
+      expect(() =>
+        render("confirm-deadline-reminder", "en", {
+          token: TOKEN,
+          deadline: "2026-10-11",
+          daysLeft: 0,
+        }),
+      ).toThrow(/malformed/);
+    });
+  });
+
+  describe("email-change-confirm, masked [T-236]", () => {
+    it.each([
+      ["ana.ruiz@work.example", "an•••@work.example"],
+      ["ana+ledger@example.com", "an•••@example.com"],
+      ["anab@example.com", "an•••@example.com"],
+      ["ana@example.com", "a•••@example.com"],
+      ["a@example.com", "a•••@example.com"],
+    ])("masks %s as %s", (email, masked) => {
+      expect(maskEmail(email)).toBe(masked);
+    });
+
+    it("names the account by its masked address in the lead only, escaped", () => {
+      for (const locale of LOCALES) {
+        const email = render("email-change-confirm", locale, {
+          ...code,
+          currentEmail: "a'na@work.example",
+        });
+        expect(email.html).toContain(
+          '<strong style="font-weight:600">a&#39;•••@work.example</strong>',
+        );
+        expect(email.text).toContain("a'•••@work.example");
+        expect(email.subject).not.toContain("work.example");
+        expect(previewOf(email.html)).not.toContain("work.example");
+      }
+    });
+
+    it("refuses an address the strict validation would not accept", () => {
+      expect(() =>
+        render("email-change-confirm", "en", {
+          ...code,
+          currentEmail: '"><b>@x',
+        }),
+      ).toThrow();
+    });
+  });
+
+  describe("email-change-taken [T-238]", () => {
+    it("tells the inbox nothing changes, with Sign in and no code", () => {
+      const email = render("email-change-taken", "en");
+      expect(email.subject).toBe(
+        "Your address was asked for by another Ledger Flow account",
+      );
+      expect(email.html).not.toMatch(/\d{6}<\/td>/);
+      expect(hrefsOf(email.html)).toContain(`${APP_URL}/en/login`);
+      expect(email.html).not.toContain('class="lf-box"');
+    });
+  });
+
+  describe("the words of a deleted account [T-238]", () => {
+    it("tells password-reset of a deleted account that the new password restores it", () => {
+      const email = render("password-reset", "en", { ...code, deleted });
+      expect(email.text).toContain(
+        "This account was deleted on September 19: choosing one restores it.",
+      );
+      expect(email.text).toContain(
+        "Ignore this email: nothing changes, and the account is erased on October 20 as planned.",
+      );
+    });
+
+    it("words password-reset-after-undo for a restore", () => {
+      const email = render("password-reset-after-undo", "es", {
+        ...code,
+        restored: true,
+      });
+      expect(previewOf(email.html)).toBe("Restauraste tu cuenta.");
+      expect(email.text).toContain(
+        "Recibes este correo porque restauraste tu cuenta de Ledger Flow desde esta dirección.",
+      );
+    });
+
+    it("says how account-restored came back", () => {
+      expect(render("account-restored", "en").text).toContain(
+        "Your account, deleted on September 19, was restored by signing in:",
+      );
+      expect(
+        render("account-restored", "es", {
+          ...facts,
+          deletedOn: "2026-09-19",
+          by: "reset",
+        }).text,
+      ).toContain(
+        "se restauró al elegir una contraseña nueva: vuelve todo lo que tenía menos los grupos compartidos que dejó, y ya no se va a borrar. Se cerró la sesión en los demás dispositivos.",
+      );
     });
   });
 
@@ -214,7 +457,7 @@ describe("email templates", () => {
       expect(email.subject).not.toContain("work.example");
       expect(previewOf(email.html)).not.toContain("work.example");
       expect(email.text).toContain(
-        "Someone asked to move your account to ana.o'ruiz@work.example. It moves once that address is confirmed.",
+        "A request was made to change your account’s email to ana.o'ruiz@work.example. It changes once that address is confirmed.",
       );
     });
 
@@ -240,12 +483,19 @@ describe("email templates", () => {
       }
     });
 
-    it("tells the deleted account how to erase it for good", () => {
+    it("gives the deleted account the day it is erased and its restore link [T-238]", () => {
       const email = render("account-deleted", "es");
-      expect(email.text).toContain(
-        `Para borrarla del todo, escribe a ${CONTACT}: se hace en 15 días hábiles.`,
+      expect(previewOf(email.html)).toBe(
+        "Se conserva hasta el 20 de octubre. Si entras antes, la restauras.",
       );
-      expect(hrefsOf(email.html)).toContain(`${APP_URL}/es/register`);
+      expect(email.html).toContain(
+        '<strong style="font-weight:600">20 de octubre</strong>',
+      );
+      expect(email.text).not.toContain("15 días hábiles");
+      expect(hrefsOf(email.html)).toContain(
+        `${APP_URL}/es/restore#token=${TOKEN}`,
+      );
+      expect(email.text).toContain("Restaurar la cuenta:");
     });
   });
 

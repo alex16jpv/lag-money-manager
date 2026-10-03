@@ -1,33 +1,32 @@
 import { User } from "../../domain/entities/User";
 import { IAuthCodeRepository } from "../../domain/repositories/authCode/IAuthCodeRepository";
-import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
-import { IUserDataEraser } from "../../domain/repositories/userData/IUserDataEraser";
-import { AuthCodePurpose, INVITATION_STATUSES } from "../../shared/constants";
+import { AuthCodePurpose } from "../../shared/constants";
 import { hashEmailAddress } from "../../shared/emailHash";
 import { ApiError } from "../../shared/errors";
 import { EmailVerificationView } from "../dtos/UserDTO";
 import {
+  accountLinkOwner,
   CODE_MAX_ATTEMPTS,
   codeDigest,
   newCode,
   newLinkToken,
-  notMeTokenFits,
-  readNotMeToken,
-  signNotMeToken,
   tokenDigest,
   VERIFY_CODE_LIFETIME_MS,
 } from "./authCodes";
 import { EmailOutcome, EmailRequester, EmailService } from "./EmailService";
+import { SignUpService } from "./SignUpService";
 
 const PURPOSE: AuthCodePurpose = "verify";
 
 export type VerificationRecipient = Pick<
   User,
   "id" | "email" | "locale" | "timezone"
-> &
-  Partial<Pick<User, "firstVerifiedAt">>;
+>;
+
+// /verify finishes a sign-up without a session, or confirms an account from before email existed.
+export type VerifiedByLink = "account-ready" | "email-confirmed";
 
 export interface EmailVerificationConfig {
   // The per-address interval of the email brakes: when Resend can go again.
@@ -60,13 +59,9 @@ export class EmailVerificationService {
     private readonly email: Pick<EmailService, "sendCode">,
     private readonly invitations: Pick<
       ISharedInvitationRepository,
-      "touchUnansweredFor" | "withdrawAll" | "leaveAll"
+      "touchUnansweredFor"
     >,
-    private readonly sessions: Pick<
-      IRefreshSessionRepository,
-      "revokeAllForUser"
-    >,
-    private readonly eraser: Pick<IUserDataEraser, "eraseAccount">,
+    private readonly signUps: Pick<SignUpService, "confirmLink">,
     private readonly config: EmailVerificationConfig,
     private readonly now: () => Date = () => new Date(),
   ) {}
@@ -80,13 +75,7 @@ export class EmailVerificationService {
     const token = newLinkToken();
     const outcome = await this.email.sendCode({
       template: "verify-email",
-      data: {
-        code,
-        token,
-        ...(recipient.firstVerifiedAt
-          ? {}
-          : { notMeToken: signNotMeToken(recipient.id, toHash, this.now()) }),
-      },
+      data: { code, token },
       recipient: {
         userId: recipient.id,
         email: recipient.email,
@@ -170,51 +159,50 @@ export class EmailVerificationService {
     if (!(await this.confirm(user))) throw codeInvalid();
   }
 
-  async verifyLink(token: string): Promise<void> {
-    const record = await this.codes.findByLiveToken(
-      PURPOSE,
-      tokenDigest(token),
-      this.now(),
-    );
+  async verifyLink(token: string): Promise<VerifiedByLink> {
+    const owner = accountLinkOwner(token);
+    if (owner) {
+      await this.verifyDeadlineLink(owner, token);
+      return "email-confirmed";
+    }
+    const now = this.now();
+    const digest = tokenDigest(token);
+    const signUp = await this.codes.findByLiveToken("sign-up", digest, now);
+    if (signUp) {
+      await this.signUps.confirmLink(signUp);
+      return "account-ready";
+    }
+    const record = await this.codes.findByLiveToken(PURPOSE, digest, now);
     if (!record?.userId) throw linkInvalid();
     const user = await this.users.getById(record.userId);
     if (!user || hashEmailAddress(user.email) !== record.toHash) {
       throw linkInvalid();
     }
-    if (user.emailVerifiedAt) return;
+    if (user.emailVerifiedAt) return "email-confirmed";
     if (!(await this.confirm(user))) throw linkInvalid();
+    return "email-confirmed";
   }
 
-  // Each step is idempotent: a retry after a failure finds the account by its claim and finishes.
-  async notMe(token: string): Promise<void> {
-    const claim = readNotMeToken(token);
-    if (!claim) throw linkInvalid();
-    const target = await this.users.getForErasure(claim.userId);
-    if (!target) throw linkInvalid();
-    const toHash = hashEmailAddress(target.email);
-    if (!notMeTokenFits(claim, toHash, target.emailChangedAt)) {
+  // The link of confirm-deadline or its reminder: until the deadline, for the address it went to.
+  private async verifyDeadlineLink(
+    userId: string,
+    token: string,
+  ): Promise<void> {
+    const user = await this.users.getById(userId);
+    const deadline = user?.confirmDeadline;
+    const digest = tokenDigest(token);
+    const link = deadline?.links.find((l) => l.tokenHash === digest);
+    if (
+      !user ||
+      !deadline ||
+      !link ||
+      link.email !== user.email ||
+      this.now() >= deadline.endsAt
+    ) {
       throw linkInvalid();
     }
-
-    const now = this.now();
-    const claimed = await this.users.claimErasure(
-      target.id,
-      target.email,
-      claim.issuedAt,
-      now,
-    );
-    if (!claimed) throw linkInvalid();
-    await this.sessions.revokeAllForUser(target.id);
-    await this.invitations.withdrawAll(
-      {
-        userId: target.id,
-        statuses: [INVITATION_STATUSES.PENDING, INVITATION_STATUSES.ACCEPTED],
-      },
-      now,
-    );
-    await this.invitations.leaveAll(target.id, now);
-    await this.eraser.eraseAccount(target.id, toHash);
-    await this.users.eraseForGood(target.id);
+    if (user.emailVerifiedAt) return;
+    if (!(await this.confirm(user))) throw linkInvalid();
   }
 
   private async confirm(user: User): Promise<User | null> {

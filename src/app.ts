@@ -5,7 +5,9 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
 
+import repositoryFactory from "./app/factories/RepositoryFactory";
 import { authMiddleware } from "./app/middlewares/authMiddleware";
+import { confirmationGate } from "./app/middlewares/confirmationGate";
 import { dbReadinessMiddleware } from "./app/middlewares/dbReadinessMiddleware";
 import { gatewaySecretMiddleware } from "./app/middlewares/gatewaySecretMiddleware";
 import { rateLimitKey } from "./app/middlewares/rateLimitKey";
@@ -98,6 +100,12 @@ app.use(dbReadinessMiddleware);
 app.use("/auth", apiLimiter, authRoutes);
 
 app.use(authMiddleware);
+app.use(
+  confirmationGate(
+    repositoryFactory.getUserRepository(),
+    ENVIRONMENT.EMAIL_CONFIRMATION_DEADLINES,
+  ),
+);
 
 app.use("/users", apiLimiter, userRoutes);
 app.use("/accounts", apiLimiter, accountRoutes);

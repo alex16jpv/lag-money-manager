@@ -205,7 +205,6 @@ describe("invitations against mongod", () => {
         $set: {
           email: "beto.new@invitations.test",
           emailVerifiedAt: now,
-          emailChangedAt: now,
           emailChange: null,
         },
         $inc: { tokenVersion: 1 },

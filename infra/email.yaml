@@ -404,24 +404,25 @@ Resources:
           ReturnData: true
           Expression: !Sub IF(sends >= ${RateAlarmMinimumSends}, 100 * FILL(complaints, 0) / sends, 0)
 
-  CapReachedFilter:
+  # One filter and one alarm for every code that needs a look, so the alarms stay within CloudWatch's 10 free.
+  NeedsAttentionFilter:
     Type: AWS::Logs::MetricFilter
     Properties:
       LogGroupName: !Sub /aws/lambda/${ApiFunctionName}
-      FilterPattern: '{ $.code = "EMAIL_CAP_REACHED" }'
+      FilterPattern: '{ ($.code = "EMAIL_CAP_REACHED") || ($.code = "ACCOUNT_ERASE_FAILED") || ($.code = "ACCOUNT_ERASE_BACKLOG") || ($.code = "NIGHTLY_PASS_FAILED") }'
       MetricTransformations:
         - MetricNamespace: LedgerFlow/Email
-          MetricName: CapReached
+          MetricName: NeedsAttention
           MetricValue: "1"
           Unit: Count
 
-  CapReachedAlarm:
+  NeedsAttentionAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ledger-flow-email-cap-reached
-      AlarmDescription: The app reached a daily or monthly email cap and is refusing that share's emails. Does not pause SES.
+      AlarmName: ledger-flow-server-needs-attention
+      AlarmDescription: "The API logged something only a person can sort out: an email cap reached (EMAIL_CAP_REACHED), or the nightly pass could not erase an account or did not finish (ACCOUNT_ERASE_FAILED, ACCOUNT_ERASE_BACKLOG, NIGHTLY_PASS_FAILED). Look at the log. Does not pause SES."
       Namespace: LedgerFlow/Email
-      MetricName: CapReached
+      MetricName: NeedsAttention
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 1

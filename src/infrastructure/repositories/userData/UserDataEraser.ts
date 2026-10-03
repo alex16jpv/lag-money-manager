@@ -1,10 +1,6 @@
 import { IUserDataEraser } from "../../../domain/repositories/userData/IUserDataEraser";
-import {
-  AUTH_CODE_PURPOSES,
-  INVITATION_STATUSES,
-} from "../../../shared/constants";
+import { INVITATION_STATUSES } from "../../../shared/constants";
 import { AccountModel } from "../../models/AccountModel";
-import { AuthCodeModel } from "../../models/AuthCodeModel";
 import { BudgetModel } from "../../models/BudgetModel";
 import { CategoryModel } from "../../models/CategoryModel";
 import { ContactModel } from "../../models/ContactModel";
@@ -14,6 +10,7 @@ import { SharedExpenseModel } from "../../models/SharedExpenseModel";
 import { SharedGroupModel } from "../../models/SharedGroupModel";
 import { SharedInvitationModel } from "../../models/SharedInvitationModel";
 import { SharedSettlementModel } from "../../models/SharedSettlementModel";
+import { SyncOpModel } from "../../models/SyncOpModel";
 import { TransactionModel } from "../../models/TransactionModel";
 
 const escapeRegExp = (value: string): string =>
@@ -22,7 +19,7 @@ const escapeRegExp = (value: string): string =>
 const LIVE = [INVITATION_STATUSES.PENDING, INVITATION_STATUSES.ACCEPTED];
 
 export class UserDataEraser implements IUserDataEraser {
-  async eraseAll(userId: string): Promise<void> {
+  async eraseAccount(userId: string): Promise<void> {
     await this.eraseDependents(userId);
     await SharedGroupModel.deleteMany({ userId }).exec();
     await ContactModel.deleteMany({ userId }).exec();
@@ -62,15 +59,8 @@ export class UserDataEraser implements IUserDataEraser {
       { inviteeId: userId },
       { $set: { inviteeId: retired } },
     ).exec();
-  }
-
-  async eraseAccount(userId: string, toHash: string): Promise<void> {
-    await this.eraseAll(userId);
+    await SyncOpModel.deleteMany({ userId }).exec();
     await RefreshSessionModel.deleteMany({ userId }).exec();
-    await AuthCodeModel.deleteMany({
-      purpose: { $in: Object.values(AUTH_CODE_PURPOSES) },
-      toHash,
-    }).exec();
   }
 
   private async eraseDependents(userId: string): Promise<void> {

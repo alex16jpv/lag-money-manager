@@ -218,12 +218,30 @@ describe("the email stack", () => {
     const filters = resourcesOf("AWS::Logs::MetricFilter");
     expect(filters).toHaveLength(2);
     for (const [name, filter] of filters) {
-      const code = /^\{ \$\.code = "([A-Z_]+)" \}$/.exec(
-        String(filter.Properties.FilterPattern),
-      )?.[1];
-      expect({ name, code }).toEqual({ name, code: expect.any(String) });
-      expect(source).toContain(`code: "${code}"`);
+      const codes = [
+        ...String(filter.Properties.FilterPattern).matchAll(
+          /\$\.code = "([A-Z_]+)"/g,
+        ),
+      ].map((match) => match[1]);
+      expect({ name, codes }).toEqual({ name, codes: expect.any(Array) });
+      expect(codes.length).toBeGreaterThan(0);
+      for (const code of codes) expect(source).toContain(`code: "${code}"`);
     }
+  });
+
+  it("tells the owner when the nightly pass needs a person, within the free alarms [T-238]", () => {
+    const pattern = String(
+      resource("NeedsAttentionFilter").Properties.FilterPattern,
+    );
+    for (const code of [
+      "EMAIL_CAP_REACHED",
+      "ACCOUNT_ERASE_FAILED",
+      "ACCOUNT_ERASE_BACKLOG",
+      "NIGHTLY_PASS_FAILED",
+    ]) {
+      expect(pattern).toContain(`$.code = "${code}"`);
+    }
+    expect(resourcesOf("AWS::CloudWatch::Alarm").length).toBeLessThanOrEqual(8);
   });
 
   it("publishes to the webhook the events it reads, in the envelope it verifies", () => {

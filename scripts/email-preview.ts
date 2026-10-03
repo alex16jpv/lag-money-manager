@@ -16,6 +16,8 @@ process.env.MONGO_URI ??= "mongodb://localhost:27017/email_preview_unused";
 const SAMPLE_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 const SAMPLE_TOKEN = "q7Xk2mVb9RtL4wPz";
+const SAMPLE_DELETED_ON = "2026-09-28";
+const SAMPLE_KEPT_UNTIL = "2026-10-28";
 const SES_SANDBOX_INTERVAL_MS = 1100;
 
 async function main(): Promise<void> {
@@ -42,11 +44,24 @@ async function main(): Promise<void> {
   const at = new Date();
   const facts = { at, userAgent: SAMPLE_USER_AGENT };
   const code = { code: "482913", token: SAMPLE_TOKEN };
+  const deleted = {
+    deletedOn: SAMPLE_DELETED_ON,
+    keptUntil: SAMPLE_KEPT_UNTIL,
+  };
   const samples: EmailTemplateData = {
-    "verify-email": { ...code, notMeToken: SAMPLE_TOKEN },
+    "sign-up": code,
+    "account-exists": { state: "live" },
+    "verify-email": code,
+    "confirm-deadline": { token: SAMPLE_TOKEN, deadline: "2026-10-12" },
+    "confirm-deadline-reminder": {
+      token: SAMPLE_TOKEN,
+      deadline: "2026-10-12",
+      daysLeft: 4,
+    },
     "password-reset": code,
     "password-reset-after-undo": code,
-    "email-change-confirm": code,
+    "email-change-confirm": { ...code, currentEmail: "ana.ruiz@work.example" },
+    "email-change-taken": {},
     "password-changed": facts,
     "email-change-requested": {
       ...facts,
@@ -54,12 +69,35 @@ async function main(): Promise<void> {
       undoToken: SAMPLE_TOKEN,
     },
     "new-sign-in": facts,
-    "account-deleted": facts,
+    "account-deleted": {
+      ...facts,
+      keptUntil: SAMPLE_KEPT_UNTIL,
+      restoreToken: SAMPLE_TOKEN,
+    },
+    "account-restored": {
+      ...facts,
+      deletedOn: SAMPLE_DELETED_ON,
+      by: "sign-in",
+    },
     "passkey-added": { ...facts, undoToken: SAMPLE_TOKEN },
     "two-factor-on": { ...facts, undoToken: SAMPLE_TOKEN },
     "passkey-removed": facts,
     "two-factor-off": facts,
     "recovery-code-used": { ...facts, left: 7, usedTo: "sign-in" },
+  };
+  // The other words of a template, each sent as one more email of it.
+  const variants: {
+    [T in EmailTemplate]?: EmailTemplateData[T][];
+  } = {
+    "account-exists": [
+      { state: "deleted", ...deleted },
+      { state: "held", freeOn: "2026-10-05" },
+    ],
+    "password-reset": [{ ...code, deleted }],
+    "password-reset-after-undo": [{ ...code, restored: true }],
+    "account-restored": [
+      { ...facts, deletedOn: SAMPLE_DELETED_ON, by: "reset" },
+    ],
   };
 
   const templates = (Object.keys(samples) as EmailTemplate[]).filter(
@@ -67,13 +105,15 @@ async function main(): Promise<void> {
   );
   const render = <T extends EmailTemplate>(
     template: T,
+    data: EmailTemplateData[T],
     locale: "en" | "es",
   ): RenderedEmail =>
-    renderEmail(template, samples[template], {
+    renderEmail(template, data, {
       locale,
       timezone: "America/Bogota",
       appUrl: ENVIRONMENT.APP_URL,
       contact: ENVIRONMENT.EMAIL_REPLY_TO,
+      now: at,
     });
   if (templates.length === 0) {
     throw new Error(`No template called ${values.only}`);
@@ -82,12 +122,18 @@ async function main(): Promise<void> {
   const providers = createEmailProviders();
   let failed = 0;
   let first = true;
-  for (const template of templates) {
+  const sends = templates.flatMap((template) =>
+    [samples[template], ...(variants[template] ?? [])].map((data) => ({
+      template,
+      data,
+    })),
+  );
+  for (const { template, data } of sends) {
     for (const locale of ["en", "es"] as const) {
       // SES's sandbox takes one email a second, and the adapter does not retry a throttled one.
       if (!first && !onlyMailpit) await sleep(SES_SANDBOX_INTERVAL_MS);
       first = false;
-      const rendered = render(template, locale);
+      const rendered = render(template, data as never, locale);
       const result = await sendThroughChain(
         providers,
         {

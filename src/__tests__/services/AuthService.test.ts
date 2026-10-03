@@ -11,7 +11,8 @@ import {
   SessionSummary,
 } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
-import { ApiError } from "../../shared/errors";
+import { AccountDeletedError, ApiError } from "../../shared/errors";
+import { mockUserRepo } from "./userRepoMock";
 
 jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: {
@@ -48,40 +49,6 @@ jest.mock("../../shared/logger", () => ({
   },
 }));
 
-const createMockRepo = (): jest.Mocked<IUserRepository> => ({
-  getManyByIds: jest.fn().mockResolvedValue([]),
-  getAll: jest.fn(),
-  getById: jest.fn(),
-  getByEmail: jest.fn(),
-  getDeletedByEmail: jest.fn().mockResolvedValue(null),
-  markEmailVerified: jest.fn(),
-  getForErasure: jest.fn().mockResolvedValue(null),
-  claimErasure: jest.fn().mockResolvedValue(null),
-  eraseForGood: jest.fn().mockResolvedValue(undefined),
-  emailInUse: jest.fn().mockResolvedValue(false),
-  startEmailChange: jest.fn(),
-  renewEmailChange: jest.fn(),
-  dropEmailChange: jest.fn().mockResolvedValue(undefined),
-  applyEmailChange: jest.fn(),
-  dropUndoLink: jest.fn().mockResolvedValue(undefined),
-  addUndoLink: jest.fn().mockResolvedValue(true),
-  getForUndo: jest.fn().mockResolvedValue(null),
-  undoEmailChange: jest.fn(),
-  getByIdWithPassword: jest.fn().mockResolvedValue(null),
-  forgetDevices: jest.fn().mockResolvedValue(null),
-  updateWithTokenBump: jest.fn(),
-  recordLogin: jest.fn().mockResolvedValue(undefined),
-  reactivate: jest.fn(),
-  resetPassword: jest.fn(),
-  keepEverything: jest.fn(),
-  chooseStartFresh: jest.fn(),
-  finishStartFresh: jest.fn(),
-  releaseStartFresh: jest.fn(),
-  create: jest.fn(),
-  update: jest.fn(),
-  delete: jest.fn(),
-});
-
 const createMockCategoryService = (): jest.Mocked<
   Pick<CategoryService, "seedDefaultCategories">
 > => ({
@@ -109,7 +76,7 @@ describe("AuthService", () => {
   let email: { sendNotice: jest.Mock };
 
   beforeEach(() => {
-    repo = createMockRepo();
+    repo = mockUserRepo();
     categoryService = createMockCategoryService();
     sessions = createMockSessionRepo();
     email = {
@@ -138,7 +105,7 @@ describe("AuthService", () => {
       });
 
     it("recognizes the device a login answered while the token version holds", async () => {
-      repo.getByEmail.mockResolvedValueOnce(
+      repo.getReachableByEmail.mockResolvedValueOnce(
         new User({ ...owner(2), password: bcryptjs.hashSync("pw", 4) }),
       );
       const { deviceToken } = await service.login("owner@example.com", "pw");
@@ -149,7 +116,7 @@ describe("AuthService", () => {
     });
 
     it("stops recognizing it after a password change or a logout-all", async () => {
-      repo.getByEmail.mockResolvedValueOnce(
+      repo.getReachableByEmail.mockResolvedValueOnce(
         new User({ ...owner(2), password: bcryptjs.hashSync("pw", 4) }),
       );
       const { deviceToken } = await service.login("owner@example.com", "pw");
@@ -160,7 +127,7 @@ describe("AuthService", () => {
     });
 
     it("does not recognize a device of an account that is gone", async () => {
-      repo.getByEmail.mockResolvedValueOnce(
+      repo.getReachableByEmail.mockResolvedValueOnce(
         new User({ ...owner(0), password: bcryptjs.hashSync("pw", 4) }),
       );
       const { deviceToken } = await service.login("owner@example.com", "pw");
@@ -179,114 +146,6 @@ describe("AuthService", () => {
   });
 
   describe("register", () => {
-    it("reactivates a soft-deleted account with the password it had [R2-09, T-153]", async () => {
-      const deletedUser = new User({
-        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-        name: "Old Name",
-        email: "john@example.com",
-        password: bcryptjs.hashSync("newpassword123", 4),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      repo.getDeletedByEmail.mockResolvedValue(deletedUser);
-      repo.reactivate.mockResolvedValue(
-        new User({ ...deletedUser, name: "John" }),
-      );
-
-      const result = await service.register({
-        name: "John",
-        email: "john@example.com",
-        password: "newpassword123",
-      });
-
-      expect(repo.reactivate).toHaveBeenCalledTimes(1);
-      const [id, updates] = repo.reactivate.mock.calls[0];
-      expect(id).toBe(deletedUser.id);
-      expect(updates.name).toBe("John");
-      expect(updates.password).not.toBe("newpassword123");
-      expect(repo.create).not.toHaveBeenCalled();
-      // Existing categories are kept: no re-seed on reactivation.
-      expect(categoryService.seedDefaultCategories).not.toHaveBeenCalled();
-      expect(result.user.name).toBe("John");
-      expect(result.user.reactivated).toBe(true);
-      // Register opens a session directly [R2-39].
-      expect(typeof result.accessToken).toBe("string");
-      expect(typeof result.refreshToken).toBe("string");
-    });
-
-    it("refuses to reactivate a soft-deleted account with any other password [T-153]", async () => {
-      repo.getDeletedByEmail.mockResolvedValue(
-        new User({
-          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-          name: "Victim",
-          email: "john@example.com",
-          password: bcryptjs.hashSync("the-old-one", 4),
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }),
-      );
-
-      await expect(
-        service.register({
-          name: "Attacker",
-          email: "john@example.com",
-          password: "newpassword123",
-        }),
-      ).rejects.toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
-      expect(repo.reactivate).not.toHaveBeenCalled();
-      expect(repo.create).not.toHaveBeenCalled();
-      expect(sessions.create).not.toHaveBeenCalled();
-    });
-
-    it("reactivates with the stored hash, so no second bcrypt runs [T-153]", async () => {
-      const storedHash = bcryptjs.hashSync("newpassword123", 4);
-      const deletedUser = new User({
-        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-        name: "Old Name",
-        email: "john@example.com",
-        password: storedHash,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      repo.getDeletedByEmail.mockResolvedValue(deletedUser);
-      repo.reactivate.mockResolvedValue(deletedUser);
-      const hash = jest.spyOn(bcryptjs, "hash");
-
-      await service.register({
-        name: "John",
-        email: "john@example.com",
-        password: "newpassword123",
-      });
-
-      expect(repo.reactivate.mock.calls[0][1].password).toBe(storedHash);
-      expect(hash).not.toHaveBeenCalled();
-      hash.mockRestore();
-    });
-
-    it("answers EMAIL_TAKEN when a concurrent register reactivated it first", async () => {
-      repo.getDeletedByEmail.mockResolvedValue(
-        new User({
-          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-          name: "Ana",
-          email: "john@example.com",
-          password: bcryptjs.hashSync("newpassword123", 4),
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }),
-      );
-      repo.reactivate.mockRejectedValue(
-        new ApiError("NotFound", "User not found"),
-      );
-
-      await expect(
-        service.register({
-          name: "John",
-          email: "john@example.com",
-          password: "newpassword123",
-        }),
-      ).rejects.toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
-    });
-
     it("lets any other create failure through untouched", async () => {
       const failure = new Error("connection reset");
       repo.create.mockRejectedValue(failure);
@@ -428,11 +287,14 @@ describe("AuthService", () => {
     });
 
     it("should return access + refresh tokens and user on valid login", async () => {
-      repo.getByEmail.mockResolvedValue(existingUser);
+      repo.getReachableByEmail.mockResolvedValue(existingUser);
 
       const result = await service.login("john@example.com", "password123");
 
-      expect(repo.getByEmail).toHaveBeenCalledWith("john@example.com");
+      expect(repo.getReachableByEmail).toHaveBeenCalledWith(
+        "john@example.com",
+        expect.any(Date),
+      );
       expect(typeof result.accessToken).toBe("string");
       expect(typeof result.refreshToken).toBe("string");
 
@@ -458,7 +320,7 @@ describe("AuthService", () => {
     });
 
     it("should throw Unauthorized when email is not found", async () => {
-      repo.getByEmail.mockResolvedValue(null);
+      repo.getReachableByEmail.mockResolvedValue(null);
 
       await expect(
         service.login("unknown@example.com", "password123"),
@@ -469,7 +331,7 @@ describe("AuthService", () => {
     });
 
     it("should throw Unauthorized when password is wrong", async () => {
-      repo.getByEmail.mockResolvedValue(existingUser);
+      repo.getReachableByEmail.mockResolvedValue(existingUser);
 
       await expect(
         service.login("john@example.com", "wrongpassword"),
@@ -496,7 +358,7 @@ describe("AuthService", () => {
       });
 
     it("tells a confirmed account about a sign-in from a device without its token", async () => {
-      repo.getByEmail.mockResolvedValue(owner());
+      repo.getReachableByEmail.mockResolvedValue(owner());
 
       await service.login(EMAIL, "pw", "Mozilla/5.0");
 
@@ -513,10 +375,10 @@ describe("AuthService", () => {
     });
 
     it("says nothing to a device this email signed in before, even after a password change bumped tokenVersion", async () => {
-      repo.getByEmail.mockResolvedValue(owner());
+      repo.getReachableByEmail.mockResolvedValue(owner());
       const { deviceToken } = await service.login(EMAIL, "pw");
       email.sendNotice.mockClear();
-      repo.getByEmail.mockResolvedValue(owner({ tokenVersion: 5 }));
+      repo.getReachableByEmail.mockResolvedValue(owner({ tokenVersion: 5 }));
 
       await service.login(EMAIL, "pw", undefined, deviceToken);
 
@@ -525,7 +387,7 @@ describe("AuthService", () => {
 
     it("forgets the devices from before a reset or an undo", async () => {
       const deviceToken = signDeviceToken(EMAIL, 2);
-      repo.getByEmail.mockResolvedValue(
+      repo.getReachableByEmail.mockResolvedValue(
         owner({ devicesResetAt: new Date(Date.now() + 2000) }),
       );
 
@@ -580,7 +442,9 @@ describe("AuthService", () => {
     });
 
     it("tells about the other devices after a move: their tokens name the old email", async () => {
-      repo.getByEmail.mockResolvedValue(owner({ email: "moved@example.com" }));
+      repo.getReachableByEmail.mockResolvedValue(
+        owner({ email: "moved@example.com" }),
+      );
 
       await service.login(
         "moved@example.com",
@@ -593,7 +457,7 @@ describe("AuthService", () => {
     });
 
     it("does not take another email's device token for this account's", async () => {
-      repo.getByEmail.mockResolvedValue(owner());
+      repo.getReachableByEmail.mockResolvedValue(owner());
 
       await service.login(
         EMAIL,
@@ -606,7 +470,9 @@ describe("AuthService", () => {
     });
 
     it("tells an address that was never confirmed nothing: it may be a stranger's", async () => {
-      repo.getByEmail.mockResolvedValue(owner({ emailVerifiedAt: null }));
+      repo.getReachableByEmail.mockResolvedValue(
+        owner({ emailVerifiedAt: null }),
+      );
 
       await service.login(EMAIL, "pw");
 
@@ -614,7 +480,7 @@ describe("AuthService", () => {
     });
 
     it("signs in all the same when the notice cannot be sent", async () => {
-      repo.getByEmail.mockResolvedValue(owner());
+      repo.getReachableByEmail.mockResolvedValue(owner());
       email.sendNotice.mockRejectedValue(new Error("render bug"));
 
       await expect(service.login(EMAIL, "pw")).resolves.toMatchObject({
@@ -623,10 +489,204 @@ describe("AuthService", () => {
     });
 
     it("sends nothing for a failed sign-in", async () => {
-      repo.getByEmail.mockResolvedValue(owner());
+      repo.getReachableByEmail.mockResolvedValue(owner());
 
       await expect(service.login(EMAIL, "wrong")).rejects.toThrow(ApiError);
       expect(email.sendNotice).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("a deleted account [T-238]", () => {
+    const NOW = new Date("2026-09-28T15:00:00Z");
+    const deletedAt = new Date("2026-09-20T03:00:00Z");
+    const keptUntil = new Date("2026-10-21T05:00:00Z");
+    const deleted = (extra: Partial<User> = {}): User =>
+      new User({
+        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac90",
+        name: "Ana",
+        email: "ana@example.com",
+        password: bcryptjs.hashSync("pw", 4),
+        timezone: "America/Bogota",
+        emailVerifiedAt: new Date("2026-01-01T00:00:00Z"),
+        deletedAt,
+        keptUntil,
+        ...extra,
+      });
+    let clocked: AuthService;
+
+    beforeEach(() => {
+      clocked = new AuthService(
+        repo,
+        categoryService as unknown as CategoryService,
+        sessions,
+        email,
+        () => NOW,
+      );
+    });
+
+    it("answers its right password with its two days, and opens nothing", async () => {
+      repo.getReachableByEmail.mockResolvedValue(deleted());
+
+      const failure = await clocked
+        .login("ana@example.com", "pw")
+        .catch((err: unknown) => err);
+
+      expect(failure).toBeInstanceOf(AccountDeletedError);
+      expect(failure).toMatchObject({
+        statusCode: 409,
+        code: "ACCOUNT_DELETED",
+        deletedAccount: { deletedOn: "2026-09-19", keptUntil: "2026-10-20" },
+      });
+      expect(sessions.create).not.toHaveBeenCalled();
+      expect(email.sendNotice).not.toHaveBeenCalled();
+    });
+
+    it("answers a wrong password the same as for any address", async () => {
+      repo.getReachableByEmail.mockResolvedValue(deleted());
+
+      await expect(
+        clocked.login("ana@example.com", "wrong"),
+      ).rejects.toMatchObject({ statusCode: 401, code: undefined });
+    });
+
+    it("gives an account deleted before T-238 its 30 days from now", async () => {
+      repo.getReachableByEmail.mockResolvedValue(deleted({ keptUntil: null }));
+
+      await expect(
+        clocked.login("ana@example.com", "pw"),
+      ).rejects.toMatchObject({
+        deletedAccount: { deletedOn: "2026-09-19", keptUntil: "2026-10-28" },
+      });
+      expect(repo.setKeptUntil).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac90",
+        new Date("2026-10-29T05:00:00Z"),
+      );
+    });
+
+    it("restores it with the same password, signs in and tells the inbox", async () => {
+      repo.getReachableByEmail.mockResolvedValue(deleted());
+      repo.restoreDeleted.mockResolvedValue(
+        deleted({ deletedAt: null, keptUntil: null }),
+      );
+
+      const result = await clocked.restore(
+        "ana@example.com",
+        "pw",
+        "Mozilla/5.0",
+      );
+
+      expect(repo.restoreDeleted).toHaveBeenCalledWith(
+        "019576a0-d7b6-7d6d-af6a-2b7545f5ac90",
+        NOW,
+      );
+      expect(result.accessToken).toEqual(expect.any(String));
+      expect(result.deviceToken).toEqual(expect.any(String));
+      expect(email.sendNotice).toHaveBeenCalledTimes(1);
+      expect(email.sendNotice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          template: "account-restored",
+          data: {
+            at: NOW,
+            userAgent: "Mozilla/5.0",
+            deletedOn: "2026-09-19",
+            by: "sign-in",
+          },
+        }),
+      );
+    });
+
+    it("signs a live account in like a login, with nothing to restore", async () => {
+      repo.getReachableByEmail.mockResolvedValue(
+        deleted({ deletedAt: null, keptUntil: null }),
+      );
+
+      await expect(clocked.restore("ana@example.com", "pw")).resolves.toEqual(
+        expect.objectContaining({ accessToken: expect.any(String) }),
+      );
+      expect(repo.restoreDeleted).not.toHaveBeenCalled();
+    });
+
+    it("refuses when the account stopped being kept meanwhile", async () => {
+      repo.getReachableByEmail.mockResolvedValue(deleted());
+      repo.restoreDeleted.mockResolvedValue(null);
+
+      await expect(
+        clocked.restore("ana@example.com", "pw"),
+      ).rejects.toMatchObject({ statusCode: 401 });
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the confirmation deadline in the access token [T-238]", () => {
+    const endsAt = new Date("2026-10-13T05:00:00Z");
+    const signedIn = async (user: User): Promise<Record<string, unknown>> => {
+      repo.getReachableByEmail.mockResolvedValue(user);
+      const { accessToken } = await service.login("old@example.com", "pw");
+      return jwt.decode(accessToken) as Record<string, unknown>;
+    };
+    const old = (extra: Partial<User>): User =>
+      new User({
+        name: "Old",
+        email: "old@example.com",
+        password: bcryptjs.hashSync("pw", 4),
+        confirmDeadline: {
+          day: "2026-10-12",
+          endsAt,
+          remindedAt: null,
+          links: [],
+        },
+        ...extra,
+      });
+
+    it("carries the end of an unconfirmed account's deadline", async () => {
+      await expect(signedIn(old({}))).resolves.toMatchObject({
+        confirmBy: endsAt.getTime(),
+      });
+    });
+
+    it("carries nothing once the account is confirmed", async () => {
+      const claims = await signedIn(old({ emailVerifiedAt: new Date() }));
+      expect(claims).not.toHaveProperty("confirmBy");
+    });
+  });
+
+  describe("createAccount [T-238]", () => {
+    it("stores the hash it is given and seeds the categories", async () => {
+      repo.create.mockImplementation(async (user) => new User(user as User));
+
+      const created = await service.createAccount({
+        name: "Ana",
+        email: "ana@example.com",
+        passwordHash: "$2b$04$hash",
+        emailVerifiedAt: new Date("2026-09-28T00:00:00Z"),
+      });
+
+      expect(repo.create.mock.calls[0][0]).toMatchObject({
+        password: "$2b$04$hash",
+        emailVerifiedAt: new Date("2026-09-28T00:00:00Z"),
+      });
+      expect(categoryService.seedDefaultCategories).toHaveBeenCalledWith(
+        created.id,
+      );
+    });
+
+    it("answers EMAIL_TAKEN when another account holds the address, a deleted one included", async () => {
+      repo.create.mockRejectedValue(
+        Object.assign(new Error("E11000 duplicate key"), {
+          code: 11000,
+          keyPattern: { email: 1 },
+        }),
+      );
+
+      await expect(
+        service.createAccount({
+          name: "Ana",
+          email: "ana@example.com",
+          passwordHash: "$2b$04$hash",
+          emailVerifiedAt: null,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
+      expect(categoryService.seedDefaultCategories).not.toHaveBeenCalled();
     });
   });
 

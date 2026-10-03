@@ -1,15 +1,14 @@
 import bcryptjs from "bcryptjs";
 
-import { IAccountRepository } from "../../domain/repositories/account/IAccountRepository";
 import {
   AuthCodeRecord,
   IAuthCodeRepository,
 } from "../../domain/repositories/authCode/IAuthCodeRepository";
 import { IRefreshSessionRepository } from "../../domain/repositories/refreshSession/IRefreshSessionRepository";
 import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
-import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { AuthCodePurpose, ENVIRONMENT } from "../../shared/constants";
+import { dayKeyOf } from "../../shared/dayKey";
 import { hashEmailAddress } from "../../shared/emailHash";
 import { ApiError } from "../../shared/errors";
 import logger from "../../shared/logger";
@@ -22,6 +21,7 @@ import {
   tokenDigest,
 } from "./authCodes";
 import { AuthService, OpenedSession } from "./AuthService";
+import { datedDeletion, deletedDays } from "./deletedAccount";
 import { EmailRequester, EmailService } from "./EmailService";
 import { sendResetCode } from "./resetCode";
 import { sendSecurityNotice } from "./securityNotice";
@@ -64,11 +64,6 @@ export class PasswordResetService {
       EmailService,
       "holdBrakes" | "sendCode" | "sendNotice" | "providerCeilingMs"
     >,
-    private readonly accounts: Pick<IAccountRepository, "countByUserId">,
-    private readonly transactions: Pick<
-      ITransactionRepository,
-      "countByUserId"
-    >,
     private readonly sessions: Pick<
       IRefreshSessionRepository,
       "revokeAllForUser"
@@ -100,18 +95,26 @@ export class PasswordResetService {
     const startedAt = Date.now();
     const toHash = hashEmailAddress(email);
     try {
-      const user = await this.users.getByEmail(email);
+      const now = this.now();
+      const user = await this.users.getReachableByEmail(email, now);
       await this.codes.recordRequest(
         PURPOSE,
         toHash,
         user?.id ?? null,
-        new Date(this.now().getTime() + RESET_CODE_LIFETIME_MS),
+        new Date(now.getTime() + RESET_CODE_LIFETIME_MS),
       );
       if (user) {
         await sendResetCode(
           { codes: this.codes, email: this.email, now: this.now },
           user,
           "password-reset",
+          user.deletedAt
+            ? {
+                deleted: deletedDays(
+                  await datedDeletion(this.users, user, now),
+                ),
+              }
+            : {},
           requester,
           true,
         );
@@ -137,7 +140,7 @@ export class PasswordResetService {
     proof: ResetProof,
     newPassword: string,
     userAgent?: string,
-  ): Promise<OpenedSession & { user: UserResponseDTO }> {
+  ): Promise<OpenedSession & { user: UserResponseDTO; restored: boolean }> {
     const byToken = "token" in proof;
     const refused = byToken ? linkInvalid : codeInvalid;
     // Hashed first, so every answer, right or wrong, pays the same bcrypt time.
@@ -148,19 +151,14 @@ export class PasswordResetService {
 
     const record = await this.redeem(proof);
     if (!record?.userId) throw refused();
-    const user = await this.users.getById(record.userId);
+    const user = await this.users.getForUndo(record.userId);
     // The code was for the address the account had: one that moved to another address no longer opens it.
     if (!user || hashEmailAddress(user.email) !== record.toHash) {
       throw refused();
     }
 
-    const question = user.emailVerifiedAt ? null : await this.contents(user.id);
-    const updated = await this.users.resetPassword(
-      user.id,
-      passwordHash,
-      question,
-      this.now(),
-    );
+    const now = this.now();
+    const updated = await this.users.resetPassword(user.id, passwordHash, now);
     if (!updated) throw refused();
     await this.sessions.revokeAllForUser(updated.id);
     if (user.emailChange) {
@@ -173,11 +171,24 @@ export class PasswordResetService {
       await this.invitations.touchUnansweredFor(updated.email, this.now());
     }
     const session = await this.auth.openSession(updated, userAgent);
-    await sendSecurityNotice(this.email, updated, "password-changed", {
-      at: this.now(),
-      userAgent,
-    });
-    return { ...session, user: toUserResponse(updated) };
+    if (user.deletedAt) {
+      await sendSecurityNotice(this.email, updated, "account-restored", {
+        at: now,
+        userAgent,
+        deletedOn: dayKeyOf(user.deletedAt, user.timezone),
+        by: "reset",
+      });
+    } else {
+      await sendSecurityNotice(this.email, updated, "password-changed", {
+        at: now,
+        userAgent,
+      });
+    }
+    return {
+      ...session,
+      user: toUserResponse(updated, now),
+      restored: user.deletedAt !== null,
+    };
   }
 
   private async redeem(proof: ResetProof): Promise<AuthCodeRecord | null> {
@@ -197,16 +208,5 @@ export class PasswordResetService {
       codeDigest(toHash, proof.code),
       now,
     );
-  }
-
-  // An account with nothing in it has nothing to keep, so the question is not asked.
-  private async contents(
-    userId: string,
-  ): Promise<{ accounts: number; transactions: number } | null> {
-    const [accounts, transactions] = await Promise.all([
-      this.accounts.countByUserId(userId),
-      this.transactions.countByUserId(userId),
-    ]);
-    return accounts + transactions > 0 ? { accounts, transactions } : null;
   }
 }

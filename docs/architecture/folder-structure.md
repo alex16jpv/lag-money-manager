@@ -65,7 +65,7 @@ lag-money-manager/
 │   │       ├── syncOp/            # ISyncOpRepository.ts
 │   │       ├── transaction/       # ITransactionRepository.ts
 │   │       ├── user/              # IUserRepository.ts
-│   │       └── userData/          # IUserDataEraser.ts (what Start fresh erases)
+│   │       └── userData/          # IUserDataEraser.ts (what the erasure at 30 days removes)
 │   ├── infrastructure/            # Persistence layer (Mongoose-specific)
 │   │   ├── captcha/               # Cloudflare Turnstile behind CaptchaVerifier
 │   │   ├── email/                 # Mail provider adapters (SES, Mailpit) and the SNS inbox for SES events

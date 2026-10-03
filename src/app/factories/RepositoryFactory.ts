@@ -13,6 +13,7 @@ import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpens
 import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
 import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { ISharedSettlementRepository } from "../../domain/repositories/sharedSettlement/ISharedSettlementRepository";
+import { ISignUpRepository } from "../../domain/repositories/signUp/ISignUpRepository";
 import { ISyncOpRepository } from "../../domain/repositories/syncOp/ISyncOpRepository";
 import { ITransactionRepository } from "../../domain/repositories/transaction/ITransactionRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
@@ -46,6 +47,7 @@ export const REPO_KEYS = {
   RATE_COUNTER: "rateCounter",
   AUTH_CODE: "authCode",
   USER_DATA_ERASER: "userDataEraser",
+  SIGN_UP: "signUp",
 } as const;
 
 type DbProvider = (factory: RepositoryFactory) => void;
@@ -175,6 +177,10 @@ export class RepositoryFactory {
 
   getUserDataEraser(): IUserDataEraser {
     return this.getRepository<IUserDataEraser>(REPO_KEYS.USER_DATA_ERASER);
+  }
+
+  getSignUpRepository(): ISignUpRepository {
+    return this.getRepository<ISignUpRepository>(REPO_KEYS.SIGN_UP);
   }
 }
 

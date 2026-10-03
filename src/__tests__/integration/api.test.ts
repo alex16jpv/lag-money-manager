@@ -24,33 +24,36 @@ const mockUserRepo: jest.Mocked<IUserRepository> = {
   getAll: jest.fn(),
   getById: jest.fn(),
   getByEmail: jest.fn(),
-  getDeletedByEmail: jest.fn().mockResolvedValue(null),
-  markEmailVerified: jest.fn(),
-  getForErasure: jest.fn().mockResolvedValue(null),
-  claimErasure: jest.fn().mockResolvedValue(null),
-  eraseForGood: jest.fn().mockResolvedValue(undefined),
-  emailInUse: jest.fn().mockResolvedValue(false),
-  startEmailChange: jest.fn(),
-  renewEmailChange: jest.fn(),
-  dropEmailChange: jest.fn().mockResolvedValue(undefined),
-  applyEmailChange: jest.fn(),
-  dropUndoLink: jest.fn().mockResolvedValue(undefined),
-  addUndoLink: jest.fn().mockResolvedValue(true),
-  getForUndo: jest.fn().mockResolvedValue(null),
-  undoEmailChange: jest.fn(),
   getByIdWithPassword: jest.fn().mockResolvedValue(null),
+  getReachableByEmail: jest.fn().mockResolvedValue(null),
+  holderOf: jest.fn().mockResolvedValue(null),
   forgetDevices: jest.fn().mockResolvedValue(null),
   updateWithTokenBump: jest.fn(),
   recordLogin: jest.fn().mockResolvedValue(undefined),
-  reactivate: jest.fn(),
   resetPassword: jest.fn(),
-  keepEverything: jest.fn(),
-  chooseStartFresh: jest.fn(),
-  finishStartFresh: jest.fn(),
-  releaseStartFresh: jest.fn(),
+  markEmailVerified: jest.fn(),
+  startEmailChange: jest.fn(),
+  addUndoLink: jest.fn().mockResolvedValue(true),
+  dropUndoLink: jest.fn().mockResolvedValue(undefined),
+  renewEmailChange: jest.fn(),
+  dropEmailChange: jest.fn().mockResolvedValue(undefined),
+  applyEmailChange: jest.fn(),
+  getForUndo: jest.fn().mockResolvedValue(null),
+  undoEmailChange: jest.fn(),
+  markDeleted: jest.fn().mockResolvedValue(null),
+  restoreDeleted: jest.fn().mockResolvedValue(null),
+  restoreFromLink: jest.fn().mockResolvedValue(null),
+  listUndatedDeletions: jest.fn().mockResolvedValue([]),
+  setKeptUntil: jest.fn().mockResolvedValue(undefined),
+  listErasable: jest.fn().mockResolvedValue([]),
+  claimErasure: jest.fn().mockResolvedValue(true),
+  eraseForGood: jest.fn().mockResolvedValue(undefined),
+  listWithoutDeadline: jest.fn().mockResolvedValue([]),
+  startConfirmDeadline: jest.fn().mockResolvedValue(true),
+  listDueReminders: jest.fn().mockResolvedValue([]),
+  markReminded: jest.fn().mockResolvedValue(true),
   create: jest.fn(),
   update: jest.fn(),
-  delete: jest.fn(),
 };
 
 const mockAccountRepo: jest.Mocked<IAccountRepository> = {
@@ -237,6 +240,22 @@ const mockAuthCodeRepo = {
   discard: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockSignUpRepo = {
+  replace: jest.fn().mockResolvedValue(undefined),
+  findLive: jest.fn().mockResolvedValue(null),
+  claimCreation: jest.fn().mockResolvedValue(null),
+  releaseCreation: jest.fn().mockResolvedValue(undefined),
+  markSignedIn: jest.fn().mockResolvedValue(false),
+};
+
+const mockRateCounterRepo = {
+  hit: jest.fn(async () => ({
+    count: 1,
+    expiresAt: new Date(Date.now() + 60_000),
+  })),
+  refund: jest.fn().mockResolvedValue(undefined),
+};
+
 const CAPTCHA = "XXXX.DUMMY.TOKEN.XXXX";
 
 const mockCaptchaVerify = jest.fn().mockResolvedValue({ passed: true });
@@ -265,9 +284,10 @@ jest.mock("../../shared/constants", () => ({
     EMAIL_PROVIDERS: [],
     APP_URL: "http://localhost:3001",
     EMAIL_ADDRESS_INTERVAL_SECONDS: 60,
+    EMAIL_CONFIRMATION_DEADLINES: true,
   },
   TURNSTILE_TEST_SECRET: /^[123]x0{31}AA$/,
-  NOT_ME_TOKEN_FORMAT: /^[A-Za-z0-9_-]{96}$/,
+  ACCOUNT_LINK_TOKEN_FORMAT: /^[A-Za-z0-9_-]{64}$/,
   DB_TYPES: { MONGO: "MONGO" },
   DEBT_ACCOUNT_FIELDS: {
     creditLimit: ["CARD", "OVERDRAFT"],
@@ -430,9 +450,10 @@ jest.mock("../../app/factories/RepositoryFactory", () => ({
     getSyncOpRepository: () => mockSyncOpRepo,
     getEmailDeliveryRepository: () => ({}),
     getEmailSuppressionRepository: () => ({}),
-    getRateCounterRepository: () => ({}),
+    getRateCounterRepository: () => mockRateCounterRepo,
     getAuthCodeRepository: () => mockAuthCodeRepo,
     getUserDataEraser: () => ({}),
+    getSignUpRepository: () => mockSignUpRepo,
   },
   RepositoryFactory: jest.fn(),
 }));
@@ -559,7 +580,7 @@ describe("Integration Tests", () => {
 
   describe("POST /auth/login", () => {
     it("should login and return a token", async () => {
-      mockUserRepo.getByEmail.mockResolvedValue(testUser);
+      mockUserRepo.getReachableByEmail.mockResolvedValue(testUser);
 
       const res = await request(app).post("/auth/login").send({
         email: "john@example.com",
@@ -572,7 +593,7 @@ describe("Integration Tests", () => {
     });
 
     it("should return 401 for wrong password", async () => {
-      mockUserRepo.getByEmail.mockResolvedValue(testUser);
+      mockUserRepo.getReachableByEmail.mockResolvedValue(testUser);
 
       const res = await request(app).post("/auth/login").send({
         email: "john@example.com",
@@ -583,7 +604,7 @@ describe("Integration Tests", () => {
     });
 
     it("should return 401 for non-existent email", async () => {
-      mockUserRepo.getByEmail.mockResolvedValue(null);
+      mockUserRepo.getReachableByEmail.mockResolvedValue(null);
 
       const res = await request(app).post("/auth/login").send({
         email: "noone@example.com",
@@ -867,26 +888,24 @@ describe("Integration Tests", () => {
     });
   });
 
-  describe("POST /auth/email/not-me [T-209]", () => {
+  describe("POST /auth/email/restore [T-238]", () => {
     it("takes only the token of the email's link", async () => {
       const res = await request(app)
-        .post("/auth/email/not-me")
+        .post("/auth/email/restore")
         .send({ token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz" });
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe("VALIDATION");
     });
 
-    it("answers a token for no unconfirmed account LINK_INVALID", async () => {
+    it("answers a link of no deleted account LINK_INVALID, and restores nothing", async () => {
       const res = await request(app)
-        .post("/auth/email/not-me")
-        .send({
-          token: "A".repeat(96),
-        });
+        .post("/auth/email/restore")
+        .send({ token: "A".repeat(64) });
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe("LINK_INVALID");
-      expect(mockUserRepo.claimErasure).not.toHaveBeenCalled();
+      expect(mockUserRepo.restoreFromLink).not.toHaveBeenCalled();
     });
   });
 
@@ -925,80 +944,157 @@ describe("Integration Tests", () => {
     });
   });
 
-  describe("POST /users/:id/keep-or-start-fresh [T-207]", () => {
-    const path =
-      "/users/019576a0-d7b6-7d6d-af6a-2b7545f5ac70/keep-or-start-fresh";
+  describe("POST /auth/sign-up [T-238]", () => {
+    const body = {
+      name: "John Doe",
+      email: "john@example.com",
+      password: "password123",
+      captcha: CAPTCHA,
+    };
 
-    const withQuestion = (askedAt: Date): User =>
-      new User({
-        ...testUser,
-        keepOrStartFresh: {
-          askedAt,
-          accounts: 1,
-          transactions: 2,
-          startFresh: null,
-        },
+    it("creates nothing and answers the same token-bearing 202 for any address", async () => {
+      const res = await request(app).post("/auth/sign-up").send(body);
+
+      expect(res.status).toBe(202);
+      expect(res.body).toEqual({
+        signUpToken: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+        expiresAt: expect.any(String),
+        resendAfterSeconds: 60,
       });
-
-    it("keeps everything and answers the profile", async () => {
-      mockUserRepo.getById.mockResolvedValue(
-        withQuestion(new Date(Date.now() - 60_000)),
+      expect(mockSignUpRepo.replace).toHaveBeenCalledTimes(1);
+      expect(mockUserRepo.create).not.toHaveBeenCalled();
+      expect(mockCaptchaVerify).toHaveBeenCalledWith(
+        expect.objectContaining({ token: CAPTCHA, action: "register" }),
       );
-      mockUserRepo.keepEverything.mockResolvedValue(testUser);
-
-      const res = await request(app)
-        .post(path)
-        .set("Authorization", `Bearer ${token}`)
-        .send({ choice: "keep" });
-
-      expect(res.status).toBe(200);
-      expect(res.body.keepOrStartFresh).toBeNull();
     });
 
-    it("refuses an access token issued before the question was asked", async () => {
-      mockUserRepo.getById.mockResolvedValue(
-        withQuestion(new Date(Date.now() + 60_000)),
-      );
-
+    it("writes nothing without the captcha", async () => {
       const res = await request(app)
-        .post(path)
-        .set("Authorization", `Bearer ${token}`)
-        .send({ choice: "keep" });
-
-      expect(res.status).toBe(401);
-      expect(mockUserRepo.keepEverything).not.toHaveBeenCalled();
-    });
-
-    it("answers 409 KEEP_OR_START_FRESH_CLOSED when nothing is open", async () => {
-      mockUserRepo.getById.mockResolvedValue(testUser);
-
-      const res = await request(app)
-        .post(path)
-        .set("Authorization", `Bearer ${token}`)
-        .send({ choice: "keep" });
-
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe("KEEP_OR_START_FRESH_CLOSED");
-    });
-
-    it("asks Start fresh for the new profile", async () => {
-      const res = await request(app)
-        .post(path)
-        .set("Authorization", `Bearer ${token}`)
-        .send({ choice: "start-fresh", name: "Ana" });
+        .post("/auth/sign-up")
+        .send({ ...body, captcha: undefined });
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe("VALIDATION");
-      expect(mockUserRepo.chooseStartFresh).not.toHaveBeenCalled();
+      expect(mockSignUpRepo.replace).not.toHaveBeenCalled();
     });
 
-    it("answers 404 for somebody else's profile", async () => {
-      const res = await request(app)
-        .post("/users/019576a0-d7b6-7d6d-af6a-000000000000/keep-or-start-fresh")
-        .set("Authorization", `Bearer ${token}`)
-        .send({ choice: "keep" });
+    it("answers a code for a sign-up that is over the one answer", async () => {
+      const res = await request(app).post("/auth/sign-up/confirm").send({
+        signUpToken: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz",
+        code: "123456",
+      });
 
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("SIGN_UP_CODE_INVALID");
+    });
+
+    it("says SIGN_UP_EXPIRED to a Resend of a sign-up that is over", async () => {
+      const res = await request(app).post("/auth/sign-up/resend").send({
+        signUpToken: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz",
+        captcha: CAPTCHA,
+      });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("SIGN_UP_EXPIRED");
+    });
+  });
+
+  describe("a deleted account at Sign in [T-238]", () => {
+    const deleted = new User({
+      ...testUser,
+      timezone: "America/Bogota",
+      deletedAt: new Date("2026-09-20T03:00:00Z"),
+      keptUntil: new Date("2026-10-21T05:00:00Z"),
+    });
+
+    it("answers the right password 409 ACCOUNT_DELETED with its two days", async () => {
+      mockUserRepo.getReachableByEmail.mockResolvedValue(deleted);
+
+      const res = await request(app)
+        .post("/auth/login")
+        .send({ email: "john@example.com", password: "password123" });
+
+      expect(res.status).toBe(409);
+      expect(res.body).toMatchObject({
+        code: "ACCOUNT_DELETED",
+        deletedAccount: { deletedOn: "2026-09-19", keptUntil: "2026-10-20" },
+      });
+      expect(res.body).not.toHaveProperty("accessToken");
+    });
+
+    it("restores it with the same credentials and signs in", async () => {
+      mockUserRepo.getReachableByEmail.mockResolvedValue(deleted);
+      mockUserRepo.restoreDeleted.mockResolvedValue(testUser);
+
+      const res = await request(app)
+        .post("/auth/login/restore")
+        .send({ email: "john@example.com", password: "password123" });
+
+      expect(res.status).toBe(200);
+      expect(typeof res.body.accessToken).toBe("string");
+      expect(mockUserRepo.restoreDeleted).toHaveBeenCalledWith(
+        testUser.id,
+        expect.any(Date),
+      );
+    });
+  });
+
+  describe("past the confirmation deadline [T-238]", () => {
+    const pastDeadline = jwt.sign(
+      {
+        userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        email: "john@example.com",
+        confirmBy: Date.now() - 1000,
+      },
+      "test-secret-for-integration",
+      { expiresIn: "1h" },
+    );
+
+    it("answers 403 EMAIL_CONFIRMATION_REQUIRED, the sync batch included, while it is unconfirmed", async () => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+
+      for (const call of [
+        request(app).get("/accounts"),
+        request(app).post("/sync").send({ ops: [] }),
+      ]) {
+        const res = await call.set("Authorization", `Bearer ${pastDeadline}`);
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe("EMAIL_CONFIRMATION_REQUIRED");
+      }
+      expect(mockAccountRepo.getAllByUserId).not.toHaveBeenCalled();
+    });
+
+    it("lets the profile and the change of email through", async () => {
+      mockUserRepo.getById.mockResolvedValue(testUser);
+
+      const res = await request(app)
+        .get("/users/019576a0-d7b6-7d6d-af6a-2b7545f5ac70")
+        .set("Authorization", `Bearer ${pastDeadline}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.emailConfirmationRequired).toBe(false);
+    });
+
+    it("lets an account confirmed since its token was signed through", async () => {
+      mockUserRepo.getById.mockResolvedValue(
+        new User({ ...testUser, emailVerifiedAt: new Date() }),
+      );
+      mockAccountRepo.getAllByUserId.mockResolvedValue({
+        data: [],
+        pagination: {
+          limit: 20,
+          offset: 0,
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
+      } as never);
+
+      const res = await request(app)
+        .get("/accounts")
+        .set("Authorization", `Bearer ${pastDeadline}`);
+
+      expect(res.status).not.toBe(403);
     });
   });
 
@@ -1105,9 +1201,9 @@ describe("Integration Tests", () => {
   });
 
   describe("DELETE /users/:id", () => {
-    it("should delete own user with the current password", async () => {
+    it("should delete own user with the current password, and say until when it is kept", async () => {
       mockUserRepo.getByIdWithPassword.mockResolvedValue(testUser);
-      mockUserRepo.delete.mockResolvedValue();
+      mockUserRepo.markDeleted.mockResolvedValue(testUser);
 
       const res = await request(app)
         .delete("/users/019576a0-d7b6-7d6d-af6a-2b7545f5ac70")
@@ -1115,8 +1211,12 @@ describe("Integration Tests", () => {
         .send({ currentPassword: "password123" });
 
       expect(res.status).toBe(200);
-      expect(mockUserRepo.delete).toHaveBeenCalledWith(
+      expect(res.body.keptUntil).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(mockUserRepo.markDeleted).toHaveBeenCalledWith(
         "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
+        expect.any(Date),
+        expect.objectContaining({ tokenHash: expect.any(String) }),
+        expect.any(Date),
       );
     });
 
@@ -1127,7 +1227,7 @@ describe("Integration Tests", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe("VALIDATION");
-      expect(mockUserRepo.delete).not.toHaveBeenCalled();
+      expect(mockUserRepo.markDeleted).not.toHaveBeenCalled();
     });
   });
 

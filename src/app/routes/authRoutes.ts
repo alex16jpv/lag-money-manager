@@ -13,11 +13,15 @@ import {
   forgotPasswordSchema,
   idParamSchema,
   loginSchema,
-  notMeSchema,
   refreshSchema,
   registerSchema,
   resendVerificationSchema,
   resetPasswordSchema,
+  restoreAccountSchema,
+  restoreFromLinkSchema,
+  signUpConfirmSchema,
+  signUpResendSchema,
+  signUpSchema,
   undoEmailChangeSchema,
   verifyEmailSchema,
 } from "../validation/schemas";
@@ -99,8 +103,13 @@ const confirmChangeLimiter = authRateLimit({
   max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
-const notMeLimiter = authRateLimit({
-  keyPrefix: "not-me",
+const signUpConfirmLimiter = authRateLimit({
+  keyPrefix: "sign-up-confirm",
+  max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
+  windowMs: AUTH_WINDOW_MS,
+});
+const restoreLinkLimiter = authRateLimit({
+  keyPrefix: "restore-link",
   max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
 });
@@ -133,28 +142,211 @@ const refreshLimiter = authRateLimit({
 
 /**
  * @openapi
+ * /auth/sign-up:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Start creating an account; its emailed code creates it
+ *     description: >
+ *       Nothing is created yet (the owner's decision 16): what was typed waits
+ *       24 hours, and a new sign-up for the address replaces it. The answer,
+ *       its limits and its time are the same for every address, so it never
+ *       tells who has an account: an address with no account is sent
+ *       `sign-up` (a 6-digit code and a link, 24 hours); one with an account
+ *       — live, deleted and still kept, or kept by an undo link — is sent
+ *       `account-exists` instead, and its sign-up can never be confirmed. A
+ *       send that fails is never shown. Keep `signUpToken` for this browser
+ *       alone: `POST /auth/sign-up/confirm` takes it with the code. `captcha`
+ *       is a Cloudflare Turnstile token for the action `register`;
+ *       `deviceToken` lets the limits count this device instead of its IP.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/SignUpInput'
+ *     responses:
+ *       202:
+ *         description: Taken, the same for every address
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SignUpStarted'
+ *       400:
+ *         description: >
+ *           Validation error, a missing captcha among them (code
+ *           VALIDATION), or Cloudflare refused the captcha token (code
+ *           CAPTCHA_INVALID). Ask for a new token and try again
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: >
+ *           Too many requests (code RATE_LIMITED; `Retry-After` in seconds):
+ *           from this IP, from this device or IP in the hour, or for this
+ *           address — one a minute and five a day. Counted the same for every
+ *           address
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       503:
+ *         description: >
+ *           The captcha could not be checked (code CAPTCHA_UNAVAILABLE):
+ *           nothing was sent. Try again
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/sign-up",
+  registerLimiter,
+  AuthController.recognizeDevice,
+  validate(signUpSchema),
+  requireCaptcha("register", captcha),
+  AuthController.signUp,
+);
+
+/**
+ * @openapi
+ * /auth/sign-up/resend:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Email the sign-up again
+ *     description: >
+ *       Resend code of the sign-up's code step: `sign-up` with a new code, or
+ *       `account-exists` if the address has an account by now, under the same
+ *       limits and in the same time either way. A new code replaces the old
+ *       one only once its email was accepted. A send that fails is never
+ *       shown. `captcha` is a Cloudflare Turnstile token for the action
+ *       `register`.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/SignUpResendInput'
+ *     responses:
+ *       202:
+ *         description: Taken
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/VerificationCodeSent'
+ *       400:
+ *         description: Validation error (code VALIDATION) or a refused captcha (code CAPTCHA_INVALID)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: >
+ *           The sign-up is over: its 24 hours passed or a newer one for the
+ *           address replaced it (code SIGN_UP_EXPIRED). Start again from
+ *           Create account
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: Too many requests (code RATE_LIMITED; `Retry-After` in seconds)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       503:
+ *         description: The captcha could not be checked (code CAPTCHA_UNAVAILABLE)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/sign-up/resend",
+  registerLimiter,
+  validate(signUpResendSchema),
+  requireCaptcha("register", captcha),
+  AuthController.resendSignUp,
+);
+
+/**
+ * @openapi
+ * /auth/sign-up/confirm:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Create the account with the emailed code, and sign in here
+ *     description: >
+ *       Only with the `signUpToken` of the browser where the password was
+ *       typed: the code alone never signs anyone in. Creates the account,
+ *       its email confirmed, and answers a session with its device token, so
+ *       no `new-sign-in` is sent. If the email's link created the account
+ *       first, the same code signs in once. A code takes five tries and every
+ *       bad one gets the same answer.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/SignUpConfirmInput'
+ *     responses:
+ *       201:
+ *         description: The account exists and this device is signed in
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthTokens'
+ *       400:
+ *         description: >
+ *           Validation error (code VALIDATION), or a code that does not work —
+ *           mistyped, expired, replaced, used up by five tries, already used
+ *           to sign in, or for a sign-up that is over: all one answer (code
+ *           SIGN_UP_CODE_INVALID)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: >
+ *           The address became another account's meanwhile (code
+ *           EMAIL_TAKEN): only whoever holds the code sees it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: Too many attempts from this IP (code RATE_LIMITED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/sign-up/confirm",
+  signUpConfirmLimiter,
+  validate(signUpConfirmSchema),
+  AuthController.confirmSignUp,
+);
+
+/**
+ * @openapi
  * /auth/register:
  *   post:
  *     tags: [Auth]
- *     summary: Register a new user
+ *     deprecated: true
+ *     summary: Register a new user, before its email is confirmed
  *     description: >
- *       Register acts as login: the response already carries the token pair,
- *       no follow-up login call is needed. Emails are normalized (trim +
- *       lowercase). Registering with the email and the password of a
- *       soft-deleted account reactivates that account with its full financial
- *       history (the response's `user.reactivated` is `true` and the original
- *       currency is kept — the `currency` sent in that register is ignored);
- *       with any other password it answers 409 EMAIL_TAKEN, like a live
- *       account. On a 500 the
- *       user may still have been created: try login before retrying register.
- *       `captcha` is a Cloudflare Turnstile token issued for the action
- *       `register`, asked for when the button is pressed: it works once, and
- *       nothing is created without one that passes. An account whose email
- *       is not confirmed is sent `verify-email` (a 6-digit code and a link,
- *       24 hours). A send that fails does not fail the register:
- *       `GET /users/{id}` then shows no live code, so the client offers Send
- *       code. The account works before its email is confirmed
- *       (`user.emailVerified`); only invitations wait for it.
+ *       Kept only until the app confirms the email before the account
+ *       exists (`POST /auth/sign-up`); then it goes. Register acts as login:
+ *       the response already carries the token pair. Emails are normalized
+ *       (trim + lowercase). An address with any account, live or deleted and
+ *       still kept, answers 409 EMAIL_TAKEN: a deleted account comes back by
+ *       signing in. `captcha` is a Cloudflare Turnstile token for the action
+ *       `register`. The account is sent `verify-email`; a send that fails does
+ *       not fail the register.
  *     security: []
  *     requestBody:
  *       required: true
@@ -172,18 +364,14 @@ const refreshLimiter = authRateLimit({
  *       400:
  *         description: >
  *           Validation error, a missing captcha among them (code
- *           VALIDATION), or Cloudflare refused the captcha token: spent,
- *           expired, forged, or issued for another site or action (code
+ *           VALIDATION), or Cloudflare refused the captcha token (code
  *           CAPTCHA_INVALID). Ask for a new token and try again
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: >
- *           Email is already registered (code EMAIL_TAKEN): a live account,
- *           a soft-deleted one registered with a different password, or a
- *           concurrent register that reactivated it first
+ *         description: Email is already registered (code EMAIL_TAKEN)
  *         content:
  *           application/json:
  *             schema:
@@ -191,9 +379,8 @@ const refreshLimiter = authRateLimit({
  *       429:
  *         description: >
  *           Too many attempts from this client IP, or too many failed ones
- *           for this email — from this device if `deviceToken` recognizes
- *           it, otherwise from this IP or in total — counted with the
- *           failed logins (code RATE_LIMITED)
+ *           for this email, counted with the failed logins (code
+ *           RATE_LIMITED)
  *         content:
  *           application/json:
  *             schema:
@@ -229,8 +416,12 @@ router.post(
  *       they count against this device alone, so nobody else's failures can
  *       lock it out; without one they count per email and IP and per email in
  *       total. Successful logins are refunded. A login whose `deviceToken` is
- *       not one this account's email gave since its last password reset, undo
+ *       not one this account's email gave since its last undo, restore link
  *       or logout-all emails `new-sign-in` to that email, when it is confirmed.
+ *       The right password of an account deleted in its last 30 days answers
+ *       409 ACCOUNT_DELETED with its two days and opens nothing: "Restore your
+ *       account?" then calls `POST /auth/login/restore`. A wrong password
+ *       reads the same for every address, deleted or not.
  *     security: []
  *     requestBody:
  *       required: true
@@ -257,6 +448,15 @@ router.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: >
+ *           The right password of a deleted account that is still kept (code
+ *           ACCOUNT_DELETED): `deletedAccount` says when it was deleted and
+ *           its last day
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AccountDeletedResponse'
  *       429:
  *         description: >
  *           Too many attempts from this client IP, or too many failed ones
@@ -277,6 +477,61 @@ router.post(
 
 /**
  * @openapi
+ * /auth/login/restore:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Restore a deleted account and sign in
+ *     description: >
+ *       "Restore account" of "Restore your account?", with the same email and
+ *       password as the sign-in that answered ACCOUNT_DELETED, under the same
+ *       limits. Brings the account back with everything it had, except the
+ *       shared groups it left and the invitations that ended, signs in like a
+ *       login and emails `account-restored`. An account that is no longer
+ *       deleted just signs in.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/RestoreAccountInput'
+ *     responses:
+ *       200:
+ *         description: Restored and signed in
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthTokens'
+ *       400:
+ *         description: Validation error (code VALIDATION)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: >
+ *           Invalid email or password, or the account is no longer kept
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: Too many attempts, counted with the logins (code RATE_LIMITED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/login/restore",
+  loginLimiter,
+  ...accountLimiters,
+  validate(restoreAccountSchema),
+  AuthController.restoreAccount,
+);
+
+/**
+ * @openapi
  * /auth/password/forgot:
  *   post:
  *     tags: [Auth]
@@ -284,10 +539,11 @@ router.post(
  *     description: >
  *       Always the same answer, in at least the same time, whether the
  *       address has a live account, a deleted one or none, and whether the
- *       email could be sent: nothing here may tell them apart. Only a live
- *       account is emailed, in its own language: a 6-digit code and a link
- *       (`/{locale}/reset#token=…`), both good for 30 minutes and for one
- *       reset. A new code replaces the previous one only once its email was
+ *       email could be sent: nothing here may tell them apart. A live account
+ *       and one deleted in its last 30 days are emailed, in their own
+ *       language: a 6-digit code and a link (`/{locale}/reset#token=…`), both
+ *       good for 30 minutes and for one reset; the deleted one in its own
+ *       words, since choosing a password restores it. A new code replaces the previous one only once its email was
  *       accepted for delivery. `captcha` is a Cloudflare Turnstile token
  *       issued for the action `forgot-password`, asked for when the button is
  *       pressed: it works once. `deviceToken`, from this device's last login
@@ -359,12 +615,12 @@ router.post(
  *       device (every refresh and device token issued before stops working),
  *       confirms the account's email, and answers a session like a login.
  *       Using a code or the link spends every code of that request. A code
- *       takes five tries. When the account had never confirmed its email and
- *       holds accounts or transactions, the answer's `user.keepOrStartFresh`
- *       is set: ask "Keep what's in this account?" before opening anything
- *       (`POST /users/{id}/keep-or-start-fresh`). A change of email that was
- *       waiting is cancelled, and `password-changed` goes to the address. The
- *       code of `password-reset-after-undo` is redeemed here as well.
+ *       takes five tries. A deleted account still kept comes back
+ *       (`restored`), and `account-restored` goes instead of
+ *       `password-changed`. A change of email that was waiting is cancelled.
+ *       Devices are not forgotten: signing in again on one sends no
+ *       `new-sign-in`. The code of `password-reset-after-undo` is redeemed
+ *       here as well.
  *     security: []
  *     requestBody:
  *       required: true
@@ -378,7 +634,7 @@ router.post(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/AuthTokens'
+ *               $ref: '#/components/schemas/PasswordResetDone'
  *       400:
  *         description: >
  *           Validation error (code VALIDATION); a code that does not work —
@@ -409,11 +665,15 @@ router.post(
  * /auth/email/verify:
  *   post:
  *     tags: [Auth]
- *     summary: Confirm the account's email with the emailed code or link
+ *     summary: Confirm an email with the emailed code or link
  *     description: >
  *       Either `{ code }`, with the session (`Authorization`) of the account
  *       the code went to, or `{ token }` from the email's link
  *       (`/{locale}/verify#token=…`) with no session: it names the account.
+ *       The link of `sign-up` creates its account and signs nobody in
+ *       (`result: account-ready`); the links of `verify-email` and of the
+ *       deadline emails confirm an account from before email existed
+ *       (`result: email-confirmed`) — a deadline link until its deadline.
  *       A code takes five tries and works for 24 hours; asking for another
  *       cancels it once the new email is accepted. Confirming is not spent:
  *       an account already confirmed answers 200 for its code and for its
@@ -434,11 +694,11 @@ router.post(
  *             $ref: '#/components/schemas/VerifyEmailInput'
  *     responses:
  *       200:
- *         description: The email is confirmed
+ *         description: The email is confirmed, or the sign-up's account exists
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Message'
+ *               $ref: '#/components/schemas/EmailVerified'
  *       400:
  *         description: >
  *           Validation error (code VALIDATION); a code that is not the one
@@ -575,9 +835,8 @@ router.post(
  *     description: >
  *       Send code and Resend code of the sheet that confirms the email. Sends
  *       `verify-email` to the account's address, in its language: a 6-digit
- *       code and a link, both for 24 hours, and "It wasn't me". The new code
- *       replaces the old one only once its email was accepted; the "It
- *       wasn't me" of earlier emails keeps working. Unlike Forgot your
+ *       code and a link, both for 24 hours. The new code replaces the old one
+ *       only once its email was accepted. Unlike Forgot your
  *       password?, a failed send is said: the address is the account's own.
  *       `captcha` is a Cloudflare Turnstile token for the action
  *       `verify-email`; `deviceToken`, from this device's last login or
@@ -663,41 +922,37 @@ router.post(
 
 /**
  * @openapi
- * /auth/email/not-me:
+ * /auth/email/restore:
  *   post:
  *     tags: [Auth]
- *     summary: Delete, for good, an account that used somebody else's address
+ *     summary: Restore a deleted account from its email, and stop its password
  *     description: >
- *       "It wasn't me" of `verify-email` (`/{locale}/not-me#token=…`), for
- *       whoever holds the inbox. It works while the account has never
- *       confirmed an email — not even an earlier address — and still has the
- *       address the link went to, with no change of address since, and
- *       does what the owner's decision 11 says: the account and everything
- *       in it are erased — not archived, so no register can bring them back
- *       — its invitations end as when an account is deleted, and the address
- *       is free for a new account at once. No `account-deleted` is sent.
- *       Every verification email of such an account carries its own link and
- *       all of them work until then; a new code does not cancel them. An
- *       account confirmed once gets `verify-email` without it.
+ *       "Restore account" of `account-deleted` (`/{locale}/restore#token=…`),
+ *       for whoever did not delete it. It works for 7 days and once, even if
+ *       the account was restored meanwhile. The account comes back, any change
+ *       of email waiting is cancelled, every session and device token is
+ *       revoked, every device is forgotten, and the password stops working:
+ *       `password-reset-after-undo`, in its restore words, takes a code and a
+ *       link to the account's address, which `/auth/password/reset` redeems.
  *     security: []
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/NotMeInput'
+ *             $ref: '#/components/schemas/RestoreFromLinkInput'
  *     responses:
  *       200:
- *         description: The account is gone and its address is free
+ *         description: The account is back, with no usable password
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Message'
+ *               $ref: '#/components/schemas/RestoreLinkUsed'
  *       400:
  *         description: >
  *           Validation error (code VALIDATION), or a link that no longer
- *           works: the account was confirmed, moved to another address, or is
- *           already gone (code LINK_INVALID)
+ *           works: used, past its 7 days, or the account is erased (code
+ *           LINK_INVALID)
  *         content:
  *           application/json:
  *             schema:
@@ -710,10 +965,10 @@ router.post(
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post(
-  "/email/not-me",
-  notMeLimiter,
-  validate(notMeSchema),
-  AuthController.notMe,
+  "/email/restore",
+  restoreLinkLimiter,
+  validate(restoreFromLinkSchema),
+  AuthController.restoreFromLink,
 );
 
 /**
@@ -726,7 +981,7 @@ router.post(
  *       "Undo the change" of `email-change-requested` (`/{locale}/undo#token=…`),
  *       for whoever holds the address the account had. It works for 7 days
  *       and once, even after the change was confirmed, and brings back an
- *       account deleted since. The account goes back to that address (confirmed), any
+ *       account deleted since and still kept. The account goes back to that address (confirmed), any
  *       change still waiting is cancelled, every session and device token is
  *       revoked, and the password stops working: `password-reset-after-undo`
  *       takes a code and a link to that address, which `/auth/password/reset`
@@ -892,7 +1147,8 @@ router.post(
  *     description: >
  *       Bumps the user's token version, so every outstanding refresh token
  *       stops working (subsequent refreshes fail with 401 REFRESH_REVOKED),
- *       and forgets every device: a login with a device token issued before
+ *       and forgets every device (with an undo and a restore link, the only
+ *       things that do): a login with a device token issued before
  *       emails `new-sign-in`. The answer's `deviceToken` is this device's new
  *       one, issued after that.
  *     responses:

@@ -1,4 +1,5 @@
 import { User } from "../../domain/entities/User";
+import { ENVIRONMENT } from "../../shared/constants";
 import { Locale } from "../../shared/locale";
 
 export interface CreateUserDTO {
@@ -21,13 +22,6 @@ export interface UpdateUserDTO {
   locale?: Locale;
 }
 
-// What helps the owner of the inbox tell whether they created the account: never a name somebody typed.
-export interface KeepOrStartFreshView {
-  createdAt: Date;
-  accounts: number;
-  transactions: number;
-}
-
 // For the sheet that confirms the email: which of its two shapes, and when Resend can go.
 export interface EmailVerificationView {
   codeLive: boolean;
@@ -46,34 +40,45 @@ export interface UserResponseDTO {
   name: string;
   email: string;
   emailVerified: boolean;
+  // Only for an account from before email existed that has a deadline: its last day, in its time zone.
+  confirmBy: string | null;
+  // Past that deadline: everything but confirming waits (EMAIL_CONFIRMATION_REQUIRED).
+  emailConfirmationRequired: boolean;
   timezone: string;
   currency: string;
   locale: Locale;
   lastLoginAt: Date | null;
-  keepOrStartFresh: KeepOrStartFreshView | null;
   createdAt: Date;
   updatedAt: Date;
-  // Present (true) only when register revived a soft-deleted account.
-  reactivated?: boolean;
+}
+
+// What Sign in answers for the right password of a deleted account: days in its time zone.
+export interface DeletedAccountView {
+  deletedOn: string;
+  keptUntil: string;
 }
 
 /** The user as every response prints them: the entity minus the credentials. */
-export const toUserResponse = (user: User): UserResponseDTO => ({
-  id: user.id,
-  name: user.name,
-  email: user.email,
-  emailVerified: user.emailVerifiedAt !== null,
-  timezone: user.timezone,
-  currency: user.currency,
-  locale: user.locale,
-  lastLoginAt: user.lastLoginAt,
-  keepOrStartFresh: user.keepOrStartFresh
-    ? {
-        createdAt: user.createdAt,
-        accounts: user.keepOrStartFresh.accounts,
-        transactions: user.keepOrStartFresh.transactions,
-      }
-    : null,
-  createdAt: user.createdAt,
-  updatedAt: user.updatedAt,
-});
+export const toUserResponse = (
+  user: User,
+  now: Date = new Date(),
+): UserResponseDTO => {
+  const deadline = user.emailVerifiedAt ? null : user.confirmDeadline;
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    emailVerified: user.emailVerifiedAt !== null,
+    confirmBy: deadline?.day ?? null,
+    emailConfirmationRequired:
+      ENVIRONMENT.EMAIL_CONFIRMATION_DEADLINES === true &&
+      !!deadline &&
+      now >= deadline.endsAt,
+    timezone: user.timezone,
+    currency: user.currency,
+    locale: user.locale,
+    lastLoginAt: user.lastLoginAt,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
+};

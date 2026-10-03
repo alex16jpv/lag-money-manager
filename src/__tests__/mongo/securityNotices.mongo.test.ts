@@ -195,8 +195,8 @@ describe("Security notices against mongod [T-211]", () => {
     expect(stolen.body.code).toBe("EMAIL_TAKEN");
     const beto = await confirmedAccount("beto@notice.test");
     const taken = await askToMove(beto, "ana@notice.test");
-    expect(taken.status).toBe(409);
-    expect(taken.body.code).toBe("EMAIL_TAKEN");
+    expect(taken.status).toBe(202);
+    expect(lastEmail("ana@notice.test", "email-change-taken")).toBeDefined();
 
     const undone = await undo(undoToken);
     expect(undone.status).toBe(200);
@@ -498,7 +498,7 @@ describe("Security notices against mongod [T-211]", () => {
     expect((await signUp("hugo.new@notice.test")).status).toBe(201);
   });
 
-  it("tells about a sign-in from an unknown device, and knows a device until Sign out everywhere or a reset", async () => {
+  it("tells about a sign-in from an unknown device, and knows a device until Sign out everywhere, through a reset [T-238 E]", async () => {
     const ines = await confirmedAccount("ines@notice.test");
 
     const known = await logIn("ines@notice.test", PASSWORD, ines.deviceToken);
@@ -547,10 +547,10 @@ describe("Security notices against mongod [T-211]", () => {
     await minutePasses();
 
     await logIn("ines@notice.test", NEW_PASSWORD, out.body.deviceToken);
-    expect(sentTo("ines@notice.test", "new-sign-in")).toHaveLength(3);
+    expect(sentTo("ines@notice.test", "new-sign-in")).toHaveLength(2);
     await minutePasses();
     await logIn("ines@notice.test", NEW_PASSWORD, reset.body.deviceToken);
-    expect(sentTo("ines@notice.test", "new-sign-in")).toHaveLength(3);
+    expect(sentTo("ines@notice.test", "new-sign-in")).toHaveLength(2);
   });
 
   it("cancels a waiting email change on a reset, and mails the password change of Settings", async () => {

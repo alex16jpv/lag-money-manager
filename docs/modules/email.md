@@ -1,8 +1,8 @@
 # Email Module
 
-> **Status: the sender and the bounce handling are built; the password reset (T-207), the email's
-> confirmation (T-209), the change of email (T-221) and the security notices (T-211) are its callers;
-> nothing sends until `EMAIL_PROVIDERS` names a provider.**
+> **Status: the sender and the bounce handling are built; creating an account (T-238), the password reset
+> (T-207), the email's confirmation and its deadline (T-209, T-238), the change of email (T-221) and the
+> security notices (T-211, T-238) are its callers; nothing sends until `EMAIL_PROVIDERS` names a provider.**
 > This module is the piece every email of the app goes through: the password reset and the confirmation
 > ([auth.md](auth.md)), the email change (T-221), the security notices (T-211) and, later, the
 > notification channel (T-131). Setting SES up in production, with its alarms and budget, is
@@ -34,10 +34,12 @@ await email.sendCode({ template: "password-reset", data: { code, token }, recipi
 await email.sendNotice({ template: "password-changed", data: { at, userAgent }, recipient });
 ```
 
-`recipient` is `{ userId, email, locale, timezone }`, taken from the account. `requester` is
+`recipient` is `{ userId, email, locale, timezone }`, taken from the account (for `sign-up`, from the
+sign-up that waits: its id and the language and zone chosen, since no account exists yet). `requester` is
 `{ ip, recognizedDevice }` from the request (`clientIp(req)`, `req.recognizedDevice`), and only the
-code emails take it: a code email is something a request asks for, a notice is the consequence of
-something the owner did.
+emails sent through `sendCode` take it: those are something a request asks for — a code, or a link with
+no code (`account-exists`, `email-change-taken`, the deadline emails) —, a notice is the consequence of
+something the owner did. The nightly pass sends its deadline emails with no requester.
 
 ### What the caller gets back
 
@@ -56,8 +58,9 @@ What the callers owe to this answer, written down here so each task does not red
   the code they already had (the front's `emails.md`, "Tokens and codes"). On `unconfirmed` the
   email may arrive anyway, carrying the new code: the caller keeps the old one working and makes the
   new one work too, until either is used.
-- **Forgot your password? never shows the outcome.** Only an address with an account can fail, so
-  the endpoint answers the same whatever happens, and waits at least `email.providerCeilingMs` plus a
+- **Forgot your password? and Create account never show the outcome.** Only an address with an
+  account can fail in the reset, and only one without in the sign-up, so each answers the same whatever
+  happens, and waits at least `email.providerCeilingMs` plus a
   margin so the time does not tell either. `providerCeilingMs` is the number of providers × their
   timeout; the margin has to cover the suppression read, the brakes (one parallel round of MongoDB
   hits, and the refunds when one stops the send) and the delivery row.
@@ -65,8 +68,9 @@ What the callers owe to this answer, written down here so each task does not red
   requester })` counts a code email's per-address and per-requester brakes for any address, with an
   account or not, and answers `limited` with its seconds or not; it throws when the store cannot count.
   The send that follows passes `brakesHeld: true` and counts only the per-account brake and the caps.
-  Forgot your password? does this, so its `429` is the same for every address; a caller that already
-  knows the account (a Resend with a session) has no need to.
+  Forgot your password? and Create account do this, so their `429` is the same for every address (the
+  sign-up holds the brakes of `sign-up`, which `account-exists` shares: same purpose, same limits); a
+  caller that already knows the account (a Resend with a session) has no need to.
 - **`rejected` means the address will not take email**: it bounced for good, it complained, or the
   provider refused it. Asking again does not help.
 - **Resend in the verification shows it** (`EMAIL_SEND_FAILED`, [auth.md](auth.md#post-authemailresend)): the address is the person's own.
@@ -88,17 +92,19 @@ holds the two rules every one of them follows:
 
 | Notice                   | Sent when                                                                   | By                                    |
 | ------------------------ | --------------------------------------------------------------------------- | ------------------------------------- |
-| `password-changed`       | A password change in Settings (`PUT /users/:id`), and every reset           | `UserService`, `PasswordResetService` |
+| `password-changed`       | A password change in Settings (`PUT /users/:id`), and a reset of a live account | `UserService`, `PasswordResetService` |
 | `email-change-requested` | A change of email is asked for: to the old address, with its undo link, before the change is saved | `EmailChangeService.request` |
-| `new-sign-in`            | A login whose device token is not one of this email since its last reset, undo or Log out everywhere | `AuthService.login`          |
-| `account-deleted`        | Delete account                                                              | `UserService.deleteUser`              |
+| `new-sign-in`            | A login whose device token is not one of this email since its last undo, restore link or Log out everywhere | `AuthService.login`   |
+| `account-deleted`        | Delete account: the day it is erased, and "Restore account" (`/restore`, 7 days) | `UserService.deleteUser`         |
+| `account-restored`       | A deleted account came back by signing in (`/auth/login/restore`) or by a reset, which sends it instead of `password-changed`; its words say which | `AuthService.restore`, `PasswordResetService` |
 
 - **When** is the moment of the change and **Device** the request's user agent read against the fixed list.
-- **No notice after an undo, `/confirm-email` or a register**: each sends its own email (the reset code, or
-  nothing new to say), and a register gives the device its token.
-- **`new-sign-in` and the devices** ([auth.md](auth.md#post-authlogin)): a password change keeps the devices
-  known; a reset, an undo and Log out everywhere forget them; after a move, only the device that confirmed it
-  holds a token of the new email.
+- **No notice after an undo, a restore link, `/confirm-email` or a sign-up**: each sends its own email (the
+  reset code, or nothing new to say), and a sign-up gives the device its token.
+- **Nothing is sent when an account is erased for good**: `account-deleted` already gave the day.
+- **`new-sign-in` and the devices** ([auth.md](auth.md#post-authlogin)): a password change and a reset keep
+  the devices known; an undo, a restore link and Log out everywhere forget them (the owner's approval E of
+  2026-09-28); after a move, only the device that confirmed it holds a token of the new email.
 - **`passkey-added`, `two-factor-on`, `passkey-removed`, `two-factor-off` and `recovery-code-used`** are
   rendered and tested, and nothing sends them yet: passkeys and the second step (T-215, T-217) do not
   exist. When they do, the two "added" notices carry an undo link like `email-change-requested`, and the
@@ -108,7 +114,7 @@ holds the two rules every one of them follows:
 
 ## Templates
 
-`src/app/email/templates.ts` holds the 13 templates of the front's contract,
+`src/app/email/templates.ts` holds the 19 templates of the front's contract,
 `design/spec/screens/emails.md` in `ledger-flow`, with their words in `en` and `es` copied from its
 plates (`design/build.mjs`, typographic quotes included). **The contract is the source**: when a word,
 a colour or a piece changes there, it changes here in the same way. This repository imports nothing
@@ -116,11 +122,23 @@ from the front.
 
 | Template                    | Kind   | Budget   | Brake purpose  | Per account | IP or device |
 | --------------------------- | ------ | -------- | -------------- | ----------- | ------------ |
+| `sign-up`                   | code   | security | `sign-up`      | no          | yes          |
+| `account-exists`            | link   | security | `sign-up`      | no          | yes          |
 | `verify-email`              | code   | security | `verify`       | yes         | yes          |
+| `confirm-deadline`, `confirm-deadline-reminder` | link | security | `confirm-deadline` | no | no: sent by the nightly pass |
 | `password-reset`            | code   | reset    | `reset`        | no          | yes          |
 | `password-reset-after-undo` | code   | reset    | `reset-after-undo`, no daily brake | no | no: sent with no requester |
 | `email-change-confirm`      | code   | security | `email-change` | yes         | yes          |
+| `email-change-taken`        | link   | security | `email-change` | yes         | yes          |
 | every other one             | notice | security | its own name   | no          | no           |
+
+A **link** email is sent like a code email, on a request and with its brakes, but carries no code: one
+button, or none (`account-exists` for an address kept by an undo link). `sign-up` and `account-exists`
+share their brakes, and so do `email-change-confirm` and `email-change-taken`, so the limits are the same
+whichever an address gets. **Variants** are the same template with other words, chosen by its data:
+`account-exists` (`live`, `deleted` with its two days, `held` with the day the address is free),
+`password-reset` (a deleted account's), `password-reset-after-undo` (after a restore) and
+`account-restored` (by signing in, or by a reset).
 
 - **The layout** (`src/app/email/layout.ts`) is the contract's "Building it for mail clients": tables
   with `role="presentation"`, inline styles on every element, an `<!--[if mso]>` table of 560px for
@@ -128,10 +146,15 @@ from the front.
   The `<style>` block carries only what cannot be inline: the dark palette under
   `prefers-color-scheme: dark` (classes with `!important`, since they must beat inline styles) and the
   narrow-screen padding. Every email also goes as plain text, in the contract's order.
-- **Nothing typed by a person goes in**, except the new address in `email-change-requested`, which is
-  validated with the strict email schema, HTML-escaped and never written as a link (a client may still
-  auto-link it; nothing in the markup can stop Gmail doing so without breaking the address when it is
-  copied). **The device** is read from the user agent against a fixed list of browsers and systems
+- **Nothing typed by a person goes in**, except two addresses, each validated with the strict email
+  schema, HTML-escaped, never written as a link (a client may still auto-link it; nothing in the markup
+  can stop Gmail doing so without breaking the address when it is copied) and never in a subject or the
+  preview: the new address in `email-change-requested`, and the account's current address in
+  `email-change-confirm`, **masked** (`maskEmail`, T-236 and the owner's decision 15): the local part keeps
+  its first two characters, or only the first when it has three or fewer, then exactly three `•`; the
+  domain stays whole (`ana.ruiz@work.example` → `an•••@work.example`, `ana@x.co` → `a•••@x.co`). It is the
+  address as the account stores it, never the request's, and masked because the email goes to an address
+  nobody confirmed yet. **The device** is read from the user agent against a fixed list of browsers and systems
   (`device.ts`, the contract's "Browser on OS"): anything else is "Unknown device", so a user agent
   can never put its own words in a subject. The list is the one of Active sessions in the front
   (`features/settings/user-agent.ts`), plus the iOS names of Chrome, Firefox and Edge (`CriOS`,
@@ -139,6 +162,10 @@ from the front.
   and invite a wrong "Not you?".
 - **Links** are `APP_URL/{locale}/{path}`, and a token always travels in the fragment
   (`#token=…`), never in the query, so no server log or referrer sees it.
+- **A day** (deleted on, kept until, a deadline) travels as `YYYY-MM-DD`, already the account's day,
+  and is written in its language with the month spelled out; **the year is left out when it is the year
+  the email is sent** where the account lives ("October 28"), and written otherwise ("January 3, 2027").
+  How long a code or a link works is said once per email, in its note or its box (the owner's approval F).
 - **When** is `Intl.DateTimeFormat` with `en-US` or `es-CO` and the account's zone, exactly as the
   contract says. The date and the time are two unbreakable pieces in the HTML, so a phone wraps
   between them and never inside "GMT-5" or "p. m.". Intl writes a no-break space before "PM" and
@@ -206,7 +233,7 @@ an environment variable of the Lambda: it changes in the console and applies on 
 | -------------- | ------------------------------------------- | -------------------------- | ----------------------------------- |
 | Address        | `email-address:{purpose}:{hash}`            | 1 per 60 s                 | every email                         |
 | Address, day   | `email-address-day:{purpose}:{hash}`        | 5 per 24 h                 | every email but the one after an undo |
-| Account        | `email-user:{userId}`                       | 5 per 24 h                 | `verify-email`, `email-change-confirm` |
+| Account        | `email-user:{userId}`                       | 5 per 24 h                 | `verify-email`, `email-change-confirm`, `email-change-taken` |
 | Device         | `email-device:{recognizedDevice}`           | 10 per hour                | code emails from a recognized device |
 | IP             | `email-ip:{ip}`                             | 5 per hour                 | code emails from any other request  |
 | Daily cap      | `email-cap:{budget}:{YYYY-MM-DD}`           | its share of 300           | every email                         |
@@ -237,8 +264,9 @@ an environment variable of the Lambda: it changes in the console and applies on 
   The captcha on Forgot your password? (T-207) is what makes that expensive, and `EMAIL_CAP_REACHED`
   is the alarm that says it happened.
 - **Reaching a cap logs an error with `code: "EMAIL_CAP_REACHED"`** (`budget`, `period`, `max`), once:
-  on the attempt that crosses it, not on every one it stops after. The `ledger-flow-email-cap-reached`
-  alarm ([Email in Production](../guides/email.md#the-alarms)) is a metric filter on it.
+  on the attempt that crosses it, not on every one it stops after. The `ledger-flow-server-needs-attention`
+  alarm ([Email in Production](../guides/email.md#the-alarms)) is a metric filter on it, and on the nightly
+  pass's error codes.
 - **All the brakes of a send are counted at once**, in one parallel round trip, and then judged.
 - **An attempt stopped by one brake gives back the brakes it had already passed**, so an attacker
   whose IP is blocked does not also use up the victim's address. **A send gives back its caps and its
@@ -415,7 +443,8 @@ These are log codes, not API error codes: nothing here reaches a response to the
 `npm run email:preview` sends every template in both languages to it, with sample data. It sends
 through whatever `EMAIL_PROVIDERS` names (Mailpit when unset); with `EMAIL_PROVIDERS=ses`, AWS
 credentials and `--to <address>` (required for anything but Mailpit: a made-up address would bounce
-and hurt the account's reputation) it sends the 26 of them to a real inbox through SES (0.0026 USD, one a second: the sandbox's rate),
+and hurt the account's reputation) it sends the 48 of them — every template and its variants, in both
+languages — to a real inbox through SES (0.0048 USD, one a second: the sandbox's rate),
 which is how the templates are checked in Gmail, Outlook and Apple Mail once SES is set up (T-206).
 `--only <template>` sends one. Mailpit's "HTML Check" tab scores each one against the mail clients'
 support tables.

@@ -12,7 +12,6 @@ import { AuthService } from "../services/AuthService";
 import { CategoryService } from "../services/CategoryService";
 import { EmailChangeRequest } from "../services/EmailChangeService";
 import { EmailRequester } from "../services/EmailService";
-import { KeepOrStartFreshService } from "../services/KeepOrStartFreshService";
 import { UserService } from "../services/UserService";
 import { answerLimited, sendFailed } from "./emailOutcome";
 
@@ -31,16 +30,10 @@ const userService = new UserService(
   repositoryFactory.getUserRepository(),
   repositoryFactory.getAccountRepository(),
   repositoryFactory.getSharedInvitationRepository(),
-  createEmailVerificationService(),
+  createEmailVerificationService(authService),
   emailChangeService,
   repositoryFactory.getRefreshSessionRepository(),
   createEmailService(),
-);
-const keepOrStartFreshService = new KeepOrStartFreshService(
-  repositoryFactory.getUserRepository(),
-  repositoryFactory.getSharedInvitationRepository(),
-  repositoryFactory.getUserDataEraser(),
-  categoryService,
 );
 
 const ownId = (req: Request): string => {
@@ -93,13 +86,13 @@ export class UserController {
   static deleteUser = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
     const id = req.params.id as string;
-    await userService.deleteUser(
+    const { keptUntil } = await userService.deleteUser(
       id,
       userId,
       req.body.currentPassword,
       req.get("User-Agent") ?? undefined,
     );
-    res.status(200).json({ message: "User deleted successfully" });
+    res.status(200).json({ message: "User deleted successfully", keptUntil });
   };
 
   static requestEmailChange = async (
@@ -136,20 +129,5 @@ export class UserController {
   ): Promise<void> => {
     await emailChangeService.cancel(ownId(req));
     res.status(200).json({ message: "Email change cancelled" });
-  };
-
-  static keepOrStartFresh = async (
-    req: Request,
-    res: Response,
-  ): Promise<void> => {
-    const { userId, iat } = req.user as AuthPayload;
-    const session = { userId, issuedAt: iat };
-    const id = req.params.id as string;
-    const { choice, ...details } = req.body;
-    const user =
-      choice === "keep"
-        ? await keepOrStartFreshService.keep(id, session)
-        : await keepOrStartFreshService.startFresh(id, session, details);
-    res.status(200).json(user);
   };
 }

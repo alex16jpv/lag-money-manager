@@ -58,18 +58,21 @@ const bodyOf = (schema: z.ZodObject): Record<string, unknown> =>
 
 const requestBodies = {
   RegisterInput: bodyOf(v.registerSchema),
+  SignUpInput: bodyOf(v.signUpSchema),
+  SignUpResendInput: bodyOf(v.signUpResendSchema),
+  SignUpConfirmInput: bodyOf(v.signUpConfirmSchema),
   LoginInput: bodyOf(v.loginSchema),
+  RestoreAccountInput: bodyOf(v.restoreAccountSchema),
+  RestoreFromLinkInput: bodyOf(v.restoreFromLinkSchema),
   RefreshInput: bodyOf(v.refreshSchema),
   ForgotPasswordInput: bodyOf(v.forgotPasswordSchema),
   ResetPasswordInput: bodyOf(v.resetPasswordSchema),
   VerifyEmailInput: bodyOf(v.verifyEmailSchema),
   ResendVerificationInput: bodyOf(v.resendVerificationSchema),
-  NotMeInput: bodyOf(v.notMeSchema),
   UndoEmailChangeInput: bodyOf(v.undoEmailChangeSchema),
   RequestEmailChangeInput: bodyOf(v.requestEmailChangeSchema),
   ResendEmailChangeInput: bodyOf(v.resendEmailChangeSchema),
   ConfirmEmailChangeInput: bodyOf(v.confirmEmailChangeSchema),
-  KeepOrStartFreshInput: bodyOf(v.keepOrStartFreshSchema),
   UpdateUserInput: bodyOf(v.updateUserSchema),
   DeleteUserInput: bodyOf(v.deleteUserSchema),
   CreateAccountInput: bodyOf(v.createAccountSchema),
@@ -103,6 +106,8 @@ const requestBodies = {
 const uuid = { type: "string", format: "uuid" };
 const dateTime = { type: "string", format: "date-time" };
 const nullableDateTime = { ...dateTime, nullable: true };
+// A whole day in the account's time zone: "kept until" and "confirm by" last to its end there.
+const day = { type: "string", format: "date", example: "2026-10-28" };
 // Decimal money (the API speaks decimals; storage is integer cents).
 const money = { type: "number" };
 const enumOf = (values: Record<string, string>): object => ({
@@ -216,46 +221,36 @@ const responseViews = {
       nextCursor: { ...uuid, nullable: true },
     },
   }),
-  User: withRequired(
-    {
-      type: "object",
-      properties: {
-        id: uuid,
-        name: { type: "string" },
-        email: { type: "string", format: "email" },
-        emailVerified: {
-          type: "boolean",
-          description:
-            "Whether this address is confirmed, by its code or link, or by a password reset. Until it is, the account works as ever but invitations wait: sending, accepting and seeing new ones answer 403 EMAIL_NOT_VERIFIED.",
-        },
-        timezone: { type: "string", example: "America/Bogota" },
-        currency: { type: "string", example: "COP" },
-        locale: { ...enumOf(LOCALES), example: "en" },
-        lastLoginAt: nullableDateTime,
-        keepOrStartFresh: {
-          ...withRequired({
-            type: "object",
-            properties: {
-              createdAt: dateTime,
-              accounts: { type: "integer", minimum: 0 },
-              transactions: { type: "integer", minimum: 0 },
-            },
-          }),
-          nullable: true,
-          description:
-            'Set after a password reset of an account that had never confirmed its email and held accounts or transactions: ask "Keep what\'s in this account?" before opening anything, and answer with POST /users/{id}/keep-or-start-fresh. The three facts are when the account was created and what it held then (active accounts, transactions). Null otherwise.',
-        },
-        createdAt: dateTime,
-        updatedAt: dateTime,
-        reactivated: {
-          type: "boolean",
-          description:
-            "Present (true) only when register revived a soft-deleted account.",
-        },
+  User: withRequired({
+    type: "object",
+    properties: {
+      id: uuid,
+      name: { type: "string" },
+      email: { type: "string", format: "email" },
+      emailVerified: {
+        type: "boolean",
+        description:
+          "Whether this address is confirmed, by its code or link, or by a password reset. Every account made by POST /auth/sign-up is; only an account from before email existed can be false. Until it is, invitations wait: sending, accepting and seeing new ones answer 403 EMAIL_NOT_VERIFIED.",
       },
+      confirmBy: {
+        ...day,
+        nullable: true,
+        description:
+          "The last day an unconfirmed account from before email existed has to confirm it (14 days from confirm-deadline), whole, in its time zone. Null when it is confirmed or has no deadline yet.",
+      },
+      emailConfirmationRequired: {
+        type: "boolean",
+        description:
+          "Past that deadline: everything but reading the profile, confirming, resending, changing the email and signing out answers 403 EMAIL_CONFIRMATION_REQUIRED until the email is confirmed. Its data is untouched.",
+      },
+      timezone: { type: "string", example: "America/Bogota" },
+      currency: { type: "string", example: "COP" },
+      locale: { ...enumOf(LOCALES), example: "en" },
+      lastLoginAt: nullableDateTime,
+      createdAt: dateTime,
+      updatedAt: dateTime,
     },
-    ["reactivated"],
-  ),
+  }),
   UserWithEmailVerification: {
     allOf: [
       { $ref: "#/components/schemas/User" },
@@ -375,6 +370,92 @@ const responseViews = {
       },
     },
   }),
+  RestoreLinkUsed: withRequired({
+    type: "object",
+    properties: {
+      email: {
+        type: "string",
+        format: "email",
+        description:
+          "The account's address, where the code to choose a new password went.",
+      },
+      codeSent: {
+        type: "boolean",
+        description:
+          "Whether that code was accepted for delivery (or may still arrive). False when it could not go: Forgot your password? for this address is the way in.",
+      },
+    },
+  }),
+  SignUpStarted: withRequired({
+    type: "object",
+    properties: {
+      signUpToken: {
+        type: "string",
+        description:
+          "Keep it for this browser only (the BFF's httpOnly cookie): with the emailed code it creates the account and signs in here. A newer sign-up for the address replaces it.",
+      },
+      expiresAt: {
+        ...dateTime,
+        description: "When the sign-up and its code stop working: 24 hours.",
+      },
+      resendAfterSeconds: {
+        type: "integer",
+        minimum: 1,
+        description:
+          "Seconds before Resend can go: the same for every address.",
+      },
+    },
+  }),
+  EmailVerified: withRequired({
+    type: "object",
+    properties: {
+      message: { type: "string" },
+      result: {
+        type: "string",
+        enum: ["account-ready", "email-confirmed"],
+        description:
+          "account-ready: the link of `sign-up` created the account, with no session (Sign in follows). email-confirmed: an account from before email existed is confirmed.",
+      },
+    },
+  }),
+  AccountDeleted: withRequired({
+    type: "object",
+    properties: {
+      message: { type: "string" },
+      keptUntil: {
+        ...day,
+        description:
+          "The last day the account is kept; the first nightly pass after it erases it for good.",
+      },
+    },
+  }),
+  DeletedAccount: withRequired({
+    type: "object",
+    properties: {
+      deletedOn: day,
+      keptUntil: {
+        ...day,
+        description:
+          "Signing in by the end of this day restores it; then it is erased for good.",
+      },
+    },
+  }),
+  PasswordResetDone: {
+    allOf: [
+      { $ref: "#/components/schemas/AuthTokens" },
+      {
+        type: "object",
+        properties: {
+          restored: {
+            type: "boolean",
+            description:
+              'True when the account had been deleted and the new password brought it back: toast "Account restored".',
+          },
+        },
+        required: ["restored"],
+      },
+    ],
+  },
   VerificationCodeSent: withRequired({
     type: "object",
     properties: {
@@ -395,7 +476,7 @@ const responseViews = {
         deviceToken: {
           type: "string",
           description:
-            "Login, register and password reset only. Proof that this device already signed in to this email: send it back as `deviceToken` on the next login, register or Forgot your password? and its attempts get a budget of their own, so a stranger's failures cannot lock this device out. Keep it across logouts, and keep the new one each of them answers. A password or email change and a logout-all revoke every device token issued before.",
+            "Login, sign-up, register, restore and password reset only. Proof that this device already signed in to this email: send it back as `deviceToken` on the next login, register or Forgot your password? and its attempts get a budget of their own, so a stranger's failures cannot lock this device out. Keep it across logouts, and keep the new one each of them answers. A password or email change and a logout-all revoke every device token issued before.",
         },
       },
       required: ["accessToken", "refreshToken"],
@@ -1623,6 +1704,20 @@ const options: swaggerJsdoc.Options = {
           $ref: "#/components/schemas/Category",
         }),
         AccountConflict: conflictOf("Account"),
+        AccountDeletedResponse: {
+          allOf: [
+            { $ref: "#/components/schemas/ErrorResponse" },
+            {
+              type: "object",
+              properties: {
+                deletedAccount: {
+                  $ref: "#/components/schemas/DeletedAccount",
+                },
+              },
+              required: ["deletedAccount"],
+            },
+          ],
+        },
         CategoryConflict: conflictOf("Category"),
         ContactConflict: conflictOf("Contact"),
         SharedGroupConflict: conflictOf("SharedGroup"),

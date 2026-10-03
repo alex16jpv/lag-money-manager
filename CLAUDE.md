@@ -47,11 +47,11 @@ deseos: es el mínimo. Si algo no aplica, dilo explícitamente y por qué.
 - **No uses `console.log`** en `src/` (hay `logger`). Los `scripts/` sí pueden.
 - **No hagas hard delete.** Es un sistema financiero: soft delete o archivado.
   `archivedAt` para account/category/budget, `deletedAt` para transaction/user.
-  Las únicas excepciones son dos, las decidió el dueño y tienen nombre: **Start
-  fresh** (`docs/modules/users.md`), que vacía para siempre una cuenta que nunca
-  confirmó su correo cuando quien recuperó el buzón lo elige, y el **«no fui
-  yo»** del correo de verificación, que borra la cuenta que ocupaba una dirección
-  ajena. Ninguna otra sin que él lo pida.
+  La única excepción la decidió el dueño y tiene nombre: **el borrado a los 30
+  días** de una cuenta eliminada (`docs/modules/users.md`, «The nightly pass»),
+  que la pasada nocturna hace para siempre con todo lo que tenía. Start fresh y
+  el «no fui yo» que borraba se quitaron en T-238. Ninguna otra sin que él lo
+  pida.
 - **No uses flotantes para dinero.** Enteros en centavos, convertidos solo en el
   límite de persistencia con los helpers de `shared/money.ts`.
 - **No leas-modifiques-escribas un saldo.** Siempre `$inc` atómico dentro de una

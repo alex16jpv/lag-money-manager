@@ -1,5 +1,5 @@
 jest.mock("../../shared/constants", () => ({
-  NOT_ME_TOKEN_FORMAT: /^[A-Za-z0-9_-]{96}$/,
+  ACCOUNT_LINK_TOKEN_FORMAT: /^[A-Za-z0-9_-]{64}$/,
   ENVIRONMENT: {
     PORT: 3000,
     DB_TYPE: "MONGO",
@@ -113,9 +113,7 @@ import {
   getCategoriesSchema,
   getTransactionsSchema,
   idParamSchema,
-  keepOrStartFreshSchema,
   loginSchema,
-  notMeSchema,
   paginationQuerySchema,
   quickAddTransactionSchema,
   registerSchema,
@@ -123,6 +121,9 @@ import {
   resendEmailChangeSchema,
   resendVerificationSchema,
   resetPasswordSchema,
+  restoreFromLinkSchema,
+  signUpConfirmSchema,
+  signUpResendSchema,
   spendingStatsSchema,
   syncBatchSchema,
   updateAccountSchema,
@@ -411,18 +412,49 @@ describe("Validation Schemas", () => {
         false,
       );
     });
+  });
 
-    it("takes only a token shaped like It wasn't me's", () => {
-      const token = "A".repeat(96);
-      expect(notMeSchema.safeParse({ body: { token } }).success).toBe(true);
+  describe("the sign-up and the restore link [T-238]", () => {
+    const signUpToken = "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPzq7Xk2mVb9Rt";
+
+    it("confirms with the sign-up's token and the six digits, and nothing else", () => {
       expect(
-        notMeSchema.safeParse({
-          body: { token: "q7Xk2mVb9RtL4wPzq7Xk2mVb9RtL4wPz" },
+        signUpConfirmSchema.safeParse({ body: { signUpToken, code: "482913" } })
+          .success,
+      ).toBe(true);
+      expect(
+        signUpConfirmSchema.safeParse({ body: { signUpToken, code: "48291" } })
+          .success,
+      ).toBe(false);
+      expect(
+        signUpConfirmSchema.safeParse({
+          body: { signUpToken, code: "482913", email: "a@b.co" },
         }).success,
       ).toBe(false);
-      expect(notMeSchema.safeParse({ body: { token, extra: 1 } }).success).toBe(
-        false,
+    });
+
+    it("needs the captcha to resend the sign-up", () => {
+      expect(
+        signUpResendSchema.safeParse({ body: { signUpToken, captcha: "t" } })
+          .success,
+      ).toBe(true);
+      expect(
+        signUpResendSchema.safeParse({ body: { signUpToken } }).success,
+      ).toBe(false);
+    });
+
+    it("takes only a token shaped like an account link's", () => {
+      const token = "A".repeat(64);
+      expect(restoreFromLinkSchema.safeParse({ body: { token } }).success).toBe(
+        true,
       );
+      expect(
+        restoreFromLinkSchema.safeParse({ body: { token: signUpToken } })
+          .success,
+      ).toBe(false);
+      expect(
+        restoreFromLinkSchema.safeParse({ body: { token, extra: 1 } }).success,
+      ).toBe(false);
     });
   });
 
@@ -483,49 +515,6 @@ describe("Validation Schemas", () => {
       ["a code that is not six digits", { code: "4821" }],
     ])("refuses to confirm with %s", (_label, body) => {
       expect(confirmEmailChangeSchema.safeParse({ body }).success).toBe(false);
-    });
-  });
-
-  describe("keepOrStartFreshSchema [T-207]", () => {
-    const params = { id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70" };
-
-    it("takes keep alone", () => {
-      expect(
-        keepOrStartFreshSchema.safeParse({ params, body: { choice: "keep" } })
-          .success,
-      ).toBe(true);
-      expect(
-        keepOrStartFreshSchema.safeParse({
-          params,
-          body: { choice: "keep", name: "Ana" },
-        }).success,
-      ).toBe(false);
-    });
-
-    it("needs the whole new profile to start fresh", () => {
-      const parsed = keepOrStartFreshSchema.parse({
-        params,
-        body: {
-          choice: "start-fresh",
-          name: " Ana ",
-          locale: "es",
-          currency: "eur",
-          timezone: "Europe/Madrid",
-        },
-      });
-      expect(parsed.body).toEqual({
-        choice: "start-fresh",
-        name: "Ana",
-        locale: "es",
-        currency: "EUR",
-        timezone: "Europe/Madrid",
-      });
-      expect(
-        keepOrStartFreshSchema.safeParse({
-          params,
-          body: { choice: "start-fresh", name: "Ana", locale: "es" },
-        }).success,
-      ).toBe(false);
     });
   });
 

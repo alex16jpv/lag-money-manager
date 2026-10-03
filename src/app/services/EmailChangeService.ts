@@ -6,31 +6,28 @@ import { IRefreshSessionRepository } from "../../domain/repositories/refreshSess
 import { ISharedInvitationRepository } from "../../domain/repositories/sharedInvitation/ISharedInvitationRepository";
 import { IUserRepository } from "../../domain/repositories/user/IUserRepository";
 import { AuthCodePurpose, ENVIRONMENT } from "../../shared/constants";
-import { hashEmailAddress } from "../../shared/emailHash";
 import { ApiError } from "../../shared/errors";
-import logger from "../../shared/logger";
 import {
   EmailChangeView,
   toUserResponse,
   UserResponseDTO,
 } from "../dtos/UserDTO";
 import {
+  accountLinkOwner,
   CODE_MAX_ATTEMPTS,
   codeDigest,
   emailChangeKey,
+  newAccountLinkToken,
   newCode,
   newLinkToken,
-  newUndoToken,
-  RESET_CODE_LIFETIME_MS,
   tokenDigest,
   UNDO_LINK_LIFETIME_MS,
-  undoTokenAccount,
   VERIFY_CODE_LIFETIME_MS,
 } from "./authCodes";
 import { AuthService, OpenedSession } from "./AuthService";
 import { assertCurrentPassword } from "./currentPassword";
 import { EmailOutcome, EmailRequester, EmailService } from "./EmailService";
-import { sendResetCode } from "./resetCode";
+import { sendResetAfterLink } from "./resetCode";
 import { mayHaveArrived, sendSecurityNotice } from "./securityNotice";
 
 const PURPOSE: AuthCodePurpose = "email-change";
@@ -134,10 +131,6 @@ export class EmailChangeService {
         { field: "email", message: "This is already the account's email" },
       ]);
     }
-    if (await this.users.emailInUse(email, this.now(), user.id)) {
-      throw emailTaken();
-    }
-
     const outcome = await this.send(user, email, requester);
     if (outcome.status !== "sent") return outcome.result;
     const untold = await this.tellOldAddress(user, email, userAgent);
@@ -162,7 +155,7 @@ export class EmailChangeService {
   ): Promise<Exclude<EmailOutcome, { status: "sent" }> | null> {
     if (!user.emailVerifiedAt) return null;
     const now = this.now();
-    const undoToken = newUndoToken(user.id);
+    const undoToken = newAccountLinkToken(user.id);
     const link: UndoLink = {
       email: user.email,
       tokenHash: tokenDigest(undoToken),
@@ -280,7 +273,7 @@ export class EmailChangeService {
   }
 
   async undo(token: string): Promise<EmailChangeUndone> {
-    const userId = undoTokenAccount(token);
+    const userId = accountLinkOwner(token);
     const user = userId ? await this.users.getForUndo(userId) : null;
     const now = this.now();
     const tokenHash = tokenDigest(token);
@@ -312,34 +305,12 @@ export class EmailChangeService {
     }
     return {
       email: undone.email,
-      codeSent: await this.resetAfterUndo(undone),
-    };
-  }
-
-  private async resetAfterUndo(user: User): Promise<boolean> {
-    try {
-      const now = this.now();
-      await this.codes.recordRequest(
-        "reset",
-        hashEmailAddress(user.email),
-        user.id,
-        new Date(now.getTime() + RESET_CODE_LIFETIME_MS),
-      );
-      const outcome = await sendResetCode(
+      codeSent: await sendResetAfterLink(
         { codes: this.codes, email: this.email, now: this.now },
-        user,
-        "password-reset-after-undo",
-        null,
+        undone,
         false,
-      );
-      return mayHaveArrived(outcome);
-    } catch (err) {
-      logger.error(
-        { err, code: "UNDO_RESET_CODE_NOT_SENT", userId: user.id },
-        "The change was undone but the code to choose a new password could not be sent",
-      );
-      return false;
-    }
+      ),
+    };
   }
 
   private async apply(
@@ -371,17 +342,27 @@ export class EmailChangeService {
     const toHash = emailChangeKey(user.id, email);
     const code = newCode();
     const token = newLinkToken();
-    const outcome = await this.email.sendCode({
-      template: "email-change-confirm",
-      data: { code, token },
-      recipient: {
-        userId: user.id,
-        email,
-        locale: user.locale,
-        timezone: user.timezone,
-      },
-      requester,
-    });
+    const recipient = {
+      userId: user.id,
+      email,
+      locale: user.locale,
+      timezone: user.timezone,
+    };
+    // A held address waits like any other, with a code nobody receives: its answers cannot tell it apart.
+    const taken = await this.users.holderOf(email, this.now(), user.id);
+    const outcome = taken
+      ? await this.email.sendCode({
+          template: "email-change-taken",
+          data: {},
+          recipient,
+          requester,
+        })
+      : await this.email.sendCode({
+          template: "email-change-confirm",
+          data: { code, token, currentEmail: user.email },
+          recipient,
+          requester,
+        });
     const unconfirmed =
       outcome.status === "failed" && outcome.reason === "unconfirmed";
     if (outcome.status !== "sent" && !unconfirmed) {

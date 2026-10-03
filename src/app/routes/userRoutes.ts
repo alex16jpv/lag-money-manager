@@ -9,7 +9,6 @@ import { requireCaptcha } from "../middlewares/captchaMiddleware";
 import {
   deleteUserSchema,
   idParamSchema,
-  keepOrStartFreshSchema,
   requestEmailChangeSchema,
   resendEmailChangeSchema,
   updateUserSchema,
@@ -190,11 +189,16 @@ router.put(
  *     summary: Delete a user
  *     description: >
  *       Requires `currentPassword`: a hijacked 15-minute access token must not
- *       be able to delete the account. Soft delete: the account and its
- *       financial history are kept, and registering again with the same email
- *       and the password it had reactivates it. Emails `account-deleted` when
- *       the email is confirmed. An undo link sent before (7 days) still
- *       brings the account back, at the address it went to.
+ *       be able to delete the account. The account and everything in it are
+ *       kept 30 days — `keptUntil` is the last one, whole, in its time zone —
+ *       and the first nightly pass after it erases them for good, freeing the
+ *       address (the owner's decision 19). Until then signing in with its
+ *       password (`POST /auth/login/restore`), Forgot your password?, and the
+ *       "Restore account" link of `account-deleted` (7 days) bring it back.
+ *       Every session ends now, and its shared groups are left now for good.
+ *       `account-deleted` goes when the email is confirmed. An undo link sent
+ *       before (7 days) still brings the account back, at the address it went
+ *       to.
  *     parameters:
  *       - in: path
  *         name: id
@@ -211,11 +215,11 @@ router.put(
  *             $ref: '#/components/schemas/DeleteUserInput'
  *     responses:
  *       200:
- *         description: User deleted
+ *         description: User deleted, and kept until `keptUntil`
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Message'
+ *               $ref: '#/components/schemas/AccountDeleted'
  *       400:
  *         description: Invalid ID format or missing currentPassword (code VALIDATION)
  *         content:
@@ -254,86 +258,6 @@ router.delete(
 
 /**
  * @openapi
- * /users/{id}/keep-or-start-fresh:
- *   post:
- *     tags: [Users]
- *     summary: Answer "Keep what's in this account?"
- *     description: >
- *       Open only while `keepOrStartFresh` is set: after a password reset of
- *       an account that had never confirmed its email and held something, so
- *       whoever created it may not own the inbox. It stays open until it is
- *       answered. `keep` closes it and changes nothing. `start-fresh`
- *       deletes for good the account's accounts, transactions, budgets,
- *       categories, contacts and the shared groups it created with their
- *       expenses and payments; stops sharing those groups and leaves the ones
- *       it joined, as deleting an account does; seeds the default categories
- *       again; and sets the profile from the body, the currency free again.
- *       The email and the password stay. Only a session opened by the reset
- *       or after it may answer. A start-fresh that fails half-way stays open
- *       and chosen: send it again to finish it (a `keep` is then refused). Every copy of the account's data synced before it is out
- *       of date: `GET /sync/changes` with an older cursor answers
- *       RESYNC_REQUIRED.
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: User ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/KeepOrStartFreshInput'
- *     responses:
- *       200:
- *         description: Answered; `keepOrStartFresh` is null again
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/User'
- *       400:
- *         description: Validation error (code VALIDATION)
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       401:
- *         description: >
- *           Missing, invalid or expired access token, or one issued before
- *           the question was asked: only a session opened by the reset (or
- *           after it) may answer
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       404:
- *         description: User not found (or not the authenticated user's id)
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       409:
- *         description: >
- *           No question is open: never asked, already answered, or `keep`
- *           after Start fresh was chosen (code KEEP_OR_START_FRESH_CLOSED);
- *           or another start-fresh request is still erasing (code
- *           START_FRESH_IN_PROGRESS)
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.post(
-  "/:id/keep-or-start-fresh",
-  validate(keepOrStartFreshSchema),
-  UserController.keepOrStartFresh,
-);
-
-/**
- * @openapi
  * /users/{id}/email-change:
  *   post:
  *     tags: [Users]
@@ -358,8 +282,11 @@ router.post(
  *       (`/{locale}/undo#token=…`, POST /auth/email/undo) for 7 days, and the
  *       change is saved only once that notice went (an old address that
  *       refuses all email does not stop it); while that link works the old
- *       address stays the account's, and another account's register or
- *       change of email to it is EMAIL_TAKEN.
+ *       address stays the account's. An address another account holds —
+ *       live, deleted and still kept, or kept by an undo link — answers the
+ *       same as any other, so nothing here tells whether it has an account:
+ *       it is sent `email-change-taken` instead, and the change waits and
+ *       never confirms.
  *     parameters:
  *       - in: path
  *         name: id
@@ -402,14 +329,6 @@ router.post(
  *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
  *         description: User not found (or not the authenticated user's id)
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       409:
- *         description: >
- *           The address belongs to another account, a deleted one included
- *           (code EMAIL_TAKEN)
  *         content:
  *           application/json:
  *             schema:
