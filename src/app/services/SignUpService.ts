@@ -32,6 +32,7 @@ import {
   codeDigest,
   newCode,
   newLinkToken,
+  signUpCodeKey,
   tokenDigest,
   VERIFY_CODE_LIFETIME_MS,
 } from "./authCodes";
@@ -81,7 +82,6 @@ const linkInvalid = (): ApiError =>
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
-// Decision 16: the account exists once the code of its address is typed, and Create account says the same for every address.
 export class SignUpService {
   constructor(
     private readonly users: Pick<
@@ -181,13 +181,14 @@ export class SignUpService {
     const now = this.now();
     const pending = await this.signUps.findLive(tokenDigest(signUpToken), now);
     if (!pending) throw codeInvalid();
+    const key = signUpCodeKey(pending.id);
     const counted = await this.codes.countAttempt(
       "sign-up",
-      pending.toHash,
+      key,
       CODE_MAX_ATTEMPTS,
     );
     const mine = counted?.userId === pending.id ? counted : null;
-    const digest = codeDigest(pending.toHash, code);
+    const digest = codeDigest(key, code);
     if (!mine?.codes.some((c) => c.expiresAt > now && c.codeHash === digest)) {
       throw codeInvalid();
     }
@@ -204,7 +205,9 @@ export class SignUpService {
     const pending = record.userId
       ? await this.signUps.findLive(record.userId, this.now())
       : null;
-    if (!pending || pending.toHash !== record.toHash) throw linkInvalid();
+    if (!pending || signUpCodeKey(pending.id) !== record.toHash) {
+      throw linkInvalid();
+    }
     await this.account(pending, linkInvalid);
   }
 
@@ -308,17 +311,18 @@ export class SignUpService {
     const unconfirmed =
       outcome.status === "failed" && outcome.reason === "unconfirmed";
     if (outcome.status !== "sent" && !unconfirmed) return;
+    const key = signUpCodeKey(pending.id);
     await this.codes.recordRequest(
       "sign-up",
-      pending.toHash,
+      key,
       pending.id,
       pending.expiresAt,
     );
     await this.codes.issue(
       "sign-up",
-      pending.toHash,
+      key,
       {
-        codeHash: codeDigest(pending.toHash, code),
+        codeHash: codeDigest(key, code),
         tokenHash: tokenDigest(token),
         expiresAt: new Date(now.getTime() + VERIFY_CODE_LIFETIME_MS),
       },

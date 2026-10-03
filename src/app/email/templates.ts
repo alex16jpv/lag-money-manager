@@ -995,7 +995,6 @@ const LOCALE_TAGS: Record<Locale, string> = { en: "en-US", es: "es-CO" };
 
 const MASK = "•••";
 
-// The account's own address in email-change-confirm: enough for its owner to tell it apart, not enough to learn it.
 export function maskEmail(email: string): string {
   strictEmail.parse(email);
   const at = email.lastIndexOf("@");

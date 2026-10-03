@@ -26,13 +26,13 @@ export const handler = async (
   // Opens a real connection so the Atlas free cluster registers activity and is not auto-paused.
   if ((event as KeepaliveEvent).source === KEEPALIVE_EVENT_SOURCE) {
     await pingDatabase();
+    const budgetMs = Math.min(
+      NIGHTLY_PASS_MAX_MS,
+      context.getRemainingTimeInMillis() - NIGHTLY_PASS_RESERVE_MS,
+    );
     try {
-      await createNightlyPassService().run(
-        Math.min(
-          NIGHTLY_PASS_MAX_MS,
-          context.getRemainingTimeInMillis() - NIGHTLY_PASS_RESERVE_MS,
-        ),
-      );
+      if (budgetMs <= 0) throw new Error("no time left after the ping");
+      await createNightlyPassService().run(budgetMs);
     } catch (err) {
       logger.error(
         { err, code: "NIGHTLY_PASS_FAILED" },

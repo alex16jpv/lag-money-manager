@@ -255,6 +255,20 @@ describe("The account lifecycle against mongod [T-238]", () => {
         .send({ signUpToken: first.body.signUpToken, captcha: TEST_CAPTCHA });
       expect(resend.body.code).toBe("SIGN_UP_EXPIRED");
 
+      const firstLink = tokenIn(
+        [...mockSent].find(
+          (sent) => sent.to === "cata@life.test" && sent.template === "sign-up",
+        ) as OutgoingEmail,
+        "verify",
+      );
+      expect((await verifyLink(firstLink)).body.code).toBe("LINK_INVALID");
+      expect(
+        (await confirmSignUp(second.body.signUpToken, firstCode)).body.code,
+      ).toBe("SIGN_UP_CODE_INVALID");
+      expect(await UserModel.countDocuments({ email: "cata@life.test" })).toBe(
+        0,
+      );
+
       const done = await confirmSignUp(
         second.body.signUpToken,
         codeIn(lastEmail("cata@life.test", "sign-up")),

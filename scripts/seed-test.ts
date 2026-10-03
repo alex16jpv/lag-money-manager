@@ -271,7 +271,7 @@ export async function seed(): Promise<Record<string, unknown>> {
   if (sweptUsers > 0)
     console.log(`Swept ${sweptUsers} users the browser suite left behind`);
 
-  // Confirmed, like every account made by sign-up: an unconfirmed one would meet the deadline of decision 17.
+  // Confirmed: an unconfirmed account would meet the confirmation deadline in the browser suite.
   await authService.createAccount({
     id: SEED_USER.id,
     name: SEED_USER.name,

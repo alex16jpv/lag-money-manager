@@ -171,19 +171,10 @@ UserSchema.index(
   { unique: true, partialFilterExpression: { heldEmails: { $exists: true } } },
 );
 
-// The nightly pass: deleted accounts by the day they are erased, and the ones still without that day.
-UserSchema.index(
-  { keptUntil: 1 },
-  { partialFilterExpression: { keptUntil: { $type: "date" } } },
-);
-UserSchema.index(
-  { deletedAt: 1 },
-  { partialFilterExpression: { deletedAt: { $type: "date" } } },
-);
-UserSchema.index(
-  { erasingAt: 1 },
-  { partialFilterExpression: { erasingAt: { $type: "date" } } },
-);
+// The nightly pass: the accounts past their days, the ones claimed by an erasure, the ones still undated.
+UserSchema.index({ keptUntil: 1 });
+UserSchema.index({ erasingAt: 1 });
+UserSchema.index({ deletedAt: 1 });
 UserSchema.index({ emailVerifiedAt: 1, "confirmDeadline.endsAt": 1 });
 
 export const UserModel = mongoose.model<IUserDocument>(

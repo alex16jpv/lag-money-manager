@@ -204,7 +204,8 @@ export class UserRepository implements IUserRepository {
     return { state: "held", user, freeAt: new Date(freeAt) };
   }
 
-  async releaseLapsedDeletion(email: string, now: Date): Promise<void> {
+  // A deleted account past its keptUntil gives its address up now, before the nightly pass erases it.
+  private async releaseLapsedDeletion(email: string, now: Date): Promise<void> {
     const lapsed = await UserModel.findOne({
       email,
       deletedAt: { $ne: null },

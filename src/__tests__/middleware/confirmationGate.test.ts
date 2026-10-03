@@ -13,11 +13,12 @@ const confirmed = new User({ ...unconfirmed, emailVerifiedAt: new Date() });
 const run = async (
   req: Partial<Request>,
   found: User | null = unconfirmed,
+  deadlinesOn = true,
 ): Promise<{ next: jest.Mock; getById: jest.Mock; error?: unknown }> => {
   const getById = jest.fn().mockResolvedValue(found);
   const next = jest.fn();
   try {
-    await confirmationGate({ getById }, () => NOW)(
+    await confirmationGate({ getById }, deadlinesOn, () => NOW)(
       req as Request,
       {} as Response,
       next as unknown as NextFunction,
@@ -59,6 +60,18 @@ describe("confirmationGate [T-238]", () => {
       statusCode: 403,
       code: "EMAIL_CONFIRMATION_REQUIRED",
     });
+  });
+
+  it("lets everything through once the deadlines are switched off", async () => {
+    const { next, getById, error } = await run(
+      { user: past, method: "GET", path: "/accounts" },
+      unconfirmed,
+      false,
+    );
+
+    expect(error).toBeUndefined();
+    expect(next).toHaveBeenCalledWith();
+    expect(getById).not.toHaveBeenCalled();
   });
 
   it("lets an account confirmed since its token was signed through", async () => {

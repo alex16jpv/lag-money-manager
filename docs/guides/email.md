@@ -282,6 +282,10 @@ many sessions share one address behind a carrier NAT; the API's own limiter cove
 `reset` are the password reset's (T-208); `verify`, `resend` and `not-me`, the email's confirmation's
 (T-210); `change-email`, `change-email/resend` and `confirm-change`, the change of email's (T-222).
 
+T-238 changed the backend's routes behind these (`POST /auth/sign-up` and its `/confirm` and `/resend`,
+`/auth/login/restore`, `/auth/email/restore`; `/auth/email/not-me` is gone). The web client's own paths,
+and so this expression, change with T-239; this guide gets the new one then.
+
 ## After the web client confirms emails: invitations wait for it
 
 Not one of the nine steps: it waits until the web client can confirm an email (T-210) and this guide's

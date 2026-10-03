@@ -47,6 +47,18 @@ describe("the daily keepalive [T-238]", () => {
     expect(mockRun).toHaveBeenCalledWith(5_000);
   });
 
+  it("runs no pass, and says so, when the ping left less than its reserve", async () => {
+    await expect(
+      handler({ source: KEEPALIVE_EVENT_SOURCE }, context(2_000)),
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(mockRun).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "NIGHTLY_PASS_FAILED" }),
+      expect.any(String),
+    );
+  });
+
   it("keeps the keepalive alive when the pass fails, and logs it", async () => {
     mockRun.mockRejectedValue(new Error("no connection"));
 

@@ -17,7 +17,6 @@ const BATCH = 25;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface NightlyPassConfig {
-  // Off until the app can show the deadline (T-239): no account gets one before.
   deadlines: boolean;
   // A night's share of the daily cap, so the deadline emails never starve the codes people ask for.
   deadlineEmailsPerNight: number;
@@ -31,9 +30,9 @@ export interface NightlyReport {
   reminders: number;
 }
 
-type Sending = "go" | "stop";
+// Only an email that went spends the night's share: an address that refuses mail must not starve the rest.
+type Sending = "sent" | "skipped" | "stop";
 
-// Runs inside the daily keepalive invocation (CORREO §12v, option A), within a budget under the Lambda's 15 s.
 export class NightlyPassService {
   constructor(
     private readonly users: Pick<
@@ -146,8 +145,9 @@ export class NightlyPassService {
       if (batch.length === 0) break;
       for (const user of due) {
         if (!hasTime() || budget <= 0) return;
-        budget -= 1;
-        if ((await this.remind(user, skipped, report)) === "stop") return;
+        const sending = await this.remind(user, skipped, report);
+        if (sending === "stop") return;
+        if (sending === "sent") budget -= 1;
       }
     }
 
@@ -156,8 +156,9 @@ export class NightlyPassService {
       if (batch.length === 0) return;
       for (const user of batch) {
         if (!hasTime() || budget <= 0) return;
-        budget -= 1;
-        if ((await this.announce(user, skipped, report)) === "stop") return;
+        const sending = await this.announce(user, skipped, report);
+        if (sending === "stop") return;
+        if (sending === "sent") budget -= 1;
       }
     }
   }
@@ -188,7 +189,8 @@ export class NightlyPassService {
       recipient: this.recipient(user),
       requester: null,
     });
-    if (!mayHaveArrived(outcome)) return this.skip(user, outcome, skipped);
+    skipped.push(user.id);
+    if (!mayHaveArrived(outcome)) return this.skip(outcome);
     if (
       await this.users.startConfirmDeadline(user.id, user.email, {
         day,
@@ -199,7 +201,7 @@ export class NightlyPassService {
     ) {
       report.deadlines += 1;
     }
-    return "go";
+    return "sent";
   }
 
   private async remind(
@@ -208,7 +210,8 @@ export class NightlyPassService {
     report: NightlyReport,
   ): Promise<Sending> {
     const deadline = user.confirmDeadline;
-    if (!deadline) return "go";
+    skipped.push(user.id);
+    if (!deadline) return "skipped";
     const token = newAccountLinkToken(user.id);
     const outcome = await this.email.sendCode({
       template: "confirm-deadline-reminder",
@@ -223,7 +226,7 @@ export class NightlyPassService {
       recipient: this.recipient(user),
       requester: null,
     });
-    if (!mayHaveArrived(outcome)) return this.skip(user, outcome, skipped);
+    if (!mayHaveArrived(outcome)) return this.skip(outcome);
     if (
       await this.users.markReminded(
         user.id,
@@ -233,14 +236,13 @@ export class NightlyPassService {
     ) {
       report.reminders += 1;
     }
-    return "go";
+    return "sent";
   }
 
   // An address that refuses mail is skipped tonight; a cap, a switch or an outage stops every send until the next pass.
-  private skip(user: User, outcome: EmailOutcome, skipped: string[]): Sending {
-    skipped.push(user.id);
+  private skip(outcome: EmailOutcome): Sending {
     return outcome.status === "failed" && outcome.reason === "rejected"
-      ? "go"
+      ? "skipped"
       : "stop";
   }
 

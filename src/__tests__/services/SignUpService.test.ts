@@ -14,7 +14,11 @@ jest.mock("../../shared/logger", () => ({
 
 import bcryptjs from "bcryptjs";
 
-import { codeDigest, tokenDigest } from "../../app/services/authCodes";
+import {
+  codeDigest,
+  signUpCodeKey,
+  tokenDigest,
+} from "../../app/services/authCodes";
 import { EmailOutcome } from "../../app/services/EmailService";
 import { SignUpService } from "../../app/services/SignUpService";
 import { User } from "../../domain/entities/User";
@@ -156,14 +160,15 @@ const started = async (h: Harness): Promise<string> => {
 const rowOf = (h: Harness, signUpToken: string): AuthCodeRecord => {
   const calls = h.email.sendCode.mock.calls;
   const { code } = calls[calls.length - 1][0].data;
+  const key = signUpCodeKey(tokenDigest(signUpToken));
   return {
     id: "row",
     purpose: "sign-up",
-    toHash: TO_HASH,
+    toHash: key,
     userId: tokenDigest(signUpToken),
     codes: [
       {
-        codeHash: codeDigest(TO_HASH, code),
+        codeHash: codeDigest(key, code),
         tokenHash: "t",
         expiresAt: new Date(NOW.getTime() + DAY_MS),
       },
@@ -214,7 +219,7 @@ describe("SignUpService [T-238]", () => {
       );
       expect(h.codes.issue).toHaveBeenCalledWith(
         "sign-up",
-        TO_HASH,
+        signUpCodeKey(pending.id),
         expect.objectContaining({
           expiresAt: new Date(NOW.getTime() + DAY_MS),
         }),
@@ -447,6 +452,28 @@ describe("SignUpService [T-238]", () => {
 
       expect(h.auth.createAccount).toHaveBeenCalledTimes(1);
       expect(h.auth.openSession).not.toHaveBeenCalled();
+    });
+
+    it("never takes the code or link of a sign-up another one replaced, even under the new one's id", async () => {
+      const h = build();
+      const first = await started(h);
+      const oldRow = rowOf(h, first);
+      const second = await started(h);
+
+      await expect(
+        h.service.confirmLink({ ...oldRow, userId: tokenDigest(second) }),
+      ).rejects.toMatchObject({ code: "LINK_INVALID" });
+      h.codes.countAttempt.mockResolvedValue({
+        ...oldRow,
+        userId: tokenDigest(second),
+      });
+      await expect(
+        h.service.confirmCode(
+          second,
+          h.email.sendCode.mock.calls[0][0].data.code,
+        ),
+      ).rejects.toMatchObject({ code: "SIGN_UP_CODE_INVALID" });
+      expect(h.auth.createAccount).not.toHaveBeenCalled();
     });
 
     it("refuses a row whose sign-up is over or is of another address", async () => {

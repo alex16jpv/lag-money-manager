@@ -12,7 +12,7 @@ const isDeleted = (user: User): user is Deleted => user.deletedAt !== null;
 export const keptUntilFrom = (now: Date, timezone: string): Date =>
   dayAfter(now, DELETED_ACCOUNT_KEPT_DAYS, timezone).endsAt;
 
-// An account deleted before keptUntil existed gets its 30 days from the first time anything reaches it (the owner's decision of 2026-10-03).
+// An account deleted before keptUntil existed gets its 30 days from the first time anything reaches it.
 export async function datedDeletion(
   users: Pick<IUserRepository, "setKeptUntil">,
   user: User,

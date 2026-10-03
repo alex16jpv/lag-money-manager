@@ -17,10 +17,19 @@ const allowed = (req: Request): boolean =>
 
 // Only a token past its deadline costs a read: whoever confirmed since then goes through.
 export const confirmationGate =
-  (users: Pick<IUserRepository, "getById">, now: () => number = Date.now) =>
+  (
+    users: Pick<IUserRepository, "getById">,
+    deadlinesOn: boolean,
+    now: () => number = Date.now,
+  ) =>
   async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     const confirmBy = req.user?.confirmBy;
-    if (confirmBy === undefined || now() < confirmBy || allowed(req)) {
+    if (
+      !deadlinesOn ||
+      confirmBy === undefined ||
+      now() < confirmBy ||
+      allowed(req)
+    ) {
       next();
       return;
     }

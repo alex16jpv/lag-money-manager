@@ -74,7 +74,7 @@ The fields are the ones of the profile: `password` 8–128 characters; `email` n
 
 1. **The brakes**, counted before anything is looked up (`EmailService.holdBrakes` with the template `sign-up`: one a minute and five a day per address, ten an hour per recognized device, else five per IP). Its `429` is the same for every address.
 2. **The sign-up is written** (`signups`): the address and its hash, the name, the password's bcrypt hash and the profile, for 24 hours (TTL), under the SHA-256 of `signUpToken` — 32 random bytes only this answer carries, which the web client's server keeps for this browser in an httpOnly cookie. **A new sign-up of the address replaces the one before**, whichever browser holds it (unique index on the address's hash). Both branches hash and write.
-3. **The email.** An address with **no account** is sent `sign-up` — a 6-digit code and a link (`{APP_URL}/{locale}/verify#token=…`) for 24 hours, in the language chosen —, and its code row is written (`authcodes`, purpose `sign-up`, its `userId` the sign-up's id) once the email was accepted or may have gone. An address that **has an account** — live, deleted and still kept, or kept by another account's undo link ([users.md](users.md#how-an-address-is-kept)) — is sent `account-exists` instead, in that account's language and in the words of its state (with the days of a deleted account, or the day a kept address is free), and gets no code: its sign-up can never be confirmed. A deleted account past its 30 days does not count as having the address.
+3. **The email.** An address with **no account** is sent `sign-up` — a 6-digit code and a link (`{APP_URL}/{locale}/verify#token=…`) for 24 hours, in the language chosen —, and its code row is written (`authcodes`, purpose `sign-up`, keyed by the sign-up itself, its `userId` the sign-up's id) once the email was accepted or may have gone. The code and the link of a sign-up work only for that sign-up: once a newer one replaced it, both are dead. An address that **has an account** — live, deleted and still kept, or kept by another account's undo link ([users.md](users.md#how-an-address-is-kept)) — is sent `account-exists` instead, in that account's language and in the words of its state (with the days of a deleted account, or the day a kept address is free), and gets no code: its sign-up can never be confirmed. A deleted account past its 30 days does not count as having the address.
 4. **A floor on the time**, as Forgot your password? holds: the answer waits until the providers' ceiling plus 500 ms have passed since the brakes. **A send that fails is never shown** — only the branch with no account could fail differently — and is logged (`SIGN_UP_EMAIL_NOT_SENT` when it throws).
 
 ### `POST /auth/sign-up/confirm`
@@ -338,7 +338,9 @@ never touched: past the deadline only the door closes.
 
 - **It starts with `EMAIL_CONFIRMATION_DEADLINES=true`**, which the owner turns on once the web client
   that shows the deadline (T-239) is published ([environment-vars.md](../guides/environment-vars.md));
-  production refuses to start with it on and no `EMAIL_PROVIDERS`. Off, no account gets a deadline.
+  production refuses to start with it on and no `EMAIL_PROVIDERS`. Off, no account gets a deadline, and
+  the deadlines already given stop closing anything: switching it off is how the door opens again for
+  everyone at once.
 - **The nightly pass sends it** ([users.md](users.md#the-nightly-pass)): to each unconfirmed live account
   with none yet, `confirm-deadline` with a link to `/verify` of its own; once that email was accepted (or
   may have gone), `confirmDeadline` is written: `{ day, endsAt, remindedAt, links }`, the day 14 days from
@@ -444,7 +446,7 @@ makes that hold:
 | Field       | Meaning                                                                                     |
 | ----------- | ------------------------------------------------------------------------------------------- |
 | `purpose`   | `reset`, `verify`, `email-change` (the new address of a change of email) or `sign-up`       |
-| `toHash`    | SHA-256 of the normalized address; unique with `purpose`. Never the address. For `email-change`, of the account and the address |
+| `toHash`    | SHA-256 of the normalized address; unique with `purpose`. Never the address. For `email-change`, of the account and the address; for `sign-up`, of the sign-up, so a newer sign-up of the address never inherits a live code or link of the one it replaced |
 | `userId`    | The account the request found, `null` when there was none; for `sign-up`, the sign-up's id  |
 | `codes`     | At most two live codes, each `{ codeHash, tokenHash, expiresAt }`                           |
 | `attempts`  | Tries of a code since the last one was issued                                               |

@@ -168,7 +168,6 @@ export class AuthService {
     return created;
   }
 
-  // Until the app confirms the address before the account exists (T-239): an address with any account is taken.
   async register(
     dto: CreateUserDTO,
     userAgent?: string,

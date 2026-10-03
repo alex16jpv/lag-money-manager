@@ -8,7 +8,6 @@ export const mockUserRepo = (): jest.Mocked<IUserRepository> => ({
   getByIdWithPassword: jest.fn().mockResolvedValue(null),
   getReachableByEmail: jest.fn().mockResolvedValue(null),
   holderOf: jest.fn().mockResolvedValue(null),
-  releaseLapsedDeletion: jest.fn().mockResolvedValue(undefined),
   forgetDevices: jest.fn().mockResolvedValue(null),
   updateWithTokenBump: jest.fn(),
   recordLogin: jest.fn().mockResolvedValue(undefined),

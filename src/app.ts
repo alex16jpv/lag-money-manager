@@ -100,7 +100,12 @@ app.use(dbReadinessMiddleware);
 app.use("/auth", apiLimiter, authRoutes);
 
 app.use(authMiddleware);
-app.use(confirmationGate(repositoryFactory.getUserRepository()));
+app.use(
+  confirmationGate(
+    repositoryFactory.getUserRepository(),
+    ENVIRONMENT.EMAIL_CONFIRMATION_DEADLINES,
+  ),
+);
 
 app.use("/users", apiLimiter, userRoutes);
 app.use("/accounts", apiLimiter, accountRoutes);

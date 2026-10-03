@@ -13,7 +13,7 @@ export interface AuthPayload {
   sid?: string;
   // Seconds since the epoch, set by jsonwebtoken on every token it signs.
   iat?: number;
-  // Milliseconds since the epoch: the end of an unconfirmed account's deadline (decision 17).
+  // Milliseconds since the epoch: the end of an unconfirmed account's deadline.
   confirmBy?: number;
 }
 

@@ -1,4 +1,5 @@
 import { User } from "../../domain/entities/User";
+import { ENVIRONMENT } from "../../shared/constants";
 import { Locale } from "../../shared/locale";
 
 export interface CreateUserDTO {
@@ -69,7 +70,10 @@ export const toUserResponse = (
     email: user.email,
     emailVerified: user.emailVerifiedAt !== null,
     confirmBy: deadline?.day ?? null,
-    emailConfirmationRequired: !!deadline && now >= deadline.endsAt,
+    emailConfirmationRequired:
+      ENVIRONMENT.EMAIL_CONFIRMATION_DEADLINES === true &&
+      !!deadline &&
+      now >= deadline.endsAt,
     timezone: user.timezone,
     currency: user.currency,
     locale: user.locale,

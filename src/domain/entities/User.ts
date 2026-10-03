@@ -24,7 +24,6 @@ export interface RestoreLink {
   expiresAt: Date;
 }
 
-// The 14 days an account from before email existed has to confirm it (decision 17).
 export interface ConfirmDeadline {
   // The last day, "YYYY-MM-DD" in the account's time zone when the deadline was set.
   day: string;
@@ -56,7 +55,7 @@ export interface UserProps {
   undoLinks?: UndoLink[];
   // A device token issued before it no longer marks a known device for new-sign-in.
   devicesResetAt?: Date | null;
-  // When Start fresh last erased the account, before T-238 removed it: a sync cursor from before it names rows that are gone.
+  // When the account was last reset: a sync cursor from before it names rows that are gone.
   dataResetAt?: Date | null;
   deletedAt?: Date | null;
   // The end of the last day a deleted account is kept: the first nightly pass after it erases it.

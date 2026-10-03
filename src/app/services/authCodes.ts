@@ -26,6 +26,10 @@ export const emailChangeKey = (userId: string, email: string): string =>
     .update(`email-change:${userId}:${hashEmailAddress(email)}`)
     .digest("hex");
 
+// Each sign-up has its own row: a newer one for the address must never inherit a live code or link of the one it replaced.
+export const signUpCodeKey = (signUpId: string): string =>
+  createHash("sha256").update(`sign-up:${signUpId}`).digest("hex");
+
 export const tokenDigest = (token: string): string =>
   createHash("sha256").update(token).digest("hex");
 

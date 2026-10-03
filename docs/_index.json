@@ -194,8 +194,8 @@
     {
       "path": "docs/modules/users.md",
       "title": "Users Module",
-      "description": "User management module: CRUD operations, password updates, self-access enforcement, and Keep what's in this account? with Start fresh.",
-      "tags": ["module", "users", "crud", "start-fresh"],
+      "description": "User management module: CRUD operations, password updates, self-access enforcement, the change of email, and deleting an account: kept 30 days, restored three ways, erased by the nightly pass.",
+      "tags": ["module", "users", "crud", "delete-account", "nightly-pass"],
       "audience": "both",
       "mustReadFirst": false
     },

@@ -114,13 +114,14 @@ A group comes down as stored too: `totals` and `status` are not in it. Both are 
 | 400    | `VALIDATION`     | `since` is not ISO 8601 with a time and an offset, or `limit` is outside 1–1000 |
 | 400    | `INVALID_CURSOR` | The cursor is not one this server minted                                        |
 | 401    | —                | Missing or invalid token                                                        |
+| 403    | `EMAIL_CONFIRMATION_REQUIRED` | The account is past its deadline to confirm its email ([auth.md](auth.md#the-deadline-of-the-accounts-from-before-email)) |
 | 409    | `RESYNC_REQUIRED` | The cursor, or `since`, is from before the account's last Start fresh: drop the copy and start without one |
 
 A cursor the server cannot read is rejected rather than treated as "start from the beginning": silently serving page one is how a client ends up looping over the same rows forever.
 
 ### `POST /sync`
 
-Pushes the offline outbox as one batch: 1–200 operations, body up to 1 MB. The batch is **not a transaction** — each operation is applied on its own, in `seq` order (the device's counter, never the array order or `occurredAt`), and answered on its own. The response is `200` whenever the envelope is valid; what happened to each operation is in `results[i].status`.
+Pushes the offline outbox as one batch: 1–200 operations, body up to 1 MB. **Past the account's deadline to confirm its email, the whole batch answers `403 EMAIL_CONFIRMATION_REQUIRED`** before anything is applied or recorded, not one result per operation: the client keeps its queue and sends it once the email is confirmed ([auth.md](auth.md#the-deadline-of-the-accounts-from-before-email)). The batch is **not a transaction** — each operation is applied on its own, in `seq` order (the device's counter, never the array order or `occurredAt`), and answered on its own. The response is `200` whenever the envelope is valid; what happened to each operation is in `results[i].status`.
 
 **Request:**
 

@@ -1,6 +1,5 @@
 import { Locale } from "../../../shared/locale";
 
-// What Create account typed, kept until its code or link creates the account (decision 16).
 export interface PendingSignUp {
   // SHA-256 of the token only the browser that typed the password holds.
   id: string;

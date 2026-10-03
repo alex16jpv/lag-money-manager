@@ -103,7 +103,7 @@ export class SyncService {
     // limit+1 from every source separates "there is more" from the end, and makes the merge exact.
     const fetch = limit + 1;
     const user = await this.users.getById(userId);
-    // Rows the Start fresh of before T-238 erased left no tombstone: a copy from before it has to start again.
+    // Rows an account reset erased left no tombstone: a copy from before it has to start again.
     if (cursor && user && !cursorFitsReset(cursor, user.dataResetAt)) {
       throw new ApiError(
         "Conflict",

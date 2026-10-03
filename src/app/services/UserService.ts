@@ -122,7 +122,6 @@ export class UserService {
     return toUserResponse(updated);
   }
 
-  // Kept 30 days and then erased by the nightly pass (decision 19); keptUntil is its last day where the account lives.
   async deleteUser(
     id: string,
     userId: string,

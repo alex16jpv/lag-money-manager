@@ -226,6 +226,37 @@ describe("NightlyPassService [T-238]", () => {
       expect(h.email.sendCode).toHaveBeenCalledTimes(2);
     });
 
+    it("spends nothing of the night's share on addresses that refuse mail", async () => {
+      const h = build({ perNight: 1 });
+      h.users.listWithoutDeadline
+        .mockResolvedValueOnce([user("a"), user("b"), user("c")])
+        .mockResolvedValue([]);
+      h.email.sendCode
+        .mockResolvedValueOnce({ status: "failed", reason: "rejected" })
+        .mockResolvedValueOnce({ status: "failed", reason: "rejected" });
+
+      await expect(h.service.run(10_000)).resolves.toMatchObject({
+        deadlines: 1,
+      });
+      expect(h.users.startConfirmDeadline).toHaveBeenCalledWith(
+        "c",
+        "c@example.com",
+        expect.any(Object),
+      );
+    });
+
+    it("sends once to an account whose deadline could not be written, and goes on", async () => {
+      const h = build();
+      h.users.listWithoutDeadline.mockImplementation(async (_l, except) =>
+        except.includes("a") ? [] : [user("a")],
+      );
+      h.users.startConfirmDeadline.mockResolvedValue(false);
+
+      await h.service.run(10_000);
+
+      expect(h.email.sendCode).toHaveBeenCalledTimes(1);
+    });
+
     it("sends no more than its share of the night", async () => {
       const h = build({ perNight: 2 });
       h.users.listWithoutDeadline.mockResolvedValue([
@@ -283,7 +314,7 @@ describe("NightlyPassService [T-238]", () => {
         NOW,
         new Date(NOW.getTime() + 5 * 24 * 60 * 60 * 1000),
         25,
-        ["b"],
+        ["b", "a"],
       );
     });
   });

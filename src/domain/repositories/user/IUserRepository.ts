@@ -25,8 +25,6 @@ export interface IUserRepository extends Omit<IRepository<User>, "delete"> {
     now: Date,
     exceptUserId?: string,
   ): Promise<AddressHolder | null>;
-  // A deleted account past its keptUntil gives its address up now, before the nightly pass erases it.
-  releaseLapsedDeletion(email: string, now: Date): Promise<void>;
   // Atomic $inc of tokenVersion, and every device token issued before is unknown to new-sign-in.
   forgetDevices(id: string, now: Date): Promise<User | null>;
   // Fields and tokenVersion in one atomic write, so a concurrent logout-all cannot lose a revocation.
@@ -88,7 +86,7 @@ export interface IUserRepository extends Omit<IRepository<User>, "delete"> {
     unusablePasswordHash: string,
     now: Date,
   ): Promise<User | null>;
-  // Deleted before keptUntil existed (T-238): each gets its day from the nightly pass.
+  // Deleted before keptUntil existed: each gets its day from the nightly pass.
   listUndatedDeletions(limit: number): Promise<User[]>;
   setKeptUntil(id: string, keptUntil: Date): Promise<void>;
   // Past keptUntil, or claimed by an erasure that has to finish.

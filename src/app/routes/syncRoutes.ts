@@ -81,10 +81,19 @@ const router = Router();
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: >
+ *           The account is past its deadline to confirm its email (code
+ *           EMAIL_CONFIRMATION_REQUIRED): nothing is read until it is
+ *           confirmed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
  *         description: |
  *           The cursor, or `since`, is from before the account's last Start
- *           fresh, which erased rows without tombstones (code
+ *           fresh (removed in T-238), which erased rows without tombstones (code
  *           RESYNC_REQUIRED): drop the local copy and ask again without a
  *           cursor.
  *         content:
@@ -178,6 +187,16 @@ router.get("/changes", validate(syncChangesSchema), SyncController.getChanges);
  *               $ref: '#/components/schemas/ErrorResponse'
  *       401:
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: >
+ *           The account is past its deadline to confirm its email (code
+ *           EMAIL_CONFIRMATION_REQUIRED): the whole batch, before any
+ *           operation is applied. Keep the queue and send it again once the
+ *           email is confirmed
  *         content:
  *           application/json:
  *             schema:
