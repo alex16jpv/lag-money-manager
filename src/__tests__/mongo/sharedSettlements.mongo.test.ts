@@ -755,6 +755,241 @@ describe("paying and being paid, against mongod", () => {
     });
   });
 
+  describe("a payment from a group [T-240]", () => {
+    let comerGroupId: string;
+    let cine: string;
+    let comer: string;
+
+    const comerLines = async (): Promise<{ id: string }[]> =>
+      (
+        await as(
+          request(app).get(`/shared-groups/${comerGroupId}/expenses?limit=100`),
+        )
+      ).body.data as { id: string }[];
+
+    const clearComer = async (): Promise<void> => {
+      for (const one of await comerLines()) {
+        await as(
+          request(app).delete(
+            `/shared-groups/${comerGroupId}/expenses/${one.id}`,
+          ),
+        );
+      }
+    };
+
+    const coveredBy = (res: request.Response): [string, number][] =>
+      (res.body.covered as { description: string; amount: number }[]).map(
+        (one) => [one.description, one.amount],
+      );
+
+    beforeAll(async () => {
+      const created = await as(
+        request(app)
+          .post("/shared-groups")
+          .send({ name: "Comer", contactIds: [ana] }),
+      );
+      expect(created.status).toBe(201);
+      comerGroupId = created.body.id as string;
+    });
+
+    beforeEach(async () => {
+      await dropSettlementsAndExpenses();
+      await clearComer();
+      // She owes 50.000 in Night out, the older line, and 20.000 in Comer.
+      cine = await spentFromYourAccount(
+        100_000,
+        "2026-08-10T18:00:00.000Z",
+        "Cine",
+      );
+      comer = await spentFromYourAccount(
+        40_000,
+        "2026-08-20T18:00:00.000Z",
+        "Comer",
+      );
+      expect((await newExpense({ transactionId: cine })).status).toBe(201);
+      expect(
+        (
+          await as(
+            request(app)
+              .post(`/shared-groups/${comerGroupId}/expenses`)
+              .send({ transactionId: comer }),
+          )
+        ).status,
+      ).toBe(201);
+    });
+
+    afterAll(async () => {
+      await clearComer();
+    });
+
+    const fromComer = (collected: number): Promise<request.Response> =>
+      settle({
+        contactId: ana,
+        groupId: comerGroupId,
+        date: "2026-08-25T18:00:00.000Z",
+        collected,
+        accountId: ACCOUNT_ID,
+      });
+
+    const fromPeople = (collected: number): Promise<request.Response> =>
+      settle({
+        contactId: ana,
+        date: "2026-08-25T18:00:00.000Z",
+        collected,
+        accountId: ACCOUNT_ID,
+      });
+
+    it("covers that group's line before an older one elsewhere, and says where it came from", async () => {
+      const paid = await fromComer(20_000);
+
+      expect(paid.status).toBe(201);
+      expect(coveredBy(paid)).toEqual([["Comer", 20_000]]);
+      expect((await movement(comer)).countsAsYours).toBe(20_000);
+      expect((await movement(cine)).countsAsYours).toBe(100_000);
+      const read = await as(
+        request(app).get(`/settlements/${paid.body.settlement.id}`),
+      );
+      expect(read.body.groupId).toBe(comerGroupId);
+      expect(typeof read.body.createdAt).toBe("string");
+    });
+
+    it("leaves the older group untouched while its own is still open", async () => {
+      const paid = await fromComer(10_000);
+
+      expect(coveredBy(paid)).toEqual([["Comer", 10_000]]);
+      expect((await movement(cine)).countsAsYours).toBe(100_000);
+    });
+
+    it("sends what is left once that group is paid to the oldest line elsewhere", async () => {
+      const paid = await fromComer(35_000);
+
+      expect(coveredBy(paid)).toEqual([
+        ["Comer", 20_000],
+        ["Cine", 15_000],
+      ]);
+      expect((await movement(cine)).countsAsYours).toBe(85_000);
+    });
+
+    it("is oldest first, as always, when paid from People", async () => {
+      const paid = await fromPeople(20_000);
+
+      expect(paid.body.settlement.groupId).toBeNull();
+      expect(coveredBy(paid)).toEqual([["Cine", 20_000]]);
+    });
+
+    it("keeps covering that group first when its line changes and everything is imputed again", async () => {
+      await fromComer(20_000);
+      await fromPeople(10_000);
+
+      const edited = await as(
+        request(app).put(`/transactions/${comer}`).send({ amount: 30_000 }),
+      );
+
+      expect(edited.status).toBe(200);
+      // She owes 15.000 in Comer now: its payment covers that and 5.000 of Cine, and People's 10.000 follow.
+      expect((await movement(comer)).countsAsYours).toBe(15_000);
+      expect((await movement(cine)).countsAsYours).toBe(85_000);
+      await moneyRule({ collected: 30_000 });
+    });
+
+    it("keeps covering that group first when an earlier payment is undone", async () => {
+      const first = await fromPeople(30_000);
+      await fromComer(20_000);
+
+      const undone = await as(
+        request(app).delete(`/settlements/${first.body.settlement.id}`),
+      );
+
+      expect(undone.status).toBe(200);
+      expect((await movement(comer)).countsAsYours).toBe(20_000);
+      expect((await movement(cine)).countsAsYours).toBe(100_000);
+    });
+
+    it("pays your lines of that group back first, one expense per line dated that line", async () => {
+      const sheFronted = async (
+        group: string,
+        description: string,
+        date: string,
+        amount: number,
+      ): Promise<void> => {
+        const res = await as(
+          request(app)
+            .post(`/shared-groups/${group}/expenses`)
+            .send({ description, date, amount, paidByContactId: ana }),
+        );
+        expect(res.status).toBe(201);
+      };
+      // You owe her 50.000 in Night out, the older line, and 20.000 in Comer.
+      await sheFronted(
+        groupId,
+        "Entradas",
+        "2026-08-05T18:00:00.000Z",
+        100_000,
+      );
+      await sheFronted(
+        comerGroupId,
+        "Pizza",
+        "2026-08-07T18:00:00.000Z",
+        40_000,
+      );
+
+      const paid = await settle({
+        contactId: ana,
+        groupId: comerGroupId,
+        date: "2026-08-25T18:00:00.000Z",
+        paid: 25_000,
+        accountId: ACCOUNT_ID,
+        categoryId: CATEGORY_ID,
+      });
+
+      expect(paid.status).toBe(201);
+      expect(paid.body.refunded).toBe(0);
+      expect(coveredBy(paid)).toEqual([
+        ["Pizza", 20_000],
+        ["Entradas", 5_000],
+      ]);
+      const rows = await TransactionModel.find({
+        sharedSettlementId: paid.body.settlement.id,
+      })
+        .sort({ date: -1 })
+        .lean();
+      expect(
+        rows.map((row) => [
+          row.type,
+          row.description,
+          row.amount,
+          row.date.toISOString(),
+        ]),
+      ).toEqual([
+        ["EXPENSE", "Pizza", cents(20_000), "2026-08-07T18:00:00.000Z"],
+        ["EXPENSE", "Entradas", cents(5_000), "2026-08-05T18:00:00.000Z"],
+      ]);
+    });
+
+    it("answers 404 for a group that is not yours, and refuses one beside a block of guests", async () => {
+      const foreign = await settle({
+        contactId: ana,
+        groupId: "019576a0-d7b6-7d6d-af6a-2b7545500099",
+        date: "2026-08-25T18:00:00.000Z",
+        collected: 10_000,
+        accountId: ACCOUNT_ID,
+      });
+      const guests = await settle({
+        expenseId: "019576a0-d7b6-7d6d-af6a-2b7545500098",
+        groupId: comerGroupId,
+        date: "2026-08-25T18:00:00.000Z",
+        collected: 10_000,
+        accountId: ACCOUNT_ID,
+      });
+
+      expect([foreign.status, foreign.body.message]).toEqual([
+        404,
+        "Shared group not found",
+      ]);
+      expect([guests.status, guests.body.code]).toEqual([400, "VALIDATION"]);
+    });
+  });
+
   describe("in a currency with cents [T-157]", () => {
     let usd: Session;
     const USD_ACCOUNT = "019576a0-d7b6-7d6d-af6a-2b7545500011";

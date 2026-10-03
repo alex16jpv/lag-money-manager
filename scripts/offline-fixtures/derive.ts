@@ -600,26 +600,47 @@ interface OwedLine {
   key: string;
   date: string;
   owed: number;
+  groupId: string | null;
 }
 
-/** Oldest line first, ties broken by id, so two devices reach the same answer. */
+interface PaidIn {
+  amount: number;
+  groupId: string | null;
+}
+
+/** One payment at a time in the order given: its group's open lines first, then the oldest open anywhere, ties by id. */
 export function imputeMinor(
   lines: OwedLine[],
-  pool: number,
+  payments: PaidIn[],
 ): { settled: Map<string, number>; surplus: number } {
-  let left = Math.max(0, pool);
-  const settled = new Map<string, number>();
   const ordered = [...lines].sort(
     (a, b) =>
       instant(a.date) - instant(b.date) ||
       (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
   );
-  for (const line of ordered) {
-    const covered = Math.min(Math.max(0, line.owed), left);
-    settled.set(line.key, covered);
-    left -= covered;
+  const open = new Map(
+    ordered.map((line) => [line.key, Math.max(0, line.owed)]),
+  );
+  let surplus = 0;
+  for (const payment of payments) {
+    let money = Math.max(0, payment.amount);
+    const fromItsGroup = ordered.filter(
+      (line) => payment.groupId !== null && line.groupId === payment.groupId,
+    );
+    for (const line of [...fromItsGroup, ...ordered]) {
+      const take = Math.min(open.get(line.key) ?? 0, money);
+      open.set(line.key, (open.get(line.key) ?? 0) - take);
+      money -= take;
+    }
+    surplus += money;
   }
-  return { settled, surplus: left };
+  const settled = new Map(
+    ordered.map((line) => [
+      line.key,
+      Math.max(0, line.owed) - (open.get(line.key) ?? 0),
+    ]),
+  );
+  return { settled, surplus };
 }
 
 const keyOfParty = (party: {
@@ -694,6 +715,7 @@ export function deriveShared(input: SharedInput): DerivedShared {
             key: expense.id,
             date: expense.date,
             owed: toCents(share.amount),
+            groupId: expense.groupId,
           });
         }
         const mine = yours(expense);
@@ -702,23 +724,34 @@ export function deriveShared(input: SharedInput): DerivedShared {
             key: expense.id,
             date: expense.date,
             owed: toCents(mine.amount),
+            groupId: expense.groupId,
           });
         }
       }
 
-      const withThem = settlements.filter(
-        (s) => keyOfParty(s.counterparty) === party,
-      );
-      const pools = {
-        theyOwe: withThem.reduce((sum, s) => sum + toCents(s.collected), 0),
-        youOwe: withThem.reduce((sum, s) => sum + toCents(s.paid), 0),
-      };
+      // In the order they were recorded, the id breaking a tie.
+      const withThem = settlements
+        .filter((s) => keyOfParty(s.counterparty) === party)
+        .sort(
+          (a, b) =>
+            instant(a.createdAt) - instant(b.createdAt) ||
+            (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+        );
       // What you handed over covers your own lines first; the rest is their money going back.
-      const mine = imputeMinor(youOweLines, pools.youOwe);
-      const theirsImputed = imputeMinor(
-        theyOweLines,
-        pools.theyOwe - mine.surplus,
+      const mine = imputeMinor(
+        youOweLines,
+        withThem.map((s) => ({ amount: toCents(s.paid), groupId: s.groupId })),
       );
+      // And it goes back out of the newest of what they gave you first.
+      let goingBack = mine.surplus;
+      const kept: PaidIn[] = [];
+      for (const s of [...withThem].reverse()) {
+        const gave = toCents(s.collected);
+        const back = Math.min(gave, goingBack);
+        goingBack -= back;
+        kept.unshift({ amount: gave - back, groupId: s.groupId });
+      }
+      const theirsImputed = imputeMinor(theyOweLines, kept);
       ahead.set(party, theirsImputed.surplus);
       for (const [expenseId, amount] of theirsImputed.settled) {
         collected.set(`${party}|${expenseId}`, amount);

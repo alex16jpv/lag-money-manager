@@ -50,6 +50,9 @@ import {
 export const OUT_DIR =
   process.env.OFFLINE_FIXTURES_DIR ?? join(__dirname, "../../fixtures/offline");
 
+const RECORDED_FROM = "2026-09-01T12:00:00.000Z";
+const ONE_MINUTE_MS = 60_000;
+
 const GENERATED_BY =
   "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline";
 
@@ -322,6 +325,11 @@ export function buildFixture(scenario: Scenario, index: number): Fixture {
     }
   }
 
+  // Recorded in the order the mongod suite seeds them: everything before the write-offs, then the rest.
+  const seeded = [
+    ...(scenario.settlements ?? []).filter((one) => !one.afterWriteOffs),
+    ...(scenario.settlements ?? []).filter((one) => one.afterWriteOffs),
+  ];
   const settlements: FixtureSettlement[] = (scenario.settlements ?? []).map(
     (one, i) => {
       // Paying somebody back writes one movement per line, with ids the server mints:
@@ -340,6 +348,14 @@ export function buildFixture(scenario: Scenario, index: number): Fixture {
       if (!one.collected) {
         throw new Error(`${scenario.id}/${one.key}: a settle-up moves money`);
       }
+      const paidFrom = one.group
+        ? sharedGroups.find((group) => group.key === one.group)
+        : undefined;
+      if (one.group && (!paidFrom || block)) {
+        throw new Error(
+          `${scenario.id}/${one.key}: only a payment with a person comes from a group, and ${one.group} has to be one`,
+        );
+      }
       return {
         key: one.key,
         id: fixtureId(index, "p", i + 1),
@@ -350,12 +366,16 @@ export function buildFixture(scenario: Scenario, index: number): Fixture {
               contactId: contactId(one.with),
               expenseId: null,
             },
+        groupId: paidFrom?.id ?? null,
         date: one.date,
         collected: one.collected ?? 0,
         paid: one.paid ?? 0,
         outsideApp: one.outsideApp === true,
         afterWriteOffs: one.afterWriteOffs === true,
         deletedAt: null,
+        createdAt: new Date(
+          Date.parse(RECORDED_FROM) + seeded.indexOf(one) * ONE_MINUTE_MS,
+        ).toISOString(),
         note: one.note,
       };
     },
@@ -724,10 +744,17 @@ function readme(fixtures: Fixture[]): string {
     "  without agreeing on an order. A block of guests weighs as many parts as it",
     "  counts and is one party to collect from.",
     "- **A payment belongs to the person, not to the line**: it covers the **oldest",
-    "  line first** across every group shared with them, ties broken by expense id.",
+    "  open line first** across every group shared with them, ties broken by expense",
+    "  id. **One paid from a group (`groupId`) covers that group's open lines first**,",
+    "  oldest first, and only what is left goes to the oldest open lines anywhere.",
+    "  Payments are imputed **one at a time, in the order they were recorded**",
+    "  (`createdAt`, then `id`; one not stored yet goes last), so a new one never",
+    "  moves what an earlier one covers but for a refund. With no `groupId` anywhere this is exactly",
+    "  pooling every payment and covering the oldest line first.",
     "  What you hand over covers your own lines first, and whatever is left of it is",
-    "  their money going back, so it comes off what they gave you **before** any of",
-    "  that is imputed. `collected` on a share is never typed: it is that answer.",
+    "  their money going back, so it comes off what they gave you, **newest payment",
+    "  first**, before any of that is imputed. `collected` on a share is never",
+    "  typed: it is that answer.",
     "- **A write-off gives up on what was open when it was decided** and never more",
     "  than is open now. It moves no figure: what left the account was counted as",
     "  yours the day it left.",
@@ -763,7 +790,7 @@ function readme(fixtures: Fixture[]): string {
     "a balance it cannot explain, and for the same reason no row is of type",
     "`SETTLEMENT`. What a settle-up moves is in `expected.balances` all the same.",
     "",
-    "Three fields of the shared layer are worth spelling out:",
+    "Four fields of the shared layer are worth spelling out:",
     "",
     "- **`expected.shared[].people[].surplus`** is what THEY handed over beyond",
     "  every line of theirs. It stays on the counter and the next line eats it, so",
@@ -778,6 +805,11 @@ function readme(fixtures: Fixture[]): string {
     "  instruction to whoever seeds the fixture: record this payment after the",
     "  write-offs, which is the only order in which a ceiling is visible. The",
     "  change feed has nothing like it.",
+    "- **`settlements[].createdAt` is the order, not a moment.** The generator",
+    "  stamps the payments a minute apart in the order they are seeded — what",
+    "  comes before the write-offs, then what comes after — and whoever seeds the",
+    "  fixture records them in that same order, so the server's own stamps sort",
+    "  them the same way. Only the order is part of the contract.",
     "",
     "## The fixtures",
     "",

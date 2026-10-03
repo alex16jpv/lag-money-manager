@@ -3,7 +3,8 @@
 ### que compartes gastos. Lo que te devuelven NO es income: entra
 ### a una cuenta, sin categoría, y fuera de Stats y de Budgets.
 ### Pagarle a otro SÍ es gasto tuyo: uno por línea, con su fecha.
-### Un cobro se imputa SIEMPRE al gasto más viejo primero.
+### Un cobro se imputa al gasto más viejo primero; si se paga
+### DESDE un grupo (groupId), primero a las líneas de ese grupo.
 ### ==========================================================
 @baseUrl = http://localhost:3000
 @email = tester@test.com
@@ -139,6 +140,45 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "contactId": "{{anaId}}", "date": "2026-08-26T23:00:00.000Z", "collected": 1000, "outsideApp": true, "accountId": "{{accountId}}" }
+
+### Otro grupo con Ana, con una línea MÁS NUEVA que el taxi
+# @name createComer
+POST {{baseUrl}}/shared-groups
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Comer {{$randomInt 100 999}}", "contactIds": ["{{anaId}}"] }
+
+###
+
+@comerId = {{createComer.response.body.id}}
+
+POST {{baseUrl}}/shared-groups/{{comerId}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "description": "Almuerzo", "date": "2026-08-22T18:00:00.000Z", "amount": 40000 }
+
+### Ana paga 20.000 DESDE Comer — cubre su línea de Comer, no el taxi más viejo (éxito)
+POST {{baseUrl}}/settlements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{anaId}}", "groupId": "{{comerId}}", "date": "2026-08-26T23:00:00.000Z", "collected": 20000, "accountId": "{{accountId}}" }
+
+### Desde un grupo ajeno o inexistente — 404 uniforme
+POST {{baseUrl}}/settlements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "contactId": "{{anaId}}", "groupId": "019576a0-d7b6-7d6d-af6a-000000000000", "date": "2026-08-26T23:00:00.000Z", "collected": 1000, "accountId": "{{accountId}}" }
+
+### Un bloque de invitados desde un grupo — 400 VALIDATION: el bloque vive en un solo gasto
+POST {{baseUrl}}/settlements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "expenseId": "019576a0-d7b6-7d6d-af6a-000000000000", "groupId": "{{comerId}}", "date": "2026-08-26T23:00:00.000Z", "collected": 1000, "accountId": "{{accountId}}" }
 
 ### Un gasto que pagó Ana: ahí el que debe eres tú
 POST {{baseUrl}}/shared-groups/{{groupId}}/expenses

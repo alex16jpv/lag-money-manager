@@ -15,6 +15,7 @@ export interface ISharedSettlementDocument {
     contactId: string | null;
     expenseId: string | null;
   };
+  groupId: string | null;
   date: Date;
   collected: number; // integer cents
   paid: number; // integer cents
@@ -38,6 +39,7 @@ const SharedSettlementSchema = new Schema<ISharedSettlementDocument>(
       contactId: { type: String, default: null },
       expenseId: { type: String, default: null },
     },
+    groupId: { type: String, default: null },
     date: { type: Date, required: true },
     collected: { type: Number, required: true, default: 0 },
     paid: { type: Number, required: true, default: 0 },

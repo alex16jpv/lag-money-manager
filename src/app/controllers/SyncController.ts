@@ -98,6 +98,7 @@ const syncBatchService = new SyncBatchService(
   new SharedSettlementService(
     repositoryFactory.getSharedSettlementRepository(),
     sharedExpenseRepository,
+    sharedGroupRepository,
     contactRepository,
     userRepository,
     sharedLedgerService,

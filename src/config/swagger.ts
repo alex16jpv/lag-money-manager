@@ -902,6 +902,14 @@ const responseViews = {
           },
         },
       }),
+      groupId: {
+        ...uuid,
+        nullable: true,
+        description:
+          "The shared group it was paid from, whose open lines it covered " +
+          "before any other; null for a payment from People and for older " +
+          "payments.",
+      },
       date: dateTime,
       collected: { ...money, description: "What came back to you." },
       paid: { ...money, description: "What you handed over." },
@@ -917,7 +925,12 @@ const responseViews = {
           "Set when the payment was undone. A read never answers one, but the " +
           "change feed does: it is how a device learns the payment is gone.",
       },
-      createdAt: dateTime,
+      createdAt: {
+        ...dateTime,
+        description:
+          "When it was recorded, which is the order payments are imputed in " +
+          "(the id breaks a tie), never `date`.",
+      },
       updatedAt: dateTime,
     },
   }),
@@ -943,7 +956,9 @@ const responseViews = {
       covered: {
         type: "array",
         items: { $ref: "#/components/schemas/SettlementCoverage" },
-        description: "Oldest line first, which is the order it was imputed in.",
+        description:
+          "In the order it was imputed: the lines of the group it was paid " +
+          "from first, then the rest, each oldest line first.",
       },
       refunded: {
         ...money,

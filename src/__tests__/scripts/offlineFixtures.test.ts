@@ -336,7 +336,17 @@ describe("offline parity fixtures", () => {
       key: string,
       date: string,
       owed: number,
-    ): { key: string; date: string; owed: number } => ({ key, date, owed });
+      groupId: string | null = null,
+    ): { key: string; date: string; owed: number; groupId: string | null } => ({
+      key,
+      date,
+      owed,
+      groupId,
+    });
+    const pay = (
+      amount: number,
+      groupId: string | null = null,
+    ): { amount: number; groupId: string | null } => ({ amount, groupId });
 
     it("covers the oldest line first, whatever order the lines come in", () => {
       const { settled, surplus } = imputeMinor(
@@ -344,7 +354,7 @@ describe("offline parity fixtures", () => {
           line("b", "2026-08-10T12:00:00-05:00", 1000),
           line("a", "2026-08-01T12:00:00-05:00", 1000),
         ],
-        1500,
+        [pay(1500)],
       );
       expect([settled.get("a"), settled.get("b"), surplus]).toEqual([
         1000, 500, 0,
@@ -355,7 +365,7 @@ describe("offline parity fixtures", () => {
       const same = "2026-08-06T12:00:00-05:00";
       const { settled } = imputeMinor(
         [line("s2", same, 1000), line("s1", same, 1000)],
-        1200,
+        [pay(1200)],
       );
       expect([settled.get("s1"), settled.get("s2")]).toEqual([1000, 200]);
     });
@@ -363,9 +373,55 @@ describe("offline parity fixtures", () => {
     it("leaves what covered no line as surplus, and never overshoots one", () => {
       const { settled, surplus } = imputeMinor(
         [line("a", "2026-08-01T12:00:00-05:00", 1000)],
-        2500,
+        [pay(1000), pay(1500)],
       );
       expect([settled.get("a"), surplus]).toEqual([1000, 1500]);
     });
+
+    it("covers the group a payment came from first, and only then the oldest elsewhere [T-240]", () => {
+      const lines = [
+        line("cine", "2026-08-03T20:00:00-05:00", 5000, "cine"),
+        line("comer", "2026-08-09T13:00:00-05:00", 2000, "comer"),
+      ];
+      const { settled } = imputeMinor(lines, [pay(3500, "comer"), pay(500)]);
+      expect([settled.get("comer"), settled.get("cine")]).toEqual([2000, 2000]);
+    });
+  });
+
+  it("stamps the payments in the order they are seeded, the late ones last [T-240]", () => {
+    const shared = fixtures.find((f) => f.id === "cop-shared");
+    const byCreation = [...(shared?.settlements ?? [])].sort((a, b) =>
+      a.createdAt.localeCompare(b.createdAt),
+    );
+    expect(byCreation.map((one) => one.afterWriteOffs)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+    ]);
+    expect(
+      shared?.settlements.find((one) => one.key === "gabi-pays-comer")?.groupId,
+    ).toBe(shared?.sharedGroups.find((g) => g.key === "comer")?.id);
+  });
+
+  // Recorded order and date order disagree on purpose: a device that sorts by date gets Cine wrong.
+  it("records Gabi's payments in the opposite order to their dates [T-240]", () => {
+    const shared = fixtures.find((f) => f.id === "cop-shared");
+    const gabi = (shared?.settlements ?? []).filter((one) =>
+      one.key.startsWith("gabi-"),
+    );
+    const by = (field: "date" | "createdAt"): string[] =>
+      [...gabi]
+        .sort((a, b) => Date.parse(a[field]) - Date.parse(b[field]))
+        .map((one) => one.key);
+
+    expect(by("createdAt")).toEqual(["gabi-pays", "gabi-pays-comer"]);
+    expect(by("date")).toEqual(["gabi-pays-comer", "gabi-pays"]);
+    expect(
+      shared?.expected.shared.find((g) => g.key === "cine")?.collected,
+    ).toBe(0);
   });
 });

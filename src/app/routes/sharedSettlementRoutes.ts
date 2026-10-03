@@ -76,8 +76,19 @@ router.get(
  *     description: >
  *       One payment, with both halves: `collected` is what came back to you
  *       and `paid` is what you handed over. **What it covers is imputed to the
- *       oldest line first**, across every group you share with them, and the
- *       answer says line by line what it covered.
+ *       oldest open line first**, across every group you share with them, and
+ *       the answer says line by line what it covered.
+ *
+ *       **A payment from a group (`groupId`) covers that group's open lines
+ *       first**, oldest first, and only what is left goes to the oldest open
+ *       lines of every other group. `groupId` is a shared group of yours,
+ *       archived ones included; the person does not have to be in it any
+ *       more, and a group with no line of theirs simply puts nothing first.
+ *       Only a payment with a person can name one. Payments are imputed one
+ *       at a time **in the order they were recorded** (`createdAt`, then
+ *       `id`), so a new one never moves what an earlier one covers, except
+ *       for what a refund gives back: that comes off the newest money they
+ *       gave you first.
  *
  *       **Money coming back is not income.** It arrives in `accountId` as a
  *       `SETTLEMENT`, carries no category and is out of Stats and of the
@@ -119,7 +130,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/SettlementResult'
  *       400:
- *         description: Validation error (code VALIDATION), more than you owe them and more than they paid ahead (code SETTLEMENT_OVER_PAID), decimals in a `ZeroDecimalCurrency` (code AMOUNT_PRECISION), a date more than 24h ahead (code FUTURE_DATE), an archived category (code CATEGORY_ARCHIVED) or one of another type (code CATEGORY_TYPE_MISMATCH)
+ *         description: Validation error (code VALIDATION, also for `groupId` beside `expenseId`), more than you owe them and more than they paid ahead (code SETTLEMENT_OVER_PAID), decimals in a `ZeroDecimalCurrency` (code AMOUNT_PRECISION), a date more than 24h ahead (code FUTURE_DATE), an archived category (code CATEGORY_ARCHIVED) or one of another type (code CATEGORY_TYPE_MISMATCH)
  *         content:
  *           application/json:
  *             schema:
@@ -131,7 +142,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
- *         description: The contact, the expense or the account is not the caller's (uniform for missing and not owned)
+ *         description: The contact, the expense, the shared group (`groupId`) or the account is not the caller's (uniform for missing and not owned)
  *         content:
  *           application/json:
  *             schema:

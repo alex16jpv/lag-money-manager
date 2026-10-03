@@ -4,7 +4,7 @@
   "pins": [
     "100.000 between three does not divide: the odd peso is whoever fronted it.",
     "A block of twenty guests weighs twenty parts and is one party to collect from.",
-    "A payment covers the oldest line first, across the whole group.",
+    "A payment from no group covers the oldest line first, across the whole group.",
     "Cash outside the app moves no account and lowers what counts as yours all the same.",
     "A write-off gives up on what was open and moves no figure.",
     "What Stats and the budgets measure is what is left as yours, never the amount.",
@@ -12,7 +12,9 @@
     "Two lines on the same instant are covered in id order, so two devices agree.",
     "A fixed share plus the rest divided: the pinned figure never moves.",
     "More than they owed stays on the counter as surplus; nothing is over-collected.",
-    "A write-off keeps the ceiling it was decided against: what is paid later lowers what it gives up."
+    "A write-off keeps the ceiling it was decided against: what is paid later lowers what it gives up.",
+    "A payment from a group covers that group's open lines first, though another group's are older; only what is left goes oldest first.",
+    "Payments are imputed in the order they were recorded (`createdAt`, then id), never by their date: People's, recorded first, takes Comer's oldest line, so Comer's own payment finds only its newer one open and Cine stays unpaid."
   ],
   "generatedBy": "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline",
   "user": {
@@ -173,6 +175,12 @@
       "id": "01930005-0000-7000-8000-0000000k0006",
       "name": "Fabio",
       "archivedAt": null
+    },
+    {
+      "key": "gabi",
+      "id": "01930005-0000-7000-8000-0000000k0007",
+      "name": "Gabi",
+      "archivedAt": null
     }
   ],
   "sharedGroups": [
@@ -221,6 +229,36 @@
       ],
       "archivedAt": null,
       "note": "No movement of yours is linked here on purpose: this group is about the order a payment is imputed in, the rest of a fixed share, and what a write-off gives up on."
+    },
+    {
+      "key": "cine",
+      "id": "01930005-0000-7000-8000-0000000g0003",
+      "name": "Cine",
+      "participantContactIds": [
+        "01930005-0000-7000-8000-0000000k0007"
+      ],
+      "defaultSplit": {
+        "mode": "EQUAL",
+        "shares": []
+      },
+      "writeOffs": [],
+      "archivedAt": null,
+      "note": "Between Comer's two lines by date. Oldest first, or with the payments taken by their date, it would be paid; in the order they were recorded nothing reaches it."
+    },
+    {
+      "key": "comer",
+      "id": "01930005-0000-7000-8000-0000000g0004",
+      "name": "Comer",
+      "participantContactIds": [
+        "01930005-0000-7000-8000-0000000k0007"
+      ],
+      "defaultSplit": {
+        "mode": "EQUAL",
+        "shares": []
+      },
+      "writeOffs": [],
+      "archivedAt": null,
+      "note": "Gabi's oldest line and her newest: People's payment took the first, and the one from this group the second, though Cine's is older."
     }
   ],
   "sharedExpenses": [
@@ -680,6 +718,108 @@
       },
       "deletedAt": null,
       "note": "Written last and dated first: a payment covers THIS one before any of the ones above."
+    },
+    {
+      "key": "g-cine",
+      "id": "01930005-0000-7000-8000-0000000s0010",
+      "groupId": "01930005-0000-7000-8000-0000000g0003",
+      "transactionId": null,
+      "description": "Boletas de cine",
+      "date": "2026-08-03T20:00:00-05:00",
+      "amount": 20000,
+      "paidByContactId": null,
+      "customSplit": false,
+      "split": {
+        "mode": "EQUAL",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0007",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          }
+        ]
+      },
+      "deletedAt": null
+    },
+    {
+      "key": "g-comer-old",
+      "id": "01930005-0000-7000-8000-0000000s0011",
+      "groupId": "01930005-0000-7000-8000-0000000g0004",
+      "transactionId": null,
+      "description": "Desayuno",
+      "date": "2026-08-01T09:00:00-05:00",
+      "amount": 20000,
+      "paidByContactId": null,
+      "customSplit": false,
+      "split": {
+        "mode": "EQUAL",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0007",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 10000,
+            "collected": 10000
+          }
+        ]
+      },
+      "deletedAt": null
+    },
+    {
+      "key": "g-comer-new",
+      "id": "01930005-0000-7000-8000-0000000s0012",
+      "groupId": "01930005-0000-7000-8000-0000000g0004",
+      "transactionId": null,
+      "description": "Almuerzo",
+      "date": "2026-08-09T13:00:00-05:00",
+      "amount": 80000,
+      "paidByContactId": null,
+      "customSplit": false,
+      "split": {
+        "mode": "EQUAL",
+        "guests": null,
+        "shares": [
+          {
+            "party": "USER",
+            "contactId": null,
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 40000,
+            "collected": 0
+          },
+          {
+            "party": "CONTACT",
+            "contactId": "01930005-0000-7000-8000-0000000k0007",
+            "percent": null,
+            "fixedAmount": null,
+            "amount": 40000,
+            "collected": 40000
+          }
+        ]
+      },
+      "deletedAt": null
     }
   ],
   "settlements": [
@@ -691,12 +831,14 @@
         "contactId": "01930005-0000-7000-8000-0000000k0001",
         "expenseId": null
       },
+      "groupId": null,
       "date": "2026-08-18T10:00:00-05:00",
       "collected": 40000,
       "paid": 0,
       "outsideApp": false,
       "afterWriteOffs": false,
       "deletedAt": null,
+      "createdAt": "2026-09-01T12:00:00.000Z",
       "note": "Covers the dinner, then the party, then part of the taxi: oldest line first."
     },
     {
@@ -707,12 +849,14 @@
         "contactId": null,
         "expenseId": "01930005-0000-7000-8000-0000000s0002"
       },
+      "groupId": null,
       "date": "2026-08-19T10:00:00-05:00",
       "collected": 50000,
       "paid": 0,
       "outsideApp": true,
       "afterWriteOffs": false,
       "deletedAt": null,
+      "createdAt": "2026-09-01T12:01:00.000Z",
       "note": "Cash the app never saw: no movement, and what counts as yours falls all the same."
     },
     {
@@ -723,12 +867,14 @@
         "contactId": "01930005-0000-7000-8000-0000000k0003",
         "expenseId": null
       },
+      "groupId": null,
       "date": "2026-08-16T10:00:00-05:00",
       "collected": 22000,
       "paid": 0,
       "outsideApp": false,
       "afterWriteOffs": false,
       "deletedAt": null,
+      "createdAt": "2026-09-01T12:02:00.000Z",
       "note": "22.000 of the 35.000 she owes: the back-dated line first, then the older id of the two on the same instant, and 7.000 of the next."
     },
     {
@@ -739,12 +885,14 @@
         "contactId": "01930005-0000-7000-8000-0000000k0005",
         "expenseId": null
       },
+      "groupId": null,
       "date": "2026-08-18T10:00:00-05:00",
       "collected": 40000,
       "paid": 0,
       "outsideApp": false,
       "afterWriteOffs": false,
       "deletedAt": null,
+      "createdAt": "2026-09-01T12:03:00.000Z",
       "note": "5.000 more than she owed: every line of hers is settled and the rest stays on the counter."
     },
     {
@@ -755,13 +903,51 @@
         "contactId": "01930005-0000-7000-8000-0000000k0004",
         "expenseId": null
       },
+      "groupId": null,
       "date": "2026-08-21T10:00:00-05:00",
       "collected": 5000,
       "paid": 0,
       "outsideApp": false,
       "afterWriteOffs": true,
       "deletedAt": null,
+      "createdAt": "2026-09-01T12:06:00.000Z",
       "note": "Paid after you had already given up on him: the write-off keeps its 35.000 ceiling and gives up 30.000."
+    },
+    {
+      "key": "gabi-pays",
+      "id": "01930005-0000-7000-8000-0000000p0006",
+      "counterparty": {
+        "kind": "CONTACT",
+        "contactId": "01930005-0000-7000-8000-0000000k0007",
+        "expenseId": null
+      },
+      "groupId": null,
+      "date": "2026-08-16T10:00:00-05:00",
+      "collected": 10000,
+      "paid": 0,
+      "outsideApp": false,
+      "afterWriteOffs": false,
+      "deletedAt": null,
+      "createdAt": "2026-09-01T12:04:00.000Z",
+      "note": "From People, recorded first though dated after the one from Comer: it covers the oldest line, Comer's breakfast."
+    },
+    {
+      "key": "gabi-pays-comer",
+      "id": "01930005-0000-7000-8000-0000000p0007",
+      "counterparty": {
+        "kind": "CONTACT",
+        "contactId": "01930005-0000-7000-8000-0000000k0007",
+        "expenseId": null
+      },
+      "groupId": "01930005-0000-7000-8000-0000000g0004",
+      "date": "2026-08-14T10:00:00-05:00",
+      "collected": 40000,
+      "paid": 0,
+      "outsideApp": false,
+      "afterWriteOffs": false,
+      "deletedAt": null,
+      "createdAt": "2026-09-01T12:05:00.000Z",
+      "note": "From Comer, recorded second: Comer's still-open lunch first, though Cine is older. Taken by date, it would cover both of Comer's and leave 10.000 for People's to put on Cine."
     }
   ],
   "expected": {
@@ -769,7 +955,7 @@
       {
         "key": "bank",
         "accountId": "01930005-0000-7000-8000-0000000a0001",
-        "balance": 1802000
+        "balance": 1852000
       }
     ],
     "pending": {
@@ -972,6 +1158,50 @@
             "youOwe": 0,
             "surplus": 0,
             "state": "NOT_PAID"
+          }
+        ]
+      },
+      {
+        "key": "cine",
+        "id": "01930005-0000-7000-8000-0000000g0003",
+        "amount": 20000,
+        "yourShare": 10000,
+        "owedToYou": 10000,
+        "youOwe": 0,
+        "collected": 0,
+        "writtenOff": 0,
+        "status": "OPEN",
+        "people": [
+          {
+            "key": "contact:01930005-0000-7000-8000-0000000k0007",
+            "contactId": "01930005-0000-7000-8000-0000000k0007",
+            "expenseId": null,
+            "owesYou": 10000,
+            "youOwe": 0,
+            "surplus": 0,
+            "state": "NOT_PAID"
+          }
+        ]
+      },
+      {
+        "key": "comer",
+        "id": "01930005-0000-7000-8000-0000000g0004",
+        "amount": 100000,
+        "yourShare": 50000,
+        "owedToYou": 0,
+        "youOwe": 0,
+        "collected": 50000,
+        "writtenOff": 0,
+        "status": "SETTLED",
+        "people": [
+          {
+            "key": "contact:01930005-0000-7000-8000-0000000k0007",
+            "contactId": "01930005-0000-7000-8000-0000000k0007",
+            "expenseId": null,
+            "owesYou": 0,
+            "youOwe": 0,
+            "surplus": 0,
+            "state": "PAID"
           }
         ]
       }

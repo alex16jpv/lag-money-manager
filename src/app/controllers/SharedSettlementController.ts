@@ -12,6 +12,7 @@ import { resolveTimezone } from "./timezone";
 const settlementService = new SharedSettlementService(
   repositoryFactory.getSharedSettlementRepository(),
   repositoryFactory.getSharedExpenseRepository(),
+  repositoryFactory.getSharedGroupRepository(),
   repositoryFactory.getContactRepository(),
   repositoryFactory.getUserRepository(),
   sharedLedgerService,
