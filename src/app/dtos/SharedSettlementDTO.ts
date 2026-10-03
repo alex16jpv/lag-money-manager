@@ -9,6 +9,8 @@ export interface CreateSharedSettlementDTO {
   // One of the two: a person, or the block of guests of that expense.
   contactId?: string;
   expenseId?: string;
+  // A person only: the shared group it is paid from, whose lines it covers first.
+  groupId?: string | null;
   date: Date;
   // What came back to you, what you handed over. One settle-up can write both halves.
   collected?: number;

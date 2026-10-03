@@ -799,6 +799,11 @@ export const createSettlementSchema = z.object({
       id: clientMintedId,
       contactId: z.string().uuid("contactId must be a valid UUID").optional(),
       expenseId: z.string().uuid("expenseId must be a valid UUID").optional(),
+      groupId: z
+        .string()
+        .uuid("groupId must be a valid UUID")
+        .nullable()
+        .optional(),
       date: isoDate,
       collected: moneyAmount.optional(),
       paid: moneyAmount.optional(),
@@ -823,6 +828,14 @@ export const createSettlementSchema = z.object({
           path: ["contactId"],
           message:
             "A payment names exactly one counterparty: contactId, or expenseId for its block of guests",
+        });
+      }
+      if (data.groupId && data.expenseId) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["groupId"],
+          message:
+            "A block of guests lives in one expense: only a payment with a person can come from a group",
         });
       }
       if (!data.collected && !data.paid) {

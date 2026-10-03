@@ -20,6 +20,7 @@ export interface SharedSettlementProps {
   id?: string;
   userId: string;
   counterparty: SettlementCounterparty;
+  groupId?: string | null;
   date: Date;
   // What came back to you, and what you handed over. One settle-up can write both halves.
   collected?: number;
@@ -36,6 +37,7 @@ export class SharedSettlement {
   id: string;
   userId: string;
   counterparty: SettlementCounterparty;
+  groupId: string | null;
   date: Date;
   collected: number;
   paid: number;
@@ -49,6 +51,7 @@ export class SharedSettlement {
     this.id = props.id ?? uuidv7();
     this.userId = props.userId;
     this.counterparty = props.counterparty;
+    this.groupId = props.groupId ?? null;
     this.date = props.date;
     this.collected = props.collected ?? 0;
     this.paid = props.paid ?? 0;

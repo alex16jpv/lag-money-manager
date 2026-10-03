@@ -8,19 +8,19 @@ It is the answer to the owner's rule, and everything here follows from it:
 
 > **What counts as yours is the money that left your accounts minus the money that came back.**
 
-So a payment is never a figure somebody types onto a line. It is money, and where it lands is **derived**: a payment belongs to the person, not to the expense, and it covers **the oldest line first** across every group you share with them. Change anything — delete a line, edit a split, add somebody to a group — and it is imputed again over what is left, with nothing undone.
+So a payment is never a figure somebody types onto a line. It is money, and where it lands is **derived**: a payment belongs to the person, not to the expense, and it covers **the oldest open line first** across every group you share with them — unless it was paid **from a group**, and then it covers **that group's open lines first** (T-240, below). Change anything — delete a line, edit a split, add somebody to a group — and it is imputed again over what is left, with nothing undone.
 
 ## Files and Responsibilities
 
-| File                                                 | Role                                                                      |
-| ---------------------------------------------------- | ------------------------------------------------------------------------- |
-| `src/app/routes/sharedSettlementRoutes.ts`           | The four routes, with their OpenAPI blocks                                |
-| `src/app/controllers/SharedSettlementController.ts`  | Thin HTTP handler                                                         |
-| `src/app/services/SharedSettlementService.ts`        | One settle-up: what it covers, and the movements it writes                |
-| `src/app/services/SharedLedgerService.ts`            | **The imputation**, and what it leaves on every movement                  |
-| `src/shared/sharedImputation.ts`                     | `impute()` — oldest line first, in one place for the server and the phone |
-| `src/domain/entities/SharedSettlement.ts`            | The entity                                                                |
-| `src/infrastructure/models/SharedSettlementModel.ts` | Document and indexes                                                      |
+| File                                                 | Role                                                                                                                              |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/routes/sharedSettlementRoutes.ts`           | The four routes, with their OpenAPI blocks                                                                                        |
+| `src/app/controllers/SharedSettlementController.ts`  | Thin HTTP handler                                                                                                                 |
+| `src/app/services/SharedSettlementService.ts`        | One settle-up: what it covers, and the movements it writes                                                                        |
+| `src/app/services/SharedLedgerService.ts`            | **The imputation**, and what it leaves on every movement                                                                          |
+| `src/shared/sharedImputation.ts`                     | `imputeCounterparty()` — the whole rule for one person, both directions and the refund, in one place for the server and the phone |
+| `src/domain/entities/SharedSettlement.ts`            | The entity                                                                                                                        |
+| `src/infrastructure/models/SharedSettlementModel.ts` | Document and indexes                                                                                                              |
 
 ## One payment, two halves
 
@@ -35,21 +35,38 @@ The counterparty is a **contact** or the **block of guests of one expense** (`ex
 
 ## What each half writes in your ledger
 
-| Half                            | In the shared layer                                                        | In your ledger                                                                                                                                |
-| ------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `collected`                     | Covers what they owe you, oldest line first                                | **One `SETTLEMENT` movement** into `accountId`. Not income: no category, out of Stats and of the budgets — the shape `ADJUSTMENT` already has |
-| `paid`, over lines they fronted | Covers what you owe them, oldest line first                                | **One ordinary `EXPENSE` per line**, with that line's description, **dated that line**, in the category you give                              |
-| `paid`, beyond that             | **Gives back** what they paid ahead, and comes off what they had given you | **One `SETTLEMENT` movement** out of `accountId`. You never spent it, so it carries no category either                                        |
+| Half                            | In the shared layer                                                                | In your ledger                                                                                                                                |
+| ------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `collected`                     | Covers what they owe you: the group it was paid from first, then oldest line first | **One `SETTLEMENT` movement** into `accountId`. Not income: no category, out of Stats and of the budgets — the shape `ADJUSTMENT` already has |
+| `paid`, over lines they fronted | Covers what you owe them: the group it was paid from first, then oldest line first | **One ordinary `EXPENSE` per line**, with that line's description, **dated that line**, in the category you give                              |
+| `paid`, beyond that             | **Gives back** what they paid ahead, and comes off what they had given you         | **One `SETTLEMENT` movement** out of `accountId`. You never spent it, so it carries no category either                                        |
 
 **Paying somebody back is not one movement.** The shared layer carries no categories — they are private and never travel — so the request states one in `categoryId`, or one per line in `categories`. An expense per line is more rows and the right figures: it lands in the month the money was spent, under the category it belongs to.
 
 **`outsideApp` is cash the app never saw.** (Applying it to the paying-back direction too — no movement, therefore no expense of yours — is a decision this module took, not one the design states: money that never went through an account the app keeps is money it cannot count. It is the owner's to overturn.) Nothing is written in an account and no balance moves, and what is owed falls all the same, because that money did change hands. It is the only place where what counts as yours moves without an account moving. The same applies to the other direction: paying somebody back in cash the app never held records the payment and creates no expense, because that spending never went through a tracked account.
 
-**A refund undoes a collection, it does not sit beside it.** What you hand over covers the lines you owe first; whatever is left of it is their money going back, and it comes off what they have given you **before any of it is imputed**. Without that, giving somebody their surplus back would leave the collection still sitting in the pool and silently pre-paying the next line they appear on.
+**A refund undoes a collection, it does not sit beside it.** What you hand over covers the lines you owe first; whatever is left of it is their money going back, and it comes off what they have given you — **the newest of it first** — **before any of it is imputed**. Without that, giving somebody their surplus back would leave the collection still counted and silently pre-paying the next line they appear on. Newest first is what keeps it from moving what an older payment covers: money they paid ahead always sits in their latest payments, so with no payment from a group this is the same figure as taking it off everything they ever gave you at once, which is what it was before T-240.
 
 **You cannot hand over more than you owe** plus whatever they have paid ahead: `400 SETTLEMENT_OVER_PAID`. A collection is not capped the same way, and that asymmetry is deliberate: the design says somebody can be "$160,000 ahead", so paying more than your share is a real thing, and what it leaves is a surplus that is theirs to get back. Money leaving for nothing is not.
 
 The guard holds against two refunds at the same moment, too, from two devices and to different accounts: both impute the same person, so they meet in the claim described under _One person, one imputation at a time_, the second runs again after the first and answers `SETTLEMENT_OVER_PAID` (T-135). One limit worth knowing: a **replay** — the same client-minted `id` sent twice — answers the payment with an empty `covered`, because what it covered was worked out when it was first recorded.
+
+## A payment from a group (T-240)
+
+A settle-up can be made **from inside a shared group**, and then it names that group in `groupId`; one made from People names none, and neither does any payment recorded before T-240. **A payment with a `groupId` covers that group's open lines first** — oldest first among them — and only what is left goes to the oldest open lines of every other group, as any payment does. Say Ana owes $50,000 in Cine, the older line, and $20,000 in Comer:
+
+| She pays            | Comer        | Cine          |
+| ------------------- | ------------ | ------------- |
+| $20,000 from Comer  | paid         | still $50,000 |
+| $10,000 from Comer  | $10,000 left | untouched     |
+| $35,000 from Comer  | paid         | $15,000 paid  |
+| $20,000 from People | untouched    | $20,000 paid  |
+
+It works the same both ways: a `paid` amount from a group covers **your** lines of that group (the ones they fronted) first. `groupId` is a shared group of yours, **archived ones included**, and anything else is `404 Shared group not found`. The person does **not** have to be in it any more: a payment made offline must not be refused because somebody was taken out in the meantime, and a group with no line of theirs simply puts nothing first. A block of guests lives in one expense and has no other group to weigh against, so `groupId` beside `expenseId` is `400 VALIDATION`.
+
+**The priority survives every re-imputation**, because `collected` is never stored as typed: deleting, editing, re-splitting or re-dating a line, adding people, undoing a payment — every one of them imputes again from scratch, and the payment from Comer still covers Comer first. That is why **the imputation is per payment, in order**: a person's live payments are sorted **by when they were recorded** (`createdAt`, then `id`; a payment with no stamp yet goes last), and each one in turn covers its group's still-open lines and then the oldest still-open lines anywhere. Creation order, not `date`, so a payment recorded now is always the last one: it never reshuffles what the earlier ones cover (the one exception is a refund, which comes off the newest collections and so can reach an earlier payment's once it has used up this one's), which is what keeps `covered` in the answer — and the one `EXPENSE` per line that paying somebody back records — exactly what this payment did. `covered` lists the lines in that same order: the group's first, then the rest, oldest first. One limit worth knowing: `createdAt` is stamped by the server that records the payment, so two instances with skewed clocks recording payments with the same person within that skew could order them the other way round; the figures stay right (what each side covers in total does not depend on the order), only which lines that one answer names could differ.
+
+**With no `groupId` anywhere, every figure is the one the pooled rule gave** — every payment added up and spread oldest line first — because a run of payments that each cover the oldest open line covers exactly what their sum would. Existing data carries no `groupId`, so nothing moved and nothing was migrated; a unit test compares the two over hundreds of cases. The phone derives the same thing offline from the same rule (`src/shared/sharedImputation.ts` and its copy in the app), and it reads `groupId` and `createdAt` from the change feed to order the payments the same way.
 
 ## What a payment leaves behind
 
@@ -63,12 +80,12 @@ Recording a payment and undoing one both answer **`restamped`** as well: the lin
 
 ## Public API
 
-| Route                      | What it does                                                                                       |
-| -------------------------- | -------------------------------------------------------------------------------------------------- |
-| `GET /settlements`         | Newest first, keyset over `(date, _id)`; `contactId` or `expenseId` narrows it to one counterparty |
-| `POST /settlements`        | One settle-up. Answers the payment **and what it covered**, line by line, plus what was refunded   |
-| `GET /settlements/{id}`    | One payment                                                                                        |
-| `DELETE /settlements/{id}` | Undoes it, movements included. Idempotent                                                          |
+| Route                      | What it does                                                                                                                          |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /settlements`         | Newest first, keyset over `(date, _id)`; `contactId` or `expenseId` narrows it to one counterparty                                    |
+| `POST /settlements`        | One settle-up, optionally from a group (`groupId`). Answers the payment **and what it covered**, line by line, plus what was refunded |
+| `GET /settlements/{id}`    | One payment                                                                                                                           |
+| `DELETE /settlements/{id}` | Undoes it, movements included. Idempotent                                                                                             |
 
 ## Storage
 
@@ -80,7 +97,7 @@ Recording a payment and undoing one both answer **`restamped`** as well: the lin
 | `SharedSettlement` | `{ userId, updatedAt, _id }`                      | The keyset the offline change feed scans                                   |
 | `Transaction`      | `{ userId, sharedSettlementId }`, partial         | The movements one settle-up recorded, so undoing it reverses exactly those |
 
-Money is integer cents here too, and so is the arithmetic: what each line covered and what goes back as a refund are subtracted in whole cents before they are converted (T-157). **The payment carries no account and no category**: those are yours, and a shared group is seen by everybody in it. What travels is that it was paid.
+A payment also stores the `groupId` it was paid from (null when none) and is answered with it and with `createdAt`, the order it is imputed in; no index covers `groupId`, because nothing queries by it — it is read with the rest of the person's payments. Money is integer cents here too, and so is the arithmetic: what each line covered and what goes back as a refund are subtracted in whole cents before they are converted (T-157). **The payment carries no account and no category**: those are yours, and a shared group is seen by everybody in it. What travels is that it was paid.
 
 **An imputation is bounded by one counterparty, not by one group.** It reads every live expense where they hold a share — one indexed query, across every group — and every payment with them, and rewrites only the shares that moved. So it never has to look at anybody else's lines, but it **is** linear in how much history you have with that person, and it runs once per counterparty of the line being written: recording an expense in a group of ten people is ten of those reads. That is the ceiling this design has; the alternative, a stored running total per person, is a figure to keep in step, which is the thing this feature refuses to do anywhere else.
 
@@ -88,4 +105,4 @@ Money is integer cents here too, and so is the arithmetic: what each line covere
 
 - **It does not write `countsAsYours` by itself.** `SharedLedgerService` does, and it is the only thing that does.
 - **It does not write off anything.** Giving up on what somebody owes is a decision about a group, and it lives there ([shared-groups.md](shared-groups.md)); it moves no figure either way.
-- **It does not decide what travels.** Payments ride the change feed with their tombstone, and come back from the outbox as `settlement:create` and `settlement:delete` ([sync.md](sync.md)).
+- **It does not decide what travels.** Payments ride the change feed with their tombstone, `groupId` and `createdAt` included, and come back from the outbox as `settlement:create` (whose body takes `groupId` like the route's) and `settlement:delete` ([sync.md](sync.md)).

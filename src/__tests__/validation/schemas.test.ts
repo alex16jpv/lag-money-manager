@@ -106,6 +106,7 @@ import {
   createBudgetSchema,
   createCategorySchema,
   createContactSchema,
+  createSettlementSchema,
   createSharedExpenseSchema,
   createTransactionSchema,
   forgotPasswordSchema,
@@ -1793,6 +1794,50 @@ describe("Validation Schemas", () => {
         body: { transactionId: validUUID2, paidByContactId: null },
       });
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe("createSettlementSchema: the group it is paid from [T-240]", () => {
+    const settle = (
+      over: Record<string, unknown> = {},
+    ): ReturnType<typeof createSettlementSchema.safeParse> =>
+      createSettlementSchema.safeParse({
+        body: {
+          contactId: validUUID,
+          date: "2026-08-25T18:00:00.000Z",
+          collected: 20000,
+          ...over,
+        },
+      });
+
+    it("takes a group with a person, and keeps it", () => {
+      const result = settle({ groupId: validUUID2 });
+      expect(result.success).toBe(true);
+      expect(result.data?.body.groupId).toBe(validUUID2);
+    });
+
+    it("takes no group, and a null one, which is a payment from People", () => {
+      expect(settle().success).toBe(true);
+      expect(settle().data?.body.groupId).toBeUndefined();
+      expect(settle({ groupId: null }).data?.body.groupId).toBeNull();
+    });
+
+    it("refuses a group that is not an id", () => {
+      const result = settle({ groupId: "cine" });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0].path).toEqual(["body", "groupId"]);
+    });
+
+    it("refuses a group beside a block of guests, which lives in one expense", () => {
+      const result = settle({
+        contactId: undefined,
+        expenseId: validUUID,
+        groupId: validUUID2,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues.map((issue) => issue.path)).toEqual([
+        ["body", "groupId"],
+      ]);
     });
   });
 

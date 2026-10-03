@@ -5,6 +5,7 @@ import {
 } from "../../domain/entities/SharedSettlement";
 import { IContactRepository } from "../../domain/repositories/contact/IContactRepository";
 import { ISharedExpenseRepository } from "../../domain/repositories/sharedExpense/ISharedExpenseRepository";
+import { ISharedGroupRepository } from "../../domain/repositories/sharedGroup/ISharedGroupRepository";
 import {
   ISharedSettlementRepository,
   SettlementFilters,
@@ -22,6 +23,7 @@ import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { ApiError } from "../../shared/errors";
 import { assertAmountPrecision, fromCents, toCents } from "../../shared/money";
 import { PaginatedResult, PaginationParams } from "../../shared/pagination";
+import { oldestFirst } from "../../shared/sharedImputation";
 import { TxSession, withTransaction } from "../../shared/unitOfWork";
 import { CreateSharedSettlementDTO } from "../dtos/SharedSettlementDTO";
 import { CreateTransactionDTO } from "../dtos/TransactionDTO";
@@ -54,6 +56,7 @@ export class SharedSettlementService {
   constructor(
     private repo: ISharedSettlementRepository,
     private expenseRepo: ISharedExpenseRepository,
+    private groupRepo: ISharedGroupRepository,
     private contactRepo: IContactRepository,
     private userRepo: IUserRepository,
     private ledger: SharedLedgerService,
@@ -126,11 +129,15 @@ export class SharedSettlementService {
       assertAmountPrecision(collected, currency, "collected");
       assertAmountPrecision(paid, currency, "paid");
       const counterparty = await this.resolveCounterparty(dto, session);
+      const groupId = dto.groupId
+        ? await this.ownGroupId(dto.groupId, dto.userId, session)
+        : null;
 
       const settlement = new SharedSettlement({
         id: dto.id,
         userId: dto.userId,
         counterparty,
+        groupId,
         date: dto.date,
         collected,
         paid,
@@ -156,7 +163,7 @@ export class SharedSettlementService {
         );
       }
 
-      const covered = this.coverageOf(changes);
+      const covered = this.coverageOf(changes, groupId);
       const yourLines = covered.filter((line) => line.direction === "PAID");
       const refunded = fromCents(
         toCents(paid) -
@@ -178,13 +185,26 @@ export class SharedSettlementService {
     });
   }
 
-  private coverageOf(changes: ShareChange[]): SettlementCoverage[] {
+  private coverageOf(
+    changes: ShareChange[],
+    groupId: string | null,
+  ): SettlementCoverage[] {
+    const rank = (change: ShareChange): number =>
+      change.groupId === groupId ? 0 : 1;
     return changes
       .map((change) => ({
         change,
         moved: toCents(change.after) - toCents(change.before),
       }))
       .filter(({ moved }) => moved > 0)
+      .sort(
+        (a, b) =>
+          rank(a.change) - rank(b.change) ||
+          oldestFirst(
+            { date: a.change.date, key: a.change.expenseId },
+            { date: b.change.date, key: b.change.expenseId },
+          ),
+      )
       .map(({ change, moved }) => ({
         expenseId: change.expenseId,
         description: change.description,
@@ -334,6 +354,21 @@ export class SharedSettlementService {
       contactId: null,
       expenseId: expense.id,
     };
+  }
+
+  private async ownGroupId(
+    groupId: string,
+    userId: string,
+    session: TxSession,
+  ): Promise<string> {
+    const group = await this.groupRepo.getByIdIncludingArchived(
+      groupId,
+      session,
+    );
+    if (!group || group.userId !== userId) {
+      throw new ApiError("NotFound", "Shared group not found");
+    }
+    return group.id;
   }
 
   private async liveExpense(

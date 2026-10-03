@@ -20,6 +20,10 @@ const OLDER = "019576a0-d7b6-7d6d-af6a-2b7545f5ae01";
 const NEWER = "019576a0-d7b6-7d6d-af6a-2b7545f5ae02";
 const ACCOUNT = "019576a0-d7b6-7d6d-af6a-2b7545f5ae09";
 
+const MIDDLE = "019576a0-d7b6-7d6d-af6a-2b7545f5ae03";
+const CINE = "019576a0-d7b6-7d6d-af6a-2b7545f5ab00";
+const COMER = "019576a0-d7b6-7d6d-af6a-2b7545f5ab01";
+
 const withAna = { kind: "CONTACT" as const, contactId: ana, expenseId: null };
 
 const expense = (
@@ -27,10 +31,11 @@ const expense = (
   day: string,
   amount: number,
   collected = 0,
+  groupId = CINE,
 ): SharedExpense =>
   new SharedExpense({
     id,
-    groupId: "019576a0-d7b6-7d6d-af6a-2b7545f5ab00",
+    groupId,
     description: `Line ${id.slice(-1)}`,
     date: new Date(`2026-08-${day}T18:00:00.000Z`),
     updatedAt: new Date("2026-08-26T09:00:00.000Z"),
@@ -76,13 +81,17 @@ const movementOf = (expenseId: string, amount: number): Transaction =>
     sharedGroupId: "019576a0-d7b6-7d6d-af6a-2b7545f5ab00",
   });
 
-const paymentOf = (collected: number): SharedSettlement =>
+const paymentOf = (
+  collected: number,
+  more: Partial<SharedSettlement> = {},
+): SharedSettlement =>
   new SharedSettlement({
     userId,
     counterparty: withAna,
     date: new Date("2026-08-25T18:00:00.000Z"),
     collected,
     currency: "COP",
+    ...more,
   });
 
 describe("SharedLedgerService", () => {
@@ -185,6 +194,82 @@ describe("SharedLedgerService", () => {
     // Her share of the older line is 45.000, so 15.000 reach the newer one.
     expect(byId.get(OLDER)).toBe(45_000);
     expect(byId.get(NEWER)).toBe(15_000);
+  });
+
+  const herCollected = (): Map<string, number | undefined> => {
+    const [written] = expenses.replaceSplits.mock.calls;
+    return new Map(
+      (written?.[0] ?? []).map((one) => [
+        one.id,
+        one.split.shares.find((share) => share.contactId === ana)?.collected,
+      ]),
+    );
+  };
+
+  describe("a payment from a group [T-240]", () => {
+    it("covers that group's line before an older one in another group", async () => {
+      expenses.listByCounterparty.mockResolvedValue([
+        expense(OLDER, "10", 90_000, 0, CINE),
+        expense(NEWER, "20", 60_000, 0, COMER),
+      ]);
+      settlements.listByCounterparty.mockResolvedValue([
+        paymentOf(40_000, { groupId: COMER }),
+      ]);
+
+      await recompute();
+
+      // Her 30.000 in Comer first, and only the 10.000 left reach Cine.
+      expect(Object.fromEntries(herCollected())).toEqual({
+        [NEWER]: 30_000,
+        [OLDER]: 10_000,
+      });
+    });
+
+    it("imputes the payments in the order they were recorded, not the order they are read in", async () => {
+      expenses.listByCounterparty.mockResolvedValue([
+        expense(OLDER, "05", 30_000, 0, COMER),
+        expense(MIDDLE, "10", 30_000, 0, CINE),
+        expense(NEWER, "20", 40_000, 0, COMER),
+      ]);
+      settlements.listByCounterparty.mockResolvedValue([
+        paymentOf(15_000, {
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ad01",
+          groupId: COMER,
+          createdAt: new Date("2026-08-26T10:00:00.000Z"),
+        }),
+        paymentOf(20_000, {
+          id: "019576a0-d7b6-7d6d-af6a-2b7545f5ad02",
+          createdAt: new Date("2026-08-25T10:00:00.000Z"),
+        }),
+      ]);
+
+      await recompute();
+
+      // The 20.000 from People went first, oldest line first; then Comer's 15.000 found its oldest line paid.
+      expect(Object.fromEntries(herCollected())).toEqual({
+        [OLDER]: 15_000,
+        [MIDDLE]: 5_000,
+        [NEWER]: 15_000,
+      });
+    });
+
+    it("covers your lines of that group first when you pay them back", async () => {
+      const fronted = (row: SharedExpense): SharedExpense =>
+        new SharedExpense({ ...row, paidByContactId: ana });
+      expenses.listByCounterparty.mockResolvedValue([
+        fronted(expense(OLDER, "10", 90_000, 0, CINE)),
+        fronted(expense(NEWER, "20", 60_000, 0, COMER)),
+      ]);
+      settlements.listByCounterparty.mockResolvedValue([
+        paymentOf(0, { paid: 30_000, groupId: COMER }),
+      ]);
+
+      const { changes } = await recompute();
+
+      expect(
+        changes.map((one) => [one.expenseId, one.groupId, one.after]),
+      ).toEqual([[NEWER, COMER, 30_000]]);
+    });
   });
 
   it("writes what that leaves as yours on the movement, and says why", async () => {

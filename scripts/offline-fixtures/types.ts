@@ -112,6 +112,8 @@ export interface ScenarioSettlement {
   outsideApp?: boolean;
   /** Paid after the write-offs were decided, which is what makes their ceiling visible. */
   afterWriteOffs?: boolean;
+  /** The key of the shared group it was paid from, whose lines it covers first. */
+  group?: string;
   note?: string;
 }
 
@@ -388,6 +390,8 @@ export interface FixtureSettlement {
     contactId: string | null;
     expenseId: string | null;
   };
+  /** The shared group it was paid from: its lines are covered before any other. */
+  groupId: string | null;
   date: string;
   collected: number;
   paid: number;
@@ -395,6 +399,8 @@ export interface FixtureSettlement {
   /** Seeded after the write-offs: their ceiling was decided without this money. */
   afterWriteOffs: boolean;
   deletedAt: string | null;
+  /** The order payments are imputed in, with the id breaking a tie; it follows the order they are seeded in. */
+  createdAt: string;
   note?: string;
 }
 

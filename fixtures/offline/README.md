@@ -74,10 +74,17 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
   without agreeing on an order. A block of guests weighs as many parts as it
   counts and is one party to collect from.
 - **A payment belongs to the person, not to the line**: it covers the **oldest
-  line first** across every group shared with them, ties broken by expense id.
+  open line first** across every group shared with them, ties broken by expense
+  id. **One paid from a group (`groupId`) covers that group's open lines first**,
+  oldest first, and only what is left goes to the oldest open lines anywhere.
+  Payments are imputed **one at a time, in the order they were recorded**
+  (`createdAt`, then `id`; one not stored yet goes last), so a new one never
+  moves what an earlier one covers but for a refund. With no `groupId` anywhere this is exactly
+  pooling every payment and covering the oldest line first.
   What you hand over covers your own lines first, and whatever is left of it is
-  their money going back, so it comes off what they gave you **before** any of
-  that is imputed. `collected` on a share is never typed: it is that answer.
+  their money going back, so it comes off what they gave you, **newest payment
+  first**, before any of that is imputed. `collected` on a share is never
+  typed: it is that answer.
 - **A write-off gives up on what was open when it was decided** and never more
   than is open now. It moves no figure: what left the account was counted as
   yours the day it left.
@@ -113,7 +120,7 @@ ids cannot name — the generator refuses a `paid` settlement rather than write
 a balance it cannot explain, and for the same reason no row is of type
 `SETTLEMENT`. What a settle-up moves is in `expected.balances` all the same.
 
-Three fields of the shared layer are worth spelling out:
+Four fields of the shared layer are worth spelling out:
 
 - **`expected.shared[].people[].surplus`** is what THEY handed over beyond
   every line of theirs. It stays on the counter and the next line eats it, so
@@ -128,6 +135,11 @@ Three fields of the shared layer are worth spelling out:
   instruction to whoever seeds the fixture: record this payment after the
   write-offs, which is the only order in which a ceiling is visible. The
   change feed has nothing like it.
+- **`settlements[].createdAt` is the order, not a moment.** The generator
+  stamps the payments a minute apart in the order they are seeded — what
+  comes before the write-offs, then what comes after — and whoever seeds the
+  fixture records them in that same order, so the server's own stamps sort
+  them the same way. Only the order is part of the contract.
 
 ## The fixtures
 
@@ -187,7 +199,7 @@ Three fields of the shared layer are worth spelling out:
 
 - 100.000 between three does not divide: the odd peso is whoever fronted it.
 - A block of twenty guests weighs twenty parts and is one party to collect from.
-- A payment covers the oldest line first, across the whole group.
+- A payment from no group covers the oldest line first, across the whole group.
 - Cash outside the app moves no account and lowers what counts as yours all the same.
 - A write-off gives up on what was open and moves no figure.
 - What Stats and the budgets measure is what is left as yours, never the amount.
@@ -196,5 +208,7 @@ Three fields of the shared layer are worth spelling out:
 - A fixed share plus the rest divided: the pinned figure never moves.
 - More than they owed stays on the counter as surplus; nothing is over-collected.
 - A write-off keeps the ceiling it was decided against: what is paid later lowers what it gives up.
+- A payment from a group covers that group's open lines first, though another group's are older; only what is left goes oldest first.
+- Payments are imputed in the order they were recorded (`createdAt`, then id), never by their date: People's, recorded first, takes Comer's oldest line, so Comer's own payment finds only its newer one open and Cine stays unpaid.
 
 4 transactions · 1 accounts · 1 categories · 1 budgets · 2 spending queries · 1 ordered list · reference `2026-08-20T12:00:00-05:00`

@@ -46,6 +46,7 @@ export class SharedSettlementRepository implements ISharedSettlementRepository {
         contactId: doc.counterparty.contactId,
         expenseId: doc.counterparty.expenseId,
       },
+      groupId: doc.groupId ?? null,
       date: doc.date,
       collected: fromCents(doc.collected),
       paid: fromCents(doc.paid),

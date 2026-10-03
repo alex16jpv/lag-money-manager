@@ -1133,8 +1133,8 @@ const newYork: Scenario = {
  * COP again, and on purpose: the currency with no minor unit is where a split
  * leaves a remainder and where two implementations drift. Everything shared
  * lives here — the four modes, a block of guests, several payers, a payment
- * imputed oldest line first, one in cash the app never saw, and a write-off
- * that moves no figure at all.
+ * imputed oldest line first, one paid from a group that covers it first, one
+ * in cash the app never saw, and a write-off that moves no figure at all.
  */
 const shared: Scenario = {
   id: "cop-shared",
@@ -1143,7 +1143,7 @@ const shared: Scenario = {
   pins: [
     "100.000 between three does not divide: the odd peso is whoever fronted it.",
     "A block of twenty guests weighs twenty parts and is one party to collect from.",
-    "A payment covers the oldest line first, across the whole group.",
+    "A payment from no group covers the oldest line first, across the whole group.",
     "Cash outside the app moves no account and lowers what counts as yours all the same.",
     "A write-off gives up on what was open and moves no figure.",
     "What Stats and the budgets measure is what is left as yours, never the amount.",
@@ -1152,6 +1152,8 @@ const shared: Scenario = {
     "A fixed share plus the rest divided: the pinned figure never moves.",
     "More than they owed stays on the counter as surplus; nothing is over-collected.",
     "A write-off keeps the ceiling it was decided against: what is paid later lowers what it gives up.",
+    "A payment from a group covers that group's open lines first, though another group's are older; only what is left goes oldest first.",
+    "Payments are imputed in the order they were recorded (`createdAt`, then id), never by their date: People's, recorded first, takes Comer's oldest line, so Comer's own payment finds only its newer one open and Cine stays unpaid.",
   ],
   user: {
     id: "01930005-0000-7000-8000-00000000u005",
@@ -1217,6 +1219,7 @@ const shared: Scenario = {
     { key: "dani", name: "Dani" },
     { key: "elena", name: "Elena" },
     { key: "fabio", name: "Fabio" },
+    { key: "gabi", name: "Gabi" },
   ],
   sharedGroups: [
     {
@@ -1364,6 +1367,61 @@ const shared: Scenario = {
         },
       ],
     },
+    {
+      key: "cine",
+      name: "Cine",
+      contacts: ["gabi"],
+      defaultMode: "EQUAL",
+      expect: {
+        owedToYou: 10000,
+        youOwe: 0,
+        collected: 0,
+        writtenOff: 0,
+        status: "OPEN",
+        people: { gabi: { owesYou: 10000, state: "NOT_PAID" } },
+      },
+      note: "Between Comer's two lines by date. Oldest first, or with the payments taken by their date, it would be paid; in the order they were recorded nothing reaches it.",
+      expenses: [
+        {
+          key: "g-cine",
+          description: "Boletas de cine",
+          date: "2026-08-03T20:00:00-05:00",
+          amount: 20000,
+          expect: { you: 10000, gabi: 10000 },
+        },
+      ],
+    },
+    {
+      key: "comer",
+      name: "Comer",
+      contacts: ["gabi"],
+      defaultMode: "EQUAL",
+      expect: {
+        owedToYou: 0,
+        youOwe: 0,
+        collected: 50000,
+        writtenOff: 0,
+        status: "SETTLED",
+        people: { gabi: { owesYou: 0, state: "PAID" } },
+      },
+      note: "Gabi's oldest line and her newest: People's payment took the first, and the one from this group the second, though Cine's is older.",
+      expenses: [
+        {
+          key: "g-comer-old",
+          description: "Desayuno",
+          date: "2026-08-01T09:00:00-05:00",
+          amount: 20000,
+          expect: { you: 10000, gabi: 10000 },
+        },
+        {
+          key: "g-comer-new",
+          description: "Almuerzo",
+          date: "2026-08-09T13:00:00-05:00",
+          amount: 80000,
+          expect: { you: 40000, gabi: 40000 },
+        },
+      ],
+    },
   ],
   settlements: [
     {
@@ -1402,6 +1460,21 @@ const shared: Scenario = {
       collected: 5000,
       afterWriteOffs: true,
       note: "Paid after you had already given up on him: the write-off keeps its 35.000 ceiling and gives up 30.000.",
+    },
+    {
+      key: "gabi-pays",
+      with: "gabi",
+      date: "2026-08-16T10:00:00-05:00",
+      collected: 10000,
+      note: "From People, recorded first though dated after the one from Comer: it covers the oldest line, Comer's breakfast.",
+    },
+    {
+      key: "gabi-pays-comer",
+      with: "gabi",
+      group: "comer",
+      date: "2026-08-14T10:00:00-05:00",
+      collected: 40000,
+      note: "From Comer, recorded second: Comer's still-open lunch first, though Cine is older. Taken by date, it would cover both of Comer's and leave 10.000 for People's to put on Cine.",
     },
   ],
   spending: [

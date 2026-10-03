@@ -590,8 +590,7 @@ export class SyncBatchService {
         body: bodyOf(v.createSettlementSchema),
         create: true,
         categoryFields: ["categoryId", "categories[].categoryId"],
-        // No `accountFields`: a 404 here can also be the contact or the expense, and naming the
-        // account as the cause would be a true-sounding message the batch cannot stand behind.
+        // No `accountFields`: a 404 here can also be the contact, the expense or the group, not only the account.
 
         run: ({ body, ctx, outcome }) =>
           this.settlements.createSettlement(

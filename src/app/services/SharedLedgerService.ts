@@ -18,7 +18,7 @@ import {
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { ApiError } from "../../shared/errors";
 import { fromCents, toCents } from "../../shared/money";
-import { impute, OwedLine } from "../../shared/sharedImputation";
+import { imputeCounterparty, OwedLine } from "../../shared/sharedImputation";
 import { TxSession } from "../../shared/unitOfWork";
 import { Restamp, RestampJournal } from "./restamps";
 import { stampSharedChange } from "./sharedLedger";
@@ -27,6 +27,7 @@ import { resplitForNewAmount } from "./sharedSplitting";
 /** What one share of one expense went from and to, so the caller can record what it just covered. */
 export interface ShareChange {
   expenseId: string;
+  groupId: string;
   description: string | null;
   date: Date;
   party: SharedShare["party"];
@@ -135,13 +136,6 @@ export class SharedLedgerService {
         party,
         session,
       );
-      const pools = {
-        theyOwe: settlements.reduce(
-          (sum, one) => sum + toCents(one.collected),
-          0,
-        ),
-        youOwe: settlements.reduce((sum, one) => sum + toCents(one.paid), 0),
-      };
 
       const theirLines: OwedLine[] = [];
       const yourLines: OwedLine[] = [];
@@ -155,6 +149,7 @@ export class SharedLedgerService {
             key: expense.id,
             date: expense.date,
             owed: toCents(theirs.amount),
+            groupId: expense.groupId,
           });
         }
         const yours = expense.split.shares.find(isYours);
@@ -168,23 +163,30 @@ export class SharedLedgerService {
             key: expense.id,
             date: expense.date,
             owed: toCents(yours.amount),
+            groupId: expense.groupId,
           });
         }
       }
 
-      // What you handed over covers your own lines first; whatever is left of it is their money
-      // going back, so it comes off what they gave you before any of that is imputed.
-      const yours = impute(yourLines, pools.youOwe);
-      const returned = yours.surplus;
-      const theirs = impute(theirLines, pools.theyOwe - returned);
+      const imputed = imputeCounterparty(
+        theirLines,
+        yourLines,
+        settlements.map((one) => ({
+          id: one.id,
+          createdAt: one.createdAt,
+          collected: toCents(one.collected),
+          paid: toCents(one.paid),
+          groupId: one.groupId,
+        })),
+      );
       surplus.set(key, {
-        theirs: fromCents(theirs.surplus),
-        yours: fromCents(Math.max(0, returned - pools.theyOwe)),
+        theirs: fromCents(imputed.surplus.theirs),
+        yours: fromCents(imputed.surplus.yours),
       });
 
       for (const expense of expenses) {
-        const settledByThem = theirs.settled.get(expense.id);
-        const settledByYou = yours.settled.get(expense.id);
+        const settledByThem = imputed.theirs.get(expense.id);
+        const settledByYou = imputed.yours.get(expense.id);
         const shares = expense.split.shares.map((share) => {
           const after =
             settledByThem !== undefined && isTheirs(share, party)
@@ -197,6 +199,7 @@ export class SharedLedgerService {
           if (before === after) return share;
           changes.push({
             expenseId: expense.id,
+            groupId: expense.groupId,
             description: expense.description,
             date: expense.date,
             party: share.party,
@@ -267,7 +270,7 @@ export class SharedLedgerService {
     journal: RestampJournal,
   ): Promise<Transaction> {
     const amountChanged = after.amount !== before.amount;
-    // A payment covers the oldest line first, so a new date can move what it covers.
+    // A payment covers the oldest open line first, so a new date can move what it covers.
     const dateChanged = after.date.getTime() !== before.date.getTime();
     const restated =
       amountChanged || dateChanged || after.description !== before.description;

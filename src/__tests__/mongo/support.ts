@@ -112,6 +112,7 @@ async function seedShared(fixture: Fixture): Promise<void> {
         userId,
         contactId: one.counterparty.contactId ?? undefined,
         expenseId: one.counterparty.expenseId ?? undefined,
+        groupId: one.groupId,
         date: new Date(one.date),
         collected: one.collected || undefined,
         paid: one.paid || undefined,
@@ -186,6 +187,7 @@ export function shared(): {
     settlements: new SharedSettlementService(
       settlementRepo,
       expenseRepo,
+      groupRepo,
       contactRepo,
       userRepo,
       ledger,
