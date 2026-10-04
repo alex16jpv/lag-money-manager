@@ -45,6 +45,20 @@ Content-Type: application/json
 
 { "locale": "es" }
 
+### Update theme (éxito) — paleta brisa | tinta, modo light | dark | system; va entero
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "theme": { "palette": "tinta", "mode": "dark" } }
+
+### Update theme incompleto → 400 VALIDATION (palette is required)
+PUT {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "theme": { "mode": "light" } }
+
 ### Update currency (éxito SOLO si aún no hay cuentas)
 PUT {{baseUrl}}/users/{{userId}}
 Authorization: Bearer {{token}}

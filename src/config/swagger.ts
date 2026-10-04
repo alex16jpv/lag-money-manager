@@ -38,6 +38,7 @@ import {
   SYNC_OP_STATUSES,
   SYNC_WARNINGS,
 } from "../shared/syncBatch";
+import { THEME_MODES, THEME_PALETTES } from "../shared/theme";
 import { INCOME_REFUSED_ON } from "../shared/transactionRules";
 
 // GENERATED from the Zod schemas: never hand-write a request schema here, edit schemas.ts.
@@ -245,9 +246,22 @@ const responseViews = {
       timezone: { type: "string", example: "America/Bogota" },
       currency: { type: "string", example: "COP" },
       locale: { ...enumOf(LOCALES), example: "en" },
+      theme: {
+        allOf: [{ $ref: "#/components/schemas/Theme" }],
+        nullable: true,
+        description:
+          "The palette and mode the owner picked, set by PUT /users/{id}. Null until one was ever picked: each device keeps its own until then.",
+      },
       lastLoginAt: nullableDateTime,
       createdAt: dateTime,
       updatedAt: dateTime,
+    },
+  }),
+  Theme: withRequired({
+    type: "object",
+    properties: {
+      palette: { ...enumOf(THEME_PALETTES), example: "brisa" },
+      mode: { ...enumOf(THEME_MODES), example: "system" },
     },
   }),
   UserWithEmailVerification: {

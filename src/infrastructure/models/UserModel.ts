@@ -3,6 +3,7 @@ import mongoose, { Schema } from "mongoose";
 import { MODEL_NAMES } from "../../shared/constants";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { DEFAULT_LOCALE, Locale, LOCALES } from "../../shared/locale";
+import { Theme, THEME_MODES, THEME_PALETTES } from "../../shared/theme";
 import { DEFAULT_TIMEZONE } from "../../shared/timezone";
 
 export interface IEmailChangeDocument {
@@ -38,6 +39,7 @@ export interface IUserDocument {
   timezone: string;
   currency: string;
   locale: Locale;
+  theme: Theme | null;
   lastLoginAt: Date | null;
   emailVerifiedAt: Date | null;
   confirmDeadline: IConfirmDeadlineDocument | null;
@@ -80,6 +82,24 @@ const UserSchema = new Schema<IUserDocument>(
       required: true,
       default: DEFAULT_LOCALE,
       enum: Object.keys(LOCALES),
+    },
+    theme: {
+      type: new Schema<Theme>(
+        {
+          palette: {
+            type: String,
+            required: true,
+            enum: Object.keys(THEME_PALETTES),
+          },
+          mode: {
+            type: String,
+            required: true,
+            enum: Object.keys(THEME_MODES),
+          },
+        },
+        { _id: false },
+      ),
+      default: null,
     },
     lastLoginAt: { type: Date, default: null },
     emailVerifiedAt: { type: Date, default: null },

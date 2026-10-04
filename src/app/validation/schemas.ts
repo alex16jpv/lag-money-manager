@@ -38,6 +38,12 @@ import {
   SYNC_MAX_OPERATIONS,
 } from "../../shared/syncBatch";
 import { SYNC_MAX_LIMIT } from "../../shared/syncCursor";
+import {
+  THEME_MODES,
+  THEME_PALETTES,
+  ThemeMode,
+  ThemePalette,
+} from "../../shared/theme";
 import { isValidTimeZone } from "../../shared/timezone";
 
 const timezoneField = z
@@ -137,6 +143,26 @@ const localeValues = Object.keys(LOCALES) as [Locale, ...Locale[]];
 const localeField = z
   .enum(localeValues, {
     error: `Invalid locale. Available: ${localeValues.join(", ")}`,
+  })
+  .optional();
+
+const paletteValues = Object.keys(THEME_PALETTES) as [
+  ThemePalette,
+  ...ThemePalette[],
+];
+const modeValues = Object.keys(THEME_MODES) as [ThemeMode, ...ThemeMode[]];
+const choiceError =
+  (field: string, values: readonly string[]) =>
+  (issue: { input: unknown }): string =>
+    issue.input === undefined
+      ? `${field} is required`
+      : `Invalid ${field}. Available: ${values.join(", ")}`;
+const themeField = z
+  .object({
+    palette: z.enum(paletteValues, {
+      error: choiceError("palette", paletteValues),
+    }),
+    mode: z.enum(modeValues, { error: choiceError("mode", modeValues) }),
   })
   .optional();
 
@@ -316,6 +342,7 @@ export const updateUserSchema = z.object({
       timezone: timezoneField,
       currency: currencyField,
       locale: localeField,
+      theme: themeField,
     })
     .refine((data) => Object.values(data).some((v) => v !== undefined), {
       message: "At least one field must be provided",

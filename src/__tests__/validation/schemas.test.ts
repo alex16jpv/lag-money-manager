@@ -598,6 +598,48 @@ describe("Validation Schemas", () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it("accepts a theme with its palette and mode [T-212]", () => {
+      const result = updateUserSchema.safeParse({
+        params: { id: validUUID },
+        body: { theme: { palette: "tinta", mode: "dark" } },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it.each([
+      [{ palette: "tinta" }],
+      [{ mode: "dark" }],
+      [{ palette: "neon", mode: "dark" }],
+      [{ palette: "brisa", mode: "dim" }],
+      [null],
+      ["dark"],
+    ])("rejects the theme %j: both fields, from the lists [T-212]", (theme) => {
+      const result = updateUserSchema.safeParse({
+        params: { id: validUUID },
+        body: { theme },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("says which half of the theme is missing [T-212]", () => {
+      const result = updateUserSchema.safeParse({
+        params: { id: validUUID },
+        body: { theme: { mode: "light" } },
+      });
+      expect(result.error?.issues[0]?.message).toBe("palette is required");
+    });
+
+    it("drops a field the theme does not declare [T-212]", () => {
+      const result = updateUserSchema.safeParse({
+        params: { id: validUUID },
+        body: { theme: { palette: "brisa", mode: "light", accent: "red" } },
+      });
+      expect(result.success && result.data.body.theme).toEqual({
+        palette: "brisa",
+        mode: "light",
+      });
+    });
   });
 
   describe("idParamSchema", () => {

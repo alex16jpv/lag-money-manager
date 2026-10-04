@@ -1,6 +1,7 @@
 import { User } from "../../domain/entities/User";
 import { ENVIRONMENT } from "../../shared/constants";
 import { Locale } from "../../shared/locale";
+import { Theme } from "../../shared/theme";
 
 export interface CreateUserDTO {
   name: string;
@@ -20,6 +21,7 @@ export interface UpdateUserDTO {
   timezone?: string;
   currency?: string;
   locale?: Locale;
+  theme?: Theme;
 }
 
 // For the sheet that confirms the email: which of its two shapes, and when Resend can go.
@@ -47,6 +49,7 @@ export interface UserResponseDTO {
   timezone: string;
   currency: string;
   locale: Locale;
+  theme: Theme | null;
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -77,6 +80,7 @@ export const toUserResponse = (
     timezone: user.timezone,
     currency: user.currency,
     locale: user.locale,
+    theme: user.theme,
     lastLoginAt: user.lastLoginAt,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,

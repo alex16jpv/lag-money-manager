@@ -4,11 +4,12 @@
 
 Manages user profiles after registration. Provides read, update, and delete for the authenticated user's **own** profile — there is no way to reach another user's data, and no endpoint that lists users.
 
-Beyond name/email/password, the profile carries three settings that shape the rest of the API:
+Beyond name/email/password, the profile carries three settings that shape the rest of the API, and the theme:
 
 - **`timezone`** — IANA zone; drives day boundaries in stats and period windows in budgets. Also embedded as a claim in the access token.
 - **`currency`** — ISO 4217 alpha code; the user's single money currency, stamped onto accounts, transactions, and budgets. **Locked once the user has accounts.**
 - **`locale`** — UI language, `en` (default) or `es`. Purely a preference the front reads to pick copy and `Intl` formatting; it follows the user across devices.
+- **`theme`** — `{ palette, mode }`: the palette (`brisa`, `tinta`) and the mode (`light`, `dark`, `system`) the owner picked in Appearance, so it follows them to every device (T-212, the owner's decision 9 of 2026-09-26). The two lists are copied from the web client's (`src/shared/theme.ts`): a palette added there is added here too. **`null` until one is ever picked**, never a default: every device already keeps its own theme, and a default here would overwrite each one the first time the client applied the profile. The client uploads its own when it reads `null`. The API never reads it.
 
 ## Files and Responsibilities
 
@@ -19,7 +20,7 @@ Beyond name/email/password, the profile carries three settings that shape the re
 | `src/app/services/UserService.ts`                            | Self-access enforcement, re-authentication on credential changes, currency lock, password stripping |
 | `src/app/dtos/UserDTO.ts`                                    | `CreateUserDTO`, `UpdateUserDTO`, `UserResponseDTO`                                                 |
 | `src/app/validation/schemas.ts`                              | `updateUserSchema`, `deleteUserSchema`, `idParamSchema`                                             |
-| `src/domain/entities/User.ts`                                | User domain entity (`tokenVersion`, `timezone`, `currency`, `locale`, `lastLoginAt`)                |
+| `src/domain/entities/User.ts`                                | User domain entity (`tokenVersion`, `timezone`, `currency`, `locale`, `theme`, `lastLoginAt`)       |
 | `src/domain/repositories/user/IUserRepository.ts`            | Repository interface (adds `getByEmail`, `recordLogin`, `updateWithTokenBump`, `markDeleted`, …)    |
 | `src/infrastructure/repositories/user/UserRepository.ts`     | Mongoose implementation (soft delete, atomic token-version bumps)                                   |
 | `src/infrastructure/models/UserModel.ts`                     | Mongoose model (unique lowercase `email`)                                                           |
@@ -48,7 +49,7 @@ Beyond name/email/password, the profile carries three settings that shape the re
 
 ### `GET /users/:id`
 
-Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `email`, `emailVerified`, `confirmBy`, `emailConfirmationRequired`, `timezone`, `currency`, `locale`, `lastLoginAt`, `createdAt`, `updatedAt`, and, on this route only, `emailVerification` and `emailChange` ([below](#changing-the-email)). The password is never returned, and neither are `emailVerifiedAt`, `confirmDeadline`, `deletedAt`, `keptUntil` and `dataResetAt`, which stay internal.
+Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `email`, `emailVerified`, `confirmBy`, `emailConfirmationRequired`, `timezone`, `currency`, `locale`, `theme`, `lastLoginAt`, `createdAt`, `updatedAt`, and, on this route only, `emailVerification` and `emailChange` ([below](#changing-the-email)). The password is never returned, and neither are `emailVerifiedAt`, `confirmDeadline`, `deletedAt`, `keptUntil` and `dataResetAt`, which stay internal.
 
 `confirmBy` is the last day of an unconfirmed account from before email existed (`YYYY-MM-DD`, whole, in its time zone; `null` otherwise), and `emailConfirmationRequired` whether that day is over: then every route but this one, the change of email and the auth routes answers `403 EMAIL_CONFIRMATION_REQUIRED` ([auth.md](auth.md#the-deadline-of-the-accounts-from-before-email)). This route stays open past the deadline, so the app learns why.
 
@@ -62,7 +63,7 @@ Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `
 
 ### `PUT /users/:id`
 
-Update the profile. Partial updates over `name`, `password`, `timezone`, `currency`, `locale`; at least one field must be present.
+Update the profile. Partial updates over `name`, `password`, `timezone`, `currency`, `locale`, `theme`; at least one field must be present. **`theme` goes whole** (`{ palette, mode }`, both required: `400 VALIDATION` otherwise) and replaces the one saved; the last write wins. Like every profile change it bumps `updatedAt`, so the sync feed carries it to the other devices.
 
 **The email does not change here.** A body that carries `email` — any value, the account's own address and `null` included — is refused whole with `400 EMAIL_CHANGE_REQUIRES_VERIFICATION` (`details` on the field `email`), once the session is checked and before the password limiter or the validation run: nothing else is checked, spent or written. The email changes only through [Changing the email](#changing-the-email), once the new address confirms it. Until T-232 this `PUT` moved the account at once and confirmed afterwards (the web client's way before T-222); it is refused rather than dropped as an undeclared field, because a client still sending it would otherwise read a `200` and believe the account had moved.
 
