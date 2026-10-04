@@ -1,6 +1,13 @@
 import { spawnSync } from "child_process";
 import { parse as parseEnv } from "dotenv";
-import { existsSync, readFileSync } from "fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
+import { tmpdir } from "os";
 import path from "path";
 
 export const REPO = path.resolve(__dirname, "../..");
@@ -34,7 +41,6 @@ export class AwsError extends Error {
 export function aws(
   settings: DeploySettings,
   args: string[],
-  input?: string,
 ): Record<string, unknown> {
   const result = spawnSync(
     "aws",
@@ -48,7 +54,7 @@ export function aws(
       "json",
       "--no-cli-pager",
     ],
-    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, input },
+    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
   );
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -58,6 +64,24 @@ export function aws(
   }
   const out = result.stdout.trim();
   return out ? (JSON.parse(out) as Record<string, unknown>) : {};
+}
+
+export function awsWithInput(
+  settings: DeploySettings,
+  args: string[],
+  input: object,
+): Record<string, unknown> {
+  const dir = mkdtempSync(path.join(tmpdir(), "ledger-flow-infra-"));
+  const file = path.join(dir, "input.json");
+  const stayForCleanup = (): void => undefined;
+  process.on("SIGINT", stayForCleanup);
+  try {
+    writeFileSync(file, JSON.stringify(input), { mode: 0o600 });
+    return aws(settings, [...args, "--cli-input-json", `file://${file}`]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    process.removeListener("SIGINT", stayForCleanup);
+  }
 }
 
 export type Identity = { Arn: string; Account: string };

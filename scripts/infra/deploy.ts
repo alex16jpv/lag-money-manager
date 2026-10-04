@@ -6,6 +6,7 @@ import { parseArgs } from "util";
 import {
   aws,
   AwsError,
+  awsWithInput,
   type DeploySettings,
   deploySettings,
   ensureSession,
@@ -246,24 +247,15 @@ async function main(): Promise<void> {
 
   const changeSet = `${stack}-${Date.now()}`;
   const target = ["--stack-name", stack, "--change-set-name", changeSet];
-  aws(
-    settings,
-    [
-      "cloudformation",
-      "create-change-set",
-      "--cli-input-json",
-      "file:///dev/stdin",
-    ],
-    JSON.stringify({
-      StackName: stack,
-      ChangeSetName: changeSet,
-      ChangeSetType: type,
-      TemplateBody: template,
-      Parameters: parameters,
-      Capabilities: ["CAPABILITY_NAMED_IAM"],
-      ...(type === "IMPORT" ? { ResourcesToImport: toImport } : {}),
-    }),
-  );
+  awsWithInput(settings, ["cloudformation", "create-change-set"], {
+    StackName: stack,
+    ChangeSetName: changeSet,
+    ChangeSetType: type,
+    TemplateBody: template,
+    Parameters: parameters,
+    Capabilities: ["CAPABILITY_NAMED_IAM"],
+    ...(type === "IMPORT" ? { ResourcesToImport: toImport } : {}),
+  });
   const discard = (): void => {
     aws(settings, ["cloudformation", "delete-change-set", ...target]);
     if (type === "UPDATE") return;
