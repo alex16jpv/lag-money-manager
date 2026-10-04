@@ -19,7 +19,7 @@ refusals): [ADR-005](../architecture/decisions/005-aws-declared-in-cloudformatio
 There are two deploys. **The code** goes with `npm run deploy:lambda` and the deploy profile
 (`AWS_PROFILE`), exactly as before T-246. **Everything else** — the Lambda's environment variables,
 its memory and timeout, the daily rule, permissions, alarms, the budget — goes with
-`npm run deploy:infra -- <part>` and the administrator profile (`INFRA_AWS_PROFILE`), after the change
+`npm run deploy:infra -- <part>` and the administrator profile (`INFRA_AWS_PROFILE`, [Signing in](#signing-in)), after the change
 is written in `infra/` and merged. Nothing is changed in the AWS console (the one exception is an
 emergency, [below](#changes-made-in-the-console)).
 
@@ -27,7 +27,7 @@ emergency, [below](#changes-made-in-the-console)).
 | --- | --- | --- |
 | Ship merged code of this repository | — | `npm run deploy:lambda` |
 | Change a production variable that is not a secret (a cap, a switch, `LOG_LEVEL`, `CORS_ORIGIN`, …) | `infra/api.yaml`, `ApiFunction` → `Environment` → `Variables` | `npm run deploy:infra -- api`; it applies from the next invocation, with no code deploy |
-| Change a secret (`MONGO_URI`, `JWT_SECRET`, `REFRESH_SECRET`, `API_SECRET`, `TURNSTILE_SECRET`) | Its SSM parameter, [The secrets](#the-secrets) | `npm run deploy:infra -- api` |
+| Change a secret (`MONGO_URI`, `JWT_SECRET`, `REFRESH_SECRET`, `API_SECRET`, `TURNSTILE_SECRET`) | Its value in Parameter Store, in the AWS console ([The secrets](#the-secrets)) | `npm run deploy:infra -- api` |
 | Add a variable the code reads | In the same pull request: its schema in `src/shared/constants.ts`, [Environment Variables](./environment-vars.md), `.env.example`, and its value in `infra/api.yaml` | **First** `npm run deploy:infra -- api`, **then** `npm run deploy:lambda`: code that needs a variable refuses to start without it |
 | Add a secret the code reads | As above, but the value goes to SSM, a `NoEcho` parameter in `infra/api.yaml` and an entry in `API_SECRETS` (`scripts/infra/parts.ts`) | Create its SSM parameter, then as above |
 | Remove a variable | The code that reads it, then `infra/api.yaml` | **First** `npm run deploy:lambda`, **then** `npm run deploy:infra -- api` |
@@ -79,8 +79,29 @@ replacing or removing any of their resources, from this command or from the cons
 
 It prints the names of what differs, never a value, and exits 1 when anything does.
 
-Both read `.env.deploy`: `INFRA_AWS_PROFILE` is the administrator (an `aws login` profile with MFA;
-`deploy:infra` opens the login when its session has expired), `AWS_PROFILE` stays `lag-deploy`.
+## Signing in
+
+Two AWS profiles, both named in `.env.deploy`:
+
+| Profile | In `.env.deploy` | Used by | How it signs in |
+| --- | --- | --- | --- |
+| `lag-deploy` | `AWS_PROFILE` | `deploy:lambda`, `infra:check` | Its access key ([Deployment](./deployment.md), Option A): nothing to do, it does not expire |
+| The administrator (`ledgerflow-admin` on the owner's machine) | `INFRA_AWS_PROFILE` | `deploy:infra` | `aws login`: you sign in in the browser, with MFA, and the CLI gets temporary credentials |
+
+**Once per machine**, create the administrator profile and sign in (AWS CLI v2 from late 2025 or newer):
+
+```bash
+aws configure set region us-east-1 --profile ledgerflow-admin
+aws login --profile ledgerflow-admin
+```
+
+`aws login` opens the browser; sign in to the AWS account there and come back to the terminal.
+
+**Every time after that, you do not have to sign in first.** `deploy:infra` checks the session before
+anything else; when it has expired it runs `aws login --profile <INFRA_AWS_PROFILE>` itself, waits for
+the browser sign-in and carries on. Running `aws login --profile ledgerflow-admin` by hand first does
+the same. To see which identity a profile is signed in as:
+`aws sts get-caller-identity --profile ledgerflow-admin`.
 
 ## Changes made in the console
 
@@ -112,11 +133,27 @@ a Lambda's environment on its own: only a few resource types accept one.
 | `/ledger-flow/api/API_SECRET` | `API_SECRET` |
 | `/ledger-flow/api/TURNSTILE_SECRET` | `TURNSTILE_SECRET` |
 
-To change one, overwrite it and deploy the api part (the value is typed into the terminal, never
-into a file or the history):
+**Changing a secret in SSM changes nothing in the running API by itself:** the Lambda gets the new
+value only when `npm run deploy:infra -- api` runs. So it is always two steps, the value and then the
+deploy.
+
+**In the AWS console** (signed in as the administrator, region **N. Virginia, us-east-1**):
+
+1. Type `Parameter Store` in the console's search bar and open it (it is part of Systems Manager).
+2. The five parameters are listed by name. To see one, click its name and choose **Show decrypted
+   value** (shown on screen only).
+3. To change it: **Edit** → paste the new value in **Value** → **Save changes**. Its version goes up by
+   one.
+4. Run `npm run deploy:infra -- api`. The change set shows `Modify ApiFunction: Environment`; type `yes`.
+
+To add one, **Create parameter**: the name `/ledger-flow/api/<VARIABLE>`, tier **Standard** (free),
+type **SecureString**, the KMS key the console proposes (`alias/aws/ssm`), and the value. A new secret
+also needs code ([Day to day](#day-to-day)).
+
+**Or from a terminal**, the same change (the value is typed, never left in a file or the history):
 
 ```bash
-read -rs VALUE && aws ssm put-parameter --profile <admin profile> --region us-east-1 \
+read -rs VALUE && aws ssm put-parameter --profile ledgerflow-admin --region us-east-1 \
   --name /ledger-flow/api/<VARIABLE> --type SecureString --overwrite --value "$VALUE"; unset VALUE
 ```
 
