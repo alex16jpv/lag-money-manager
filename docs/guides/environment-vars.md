@@ -4,6 +4,11 @@ All environment variables are validated at startup by the Zod schema in
 `src/shared/constants.ts`. The application refuses to start if a required
 variable is missing or invalid — the error names the offending variable.
 
+**In production** every variable is declared in `infra/api.yaml` (the five secrets in SSM Parameter
+Store) and changed with `npm run deploy:infra -- api`, never in the Lambda console. A new variable goes
+in the schema, here, in `.env.example` and in `infra/api.yaml` in the same change, and is deployed
+before the code that reads it: [The AWS Account, Declared](./aws.md#day-to-day).
+
 Only the variables listed here are read. Anything else in your `.env` is
 ignored (the SQL-era `SEQ_*`, `MYSQL_*`, `MONGO_USERNAME`, `MONGO_PASSWORD`
 and `MONGO_DATABASE` variables no longer exist).

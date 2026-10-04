@@ -71,6 +71,10 @@ export default withMermaid({
                   link: "/docs/architecture/decisions/004-zod-for-validation",
                 },
                 {
+                  text: "005 — The AWS Account in CloudFormation",
+                  link: "/docs/architecture/decisions/005-aws-declared-in-cloudformation",
+                },
+                {
                   text: "Template",
                   link: "/docs/architecture/decisions/_template",
                 },

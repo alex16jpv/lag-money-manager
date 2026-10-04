@@ -2,6 +2,8 @@
 
 The production target is **AWS Lambda + a Function URL**, backed by **MongoDB Atlas**. The application is Mongo-only; there is no SQL backend and no data-migration step.
 
+There are two deploys. This guide is the **code** one, `npm run deploy:lambda`. The Lambda's configuration and environment variables, the daily rule, permissions, alarms and budget are declared in `infra/` and deployed with `npm run deploy:infra -- <part>`: what to run for each change is in [The AWS Account, Declared](./aws.md#day-to-day).
+
 ## Prerequisites
 
 - Node.js 22 (the version this repository builds and tests against)
