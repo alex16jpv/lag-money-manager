@@ -91,10 +91,10 @@ interface Session {
 
 const PASSWORD = "Offline!2026";
 
-async function register(
+async function account(
   email: string,
   name: string,
-  fromBefore = true,
+  fromBefore: boolean,
 ): Promise<Session> {
   const opened = await signedInUser(
     { name, email, password: PASSWORD, currency: "COP" },
@@ -106,6 +106,12 @@ async function register(
     userId: opened.user.id,
   };
 }
+
+const accountFromBefore = (email: string, name: string): Promise<Session> =>
+  account(email, name, true);
+
+const confirmedAccount = (email: string, name: string): Promise<Session> =>
+  account(email, name, false);
 
 async function login(email: string): Promise<Session> {
   const res = await request(app)
@@ -206,7 +212,7 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("waits for the new address, moves the account with its code and keeps only this device signed in", async () => {
-    const ana = await register("ana@change.test", "Ana Ruiz", false);
+    const ana = await confirmedAccount("ana@change.test", "Ana Ruiz");
     const phone = await login("ana@change.test");
 
     const asked = await askToMove(ana, "ana.ruiz@change.test");
@@ -276,8 +282,8 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("moves the account from the link, and keeps this browser's session only when it is the account's", async () => {
-    const beto = await register("beto@change.test", "Beto Cano");
-    const cata = await register("cata@change.test", "Cata Diaz");
+    const beto = await accountFromBefore("beto@change.test", "Beto Cano");
+    const cata = await accountFromBefore("cata@change.test", "Cata Diaz");
 
     expect((await askToMove(beto, "beto.new@change.test")).status).toBe(202);
     const withSession = await confirmLink(
@@ -305,7 +311,7 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("confirms a never-confirmed account through its new address, and mails the old one nothing", async () => {
-    const dani = await register("dani@change.test", "Dani Gil");
+    const dani = await accountFromBefore("dani@change.test", "Dani Gil");
 
     expect((await askToMove(dani, "dani.gil@change.test")).status).toBe(202);
     const moved = await confirmCode(
@@ -320,7 +326,7 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("replaces a waiting change with a newer one, and the first one's code and link stop working", async () => {
-    const eva = await register("eva@change.test", "Eva Paz");
+    const eva = await accountFromBefore("eva@change.test", "Eva Paz");
 
     expect((await askToMove(eva, "eva.first@change.test")).status).toBe(202);
     const first = lastEmailTo("eva.first@change.test");
@@ -345,7 +351,7 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("cancels a waiting change, and its link no longer moves anything", async () => {
-    const fede = await register("fede@change.test", "Fede Luna");
+    const fede = await accountFromBefore("fede@change.test", "Fede Luna");
 
     expect((await askToMove(fede, "fede.new@change.test")).status).toBe(202);
     const { token, code } = lastEmailTo("fede.new@change.test");
@@ -368,11 +374,11 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("drops the change when the address became another account's meanwhile, as the unique index says", async () => {
-    const gina = await register("gina@change.test", "Gina Mar");
+    const gina = await accountFromBefore("gina@change.test", "Gina Mar");
 
     expect((await askToMove(gina, "taken@change.test")).status).toBe(202);
     const { token } = lastEmailTo("taken@change.test");
-    await register("taken@change.test", "Somebody Else");
+    await accountFromBefore("taken@change.test", "Somebody Else");
 
     const refused = await confirmLink(token);
     expect(refused.status).toBe(409);
@@ -396,7 +402,7 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("saves nothing when the email to the new address cannot go out", async () => {
-    const hugo = await register("hugo@change.test", "Hugo Sol");
+    const hugo = await accountFromBefore("hugo@change.test", "Hugo Sol");
     mockUnreachable.add("hugo.new@change.test");
     try {
       const failed = await askToMove(hugo, "hugo.new@change.test");
@@ -409,7 +415,7 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("guards the request with the current password and Resend with the address's own brake", async () => {
-    const ines = await register("ines@change.test", "Ines Rey");
+    const ines = await accountFromBefore("ines@change.test", "Ines Rey");
 
     const wrong = await askToMove(ines, "ines.new@change.test", "not-it");
     expect(wrong.status).toBe(401);
@@ -426,7 +432,7 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("uses a code up after five wrong tries", async () => {
-    const juan = await register("juan@change.test", "Juan Ros");
+    const juan = await accountFromBefore("juan@change.test", "Juan Ros");
     expect((await askToMove(juan, "juan.new@change.test")).status).toBe(202);
     const { code } = lastEmailTo("juan.new@change.test");
     const wrong = code === "000000" ? "111111" : "000000";
@@ -449,7 +455,7 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("ends the session rows of a password change, so Active sessions lists only the device that made it", async () => {
-    const kike = await register("kike@change.test", "Kike Paz");
+    const kike = await accountFromBefore("kike@change.test", "Kike Paz");
     await login("kike@change.test");
 
     const changed = await as(
@@ -467,8 +473,8 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("hands the invitations waiting for the new address to the feed once it is confirmed, and keeps the answer through the next move", async () => {
-    const lola = await register("lola@change.test", "Lola Paz", false);
-    const mario = await register("mario@change.test", "Mario Gil", false);
+    const lola = await confirmedAccount("lola@change.test", "Lola Paz");
+    const mario = await confirmedAccount("mario@change.test", "Mario Gil");
 
     const contact = await as(
       lola,
@@ -543,8 +549,8 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("keeps each account's code and link its own when two ask for the same address [review]", async () => {
-    const nora = await register("nora@change.test", "Nora Paz");
-    const otto = await register("otto@change.test", "Otto Gil");
+    const nora = await accountFromBefore("nora@change.test", "Nora Paz");
+    const otto = await accountFromBefore("otto@change.test", "Otto Gil");
 
     expect((await askToMove(nora, "shared@change.test")).status).toBe(202);
     const noras = lastEmailTo("shared@change.test");
@@ -564,8 +570,8 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("never lets another account's request turn somebody's link into its own move [review]", async () => {
-    const pia = await register("pia@change.test", "Pia Sol");
-    const quim = await register("quim@change.test", "Quim Ros");
+    const pia = await accountFromBefore("pia@change.test", "Pia Sol");
+    const quim = await accountFromBefore("quim@change.test", "Quim Ros");
 
     expect((await askToMove(pia, "inbox@change.test")).status).toBe(202);
     const pias = lastEmailTo("inbox@change.test");
@@ -588,7 +594,7 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("asks a code for the session and takes one proof at a time", async () => {
-    const rosa = await register("rosa@change.test", "Rosa Mar");
+    const rosa = await accountFromBefore("rosa@change.test", "Rosa Mar");
     expect((await askToMove(rosa, "rosa.new@change.test")).status).toBe(202);
     const { code, token } = lastEmailTo("rosa.new@change.test");
 

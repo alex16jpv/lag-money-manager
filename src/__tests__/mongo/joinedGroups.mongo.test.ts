@@ -16,7 +16,7 @@ interface Session {
 
 type Row = Record<string, unknown>;
 
-async function register(email: string, name: string): Promise<Session> {
+async function accountFor(email: string, name: string): Promise<Session> {
   const res = await signedInUser({
     name,
     email,
@@ -78,8 +78,8 @@ describe("a group shared with you, against mongod", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    ana = await register("ana@joined.test", "Ana Ruiz");
-    beto = await register("beto@joined.test", "Beto Cano");
+    ana = await accountFor("ana@joined.test", "Ana Ruiz");
+    beto = await accountFor("beto@joined.test", "Beto Cano");
 
     betoContact = await created(
       as(

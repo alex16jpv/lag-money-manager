@@ -61,7 +61,7 @@ const op = (
   ...over,
 });
 
-async function register(email: string): Promise<Session> {
+async function accountFor(email: string): Promise<Session> {
   const res = await signedInUser({
     name: "Batch tester",
     email,
@@ -122,7 +122,7 @@ describe("POST /sync against mongod", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    alice = await register("alice@batch.test");
+    alice = await accountFor("alice@batch.test");
   });
 
   afterAll(async () => {

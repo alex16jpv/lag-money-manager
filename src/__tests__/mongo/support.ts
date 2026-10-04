@@ -48,7 +48,19 @@ export interface SignedInUser extends OpenedSession {
   user: UserResponseDTO;
 }
 
-// As a sign-up leaves it, past the code step accountLifecycle walks; fromBefore is an account from before email.
+let auth: AuthService | undefined;
+const authService = (): AuthService =>
+  (auth ??= new AuthService(
+    repositoryFactory.getUserRepository(),
+    new CategoryService(
+      repositoryFactory.getCategoryRepository(),
+      repositoryFactory.getTransactionRepository(),
+    ),
+    repositoryFactory.getRefreshSessionRepository(),
+    createEmailService(),
+  ));
+
+// Confirmed, as a sign-up's code creates it; fromBefore clears the confirmation, as the accounts from before email have none.
 export async function signedInUser(
   fields: {
     name: string;
@@ -63,25 +75,29 @@ export async function signedInUser(
   const { password, ...profile } = signUpSchema.parse({
     body: { ...fields, captcha: TEST_CAPTCHA },
   }).body;
-  const auth = new AuthService(
-    repositoryFactory.getUserRepository(),
-    new CategoryService(
-      repositoryFactory.getCategoryRepository(),
-      repositoryFactory.getTransactionRepository(),
-    ),
-    repositoryFactory.getRefreshSessionRepository(),
-    createEmailService(),
-  );
-  const user = await auth.createAccount({
+  const created = await authService().createAccount({
     name: profile.name,
     email: profile.email,
     timezone: profile.timezone,
     currency: profile.currency,
     locale: profile.locale,
     passwordHash: await bcryptjs.hash(password, ENVIRONMENT.BCRYPT_SALT_ROUNDS),
-    emailVerifiedAt: fromBefore ? null : new Date(),
+    emailVerifiedAt: new Date(),
   });
-  return { ...(await auth.openSession(user)), user: toUserResponse(user) };
+  if (fromBefore) {
+    await UserModel.updateOne(
+      { _id: created.id },
+      { $set: { emailVerifiedAt: null } },
+    );
+  }
+  const user = fromBefore
+    ? await repositoryFactory.getUserRepository().getById(created.id)
+    : created;
+  if (!user) throw new Error(`${fields.email} vanished once created`);
+  return {
+    ...(await authService().openSession(user)),
+    user: toUserResponse(user),
+  };
 }
 
 const FIXTURE_DIR =

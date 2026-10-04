@@ -106,7 +106,7 @@ async getById(id: string): Promise<Account | null> {
 
 ```typescript
 // BAD — returning full user object including password
-async register(dto: CreateUserDTO): Promise<User> {
+async createAccount(dto: CreateUserDTO): Promise<User> {
   const user = new User({ ...dto, password: hashedPassword });
   return await this.repo.create(user);
 }
@@ -119,7 +119,7 @@ Exposes hashed passwords to API consumers. Security vulnerability.
 
 ```typescript
 // GOOD — strip password before returning
-async register(dto: CreateUserDTO): Promise<UserResponseDTO> {
+async createAccount(dto: CreateUserDTO): Promise<UserResponseDTO> {
   const created = await this.repo.create(user);
   const { password: _, ...userWithoutPassword } = created as User & { password?: string };
   return userWithoutPassword as UserResponseDTO;

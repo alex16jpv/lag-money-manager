@@ -26,7 +26,7 @@ interface Lister {
 }
 
 // Registration leaves the profile in America/Bogota (UTC-5), where every window below is cut.
-async function register(email: string): Promise<Lister> {
+async function accountFor(email: string): Promise<Lister> {
   const registered = await signedInUser({
     name: "Lister",
     email,
@@ -83,7 +83,7 @@ describe("budgets the listing leaves out, against mongod", () => {
   let lister: Lister;
 
   beforeAll(async () => {
-    lister = await register("lister@budgets.test");
+    lister = await accountFor("lister@budgets.test");
     const [trips, food, rent] = lister.categories;
 
     // Written first on purpose: uuidv7 grows with creation, so they head the `_id` order.
@@ -206,7 +206,7 @@ describe("the edges of the reference window, against mongod", () => {
   let createdAt: string;
 
   beforeAll(async () => {
-    lister = await register("edges@budgets.test");
+    lister = await accountFor("edges@budgets.test");
     const [late, exact, trip, plain] = lister.categories;
 
     // Sunday 22:00 in Bogota but already Monday in UTC: it belongs to the week of the 14th.

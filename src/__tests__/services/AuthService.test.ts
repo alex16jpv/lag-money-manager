@@ -553,7 +553,7 @@ describe("AuthService", () => {
           name: "Ana",
           email: "ana@example.com",
           passwordHash: "$2b$04$hash",
-          emailVerifiedAt: null,
+          emailVerifiedAt: new Date("2026-09-28T00:00:00Z"),
         }),
       ).rejects.toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
       expect(categoryService.seedDefaultCategories).not.toHaveBeenCalled();
@@ -572,7 +572,7 @@ describe("AuthService", () => {
           name: "Ana",
           email: "ana@example.com",
           passwordHash: "$2b$04$hash",
-          emailVerifiedAt: null,
+          emailVerifiedAt: new Date("2026-09-28T00:00:00Z"),
         }),
       ).rejects.toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
     });
@@ -586,7 +586,7 @@ describe("AuthService", () => {
           name: "Ana",
           email: "ana@example.com",
           passwordHash: "$2b$04$hash",
-          emailVerifiedAt: null,
+          emailVerifiedAt: new Date("2026-09-28T00:00:00Z"),
         }),
       ).rejects.toBe(failure);
     });
@@ -602,7 +602,7 @@ describe("AuthService", () => {
           name: "Ana",
           email: "ana@example.com",
           passwordHash: "$2b$04$hash",
-          emailVerifiedAt: null,
+          emailVerifiedAt: new Date("2026-09-28T00:00:00Z"),
         }),
       ).resolves.toMatchObject({ name: "Ana" });
     });

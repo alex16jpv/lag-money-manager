@@ -283,6 +283,29 @@ describe("The account lifecycle against mongod [T-238]", () => {
       expect((await logIn("cata@life.test", "Second!2026")).status).toBe(200);
       expect(await SignUpModel.countDocuments({})).toBeGreaterThan(0);
     });
+
+    it("answers EMAIL_TAKEN to the code when the address became another account's meanwhile, and lets go of its claim", async () => {
+      await minutePasses();
+      const started = await startSignUp("race@life.test");
+      const code = codeIn(lastEmail("race@life.test", "sign-up"));
+      const other = await signedInUser({
+        name: "Faster",
+        email: "race@life.test",
+        password: "Faster!2026",
+      });
+
+      const late = await confirmSignUp(started.body.signUpToken, code);
+
+      expect(late.status).toBe(409);
+      expect(late.body.code).toBe("EMAIL_TAKEN");
+      expect(late.body).not.toHaveProperty("accessToken");
+      expect(
+        await UserModel.find({ email: "race@life.test" }).distinct("_id"),
+      ).toEqual([other.user.id]);
+      expect(
+        await SignUpModel.findOne({ email: "race@life.test" }).lean(),
+      ).toMatchObject({ userId: null, signedInAt: null });
+    });
   });
 
   describe("a deleted account", () => {

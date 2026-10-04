@@ -63,7 +63,7 @@ export interface NewAccount {
   timezone?: string;
   currency?: string;
   locale?: User["locale"];
-  emailVerifiedAt: Date | null;
+  emailVerifiedAt: Date;
 }
 
 interface RefreshPayload {

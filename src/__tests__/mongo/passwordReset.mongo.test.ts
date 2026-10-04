@@ -67,7 +67,10 @@ interface Session {
 
 const PASSWORD = "Offline!2026";
 
-async function register(email: string, name: string): Promise<Session> {
+async function accountFromBefore(
+  email: string,
+  name: string,
+): Promise<Session> {
   const opened = await signedInUser(
     { name, email, password: PASSWORD, currency: "COP" },
     { fromBefore: true },
@@ -115,7 +118,7 @@ describe("Forgot your password? against mongod [T-207]", () => {
   });
 
   it("answers an address with an account and one without alike, and mails only the first", async () => {
-    await register("ana@reset.test", "Ana Ruiz");
+    await accountFromBefore("ana@reset.test", "Ana Ruiz");
 
     const withAccount = await forgot("ana@reset.test");
     const without = await forgot("nobody@reset.test");
@@ -145,7 +148,7 @@ describe("Forgot your password? against mongod [T-207]", () => {
   });
 
   it("mails a deleted account its own words, and the new password restores it [T-238]", async () => {
-    const gabi = await register("gabi@reset.test", "Gabi Borra");
+    const gabi = await accountFromBefore("gabi@reset.test", "Gabi Borra");
     const deleted = await as(
       gabi,
       request(app)
@@ -223,7 +226,7 @@ describe("Forgot your password? against mongod [T-207]", () => {
   });
 
   it("spends a code in five tries, and counts the tries of an address with no account too", async () => {
-    await register("beto@reset.test", "Beto Cano");
+    await accountFromBefore("beto@reset.test", "Beto Cano");
     expect((await forgot("beto@reset.test")).status).toBe(202);
     const { code } = lastEmailTo("beto@reset.test");
     const wrong = code === "000000" ? "111111" : "000000";
@@ -246,7 +249,7 @@ describe("Forgot your password? against mongod [T-207]", () => {
   });
 
   it("lets one of two resets with the same code through, never both", async () => {
-    await register("carla@reset.test", "Carla Díaz");
+    await accountFromBefore("carla@reset.test", "Carla Díaz");
     expect((await forgot("carla@reset.test")).status).toBe(202);
     const { code } = lastEmailTo("carla@reset.test");
 

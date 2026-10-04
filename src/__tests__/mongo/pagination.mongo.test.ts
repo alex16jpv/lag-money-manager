@@ -29,7 +29,7 @@ interface Page {
   };
 }
 
-async function register(email: string): Promise<Session> {
+async function accountFor(email: string): Promise<Session> {
   const res = await signedInUser({
     name: "Pager",
     email,
@@ -58,8 +58,8 @@ describe("pagination edges against mongod", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    alice = await register("alice@pager.test");
-    bob = await register("bob@pager.test");
+    alice = await accountFor("alice@pager.test");
+    bob = await accountFor("bob@pager.test");
 
     for (const name of ["Wallet", "Bank", "Card", "Jar"]) {
       const res = await as(

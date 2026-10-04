@@ -16,7 +16,7 @@ interface Session {
   userId: string;
 }
 
-async function register(
+async function accountFor(
   email: string,
   name: string,
   currency = "COP",
@@ -87,9 +87,9 @@ describe("invitations against mongod", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    john = await register("john@invitations.test", "John Doe");
-    beto = await register("beto@invitations.test", "Beto Cano");
-    tom = await register("tom@invitations.test", "Tom Baker", "EUR");
+    john = await accountFor("john@invitations.test", "John Doe");
+    beto = await accountFor("beto@invitations.test", "Beto Cano");
+    tom = await accountFor("tom@invitations.test", "Tom Baker", "EUR");
   });
 
   afterAll(async () => {
@@ -221,7 +221,7 @@ describe("invitations against mongod", () => {
   });
 
   it("never hands somebody else's answers to whoever signs up with the old address", async () => {
-    const newcomer = await register("beto@invitations.test", "Not Beto");
+    const newcomer = await accountFor("beto@invitations.test", "Not Beto");
 
     expect((await feed(newcomer)).invitationsReceived).toHaveLength(0);
   });

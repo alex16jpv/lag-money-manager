@@ -71,7 +71,7 @@ const accountLimiters = [
   emailLimiter,
 ];
 
-const registerLimiter = authRateLimit({
+const signUpLimiter = authRateLimit({
   keyPrefix: "register",
   max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
@@ -201,7 +201,7 @@ const refreshLimiter = authRateLimit({
  */
 router.post(
   "/sign-up",
-  registerLimiter,
+  signUpLimiter,
   AuthController.recognizeDevice,
   validate(signUpSchema),
   requireCaptcha("register", captcha),
@@ -265,7 +265,7 @@ router.post(
  */
 router.post(
   "/sign-up/resend",
-  registerLimiter,
+  signUpLimiter,
   validate(signUpResendSchema),
   requireCaptcha("register", captcha),
   AuthController.resendSignUp,
@@ -339,7 +339,7 @@ router.post(
  *     description: >
  *       Returns a short-lived access token (~15 min), a refresh token and a
  *       `deviceToken`. Rate-limited per IP, and failed attempts per account:
- *       send the `deviceToken` of this device's last login or register and
+ *       send the `deviceToken` of this device's last login or sign-up and
  *       they count against this device alone, so nobody else's failures can
  *       lock it out; without one they count per email and IP and per email in
  *       total. Successful logins are refunded. A login whose `deviceToken` is
@@ -474,7 +474,7 @@ router.post(
  *       accepted for delivery. `captcha` is a Cloudflare Turnstile token
  *       issued for the action `forgot-password`, asked for when the button is
  *       pressed: it works once. `deviceToken`, from this device's last login
- *       or register, lets the limits count this device instead of its IP.
+ *       or sign-up, lets the limits count this device instead of its IP.
  *     security: []
  *     requestBody:
  *       required: true
@@ -767,7 +767,7 @@ router.post(
  *       password?, a failed send is said: the address is the account's own.
  *       `captcha` is a Cloudflare Turnstile token for the action
  *       `verify-email`; `deviceToken`, from this device's last login or
- *       register, lets the limits count this device instead of its IP.
+ *       sign-up, lets the limits count this device instead of its IP.
  *     requestBody:
  *       required: true
  *       content:

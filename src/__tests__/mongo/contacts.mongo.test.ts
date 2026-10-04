@@ -16,7 +16,7 @@ interface Session {
   userId: string;
 }
 
-async function register(email: string): Promise<Session> {
+async function accountFor(email: string): Promise<Session> {
   const res = await signedInUser({
     name: "Owner",
     email,
@@ -41,8 +41,8 @@ describe("contacts against mongod", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    alice = await register("alice@contacts.test");
-    bob = await register("bob@contacts.test");
+    alice = await accountFor("alice@contacts.test");
+    bob = await accountFor("bob@contacts.test");
   });
 
   afterAll(async () => {

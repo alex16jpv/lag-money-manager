@@ -19,7 +19,7 @@ const logout = async (refreshToken: string): Promise<request.Response> =>
 // The gap measured in production on 2026-09-11 between a lost rotation and the client's return.
 const PRODUCTION_GAP_MS = 13_284_000;
 
-async function register(email: string): Promise<string> {
+async function accountFor(email: string): Promise<string> {
   const res = await signedInUser({
     name: "Rotator",
     email,
@@ -39,7 +39,7 @@ afterAll(async () => {
 
 describe("refresh rotation [H-37]", () => {
   it("re-issues the same successor when the answer never reached the client", async () => {
-    const first = await register("lost-answer@example.com");
+    const first = await accountFor("lost-answer@example.com");
 
     const rotated = await refresh(first);
     expect(rotated.status).toBe(200);
@@ -57,7 +57,7 @@ describe("refresh rotation [H-37]", () => {
   });
 
   it("revokes the family when the successor was already used", async () => {
-    const first = await register("real-replay@example.com");
+    const first = await accountFor("real-replay@example.com");
 
     const second = (await refresh(first)).body.refreshToken as string;
     const third = (await refresh(second)).body.refreshToken as string;
@@ -74,7 +74,7 @@ describe("refresh rotation [H-37]", () => {
   });
 
   it("re-issues hours later, ten times, and then retires only that row [T-33]", async () => {
-    const first = await register("stale-rotation@example.com");
+    const first = await accountFor("stale-rotation@example.com");
     const successor = (await refresh(first)).body.refreshToken as string;
 
     const realNow = Date.now;
@@ -115,7 +115,7 @@ describe("refresh rotation [H-37]", () => {
   });
 
   it("does not leave a device in when a logout lands mid-rotation [H-62]", async () => {
-    const first = await register("logout-mid-rotation@example.com");
+    const first = await accountFor("logout-mid-rotation@example.com");
     const parent = jtiOf(first);
     const family = (await RefreshSessionModel.findById(parent).lean())
       ?.familyId;
@@ -155,7 +155,7 @@ describe("refresh rotation [H-37]", () => {
   });
 
   it("answers a revoked family without calling it theft [T-33]", async () => {
-    const first = await register("after-logout@example.com");
+    const first = await accountFor("after-logout@example.com");
     const successor = (await refresh(first)).body.refreshToken as string;
 
     expect((await logout(successor)).status).toBe(200);

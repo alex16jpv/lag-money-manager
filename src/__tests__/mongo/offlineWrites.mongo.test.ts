@@ -25,7 +25,7 @@ interface Session {
   userId: string;
 }
 
-async function register(email: string): Promise<Session> {
+async function accountFor(email: string): Promise<Session> {
   const res = await signedInUser({
     name: "Offline tester",
     email,
@@ -64,8 +64,8 @@ describe("offline write paths", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    alice = await register("alice@offline.test");
-    bob = await register("bob@offline.test");
+    alice = await accountFor("alice@offline.test");
+    bob = await accountFor("bob@offline.test");
   });
 
   afterAll(async () => {

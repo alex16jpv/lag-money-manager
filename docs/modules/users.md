@@ -52,7 +52,7 @@ Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `
 
 `confirmBy` is the last day of an unconfirmed account from before email existed (`YYYY-MM-DD`, whole, in its time zone; `null` otherwise), and `emailConfirmationRequired` whether that day is over: then every route but this one, the change of email and the auth routes answers `403 EMAIL_CONFIRMATION_REQUIRED` ([auth.md](auth.md#the-deadline-of-the-accounts-from-before-email)). This route stays open past the deadline, so the app learns why.
 
-`emailVerified` is in every profile answer (register, login, the reset, the sync feed): whether the address is confirmed ([auth.md](auth.md#confirming-the-email)). `emailVerification` is what the sheet that confirms it needs, and costs one indexed read of `authcodes`, so only this route carries it — `null` once the email is confirmed, otherwise:
+`emailVerified` is in every profile answer (a sign-up's code, login, the reset, the sync feed): whether the address is confirmed ([auth.md](auth.md#confirming-the-email)). `emailVerification` is what the sheet that confirms it needs, and costs one indexed read of `authcodes`, so only this route carries it — `null` once the email is confirmed, otherwise:
 
 | Field               | Meaning                                                                                                                                |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |

@@ -51,7 +51,7 @@ Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the
 
 ## Creating an account
 
-The owner's decision 16 of 2026-09-28: **an account exists only once its address is confirmed**. Create account writes nothing but a sign-up that waits; the code of the email `sign-up`, typed in the browser that holds the sign-up, creates the account and signs it in, and the email's link creates it without signing anybody in. **Every address answers the same**, so nothing here tells who has an account (T-185 closed for good): not the answer, not its limits, not its time, not a failed send.
+The owner's decision 16 of 2026-09-28: **an account exists only once its address is confirmed**. Create account writes nothing but a sign-up that waits; the code of the email `sign-up`, typed in the browser that holds the sign-up, creates the account and signs it in, and the email's link creates it without signing anybody in. **Every address answers the same**, so nothing here tells who has an account (T-185 closed for good): not the answer, not its limits, not its time, not a failed send. The old `POST /auth/register`, which created the account unconfirmed and answered `409 EMAIL_TAKEN` to an address with one, stayed only until the web client of T-239 was published; T-248 removed it, and it answers like any route that never existed.
 
 ### `POST /auth/sign-up`
 
@@ -88,10 +88,6 @@ The fields are the ones of the profile: `password` 8–128 characters; `email` n
 ### `POST /auth/sign-up/resend`
 
 `{ "signUpToken", "captcha", "deviceToken"? }` → `202 { resendAfterSeconds }`: Resend code of the code step. The same as the sign-up, branch, brakes, floor and silence included: `sign-up` with a new code (which replaces the old one once accepted), or `account-exists` if the address has an account by now. `409 SIGN_UP_EXPIRED` when the sign-up is over (24 hours, or replaced): start again from Create account.
-
-### `POST /auth/register` (gone with T-248)
-
-The way accounts were created before the confirmation came first: unconfirmed, signed in at once, and `409 EMAIL_TAKEN` for an address with an account, which told anyone who had one (decision 16). It stayed only until the web client of T-239 was published, and T-248 removed it; it now answers like any route that never existed. Every account is created by [`POST /auth/sign-up`](#post-authsign-up) and its code.
 
 ### `POST /auth/login`
 
