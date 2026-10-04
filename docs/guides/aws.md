@@ -11,12 +11,53 @@ account still matches what is declared. The code is not part of it: `npm run dep
 | `access` | `ledger-flow-access` | `infra/access.yaml` | The `lag-deploy` user: what `deploy:lambda` needs, the read-only policy of the email guide, the AWS-managed `SecurityAudit` and what `infra:check` needs |
 | `email` | `ledger-flow-email` | `infra/email.yaml` | SES, its events, the alarms and the budget ([Email in Production](./email.md)) |
 
+Why it is built this way (CloudFormation, the secrets in SSM, adopting instead of recreating, the
+refusals): [ADR-005](../architecture/decisions/005-aws-declared-in-cloudformation.md).
+
+## Day to day
+
+There are two deploys. **The code** goes with `npm run deploy:lambda` and the deploy profile
+(`AWS_PROFILE`), exactly as before T-246. **Everything else** — the Lambda's environment variables,
+its memory and timeout, the daily rule, permissions, alarms, the budget — goes with
+`npm run deploy:infra -- <part>` and the administrator profile (`INFRA_AWS_PROFILE`, [Signing in](#signing-in)), after the change
+is written in `infra/` and merged. Nothing is changed in the AWS console (the one exception is an
+emergency, [below](#changes-made-in-the-console)).
+
+| You want to | Change | Then run |
+| --- | --- | --- |
+| Ship merged code of this repository | — | `npm run deploy:lambda` |
+| Change a production variable that is not a secret (a cap, a switch, `LOG_LEVEL`, `CORS_ORIGIN`, …) | `infra/api.yaml`, `ApiFunction` → `Environment` → `Variables` | `npm run deploy:infra -- api`; it applies from the next invocation, with no code deploy |
+| Change a secret (`MONGO_URI`, `JWT_SECRET`, `REFRESH_SECRET`, `API_SECRET`, `TURNSTILE_SECRET`) | Its value in Parameter Store, in the AWS console ([The secrets](#the-secrets)) | `npm run deploy:infra -- api` |
+| Add a variable the code reads | In the same pull request: its schema in `src/shared/constants.ts`, [Environment Variables](./environment-vars.md), `.env.example`, and its value in `infra/api.yaml` | **First** `npm run deploy:infra -- api`, **then** `npm run deploy:lambda`: code that needs a variable refuses to start without it |
+| Add a secret the code reads | As above, but the value goes to SSM, a `NoEcho` parameter in `infra/api.yaml` and an entry in `API_SECRETS` (`scripts/infra/parts.ts`) | Create its SSM parameter, then as above |
+| Remove a variable | The code that reads it, then `infra/api.yaml` | **First** `npm run deploy:lambda`, **then** `npm run deploy:infra -- api` |
+| Change the daily rule, the memory, the timeout, the logs' retention | `infra/api.yaml` | `npm run deploy:infra -- api` |
+| Change what `lag-deploy` may do | `infra/access.yaml` | `npm run deploy:infra -- access` |
+| Change an alarm threshold or the budget | `infra/email.yaml`, the parameter's `Default` | `npm run deploy:infra -- email` |
+| Deploy everything | — | `npm run deploy:infra -- access`, `-- api`, `-- email`, then `npm run deploy:lambda`. A part with nothing new says "Nothing to deploy" and touches nothing |
+| Know whether the account matches `infra/` | — | `npm run infra:check` (read-only; what a session runs after every deploy) |
+
+The tests hold the template to the code: `src/__tests__/infra/apiStack.test.ts` fails when
+`infra/api.yaml` names a variable the API does not read, takes a secret from anything but a hidden
+parameter, or declares values the production schema of `src/shared/constants.ts` refuses.
+
 ## The two commands
 
 ```bash
 npm run deploy:infra -- <api|access|email>   # an administrator profile: INFRA_AWS_PROFILE
 npm run infra:check                           # the deploy profile: AWS_PROFILE
 ```
+
+**Which part to run.** Each part is one area of the account; run the one whose file you changed.
+
+| Part | What it is, in short | Run it when |
+| --- | --- | --- |
+| `api` | The server: the Lambda that answers the web client, everything around it (its variables and secrets, memory and timeout, public URL, logs) and the daily rule that keeps Atlas awake and runs the nightly pass (deadline emails, erasing accounts past their 30 days) | You changed `infra/api.yaml` (a variable, a cap, a switch, the daily rule) or a secret in Parameter Store. The most common one |
+| `access` | Who may deploy: the `lag-deploy` user and what it is allowed to do (upload the code, read the account) | You changed `infra/access.yaml`. Rare |
+| `email` | Sending email: SES, its bounce and complaint events, the alarms that pause SES, and the 1 USD budget | You changed `infra/email.yaml` (an alarm threshold, the budget), or the api part changed the function's name, role or URL |
+
+Not sure which one? Run all three, `access`, `api` and `email`: a part with nothing new says "Nothing
+to deploy" and touches nothing. The **code** is none of them: that is `npm run deploy:lambda`.
 
 `deploy:infra` never applies anything on its own. It creates a CloudFormation change set, prints one
 line per resource it would add, modify or import (the names of what changes, never a value), and
@@ -25,7 +66,7 @@ waits for `yes`; anything else, or Ctrl-C, discards it. It **refuses**, and appl
 - when anything would be removed, replaced or might be replaced;
 - when the function's code would change (the template carries a placeholder; only `deploy:lambda`
   uploads code);
-- when the stack was changed outside it ([below](#changing-something)): before every update it runs
+- when the stack was changed outside it ([below](#changes-made-in-the-console)): before every update it runs
   CloudFormation's drift detection and names what differs;
 - when the stack does not exist: `--import` adopts what was made by hand, `--create` builds it in an
   empty account.
@@ -49,21 +90,31 @@ replacing or removing any of their resources, from this command or from the cons
 
 It prints the names of what differs, never a value, and exits 1 when anything does.
 
-Both read `.env.deploy`: `INFRA_AWS_PROFILE` is the administrator (an `aws login` profile with MFA;
-`deploy:infra` opens the login when its session has expired), `AWS_PROFILE` stays `lag-deploy`.
+## Signing in
 
-## Changing something
+Two AWS profiles, both named in `.env.deploy`:
 
-Edit the template, open the pull request, and once it is merged run that part:
+| Profile | In `.env.deploy` | Used by | How it signs in |
+| --- | --- | --- | --- |
+| `lag-deploy` | `AWS_PROFILE` | `deploy:lambda`, `infra:check` | Its access key ([Deployment](./deployment.md), Option A): nothing to do, it does not expire |
+| The administrator (`ledgerflow-admin` on the owner's machine) | `INFRA_AWS_PROFILE` | `deploy:infra` | `aws login`: you sign in in the browser, with MFA, and the CLI gets temporary credentials |
 
-| To change | Edit | Then |
-| --- | --- | --- |
-| An environment variable of the API (a cap, a switch, `LOG_LEVEL`, …) | `infra/api.yaml`, `ApiFunction` → `Environment` | `npm run deploy:infra -- api` |
-| A secret | SSM, [below](#the-secrets) | `npm run deploy:infra -- api` |
-| The daily rule, the memory, the timeout, the logs' retention | `infra/api.yaml` | `npm run deploy:infra -- api` |
-| What `lag-deploy` may do | `infra/access.yaml` | `npm run deploy:infra -- access` |
-| An alarm threshold, the budget | `infra/email.yaml`, the parameter's `Default` | `npm run deploy:infra -- email` |
-| The code | — | `npm run deploy:lambda`, as always |
+**Once per machine**, create the administrator profile and sign in (AWS CLI v2 from late 2025 or newer):
+
+```bash
+aws configure set region us-east-1 --profile ledgerflow-admin
+aws login --profile ledgerflow-admin
+```
+
+`aws login` opens the browser; sign in to the AWS account there and come back to the terminal.
+
+**Every time after that, you do not have to sign in first.** `deploy:infra` checks the session before
+anything else; when it has expired it runs `aws login --profile <INFRA_AWS_PROFILE>` itself, waits for
+the browser sign-in and carries on. Running `aws login --profile ledgerflow-admin` by hand first does
+the same. To see which identity a profile is signed in as:
+`aws sts get-caller-identity --profile ledgerflow-admin`.
+
+## Changes made in the console
 
 **An emergency change in the console still works** — `EMAIL_SENDING_ENABLED=false` on the Lambda
 stops every email on the next invocation — and nothing undoes it by accident: `infra:check` reports
@@ -93,11 +144,27 @@ a Lambda's environment on its own: only a few resource types accept one.
 | `/ledger-flow/api/API_SECRET` | `API_SECRET` |
 | `/ledger-flow/api/TURNSTILE_SECRET` | `TURNSTILE_SECRET` |
 
-To change one, overwrite it and deploy the api part (the value is typed into the terminal, never
-into a file or the history):
+**Changing a secret in SSM changes nothing in the running API by itself:** the Lambda gets the new
+value only when `npm run deploy:infra -- api` runs. So it is always two steps, the value and then the
+deploy.
+
+**In the AWS console** (signed in as the administrator, region **N. Virginia, us-east-1**):
+
+1. Type `Parameter Store` in the console's search bar and open it (it is part of Systems Manager).
+2. The five parameters are listed by name. To see one, click its name and choose **Show decrypted
+   value** (shown on screen only).
+3. To change it: **Edit** → paste the new value in **Value** → **Save changes**. Its version goes up by
+   one.
+4. Run `npm run deploy:infra -- api`. The change set shows `Modify ApiFunction: Environment`; type `yes`.
+
+To add one, **Create parameter**: the name `/ledger-flow/api/<VARIABLE>`, tier **Standard** (free),
+type **SecureString**, the KMS key the console proposes (`alias/aws/ssm`), and the value. A new secret
+also needs code ([Day to day](#day-to-day)).
+
+**Or from a terminal**, the same change (the value is typed, never left in a file or the history):
 
 ```bash
-read -rs VALUE && aws ssm put-parameter --profile <admin profile> --region us-east-1 \
+read -rs VALUE && aws ssm put-parameter --profile ledgerflow-admin --region us-east-1 \
   --name /ledger-flow/api/<VARIABLE> --type SecureString --overwrite --value "$VALUE"; unset VALUE
 ```
 

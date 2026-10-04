@@ -126,8 +126,9 @@ Según lo que toques:
 | Un endpoint (params, body, respuesta, códigos) | El bloque `@openapi` de su ruta |
 | Comportamiento de un módulo | `docs/modules/<módulo>.md` |
 | Algo que el frontend debe adoptar | El bloque `@openapi` de su ruta y `docs/modules/<módulo>.md`: el front genera sus tipos y sus códigos de error desde ahí. Avísale también al dueño |
-| Variables de entorno | `docs/guides/environment-vars.md` y `.env.example` |
+| Variables de entorno | `docs/guides/environment-vars.md`, `.env.example` y, la de producción, `infra/api.yaml` (un secreto: SSM y `scripts/infra/parts.ts`) |
 | El flujo de despliegue | `docs/guides/deployment.md` |
+| Cualquier recurso o configuración de AWS | `infra/*.yaml` y `docs/guides/aws.md`: AWS solo cambia con `npm run deploy:infra`, nunca en la consola (ADR-005) |
 | Arranque o setup local | `docs/guides/getting-started.md` |
 | Algo roto que te estorba, o que rompiste tú | Se arregla **ya**, en la misma rama, y el commit lo dice (§8) |
 | Algo que encontraste, NO vas a arreglar y no te afecta | Repórtaselo al dueño como hallazgo (§8): qué es, dónde, y qué habría que decidir |
@@ -406,4 +407,11 @@ npm run test:mongo       # suite contra Mongo real (NO la incluye `npm run ci`)
 npm run seed:test        # semilla determinística para las pruebas del front
 npm run db:backup        # copia de una base a backups/ (MONGO_URI por delante)
 npm run db:restore       # restaura una copia (destruye datos; pide confirmación)
+npm run infra:check      # lee AWS y dice si coincide con infra/*.yaml (solo lectura)
+npm run deploy:infra -- <api|access|email>   # la configuración de AWS: lo corre el dueño
+npm run deploy:lambda    # el código: lo corre el dueño
 ```
+
+**Dos deploys** (`docs/guides/aws.md`, «Day to day»): el código va con `deploy:lambda`; las variables de
+la Lambda, la regla diaria, los permisos y las alarmas van en `infra/*.yaml` y salen con `deploy:infra`.
+Una variable nueva que el código necesita se despliega antes que el código.

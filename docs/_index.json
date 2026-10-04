@@ -104,6 +104,14 @@
       "mustReadFirst": false
     },
     {
+      "path": "docs/architecture/decisions/005-aws-declared-in-cloudformation.md",
+      "title": "ADR-005: The AWS Account Declared in CloudFormation",
+      "description": "Why the AWS account is three CloudFormation stacks deployed part by part: the code kept out, secrets from SSM as NoEcho parameters, adopting instead of recreating, refusals in the script and in AWS, and the alternatives rejected.",
+      "tags": ["architecture", "decisions", "aws", "cloudformation", "deployment"],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
       "path": "docs/guides/getting-started.md",
       "title": "Getting Started",
       "description": "Step-by-step guide from zero to running: prerequisites, install, env setup, database, run, verify.",
