@@ -5,9 +5,9 @@
 ```
 lag-money-manager/
 ├── docs/                          # Project documentation (you are here)
-├── infra/                         # CloudFormation the owner deploys by hand (email.yaml: SES and its guards)
+├── infra/                         # CloudFormation: the API (api.yaml), deploy access (access.yaml), SES and its guards (email.yaml)
 ├── requests/                      # `.http` request examples (REST client)
-├── scripts/                       # Deploy and ops scripts (Lambda, keepalive, index sync, email preview and unsuppress)
+├── scripts/                       # Deploy and ops scripts (Lambda code, infra/ deploy and check, index sync, email preview and unsuppress)
 ├── src/
 │   ├── app.ts                     # Express app setup and middleware registration
 │   ├── server.ts                  # HTTP server bootstrap and start
@@ -84,11 +84,15 @@ lag-money-manager/
 
 ### `infra/`
 
-CloudFormation templates the owner deploys by hand, never the deploy script. `email.yaml` is Amazon
-SES and its guards; its guide is [Email in Production](../guides/email.md).
+Every AWS resource the API runs on, deployed part by part by an administrator with
+`npm run deploy:infra -- <part>` and compared with the account by `npm run infra:check`
+([The AWS Account, Declared](../guides/aws.md)): `api.yaml` (the function, its role, URL, logs and
+daily rule), `access.yaml` (the deploy user) and `email.yaml` (SES and its guards,
+[Email in Production](../guides/email.md)). `import/` says how the resources made by hand before
+T-246 were adopted.
 
-- **What belongs here:** AWS resources the API needs around it that are set up once
-- **What does NOT belong here:** The API's own function, which `npm run deploy:lambda` updates
+- **What belongs here:** AWS resources and their configuration, the API's variables included
+- **What does NOT belong here:** The API's code, which `npm run deploy:lambda` uploads; secrets, which live in SSM
 - **Naming:** `<what it sets up>.yaml`
 
 ### `src/`

@@ -1,0 +1,41 @@
+{
+  "resources": {
+    "ApiRole": {
+      "RoleName": "ledgerflow-role-o9zw65c1"
+    },
+    "ApiLogsPolicy": {
+      "PolicyArn": "arn:aws:iam::{account}:policy/service-role/AWSLambdaBasicExecutionRole-d042adcc-eb42-4336-87db-ee025f5b1602"
+    },
+    "ApiLogGroup": {
+      "LogGroupName": "/aws/lambda/ledgerflow"
+    },
+    "ApiFunction": {
+      "FunctionName": "ledgerflow"
+    },
+    "ApiUrl": {
+      "FunctionArn": "arn:aws:lambda:{region}:{account}:function:ledgerflow"
+    },
+    "ApiUrlPublicAccess": {
+      "FunctionName": "arn:aws:lambda:{region}:{account}:function:ledgerflow",
+      "Id": "FunctionURLAllowPublicAccess"
+    },
+    "ApiUrlInvoke": {
+      "FunctionName": "arn:aws:lambda:{region}:{account}:function:ledgerflow",
+      "Id": "FunctionURLAllowInvokeAction"
+    },
+    "KeepaliveRule": {
+      "Arn": "arn:aws:events:{region}:{account}:rule/lag-money-manager-keepalive"
+    },
+    "KeepaliveInvoke": {
+      "FunctionName": "arn:aws:lambda:{region}:{account}:function:ledgerflow",
+      "Id": "lag-money-manager-keepalive-invoke"
+    }
+  },
+  "asItIs": {
+    "ApiLogGroup": {
+      "LogGroupName": {
+        "Fn::Sub": "/aws/lambda/${FunctionName}"
+      }
+    }
+  }
+}

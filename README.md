@@ -35,8 +35,9 @@ uploads it. It installs the production dependencies **into that directory**, so
 your working `node_modules` keeps its dev dependencies — pruning them in place
 would leave you without `tsc` for the next build.
 
-See [Deployment](docs/guides/deployment.md) for the one-time AWS setup and the
-Lambda's own environment variables.
+See [Deployment](docs/guides/deployment.md) for the deploy credentials, and
+[The AWS Account, Declared](docs/guides/aws.md) for the Lambda's configuration and
+environment variables, which `npm run deploy:infra` deploys.
 
 ## Stack
 
@@ -78,6 +79,7 @@ Lambda's own environment variables.
 - [Deterministic Test Seed](docs/guides/testing-seed.md) — `npm run seed:test` for the frontend's E2E fixtures
 - [Backup and Restore](docs/guides/backup-restore.md) — `npm run db:backup` / `npm run db:restore`
 - [Email in Production](docs/guides/email.md) — Amazon SES, its DNS records and the guards of `infra/email.yaml`
+- [The AWS Account, Declared](docs/guides/aws.md) — `infra/*.yaml`, `npm run deploy:infra` and `npm run infra:check`
 
 ### Modules
 

@@ -1,0 +1,204 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Ledger Flow API: the Lambda function and its configuration, its role, its public URL, its log
+  group and the daily rule that keeps the database awake and runs the nightly pass. The code is not
+  here: npm run deploy:lambda uploads it. Deploy it with npm run deploy:infra -- api
+  (docs/guides/aws.md), never from the console: the secrets come from SSM Parameter Store.
+
+Parameters:
+  FunctionName:
+    Type: String
+    Default: ledgerflow
+    Description: The API's function, the LAMBDA_FUNCTION_NAME of .env.deploy.
+  RoleName:
+    Type: String
+    Default: ledgerflow-role-o9zw65c1
+    Description: The function's execution role. The Lambda console named the first one.
+  RolePath:
+    Type: String
+    Default: /service-role/
+    AllowedPattern: "/([\\w+=,.@-]+/)*"
+    Description: That role's path, which infra/email.yaml needs to name it (ApiRolePath).
+  LogsPolicyName:
+    Type: String
+    Default: AWSLambdaBasicExecutionRole-d042adcc-eb42-4336-87db-ee025f5b1602
+    Description: The role's permission to write its logs. The Lambda console named the first one.
+  KeepaliveRuleName:
+    Type: String
+    Default: lag-money-manager-keepalive
+    Description: The daily rule that invokes the function with {"source":"lag.keepalive"}.
+  MongoUri:
+    Type: String
+    NoEcho: true
+    Description: SSM /ledger-flow/api/MONGO_URI, read by the deploy.
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Description: SSM /ledger-flow/api/JWT_SECRET, read by the deploy.
+  RefreshSecret:
+    Type: String
+    NoEcho: true
+    Description: SSM /ledger-flow/api/REFRESH_SECRET, read by the deploy.
+  ApiSecret:
+    Type: String
+    NoEcho: true
+    Description: SSM /ledger-flow/api/API_SECRET, read by the deploy.
+  TurnstileSecret:
+    Type: String
+    NoEcho: true
+    Description: SSM /ledger-flow/api/TURNSTILE_SECRET, read by the deploy.
+
+Resources:
+  ApiRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RoleName: !Ref RoleName
+      Path: !Ref RolePath
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+
+  # Attached from the policy's side: the budget of infra/email.yaml attaches ledger-flow-deny-email to the role, and the role must not undo it.
+  ApiLogsPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName: !Ref LogsPolicyName
+      Path: /service-role/
+      Roles: [!Ref ApiRole]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: logs:CreateLogGroup
+            Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*
+          - Effect: Allow
+            Action: [logs:CreateLogStream, logs:PutLogEvents]
+            Resource:
+              - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${FunctionName}:*
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${FunctionName}
+      RetentionInDays: 30
+
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      FunctionName: !Ref FunctionName
+      Role: !GetAtt ApiRole.Arn
+      Runtime: nodejs24.x
+      Handler: dist/lambda.handler
+      Architectures: [x86_64]
+      MemorySize: 1024
+      Timeout: 15
+      LoggingConfig:
+        LogFormat: Text
+        LogGroup: !Ref ApiLogGroup
+      # Never changed here: CloudFormation only uploads code when this text changes, and npm run deploy:lambda owns the code.
+      Code:
+        ZipFile: |
+          exports.handler = async () => {
+            throw new Error("No code yet: run npm run deploy:lambda");
+          };
+      Environment:
+        Variables:
+          NODE_ENV: production
+          DB_TYPE: MONGO
+          LOG_LEVEL: info
+          CORS_ORIGIN: https://ledgerflow.alexpiral.com
+          JWT_EXPIRATION: 15m
+          REFRESH_TOKEN_EXPIRATION: 30d
+          BCRYPT_SALT_ROUNDS: "12"
+          RATE_LIMIT_MAX: "1000"
+          AUTH_RATE_LIMIT_MAX: "10"
+          REFRESH_RATE_LIMIT_MAX: "60"
+          EMAIL_PROVIDERS: ses
+          EMAIL_SES_CONFIGURATION_SET: ledger-flow
+          EMAIL_SES_EVENTS_TOPIC_ARN: !Sub arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:ledger-flow-email-events
+          EMAIL_VERIFICATION_REQUIRED: "true"
+          EMAIL_CONFIRMATION_DEADLINES: "true"
+          MONGO_URI: !Ref MongoUri
+          JWT_SECRET: !Ref JwtSecret
+          REFRESH_SECRET: !Ref RefreshSecret
+          API_SECRET: !Ref ApiSecret
+          TURNSTILE_SECRET: !Ref TurnstileSecret
+
+  ApiUrl:
+    Type: AWS::Lambda::Url
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TargetFunctionArn: !GetAtt ApiFunction.Arn
+      AuthType: NONE
+      InvokeMode: BUFFERED
+
+  ApiUrlPublicAccess:
+    Type: AWS::Lambda::Permission
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      FunctionName: !GetAtt ApiFunction.Arn
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  ApiUrlInvoke:
+    Type: AWS::Lambda::Permission
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      FunctionName: !GetAtt ApiFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+  KeepaliveRule:
+    Type: AWS::Events::Rule
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Ref KeepaliveRuleName
+      Description: Daily DB keepalive so the Atlas free cluster is not auto-paused
+      ScheduleExpression: rate(1 day)
+      State: ENABLED
+      Targets:
+        - Id: keepalive
+          Arn: !GetAtt ApiFunction.Arn
+          Input: '{"source":"lag.keepalive"}'
+
+  KeepaliveInvoke:
+    Type: AWS::Lambda::Permission
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      FunctionName: !GetAtt ApiFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt KeepaliveRule.Arn
+
+Outputs:
+  FunctionName:
+    Description: The .env.deploy LAMBDA_FUNCTION_NAME, and infra/email.yaml's ApiFunctionName.
+    Value: !Ref ApiFunction
+  RoleName:
+    Description: infra/email.yaml's ApiRoleName.
+    Value: !Ref ApiRole
+  RolePath:
+    Description: infra/email.yaml's ApiRolePath.
+    Value: !Ref RolePath
+  FunctionUrl:
+    Description: The web client's API_URL, and with webhooks/email/ses appended, infra/email.yaml's WebhookUrl.
+    Value: !GetAtt ApiUrl.FunctionUrl

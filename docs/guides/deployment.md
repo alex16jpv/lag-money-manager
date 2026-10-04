@@ -81,7 +81,7 @@ aws --version   # ~/.local/bin must be on your PATH
 
 #### 2. Create the deploy credentials
 
-All options below use the same **least-privilege policy** — it only allows touching this one Lambda function and the keepalive EventBridge rule, so the blast radius of a leaked credential is minimal (adjust the function/rule names if yours differ):
+All options below use the same **least-privilege policy** — it only allows uploading this one Lambda function's code, so the blast radius of a leaked credential is minimal. It is declared, with the rest of the user, in `infra/access.yaml` ([The AWS Account, Declared](./aws.md)); this is its `lag-deploy-policy`:
 
 ```json
 {
@@ -94,23 +94,21 @@ All options below use the same **least-privilege policy** — it only allows tou
         "lambda:GetFunction",
         "lambda:GetFunctionConfiguration",
         "lambda:UpdateFunctionCode",
-        "lambda:UpdateFunctionConfiguration",
-        "lambda:AddPermission",
         "lambda:InvokeFunction"
       ],
       "Resource": "arn:aws:lambda:*:*:function:<your-function-name>*"
     },
     {
-      "Sid": "KeepaliveRule",
+      "Sid": "Logs",
       "Effect": "Allow",
-      "Action": ["events:PutRule", "events:PutTargets", "events:DescribeRule"],
-      "Resource": "arn:aws:events:*:*:rule/lag-money-manager-keepalive*"
+      "Action": ["logs:DescribeLogGroups", "logs:FilterLogEvents", "lambda:ListFunctions"],
+      "Resource": "*"
     }
   ]
 }
 ```
 
-Optionally attach the AWS-managed `CloudWatchLogsReadOnlyAccess` policy too, so you can read Lambda logs from the CLI when debugging.
+The user also carries the AWS-managed `SecurityAudit` (it reads how the account is configured, never its data) and two inline read-only policies, `ledger-flow-email-read` and `ledger-flow-infra-check`, so that `npm run infra:check` and a session can confirm by reading what an administrator did. Nothing it holds can change the function's configuration, its permissions or the daily rule: those belong to `npm run deploy:infra`, with an administrator profile.
 
 ##### Option A — dedicated IAM user with access keys (recommended, the currently used setup)
 
@@ -127,7 +125,7 @@ Optionally attach the AWS-managed `CloudWatchLogsReadOnlyAccess` policy too, so 
    # Output format: press Enter
    ```
 
-The keys land in `~/.aws/credentials` (kept `600` by the CLI). Rotate them occasionally (_IAM → user → Security credentials_); with this policy a leaked key can only touch this function and the keepalive rule — nothing else in the account.
+The keys land in `~/.aws/credentials` (kept `600` by the CLI). Rotate them occasionally (_IAM → user → Security credentials_); with this policy a leaked key can only replace this function's code and read the account — it cannot change any configuration.
 
 ##### Option B — `aws login` with a dedicated IAM user (temporary credentials)
 
@@ -188,8 +186,7 @@ cp .env.deploy.example .env.deploy
 | `AWS_REGION`           | Region where the function lives                                                                       |
 | `LAMBDA_FUNCTION_NAME` | Exact function name from the Lambda console                                                           |
 | `MONGO_URI`            | **Required.** The **production** database — see [The production MONGO_URI](#the-production-mongo-uri) |
-| `KEEPALIVE_RULE_NAME`  | Optional. EventBridge rule name for keepalive                                                         |
-| `KEEPALIVE_SCHEDULE`   | Optional. Defaults to `rate(1 day)`                                                                   |
+| `INFRA_AWS_PROFILE`    | The **administrator** profile `npm run deploy:infra` uses ([The AWS Account, Declared](./aws.md)). An `aws login` profile with MFA; `deploy:lambda` never uses it |
 
 > **Quote any value containing `&`, `#` or spaces** — the connection URI
 > especially. The file is `source`d, so bash reads it as code: an unquoted `&`
@@ -223,7 +220,7 @@ The script (`scripts/deploy-lambda.sh`):
 6. Uploads it with `aws lambda update-function-code` and waits for the update to complete
 7. Warns if the function's configured handler is not `dist/lambda.handler`
 
-The zip layout requires the function handler to be **`dist/lambda.handler`**. Runtime environment variables (`MONGO_URI`, `JWT_SECRET`, `API_SECRET`, ...) are **not** part of the package — manage them in the Lambda console or with `aws lambda update-function-configuration --environment`.
+The zip layout requires the function handler to be **`dist/lambda.handler`**. Runtime environment variables (`MONGO_URI`, `JWT_SECRET`, `API_SECRET`, ...) are **not** part of the package: they are declared in `infra/api.yaml`, the five secrets among them read from SSM Parameter Store, and changed with `npm run deploy:infra -- api` ([The AWS Account, Declared](./aws.md)). An edit in the Lambda console is reported by `npm run infra:check`, and `deploy:infra -- api` refuses to deploy over it until it is in the template or undone.
 
 ### Index creation
 
@@ -290,9 +287,9 @@ Lambda's egress address at runtime.
 > **The URI goes in two separate places.** `.env.deploy` is read by your machine
 > during the deploy, to sync indexes. The Lambda's own `MONGO_URI` environment
 > variable is what the running application uses, and it is **not** part of the
-> deployment package — set it in the Lambda console or with
-> `aws lambda update-function-configuration`. Both must point at the same
-> database, and both need the database name in the path.
+> deployment package — it lives in SSM as `/ledger-flow/api/MONGO_URI` and reaches
+> the Lambda with `npm run deploy:infra -- api` ([The secrets](./aws.md#the-secrets)).
+> Both must point at the same database, and both need the database name in the path.
 
 ### Required production configuration
 
@@ -311,17 +308,7 @@ Swagger UI is **not** served in production: `/api-docs` is only mounted when `NO
 
 ### Database Keepalive (MongoDB Atlas free tier)
 
-Atlas pauses free clusters after ~60 days without connections, which takes the whole API down (requests fail with `503 Database connection unavailable`). A daily EventBridge rule keeps the cluster active:
-
-```bash
-npm run deploy:keepalive
-```
-
-The script (`scripts/setup-keepalive.sh`) is idempotent, uses the same credential check as the deploy script, and:
-
-1. Creates/updates an EventBridge rule (default: `rate(1 day)`)
-2. Grants EventBridge permission to invoke the function
-3. Targets the function with the payload `{"source":"lag.keepalive"}`
+Atlas pauses free clusters after ~60 days without connections, which takes the whole API down (requests fail with `503 Database connection unavailable`). A daily EventBridge rule keeps the cluster active: `lag-money-manager-keepalive` in `infra/api.yaml` (`rate(1 day)`, today at 23:27 UTC), which invokes the function with the payload `{"source":"lag.keepalive"}`, with the permission that lets it. It changes with `npm run deploy:infra -- api` ([The AWS Account, Declared](./aws.md)); the `deploy:keepalive` script that created it was retired in T-246.
 
 `src/lambda.ts` recognizes that payload and runs a database ping instead of routing through Express, and then **the nightly pass** (T-238, [users.md](../modules/users.md#the-nightly-pass)): it erases the accounts deleted more than 30 days ago and, with `EMAIL_CONFIRMATION_DEADLINES` on, sends the deadline emails of the accounts from before email. It stops starting work with 3 seconds of the invocation left (10 seconds at most of the 15), and a pass that fails is logged `NIGHTLY_PASS_FAILED` without failing the keepalive; what it leaves is done the next night. Its three error codes (`ACCOUNT_ERASE_FAILED`, `ACCOUNT_ERASE_BACKLOG`, `NIGHTLY_PASS_FAILED`) reach the "server needs attention" alarm of `infra/email.yaml` ([Email in Production](./email.md)). This is option A of the owner's plan of 2026-09-28: no new AWS resource. Cost: ~30 invocations/month — effectively $0 (Lambda free tier: 1M requests/month and 400,000 GB-s; the pass adds a few seconds a night; EventBridge scheduled invocations: $1 per million). **Without the keepalive rule nothing is erased**: a deleted account stays deleted (out of every read) until a new account takes its address.
 
@@ -508,13 +495,13 @@ node dist/server.js | pino-transport -t pino-elasticsearch
 
 ## Environment Variable Checklist
 
-Before deploying, ensure these are set:
+These are what `infra/api.yaml` declares; before changing one, ensure:
 
 - [ ] `NODE_ENV=production`
 - [ ] `JWT_SECRET` — strong, unique secret (min 32 characters)
 - [ ] `API_SECRET` — required in production; every request must then send `x-api-secret`
 - [ ] `CORS_ORIGIN` — your frontend domain(s), not `*`
-- [ ] `MONGO_URI` — replica set, **database name in the path**, no `directConnection`, password URL-encoded ([details](#the-production-mongo-uri)). Set in **both** the Lambda's configuration and `.env.deploy`
+- [ ] `MONGO_URI` — replica set, **database name in the path**, no `directConnection`, password URL-encoded ([details](#the-production-mongo-uri)). Set in **both** SSM (`/ledger-flow/api/MONGO_URI`, for the Lambda) and `.env.deploy`
 - [ ] `LOG_LEVEL` — appropriate for production (`info` or `warn`)
 - [ ] `BCRYPT_SALT_ROUNDS` — 12+ for production
 - [ ] `EMAIL_PROVIDERS=ses` — only once SES is set up; until then leave it unset and nothing is sent ([Email module](../modules/email.md))
