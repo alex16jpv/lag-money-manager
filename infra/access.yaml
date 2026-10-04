@@ -107,3 +107,9 @@ Resources:
               - lambda:GetFunctionUrlConfig
               - events:ListTargetsByRule
             Resource: "*"
+          - Sid: WhatDriftDetectionReadsInTheEmailStack
+            Effect: Allow
+            Action: [lambda:GetFunction, budgets:DescribeBudgetAction]
+            Resource:
+              - !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:ledger-flow-email-PauseFunction-*
+              - !Sub arn:${AWS::Partition}:budgets::${AWS::AccountId}:budget/ledger-flow-ses/action/*
