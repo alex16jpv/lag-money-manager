@@ -14,7 +14,7 @@ import request from "supertest";
 
 import app from "../../app";
 import { AccountModel } from "../../infrastructure/models/AccountModel";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 /** The kind is a hex digit: everything after the last dash must still parse as a UUID. */
 const uuid = (kind: "a" | "b" | "c" | "d" | "e", n: number): string =>
@@ -26,14 +26,12 @@ interface Session {
 }
 
 async function register(email: string): Promise<Session> {
-  const res = await request(app).post("/auth/register").send({
-    captcha: TEST_CAPTCHA,
+  const res = await signedInUser({
     name: "Offline tester",
     email,
     password: "Offline!2026",
   });
-  expect(res.status).toBe(201);
-  return { token: res.body.accessToken, userId: res.body.user.id };
+  return { token: res.accessToken, userId: res.user.id };
 }
 
 const as = (

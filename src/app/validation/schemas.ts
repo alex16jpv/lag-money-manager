@@ -1135,7 +1135,7 @@ const linkTokenField = z
   .max(256)
   .regex(/^[A-Za-z0-9_-]+$/, "token must be the one of the email's link");
 
-export const registerSchema = z.object({
+export const signUpSchema = z.object({
   body: z.object({
     name: z.string().min(1, "Name is required").max(255),
     email: emailField,
@@ -1147,8 +1147,6 @@ export const registerSchema = z.object({
     captcha: captchaField,
   }),
 });
-
-export const signUpSchema = registerSchema;
 
 // The token the BFF keeps for the browser that typed the password; a newer sign-up replaces it.
 const signUpTokenField = linkTokenField;

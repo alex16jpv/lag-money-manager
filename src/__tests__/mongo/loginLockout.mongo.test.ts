@@ -3,7 +3,7 @@ import request from "supertest";
 import app from "../../app";
 import { CLIENT_IP_HEADER } from "../../app/middlewares/clientIp";
 import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 jest.mock("../../shared/constants", () => {
   const actual = jest.requireActual("../../shared/constants");
@@ -37,18 +37,9 @@ const login = (
     ...(deviceToken ? { deviceToken } : {}),
   });
 
-const registerAs = (
-  email: string,
-  password: string,
-  ip: string,
-): request.Test =>
-  fromClient(request(app).post("/auth/register"), ip).send({
-    captcha: TEST_CAPTCHA,
-    name: "Someone",
-    email,
-    password,
-    currency: "COP",
-  });
+const deviceOf = async (email: string, password: string): Promise<string> =>
+  (await signedInUser({ name: "Someone", email, password, currency: "COP" }))
+    .deviceToken;
 
 const fail = async (
   times: number,
@@ -67,10 +58,7 @@ describe("login lockout against mongod (T-176)", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    const res = await registerAs(EMAIL, PASSWORD, OWNER_IP);
-    expect(res.status).toBe(201);
-    expect(typeof res.body.deviceToken).toBe("string");
-    ownerDevice = res.body.deviceToken;
+    ownerDevice = await deviceOf(EMAIL, PASSWORD);
   });
 
   beforeEach(async () => {
@@ -114,32 +102,13 @@ describe("login lockout against mongod (T-176)", () => {
   });
 
   it("does not recognize a device token issued to another email", async () => {
-    const other = await registerAs(
-      "other@lockout.test",
-      "Other!2026",
-      ATTACKER_IP,
-    );
-    expect(other.status).toBe(201);
-    const foreign = other.body.deviceToken as string;
+    const foreign = await deviceOf("other@lockout.test", "Other!2026");
 
     await fail(3, ATTACKER_IP, foreign);
     expect((await login(PASSWORD, ATTACKER_IP, foreign)).status).toBe(429);
     expect((await login(PASSWORD, ATTACKER_IP, "not-a-token")).status).toBe(
       429,
     );
-    expect((await login(PASSWORD, ATTACKER_IP, ownerDevice)).status).toBe(200);
-  });
-
-  it("counts failed registers with the owner's email like failed logins", async () => {
-    for (let i = 0; i < 3; i++) {
-      expect((await registerAs(EMAIL, "Guess!2026", ATTACKER_IP)).status).toBe(
-        409,
-      );
-    }
-    expect((await registerAs(EMAIL, "Guess!2026", ATTACKER_IP)).status).toBe(
-      429,
-    );
-    expect((await login(PASSWORD, ATTACKER_IP)).status).toBe(429);
     expect((await login(PASSWORD, ATTACKER_IP, ownerDevice)).status).toBe(200);
   });
 

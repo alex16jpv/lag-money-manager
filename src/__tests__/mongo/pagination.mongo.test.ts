@@ -6,7 +6,7 @@
 import request from "supertest";
 
 import app from "../../app";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 const LISTS = ["/accounts", "/categories", "/budgets", "/transactions"];
 
@@ -30,14 +30,12 @@ interface Page {
 }
 
 async function register(email: string): Promise<Session> {
-  const res = await request(app).post("/auth/register").send({
-    captcha: TEST_CAPTCHA,
+  const res = await signedInUser({
     name: "Pager",
     email,
     password: "Offline!2026",
   });
-  expect(res.status).toBe(201);
-  return { token: res.body.accessToken, userId: res.body.user.id };
+  return { token: res.accessToken, userId: res.user.id };
 }
 
 const as = (session: Session, req: request.Test): request.Test =>

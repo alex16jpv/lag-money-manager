@@ -20,10 +20,7 @@ import { SignUpService } from "./SignUpService";
 
 const PURPOSE: AuthCodePurpose = "verify";
 
-export type VerificationRecipient = Pick<
-  User,
-  "id" | "email" | "locale" | "timezone"
->;
+type VerificationRecipient = Pick<User, "id" | "email" | "locale" | "timezone">;
 
 // /verify finishes a sign-up without a session, or confirms an account from before email existed.
 export type VerifiedByLink = "account-ready" | "email-confirmed";
@@ -66,7 +63,7 @@ export class EmailVerificationService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async send(
+  private async send(
     recipient: VerificationRecipient,
     requester: EmailRequester,
   ): Promise<EmailOutcome> {

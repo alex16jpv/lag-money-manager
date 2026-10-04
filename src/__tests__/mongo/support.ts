@@ -9,6 +9,7 @@
  * balances are moved by the real transaction flow, and every validation the
  * API enforces is enforced here.
  */
+import bcryptjs from "bcryptjs";
 import { readFileSync } from "fs";
 import mongoose from "mongoose";
 import { join } from "path";
@@ -18,9 +19,12 @@ import type {
   Fixture,
   FixtureSettlement,
 } from "../../../scripts/offline-fixtures/types";
+import { toUserResponse, UserResponseDTO } from "../../app/dtos/UserDTO";
+import { createEmailService } from "../../app/factories/emailServiceFactory";
 import repositoryFactory from "../../app/factories/RepositoryFactory";
 import { sharedLedgerService } from "../../app/factories/sharedLedger";
 import { AccountService } from "../../app/services/AccountService";
+import { AuthService, OpenedSession } from "../../app/services/AuthService";
 import { BudgetService } from "../../app/services/BudgetService";
 import { CategoryService } from "../../app/services/CategoryService";
 import { ContactService } from "../../app/services/ContactService";
@@ -30,13 +34,55 @@ import { SharedLedgerService } from "../../app/services/SharedLedgerService";
 import { SharedSettlementService } from "../../app/services/SharedSettlementService";
 import { StatsService } from "../../app/services/StatsService";
 import { TransactionService } from "../../app/services/TransactionService";
+import { signUpSchema } from "../../app/validation/schemas";
 import { connectMongo } from "../../config/mongoConnection";
 import { UserModel } from "../../infrastructure/models/UserModel";
+import { ENVIRONMENT } from "../../shared/constants";
 
 export type { Fixture, FixtureSettlement };
 
 // The suite's verifier passes any token (captcha.setup.ts); the field is what sign-up requires.
 export const TEST_CAPTCHA = "XXXX.DUMMY.TOKEN.XXXX";
+
+export interface SignedInUser extends OpenedSession {
+  user: UserResponseDTO;
+}
+
+// As a sign-up leaves it, past the code step accountLifecycle walks; fromBefore is an account from before email.
+export async function signedInUser(
+  fields: {
+    name: string;
+    email: string;
+    password: string;
+    currency?: string;
+    timezone?: string;
+    locale?: string;
+  },
+  { fromBefore = false } = {},
+): Promise<SignedInUser> {
+  const { password, ...profile } = signUpSchema.parse({
+    body: { ...fields, captcha: TEST_CAPTCHA },
+  }).body;
+  const auth = new AuthService(
+    repositoryFactory.getUserRepository(),
+    new CategoryService(
+      repositoryFactory.getCategoryRepository(),
+      repositoryFactory.getTransactionRepository(),
+    ),
+    repositoryFactory.getRefreshSessionRepository(),
+    createEmailService(),
+  );
+  const user = await auth.createAccount({
+    name: profile.name,
+    email: profile.email,
+    timezone: profile.timezone,
+    currency: profile.currency,
+    locale: profile.locale,
+    passwordHash: await bcryptjs.hash(password, ENVIRONMENT.BCRYPT_SALT_ROUNDS),
+    emailVerifiedAt: fromBefore ? null : new Date(),
+  });
+  return { ...(await auth.openSession(user)), user: toUserResponse(user) };
+}
 
 const FIXTURE_DIR =
   process.env.OFFLINE_FIXTURES_DIR ??

@@ -20,7 +20,7 @@ lag-money-manager is a REST API for personal money management. It allows users t
 - Money is stored as **integer cents** and exposed as a decimal amount. Convert only at the persistence boundary with `toCents()` / `fromCents()` from `src/shared/money.ts`; `MAX_AMOUNT` bounds every amount
 - `currency` is **stamped by the server** (account from its owner, transaction from the involved account). Clients never set it. The system is mono-currency for now: mixing currencies in one transaction is rejected with code `CURRENCY_MISMATCH`
 - Passwords are **never** returned in API responses
-- JWT authentication is required for every route except `/`, `/health/db` and the public `/auth` routes (`sign-up` and its `confirm` and `resend`, `register`, `login` and `login/restore`, `refresh`, `logout`, `password/*` and the email links). (`/auth/logout-all` and `/auth/sessions*` sit under the same `/auth` mount but apply `authMiddleware` individually.)
+- JWT authentication is required for every route except `/`, `/health/db` and the public `/auth` routes (`sign-up` and its `confirm` and `resend`, `login` and `login/restore`, `refresh`, `logout`, `password/*` and the email links). (`/auth/logout-all` and `/auth/sessions*` sit under the same `/auth` mount but apply `authMiddleware` individually.)
 - The only database backend is MongoDB via Mongoose. `DB_TYPE` still exists, but `MONGO` is the only value with a registered provider — anything else throws at startup
 - MongoDB **must be a replica set** — multi-document transactions do not run on a standalone `mongod`
 - UUIDs (v7) are used for all entity IDs (`_id` is a `String`, not an ObjectId)
@@ -491,7 +491,7 @@ route is also behind `gatewaySecretMiddleware`, `dbReadinessMiddleware` and the 
 | Area          | Endpoints                                                                                                                                    |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Root / health | `GET /`, `GET /health/db`, `GET /api-docs` (Swagger UI, non-production only)                                                                 |
-| Auth          | `POST /auth/sign-up`, `/auth/sign-up/confirm`, `/auth/sign-up/resend`, `/auth/register` (until T-239), `/auth/login`, `/auth/login/restore`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`, `/auth/password/*`, `/auth/email/*`; `GET /auth/sessions`; `DELETE /auth/sessions/:id` |
+| Auth          | `POST /auth/sign-up`, `/auth/sign-up/confirm`, `/auth/sign-up/resend`, `/auth/login`, `/auth/login/restore`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`, `/auth/password/*`, `/auth/email/*`; `GET /auth/sessions`; `DELETE /auth/sessions/:id` |
 | Users         | `GET`, `PUT`, `DELETE /users/:id`                                                                                                            |
 | Accounts      | `GET`/`POST /accounts`; `GET`/`PUT`/`DELETE /accounts/:id`; `POST /accounts/:id/restore`; `POST /accounts/:id/default`                       |
 | Categories    | `GET`/`POST /categories`; `POST /categories/restore-defaults`; `GET`/`PUT`/`DELETE /categories/:id`; `POST /categories/:id/restore`          |

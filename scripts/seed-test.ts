@@ -545,8 +545,6 @@ export async function seed(): Promise<Record<string, unknown>> {
     SEED_USER.id,
   );
 
-  // register opens a session of its own, so dropping it leaves the two devices the screen expects.
-  await RefreshSessionModel.deleteMany({ userId: SEED_USER.id });
   const sessions = repositoryFactory.getRefreshSessionRepository();
   for (const device of SEED_USER.devices) {
     await sessions.create({

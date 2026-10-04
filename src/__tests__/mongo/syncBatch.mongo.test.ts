@@ -13,7 +13,7 @@ import { CategoryModel } from "../../infrastructure/models/CategoryModel";
 import { SyncOpModel } from "../../infrastructure/models/SyncOpModel";
 import { TransactionModel } from "../../infrastructure/models/TransactionModel";
 import { SYNC_OP_TTL_SECONDS } from "../../shared/syncBatch";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 const uuid = (kind: "a" | "b" | "c" | "d" | "e" | "f", n: number): string =>
   `01950000-0000-7000-8000-${kind}${String(n).padStart(11, "0")}`;
@@ -62,14 +62,12 @@ const op = (
 });
 
 async function register(email: string): Promise<Session> {
-  const res = await request(app).post("/auth/register").send({
-    captcha: TEST_CAPTCHA,
+  const res = await signedInUser({
     name: "Batch tester",
     email,
     password: "Offline!2026",
   });
-  expect(res.status).toBe(201);
-  return { token: res.body.accessToken, userId: res.body.user.id };
+  return { token: res.accessToken, userId: res.user.id };
 }
 
 const as = (session: Session, req: request.Test): request.Test =>

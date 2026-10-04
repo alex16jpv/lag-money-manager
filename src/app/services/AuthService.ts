@@ -13,11 +13,7 @@ import { dayKeyOf } from "../../shared/dayKey";
 import { AccountDeletedError, ApiError } from "../../shared/errors";
 import logger from "../../shared/logger";
 import { SessionView } from "../dtos/SessionDTO";
-import {
-  CreateUserDTO,
-  toUserResponse,
-  UserResponseDTO,
-} from "../dtos/UserDTO";
+import { toUserResponse, UserResponseDTO } from "../dtos/UserDTO";
 import { CategoryService } from "./CategoryService";
 import { datedDeletion, deletedDays } from "./deletedAccount";
 import { readDeviceToken, signDeviceToken } from "./deviceToken";
@@ -166,22 +162,6 @@ export class AuthService {
       );
     }
     return created;
-  }
-
-  async register(
-    dto: CreateUserDTO,
-    userAgent?: string,
-  ): Promise<OpenedSession & { user: UserResponseDTO }> {
-    const created = await this.createAccount({
-      ...dto,
-      passwordHash: await bcryptjs.hash(
-        dto.password,
-        ENVIRONMENT.BCRYPT_SALT_ROUNDS,
-      ),
-      emailVerifiedAt: null,
-    });
-    const tokens = await this.openSession(created, userAgent);
-    return { ...tokens, user: toUserResponse(created) };
   }
 
   // A password change or a logout-all bumps tokenVersion, and with it every device token issued before.

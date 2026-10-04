@@ -19,9 +19,9 @@ Refresh tokens are **truly rotated**: every `POST /auth/refresh` invalidates the
 | `src/app/controllers/AuthController.ts`                                      | Thin HTTP handler, delegates to AuthService                                   |
 | `src/app/services/AuthService.ts`                                            | Hashing, credential verification, token signing, rotation, session revocation |
 | `src/app/dtos/UserDTO.ts`                                                    | `CreateUserDTO`, `UserResponseDTO` (shared with Users module)                 |
-| `src/app/validation/schemas.ts`                                              | `registerSchema`, `loginSchema`, `refreshSchema`                              |
+| `src/app/validation/schemas.ts`                                              | `signUpSchema`, `loginSchema`, `refreshSchema`                                |
 | `src/app/middlewares/authMiddleware.ts`                                      | Access-token verification; populates `req.user` (`AuthPayload`)               |
-| `src/app/services/deviceToken.ts`                                            | Signing and reading the device token that login and register answer           |
+| `src/app/services/deviceToken.ts`                                            | Signing and reading the device token that login and sign-up answer            |
 | `src/app/middlewares/loginAttempt.ts`                                        | The email an attempt is for, and the device recognized for it                 |
 | `src/app/middlewares/authRateLimitMiddleware.ts`                             | The persisted counter behind every auth rate limit                            |
 | `src/app/middlewares/clientIp.ts`                                            | The client address the limiters count against                                 |
@@ -89,11 +89,9 @@ The fields are the ones of the profile: `password` 8–128 characters; `email` n
 
 `{ "signUpToken", "captcha", "deviceToken"? }` → `202 { resendAfterSeconds }`: Resend code of the code step. The same as the sign-up, branch, brakes, floor and silence included: `sign-up` with a new code (which replaces the old one once accepted), or `account-exists` if the address has an account by now. `409 SIGN_UP_EXPIRED` when the sign-up is over (24 hours, or replaced): start again from Create account.
 
-### `POST /auth/register` (until T-239)
+### `POST /auth/register` (gone with T-248)
 
-The way accounts were created before the confirmation came first, kept so the web client in production keeps working until T-239 is published (the back goes out first); a task removes it then. It creates the account unconfirmed and signs in (`201`, like a login), and sends `verify-email`; an address with any account, deleted and still kept included, is `409 EMAIL_TAKEN`. A deleted account no longer comes back from here: that is Sign in's job. It spends the login's per-email budget as before (see Rate Limiting). Its accounts are accounts from before email for [the deadline](#the-deadline-of-the-accounts-from-before-email).
-
-Note: the password is never returned.
+The way accounts were created before the confirmation came first: unconfirmed, signed in at once, and `409 EMAIL_TAKEN` for an address with an account, which told anyone who had one (decision 16). It stayed only until the web client of T-239 was published, and T-248 removed it; it now answers like any route that never existed. Every account is created by [`POST /auth/sign-up`](#post-authsign-up) and its code.
 
 ### `POST /auth/login`
 
@@ -269,7 +267,7 @@ of the address.
 ## Confirming the email
 
 Every account created by `POST /auth/sign-up` is confirmed from its first moment. What this section
-confirms is an **account from before email existed** (and one made by `POST /auth/register` until T-239):
+confirms is an **account from before email existed** (and one made by the old `POST /auth/register`, gone with T-248):
 it has `emailVerifiedAt: null`, invitations wait for it (the owner's decision 3), and it has 14 days from
 the email that announces it to confirm ([below](#the-deadline-of-the-accounts-from-before-email), decision
 17, which replaced decision 4's "no deadline"). Decision 11's "It wasn't me", which deleted an account
@@ -325,7 +323,7 @@ Send code and Resend code of the sheet. With the access token, `{ "captcha", "de
   per address, five a day per account, and the device's or the IP's ([email.md](email.md#brakes)).
 - `409 EMAIL_ALREADY_VERIFIED` when there is nothing to confirm.
 
-Every send (at `POST /auth/register` and Resend) is the same: a new code and link
+Every send (Send code and Resend, the same route) is the same: a new code and link
 replace the live ones only once the email was accepted (`sent`); with `failed / unconfirmed` the newest
 live code is kept next to the new one, as in the reset. `verify-email` has no box (the owner's approval F):
 it is only sent when somebody signed in to the account asks for it.
@@ -483,7 +481,7 @@ makes that hold:
 ## The captcha
 
 `requireCaptcha(action, verifier)` runs after `validate()`, on the routes that send an email: `POST
-/auth/sign-up`, `/auth/sign-up/resend` and `/auth/register` (action `register`), `POST
+/auth/sign-up` and `/auth/sign-up/resend` (action `register`), `POST
 /auth/password/forgot` (`forgot-password`), `POST
 /auth/email/resend` (`verify-email`), and `POST /users/:id/email-change` and its `/resend`
 (`email-change`). Each body requires its `captcha`. It asks Cloudflare Turnstile's `siteverify` (`TurnstileVerifier`, 3 s, no retry) with `TURNSTILE_SECRET`, the token and the
@@ -638,7 +636,7 @@ sequenceDiagram
 | `BCRYPT_SALT_ROUNDS`       | Password hashing complexity (default: `12`)                                    |
 | `AUTH_RATE_LIMIT_MAX`      | Failed login attempts per recognized device, or per email and client IP, per 15-minute window (default: `10`) |
 | `AUTH_EMAIL_RATE_LIMIT_MAX` | Failed login attempts per email per hour from unrecognized devices (default: `50`) |
-| `AUTH_IP_RATE_LIMIT_MAX`   | Login, sign-up and register attempts per client IP per 15-minute window (default: `60`) |
+| `AUTH_IP_RATE_LIMIT_MAX`   | Login, restore and sign-up attempts per client IP per 15-minute window (default: `60`) |
 | `REFRESH_RATE_LIMIT_MAX`   | Refresh and logout attempts per 15-minute window (default: `60`)               |
 | `TURNSTILE_SECRET`         | Cloudflare Turnstile's secret key for the captcha; without it nobody can sign up. Required in production once `EMAIL_PROVIDERS` is set |
 | `EMAIL_CONFIRMATION_DEADLINES` | Starts the deadline of the accounts from before email (default `false`); production refuses it without `EMAIL_PROVIDERS` |
@@ -649,10 +647,10 @@ sequenceDiagram
 
 | Endpoint                        | Key                                                   | Cap and window                            |
 | ------------------------------- | ----------------------------------------------------- | ----------------------------------------- |
-| `POST /auth/login`, `/login/restore`, `/register` | Client IP                           | `AUTH_IP_RATE_LIMIT_MAX` per 15 min       |
-| `POST /auth/login`, `/login/restore`, `/register` | Recognized device (`login-device:<device id>`) | `AUTH_RATE_LIMIT_MAX` per 15 min |
-| `POST /auth/login`, `/login/restore`, `/register` | Otherwise email and client IP (`login-email-ip:<email>:<ip>`) | `AUTH_RATE_LIMIT_MAX` per 15 min |
-| `POST /auth/login`, `/login/restore`, `/register` | Otherwise email (`login-email:<email>`) | `AUTH_EMAIL_RATE_LIMIT_MAX` per hour |
+| `POST /auth/login`, `/login/restore` | Client IP                           | `AUTH_IP_RATE_LIMIT_MAX` per 15 min       |
+| `POST /auth/login`, `/login/restore` | Recognized device (`login-device:<device id>`) | `AUTH_RATE_LIMIT_MAX` per 15 min |
+| `POST /auth/login`, `/login/restore` | Otherwise email and client IP (`login-email-ip:<email>:<ip>`) | `AUTH_RATE_LIMIT_MAX` per 15 min |
+| `POST /auth/login`, `/login/restore` | Otherwise email (`login-email:<email>`) | `AUTH_EMAIL_RATE_LIMIT_MAX` per hour |
 | `POST /auth/sign-up`, `/sign-up/resend` | Client IP (`register:<ip>`), before the captcha; then the email's own brakes, for every address | `AUTH_IP_RATE_LIMIT_MAX` per 15 min |
 | `POST /auth/sign-up/confirm`    | Client IP (`sign-up-confirm:<ip>`); a code also has its five tries | `AUTH_IP_RATE_LIMIT_MAX` per 15 min |
 | `POST /auth/refresh`, `/logout` | Client IP                                             | `REFRESH_RATE_LIMIT_MAX` per 15 min       |
@@ -665,11 +663,11 @@ sequenceDiagram
 | `POST /auth/email/confirm-change` | Client IP (`confirm-email-change:<ip>`); a code also has its five tries | `AUTH_IP_RATE_LIMIT_MAX` per 15 min |
 | `POST /users/:id/email-change` and `/resend` | Client IP (`email-change:<ip>`), before the captcha; then the email's own brakes | `AUTH_IP_RATE_LIMIT_MAX` per 15 min |
 
-Only **failed** attempts burn the account budgets (`refundOnSuccess`), so real logins cost nothing. Restore and the old register spend the same ones: restoring tests the password like a login, and a failed register and a failed login spend one budget between them. `POST /auth/sign-up` tests no password, so only its volume brake and the email's brakes apply.
+Only **failed** attempts burn the account budgets (`refundOnSuccess`), so real logins cost nothing. Restore spends the same ones: it tests the password like a login. `POST /auth/sign-up` tests no password, so only its volume brake and the email's brakes apply.
 
 **Nobody can lock another person out of a device they already use** (T-176, owner's decision of 2026-09-24). Until then the only account budget was one counter per email: ten wrong passwords from anyone locked the owner out for the window, and repeating it every fifteen minutes locked them out for good. The fix is a device token, the "device cookie" OWASP recommends against lockout attacks:
 
-- Every login, sign-up, restore, reset and register answers a `deviceToken`: an HS256 JWT signed with `REFRESH_SECRET ?? JWT_SECRET`, audience `device`, a random `jti` (the device id), the user's `tokenVersion`, a `sub` that is the SHA-256 of the normalized email, and a one-year lifetime (`src/app/services/deviceToken.ts`). It proves only that this device once signed in to that email; it opens nothing, so it is not a session and survives logout. The web client keeps it in an httpOnly cookie and sends it back as `deviceToken` on the next login or register. Each success answers a new one, which the client keeps instead; the old one stays valid until it expires or is revoked.
+- Every login, sign-up (its code), restore and reset answers a `deviceToken`: an HS256 JWT signed with `REFRESH_SECRET ?? JWT_SECRET`, audience `device`, a random `jti` (the device id), the user's `tokenVersion`, a `sub` that is the SHA-256 of the normalized email, and a one-year lifetime (`src/app/services/deviceToken.ts`). It proves only that this device once signed in to that email; it opens nothing, so it is not a session and survives logout. The web client keeps it in an httpOnly cookie and sends it back as `deviceToken` on the next login or sign-up. Each success answers a new one, which the client keeps instead; the old one stays valid until it expires or is revoked.
 - **Recognizing** a device (`AuthService.recognizedDevice`, run once per request by `AuthController.recognizeDevice` before the limiters) takes a valid signature, the email the attempt is for, and a `tokenVersion` equal to the account's, which costs one indexed read. A password or email change, a reset, an undo, a restore link and **Log out everywhere** bump `tokenVersion`, so they revoke every device token issued before for the limiters; a deleted account recognizes none. `new-sign-in` reads the same token with a looser rule of its own ([`POST /auth/login`](#post-authlogin)).
 - An attempt from a recognized device counts only against that device (`AUTH_RATE_LIMIT_MAX` per 15 minutes). Someone else's failures never touch that budget. A stolen token, or one kept by somebody who once knew the password, is worth that budget of guesses, outside the per-email cap, until the owner changes the password or logs out everywhere.
 - Every other attempt counts twice: per email and client IP, so an attacker behind one address runs out of guesses without affecting anybody else; and per email across all addresses, so an attack that rotates addresses is capped at `AUTH_EMAIL_RATE_LIMIT_MAX` guesses an hour. Only that last one can still stop the real owner, and only on a device the account does not recognize, while the attack lasts.
@@ -690,7 +688,7 @@ The per-IP cap is shared by everyone behind that address — a carrier NAT holds
 | `REFRESH_REVOKED` | 401    | Reuse of a rotated token whose successor is already spent; a rotated token presented past its re-issue limit; a family already ended by a logout or `DELETE /auth/sessions/:id`; or a token that predates a logout-all / credential change |
 | `Unauthorized`    | 401    | Missing or malformed `Authorization` header, or an invalid/expired access token                                                                                                                                                            |
 | `NotFound`        | 404    | `DELETE /auth/sessions/:id` for a family that is not the user's                                                                                                                                                                            |
-| `EMAIL_TAKEN`     | 409    | `POST /auth/register` with the email of any account, a deleted one still kept or one kept for another account's undo link included; or a sign-up whose address another account took before its code |
+| `EMAIL_TAKEN`     | 409    | A sign-up whose address another account took before its code: a live one, a deleted one still kept or one kept for another account's undo link |
 | `ACCOUNT_DELETED` | 409    | Login with the right password of an account deleted in its last 30 days; `deletedAccount` carries its two days |
 | `SIGN_UP_CODE_INVALID` | 400 | A sign-up code that does not work, whatever the reason |
 | `SIGN_UP_EXPIRED` | 409    | Resend of a sign-up that is over |
@@ -707,7 +705,7 @@ The per-IP cap is shared by everyone behind that address — a carrier NAT holds
 | `CAPTCHA_INVALID` | 400    | Turnstile refused the captcha token                                                                                                                                                                                                        |
 | `CAPTCHA_UNAVAILABLE` | 503 | The captcha could not be checked; nothing was created or sent                                                                                                                                                                          |
 
-> On a `500` during the old register the user may still have been created — clients should try login before retrying register. A sign-up creates nothing until its code: retrying it only replaces the sign-up.
+> A sign-up creates nothing until its code: retrying it only replaces the sign-up.
 
 ## Token Revocation Model
 

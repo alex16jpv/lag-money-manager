@@ -113,11 +113,11 @@ Then every session row is revoked, the invitations waiting for the address are t
 
 ### How an address is kept
 
-The unique index on `email` guards one address per account. An undo link needs a second address to be guarded the same way, atomically, against a register or a move by another account landing in the same millisecond, and one field's unique index cannot see another field. So every account written since T-211 holds **`heldEmails`**: its email and every address an undo link of it keeps, under a **unique multikey index** (partial, on accounts that have the field). Whoever takes an address writes it into its own `heldEmails` in the same write (a register, a move), so the index refuses it while another account keeps it, and a move keeps the old address in the same write that leaves it. An account from before T-211 has no `heldEmails` until it moves, and needs none: its email is guarded by the `email` index, and no address could be kept before T-211.
+The unique index on `email` guards one address per account. An undo link needs a second address to be guarded the same way, atomically, against a new account or a move by another account landing in the same millisecond, and one field's unique index cannot see another field. So every account written since T-211 holds **`heldEmails`**: its email and every address an undo link of it keeps, under a **unique multikey index** (partial, on accounts that have the field). Whoever takes an address writes it into its own `heldEmails` in the same write (a register, a move), so the index refuses it while another account keeps it, and a move keeps the old address in the same write that leaves it. An account from before T-211 has no `heldEmails` until it moves, and needs none: its email is guarded by the `email` index, and no address could be kept before T-211.
 
 - **An address stays in `heldEmails` after its links lapse**, until somebody needs it: an account created or moved and refused by `heldEmails` lets go of the addresses whose links all lapsed (`releaseLapsedHolds`) and tries once more. `holderOf` reads only live links, so neither Create account nor the change of email counts a lapsed one.
 - **Delete account** keeps the undo links and `heldEmails`: the undo brings the account back. The erasure at 30 days lets every one of them go.
-- **A kept address answers like a taken one**, and neither like a free one only to whoever holds it: Create account sends `account-exists` in its held words, with the day the address is free ([auth.md](auth.md#creating-an-account)), and a change of email waits and sends `email-change-taken`. Neither the screen nor its time tells them apart, and must not. `POST /auth/register`, kept until T-239, still answers `409 EMAIL_TAKEN` for both.
+- **A kept address answers like a taken one**, and neither like a free one only to whoever holds it: Create account sends `account-exists` in its held words, with the day the address is free ([auth.md](auth.md#creating-an-account)), and a change of email waits and sends `email-change-taken`. Neither the screen nor its time tells them apart, and must not.
 
 ### `DELETE /users/:id`
 
@@ -215,7 +215,7 @@ sequenceDiagram
 **Imported by:**
 
 - User routes registered in `src/app.ts` at `/users`, after `authMiddleware`
-- `AuthService` uses `IUserRepository` for register/login/refresh and token-version bumps
+- `AuthService` uses `IUserRepository` for creating accounts, login, refresh and token-version bumps
 - `AccountService` and `BudgetService` read the owner's `currency` when stamping new records
 - `StatsController` and `BudgetController` fall back to the stored `timezone` when the token carries no claim
 

@@ -5,7 +5,7 @@
 import request from "supertest";
 
 import app from "../../app";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 const SEPTEMBER = "2026-09-15T12:00:00.000Z";
 const OCTOBER = "2026-10-15T12:00:00.000Z";
@@ -27,14 +27,12 @@ interface Lister {
 
 // Registration leaves the profile in America/Bogota (UTC-5), where every window below is cut.
 async function register(email: string): Promise<Lister> {
-  const registered = await request(app).post("/auth/register").send({
-    captcha: TEST_CAPTCHA,
+  const registered = await signedInUser({
     name: "Lister",
     email,
     password: "Offline!2026",
   });
-  expect(registered.status).toBe(201);
-  const token = registered.body.accessToken as string;
+  const token = registered.accessToken;
   const categories = await request(app)
     .get("/categories?limit=100&type=EXPENSE")
     .set("Authorization", `Bearer ${token}`);

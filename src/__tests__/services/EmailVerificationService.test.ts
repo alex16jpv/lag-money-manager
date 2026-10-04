@@ -106,11 +106,11 @@ const build = (): Harness => {
 };
 
 describe("EmailVerificationService", () => {
-  describe("send", () => {
+  describe("the email it sends", () => {
     it("emails a code and a link, and keeps only their hashes, for 24 hours", async () => {
       const { service, email, codes } = build();
 
-      await expect(service.send(ana(), REQUESTER)).resolves.toEqual(sent);
+      await expect(service.resend(USER_ID, REQUESTER)).resolves.toEqual(sent);
 
       const request = email.sendCode.mock.calls[0][0];
       expect(request).toMatchObject({
@@ -154,7 +154,7 @@ describe("EmailVerificationService", () => {
         reason: "unconfirmed",
       });
 
-      await service.send(ana(), REQUESTER);
+      await service.resend(USER_ID, REQUESTER);
 
       expect(codes.issue.mock.calls[0][3]).toBe(true);
     });
@@ -170,7 +170,9 @@ describe("EmailVerificationService", () => {
         const { service, email, codes } = build();
         email.sendCode.mockResolvedValue(outcome);
 
-        await expect(service.send(ana(), REQUESTER)).resolves.toEqual(outcome);
+        await expect(service.resend(USER_ID, REQUESTER)).resolves.toEqual(
+          outcome,
+        );
 
         expect(codes.recordRequest).not.toHaveBeenCalled();
         expect(codes.issue).not.toHaveBeenCalled();

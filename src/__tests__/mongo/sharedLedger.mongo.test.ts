@@ -10,7 +10,7 @@ import request from "supertest";
 import app from "../../app";
 import { AccountModel } from "../../infrastructure/models/AccountModel";
 import { TransactionModel } from "../../infrastructure/models/TransactionModel";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 interface Session {
   token: string;
@@ -72,16 +72,14 @@ describe("what counts as yours, against mongod", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    const registered = await request(app).post("/auth/register").send({
-      captcha: TEST_CAPTCHA,
+    const registered = await signedInUser({
       name: "Owner",
       email: "owner@shared-ledger.test",
       password: "Offline!2026",
     });
-    expect(registered.status).toBe(201);
     session = {
-      token: registered.body.accessToken,
-      userId: registered.body.user.id,
+      token: registered.accessToken,
+      userId: registered.user.id,
     };
 
     expect(
@@ -185,19 +183,18 @@ describe("what counts as yours, against mongod", () => {
     });
 
     it("refuses a movement of somebody else's the same way as a missing one", async () => {
-      const stranger = await request(app).post("/auth/register").send({
-        captcha: TEST_CAPTCHA,
+      const stranger = await signedInUser({
         name: "Stranger",
         email: "stranger@shared-ledger.test",
         password: "Offline!2026",
       });
       const theirAccount = await request(app)
         .post("/accounts")
-        .set("Authorization", `Bearer ${stranger.body.accessToken}`)
+        .set("Authorization", `Bearer ${stranger.accessToken}`)
         .send({ name: "Theirs", type: "ACCOUNT", balance: 100_000 });
       const theirs = await request(app)
         .post("/transactions")
-        .set("Authorization", `Bearer ${stranger.body.accessToken}`)
+        .set("Authorization", `Bearer ${stranger.accessToken}`)
         .send({
           type: "EXPENSE",
           amount: 10_000,

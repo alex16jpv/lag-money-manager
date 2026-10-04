@@ -23,7 +23,7 @@ graph TB
     subgraph "Public Routes"
         SWAGGER["/api-docs<br/>Swagger UI (non-production)"]
         PROBE["/ and /health/db<br/>Liveness probes"]
-        AUTH_R["/auth<br/>Register, Login, Refresh"]
+        AUTH_R["/auth<br/>Sign-up, Login, Refresh"]
     end
 
     subgraph "Auth Wall"

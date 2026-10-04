@@ -11,7 +11,13 @@ import { AuthCodeModel } from "../../infrastructure/models/AuthCodeModel";
 import { UserModel } from "../../infrastructure/models/UserModel";
 import { AuthCodeRepository } from "../../infrastructure/repositories/authCode/AuthCodeRepository";
 import { hashEmailAddress } from "../../shared/emailHash";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import {
+  connect,
+  disconnect,
+  dropDatabase,
+  signedInUser,
+  TEST_CAPTCHA,
+} from "./support";
 
 const mockSent: OutgoingEmail[] = [];
 
@@ -62,18 +68,14 @@ interface Session {
 const PASSWORD = "Offline!2026";
 
 async function register(email: string, name: string): Promise<Session> {
-  const res = await request(app).post("/auth/register").send({
-    captcha: TEST_CAPTCHA,
-    name,
-    email,
-    password: PASSWORD,
-    currency: "COP",
-  });
-  expect(res.status).toBe(201);
+  const opened = await signedInUser(
+    { name, email, password: PASSWORD, currency: "COP" },
+    { fromBefore: true },
+  );
   return {
-    token: res.body.accessToken,
-    refreshToken: res.body.refreshToken,
-    userId: res.body.user.id,
+    token: opened.accessToken,
+    refreshToken: opened.refreshToken,
+    userId: opened.user.id,
   };
 }
 

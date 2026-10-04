@@ -14,7 +14,13 @@ import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
 import { RefreshSessionModel } from "../../infrastructure/models/RefreshSessionModel";
 import { SharedInvitationModel } from "../../infrastructure/models/SharedInvitationModel";
 import { UserModel } from "../../infrastructure/models/UserModel";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import {
+  connect,
+  disconnect,
+  dropDatabase,
+  signedInUser,
+  TEST_CAPTCHA,
+} from "./support";
 
 const mockSent: OutgoingEmail[] = [];
 const mockUnreachable = new Set<string>();
@@ -85,19 +91,19 @@ interface Session {
 
 const PASSWORD = "Offline!2026";
 
-async function register(email: string, name: string): Promise<Session> {
-  const res = await request(app).post("/auth/register").send({
-    captcha: TEST_CAPTCHA,
-    name,
-    email,
-    password: PASSWORD,
-    currency: "COP",
-  });
-  expect(res.status).toBe(201);
+async function register(
+  email: string,
+  name: string,
+  fromBefore = true,
+): Promise<Session> {
+  const opened = await signedInUser(
+    { name, email, password: PASSWORD, currency: "COP" },
+    { fromBefore },
+  );
   return {
-    token: res.body.accessToken,
-    refreshToken: res.body.refreshToken,
-    userId: res.body.user.id,
+    token: opened.accessToken,
+    refreshToken: opened.refreshToken,
+    userId: opened.user.id,
   };
 }
 
@@ -150,9 +156,6 @@ const confirmLink = (token: string, refreshToken?: string): request.Test =>
 const refresh = (refreshToken: string): request.Test =>
   request(app).post("/auth/refresh").send({ refreshToken });
 
-const verifyCode = (session: Session, code: string): request.Test =>
-  as(session, request(app).post("/auth/email/verify").send({ code }));
-
 interface Profile {
   email: string;
   emailVerified: boolean;
@@ -203,10 +206,7 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("waits for the new address, moves the account with its code and keeps only this device signed in", async () => {
-    const ana = await register("ana@change.test", "Ana Ruiz");
-    expect(
-      (await verifyCode(ana, lastEmailTo("ana@change.test").code)).status,
-    ).toBe(200);
+    const ana = await register("ana@change.test", "Ana Ruiz", false);
     const phone = await login("ana@change.test");
 
     const asked = await askToMove(ana, "ana.ruiz@change.test");
@@ -316,7 +316,7 @@ describe("Changing the email against mongod [T-221]", () => {
     expect(moved.body.user.emailVerified).toBe(true);
     const stored = await UserModel.findById(dani.userId).lean();
     expect(stored?.emailVerifiedAt).toBeInstanceOf(Date);
-    expect(sentTo("dani@change.test")).toBe(1);
+    expect(sentTo("dani@change.test")).toBe(0);
   });
 
   it("replaces a waiting change with a newer one, and the first one's code and link stop working", async () => {
@@ -467,14 +467,8 @@ describe("Changing the email against mongod [T-221]", () => {
   });
 
   it("hands the invitations waiting for the new address to the feed once it is confirmed, and keeps the answer through the next move", async () => {
-    const lola = await register("lola@change.test", "Lola Paz");
-    expect(
-      (await verifyCode(lola, lastEmailTo("lola@change.test").code)).status,
-    ).toBe(200);
-    const mario = await register("mario@change.test", "Mario Gil");
-    expect(
-      (await verifyCode(mario, lastEmailTo("mario@change.test").code)).status,
-    ).toBe(200);
+    const lola = await register("lola@change.test", "Lola Paz", false);
+    const mario = await register("mario@change.test", "Mario Gil", false);
 
     const contact = await as(
       lola,

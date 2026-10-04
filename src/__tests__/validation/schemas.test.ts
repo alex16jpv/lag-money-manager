@@ -116,7 +116,6 @@ import {
   loginSchema,
   paginationQuerySchema,
   quickAddTransactionSchema,
-  registerSchema,
   requestEmailChangeSchema,
   resendEmailChangeSchema,
   resendVerificationSchema,
@@ -124,6 +123,7 @@ import {
   restoreFromLinkSchema,
   signUpConfirmSchema,
   signUpResendSchema,
+  signUpSchema,
   spendingStatsSchema,
   syncBatchSchema,
   updateAccountSchema,
@@ -221,8 +221,8 @@ describe("Validation Schemas", () => {
     });
   });
 
-  describe("registerSchema", () => {
-    const validRegister = {
+  describe("signUpSchema", () => {
+    const validSignUp = {
       body: {
         name: "John Doe",
         email: "john@example.com",
@@ -232,49 +232,49 @@ describe("Validation Schemas", () => {
     };
 
     it("should accept a supported locale", () => {
-      const result = registerSchema.safeParse({
-        body: { ...validRegister.body, locale: "es" },
+      const result = signUpSchema.safeParse({
+        body: { ...validSignUp.body, locale: "es" },
       });
       expect(result.success).toBe(true);
     });
 
     it("should reject an unsupported locale", () => {
-      const result = registerSchema.safeParse({
-        body: { ...validRegister.body, locale: "fr" },
+      const result = signUpSchema.safeParse({
+        body: { ...validSignUp.body, locale: "fr" },
       });
       expect(result.success).toBe(false);
     });
 
-    it("should accept valid registration data", () => {
-      const result = registerSchema.safeParse(validRegister);
+    it("should accept valid sign-up data", () => {
+      const result = signUpSchema.safeParse(validSignUp);
       expect(result.success).toBe(true);
     });
 
     it("should reject empty name", () => {
-      const result = registerSchema.safeParse({
-        body: { ...validRegister.body, name: "" },
+      const result = signUpSchema.safeParse({
+        body: { ...validSignUp.body, name: "" },
       });
       expect(result.success).toBe(false);
     });
 
     it("should reject name exceeding 255 characters", () => {
-      const result = registerSchema.safeParse({
-        body: { ...validRegister.body, name: "a".repeat(256) },
+      const result = signUpSchema.safeParse({
+        body: { ...validSignUp.body, name: "a".repeat(256) },
       });
       expect(result.success).toBe(false);
     });
 
     it("should reject invalid email format", () => {
-      const result = registerSchema.safeParse({
-        body: { ...validRegister.body, email: "not-an-email" },
+      const result = signUpSchema.safeParse({
+        body: { ...validSignUp.body, email: "not-an-email" },
       });
       expect(result.success).toBe(false);
     });
 
     it("should reject email exceeding 255 characters", () => {
-      const result = registerSchema.safeParse({
+      const result = signUpSchema.safeParse({
         body: {
-          ...validRegister.body,
+          ...validSignUp.body,
           email: "a".repeat(250) + "@test.com",
         },
       });
@@ -282,21 +282,21 @@ describe("Validation Schemas", () => {
     });
 
     it("should reject password shorter than 8 characters", () => {
-      const result = registerSchema.safeParse({
-        body: { ...validRegister.body, password: "short" },
+      const result = signUpSchema.safeParse({
+        body: { ...validSignUp.body, password: "short" },
       });
       expect(result.success).toBe(false);
     });
 
     it("should reject password exceeding 128 characters", () => {
-      const result = registerSchema.safeParse({
-        body: { ...validRegister.body, password: "a".repeat(129) },
+      const result = signUpSchema.safeParse({
+        body: { ...validSignUp.body, password: "a".repeat(129) },
       });
       expect(result.success).toBe(false);
     });
 
     it("should reject missing required fields", () => {
-      const result = registerSchema.safeParse({ body: {} });
+      const result = signUpSchema.safeParse({ body: {} });
       expect(result.success).toBe(false);
     });
   });
@@ -369,21 +369,20 @@ describe("Validation Schemas", () => {
   });
 
   describe("the email's confirmation [T-209]", () => {
-    const register = {
+    const signUp = {
       name: "Ana",
       email: "ana@example.com",
       password: "password123",
     };
 
-    it("needs a register's captcha, and keeps the token [T-228]", () => {
-      expect(registerSchema.safeParse({ body: register }).success).toBe(false);
+    it("needs a sign-up's captcha, and keeps the token [T-228]", () => {
+      expect(signUpSchema.safeParse({ body: signUp }).success).toBe(false);
       expect(
-        registerSchema.parse({ body: { ...register, captcha: "token" } }).body
+        signUpSchema.parse({ body: { ...signUp, captcha: "token" } }).body
           .captcha,
       ).toBe("token");
       expect(
-        registerSchema.safeParse({ body: { ...register, captcha: "" } })
-          .success,
+        signUpSchema.safeParse({ body: { ...signUp, captcha: "" } }).success,
       ).toBe(false);
     });
 

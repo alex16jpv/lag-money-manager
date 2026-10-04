@@ -9,7 +9,7 @@
 import request from "supertest";
 
 import app from "../../app";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 const uuid = (n: number): string =>
   `01960000-0000-7000-8000-b${String(n).padStart(11, "0")}`;
@@ -37,15 +37,13 @@ describe("what a movement may do to an account", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    const res = await request(app).post("/auth/register").send({
-      captcha: TEST_CAPTCHA,
+    const res = await signedInUser({
       name: "Rules tester",
       email: "rules@movements.test",
       password: "Offline!2026",
       currency: "USD",
     });
-    expect(res.status).toBe(201);
-    owner = { token: res.body.accessToken, userId: res.body.user.id };
+    owner = { token: res.accessToken, userId: res.user.id };
 
     for (const account of [
       { id: bank, name: "Bank", type: "ACCOUNT", balance: 20000 },

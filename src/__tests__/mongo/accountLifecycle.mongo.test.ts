@@ -13,7 +13,13 @@ import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
 import { RefreshSessionModel } from "../../infrastructure/models/RefreshSessionModel";
 import { SignUpModel } from "../../infrastructure/models/SignUpModel";
 import { UserModel } from "../../infrastructure/models/UserModel";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import {
+  connect,
+  disconnect,
+  dropDatabase,
+  signedInUser,
+  TEST_CAPTCHA,
+} from "./support";
 
 const mockSent: OutgoingEmail[] = [];
 
@@ -421,18 +427,13 @@ describe("The account lifecycle against mongod [T-238]", () => {
   });
 
   describe("an account from before email existed", () => {
-    // Made the way the accounts from before were: confirmed by nobody.
-    const fromBefore = async (email: string): Promise<Session> => {
-      await minutePasses();
-      const res = await request(app).post("/auth/register").send({
-        captcha: TEST_CAPTCHA,
-        name: "Old",
-        email,
-        password: PASSWORD,
-      });
-      expect(res.status).toBe(201);
-      return sessionOf(res.body);
-    };
+    const fromBefore = async (email: string): Promise<Session> =>
+      sessionOf(
+        await signedInUser(
+          { name: "Old", email, password: PASSWORD },
+          { fromBefore: true },
+        ),
+      );
 
     it("gets its deadline from the pass, and its link confirms it until then", async () => {
       const iris = await fromBefore("iris@life.test");
