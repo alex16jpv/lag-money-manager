@@ -171,6 +171,29 @@ describe("UserService", () => {
       expect((result as UpdateUserDTO).password).toBeUndefined();
     });
 
+    it("saves the theme and answers it, with nothing to re-authenticate [T-212]", async () => {
+      const theme = { palette: "tinta", mode: "dark" } as const;
+      repo.update.mockResolvedValue(new User({ ...mockUser, theme }));
+
+      const result = await service.updateUser(
+        testUserId,
+        { theme },
+        testUserId,
+      );
+
+      expect(repo.update).toHaveBeenCalledWith(testUserId, { theme });
+      expect(result.theme).toEqual(theme);
+      expect(sessions.revokeAllForUser).not.toHaveBeenCalled();
+    });
+
+    it("answers a null theme until one is picked [T-212]", async () => {
+      repo.getById.mockResolvedValue(mockUser);
+
+      const result = await service.getUserById(testUserId, testUserId);
+
+      expect(result.theme).toBeNull();
+    });
+
     it("should throw Forbidden when updating another user", async () => {
       await expect(
         service.updateUser(

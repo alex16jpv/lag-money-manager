@@ -2,6 +2,7 @@ import { v7 as uuidv7 } from "uuid";
 
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { DEFAULT_LOCALE, Locale } from "../../shared/locale";
+import { Theme } from "../../shared/theme";
 import { DEFAULT_TIMEZONE } from "../../shared/timezone";
 
 // A new address waiting for its code: the account keeps its email until it is confirmed.
@@ -47,6 +48,8 @@ export interface UserProps {
   currency?: string;
   // UI language (en | es). Follows the user across devices.
   locale?: Locale;
+  // Null until the user picks one: each device keeps its own until then.
+  theme?: Theme | null;
   // Last session open (login/sign-up); impossible to reconstruct later.
   lastLoginAt?: Date | null;
   emailVerifiedAt?: Date | null;
@@ -74,6 +77,7 @@ export class User {
   timezone: string;
   currency: string;
   locale: Locale;
+  theme: Theme | null;
   lastLoginAt: Date | null;
   emailVerifiedAt: Date | null;
   confirmDeadline: ConfirmDeadline | null;
@@ -96,6 +100,7 @@ export class User {
     timezone,
     currency,
     locale,
+    theme,
     lastLoginAt,
     emailVerifiedAt,
     confirmDeadline,
@@ -117,6 +122,7 @@ export class User {
     this.timezone = timezone ?? DEFAULT_TIMEZONE;
     this.currency = currency ?? DEFAULT_CURRENCY;
     this.locale = locale ?? DEFAULT_LOCALE;
+    this.theme = theme ?? null;
     this.lastLoginAt = lastLoginAt ?? null;
     this.emailVerifiedAt = emailVerifiedAt ?? null;
     this.confirmDeadline = confirmDeadline ?? null;

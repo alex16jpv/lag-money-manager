@@ -16,6 +16,14 @@ describe("User Entity", () => {
       expect(user.locale).toBe("es");
     });
 
+    it("keeps an explicit theme [T-212]", () => {
+      const user = new User({
+        ...validProps,
+        theme: { palette: "tinta", mode: "dark" },
+      });
+      expect(user.theme).toEqual({ palette: "tinta", mode: "dark" });
+    });
+
     it("should create a user with all properties", () => {
       const user = new User(validProps);
 
@@ -31,6 +39,7 @@ describe("User Entity", () => {
       const user = new User({ name: "Jane", email: "jane@example.com" });
 
       expect(user.locale).toBe("en");
+      expect(user.theme).toBeNull();
 
       expect(user.name).toBe("Jane");
       expect(user.email).toBe("jane@example.com");

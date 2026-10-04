@@ -110,6 +110,9 @@ export class UserRepository implements IUserRepository {
       timezone: doc.timezone,
       currency: doc.currency,
       locale: doc.locale as Locale,
+      theme: doc.theme
+        ? { palette: doc.theme.palette, mode: doc.theme.mode }
+        : null,
       lastLoginAt: doc.lastLoginAt,
       emailVerifiedAt: doc.emailVerifiedAt,
       confirmDeadline: deadlineOf(doc.confirmDeadline),

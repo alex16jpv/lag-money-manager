@@ -43,6 +43,7 @@ describe("OpenAPI response views", () => {
     "Message",
     "Pagination",
     "User",
+    "Theme",
     "AuthTokens",
     "Session",
     "Account",

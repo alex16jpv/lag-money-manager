@@ -119,6 +119,8 @@ router.get("/:id", validate(idParamSchema), UserController.getUserById);
  *       `email` is refused whole, before its password or its fields are
  *       checked, and nothing is written; it changes through
  *       `POST /users/{id}/email-change`, once the new address confirms it.
+ *       `theme` goes whole (`palette` and `mode`) and replaces the saved one:
+ *       the last write to arrive wins.
  *     parameters:
  *       - in: path
  *         name: id
