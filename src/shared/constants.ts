@@ -363,7 +363,7 @@ const baseEnvSchema = z.object({
     .default("development"),
 });
 
-const mongoEnvSchema = baseEnvSchema
+export const mongoEnvSchema = baseEnvSchema
   .extend(emailEnvSchema.shape)
   .extend({
     MONGO_URI: z.string().min(1, "MONGO_URI is required"),

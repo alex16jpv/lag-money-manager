@@ -2,7 +2,8 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   Ledger Flow email on Amazon SES: the sending domain, its events back to the API, and the guards
   that stop sending (alarms that pause SES, and a budget that denies it to the API). Deploy it in
-  the API's region, by hand, following docs/guides/email.md.
+  the API's region: by hand the first time (docs/guides/email.md), then with
+  npm run deploy:infra -- email (docs/guides/aws.md).
 
 Parameters:
   Domain:

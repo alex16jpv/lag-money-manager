@@ -1,0 +1,57 @@
+{
+  "resources": {
+    "DeployUser": {
+      "UserName": "lag-deploy"
+    },
+    "DeployPolicy": {
+      "PolicyArn": "arn:aws:iam::{account}:policy/lag-deploy-policy"
+    },
+    "EmailReadPolicy": {
+      "PolicyName": "ledger-flow-email-read",
+      "UserName": "lag-deploy"
+    }
+  },
+  "asItIs": {
+    "DeployPolicy": {
+      "ManagedPolicyName": "lag-deploy-policy",
+      "PolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "DeployLambda",
+            "Effect": "Allow",
+            "Action": [
+              "lambda:GetFunction",
+              "lambda:GetFunctionConfiguration",
+              "lambda:UpdateFunctionCode",
+              "lambda:UpdateFunctionConfiguration",
+              "lambda:AddPermission",
+              "lambda:InvokeFunction"
+            ],
+            "Resource": "arn:aws:lambda:*:*:function:ledgerflow*"
+          },
+          {
+            "Sid": "KeepaliveRule",
+            "Effect": "Allow",
+            "Action": [
+              "events:PutRule",
+              "events:PutTargets",
+              "events:DescribeRule"
+            ],
+            "Resource": "arn:aws:events:*:*:rule/lag-money-manager-keepalive*"
+          },
+          {
+            "Sid": "Logs",
+            "Effect": "Allow",
+            "Action": [
+              "logs:DescribeLogGroups",
+              "logs:FilterLogEvents",
+              "lambda:ListFunctions"
+            ],
+            "Resource": "*"
+          }
+        ]
+      }
+    }
+  }
+}

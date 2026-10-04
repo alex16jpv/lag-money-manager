@@ -1,49 +1,13 @@
 import { readdirSync, readFileSync } from "fs";
 import path from "path";
-import { parse, type Tags, type YAMLMap, type YAMLSeq } from "yaml";
 
 import { ENVIRONMENT, SNS_TOPIC_ARN } from "../../shared/constants";
+import { loadTemplate, REPO, type Resource } from "./cloudFormation";
 
-const REPO = path.resolve(__dirname, "../../..");
-const TEMPLATE = path.join(REPO, "infra/email.yaml");
 const GUIDE = readFileSync(path.join(REPO, "docs/guides/email.md"), "utf8");
 const SES_USD_PER_EMAIL = 0.1 / 1000;
 
-const intrinsic = (tag: string, fn: string): Tags => {
-  const collection = (
-    value: YAMLMap.Parsed | YAMLSeq.Parsed,
-  ): Record<string, unknown> => ({ [fn]: value.toJSON() });
-  return [
-    { tag: `!${tag}`, resolve: (value: string) => ({ [fn]: value }) },
-    { tag: `!${tag}`, collection: "seq", resolve: collection },
-    { tag: `!${tag}`, collection: "map", resolve: collection },
-  ];
-};
-
-type Resource = {
-  Type: string;
-  DeletionPolicy?: string;
-  Condition?: string;
-  Properties: Record<string, unknown>;
-};
-type Template = {
-  Parameters: Record<
-    string,
-    { Default?: string | number; AllowedPattern?: string }
-  >;
-  Resources: Record<string, Resource>;
-};
-
-const template = parse(readFileSync(TEMPLATE, "utf8"), {
-  customTags: [
-    ...intrinsic("Ref", "Ref"),
-    ...intrinsic("Sub", "Fn::Sub"),
-    ...intrinsic("GetAtt", "Fn::GetAtt"),
-    ...intrinsic("If", "Fn::If"),
-    ...intrinsic("Not", "Fn::Not"),
-    ...intrinsic("Equals", "Fn::Equals"),
-  ],
-}) as Template;
+const template = loadTemplate("infra/email.yaml");
 
 const resourcesOf = (type: string): [string, Resource][] =>
   Object.entries(template.Resources).filter(([, r]) => r.Type === type);

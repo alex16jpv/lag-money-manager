@@ -94,7 +94,7 @@ HANDLER=$(aws lambda get-function-configuration \
   --query Handler --output text)
 if [[ "$HANDLER" != "dist/lambda.handler" ]]; then
   echo "WARNING: the function handler is '$HANDLER' but this package expects 'dist/lambda.handler'." >&2
-  echo "         Fix it with: aws lambda update-function-configuration --function-name $LAMBDA_FUNCTION_NAME --handler dist/lambda.handler --profile $AWS_PROFILE --region $AWS_REGION" >&2
+  echo "         The handler is declared in infra/api.yaml: put it back with npm run deploy:infra -- api (docs/guides/aws.md)." >&2
 fi
 
 echo "==> Deploy complete"

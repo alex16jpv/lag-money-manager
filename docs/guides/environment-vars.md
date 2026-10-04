@@ -90,8 +90,10 @@ nothing. What each limit means, and why it is there: [Email module](../modules/e
 | `EMAIL_DEVICE_HOURLY_MAX`        | `10`                                | Code emails per recognized device per hour.                                                                                               |
 | `EMAIL_IP_HOURLY_MAX`            | `5`                                 | Code emails per IP per hour, for requests without a recognized device (stricter than the device's).                                      |
 
-Like every variable here, a value the schema refuses stops the process from starting, so a typo in a
-console edit takes the API down until it is corrected. Startup refuses shares that add up to 100 or more, and a cap so low that the reset or the security
+Like every variable here, a value the schema refuses stops the process from starting, so a typo
+takes the API down until it is corrected. In production every variable is declared in `infra/api.yaml`
+(the secrets in SSM Parameter Store) and changed with `npm run deploy:infra -- api`, whose tests start
+the schema on what the template declares ([The AWS Account, Declared](./aws.md)). Startup refuses shares that add up to 100 or more, and a cap so low that the reset or the security
 share rounds down to zero. To raise the caps when the app grows, raise SES's own quota and the AWS
 guards first, then these two: [Email in Production](./email.md#raising-the-limits) has the values per
 spending step, and how SES, its DNS and its guards are set up.

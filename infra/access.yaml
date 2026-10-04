@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Ledger Flow deploy access: the lag-deploy user, which uploads the API's code and reads the account,
+  and nothing more. Its access key is not here: an administrator creates it by hand
+  (docs/guides/aws.md). Deploy it with npm run deploy:infra -- access.
+
+Parameters:
+  UserName:
+    Type: String
+    Default: lag-deploy
+    Description: The deploy user, the AWS_PROFILE of .env.deploy.
+  DeployPolicyName:
+    Type: String
+    Default: lag-deploy-policy
+    Description: What npm run deploy:lambda needs.
+  FunctionName:
+    Type: String
+    Default: ledgerflow
+    Description: The API's function (infra/api.yaml's FunctionName).
+
+Resources:
+  DeployUser:
+    Type: AWS::IAM::User
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserName: !Ref UserName
+      ManagedPolicyArns:
+        - !Ref DeployPolicy
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/SecurityAudit
+
+  DeployPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName: !Ref DeployPolicyName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DeployLambda
+            Effect: Allow
+            Action:
+              - lambda:GetFunction
+              - lambda:GetFunctionConfiguration
+              - lambda:UpdateFunctionCode
+              - lambda:InvokeFunction
+            Resource: !Sub arn:${AWS::Partition}:lambda:*:*:function:${FunctionName}*
+          - Sid: Logs
+            Effect: Allow
+            Action: [logs:DescribeLogGroups, logs:FilterLogEvents, lambda:ListFunctions]
+            Resource: "*"
+
+  EmailReadPolicy:
+    Type: AWS::IAM::UserPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserName: !Ref DeployUser
+      PolicyName: ledger-flow-email-read
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: [lambda:GetFunctionUrlConfig]
+            Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${FunctionName}
+          - Effect: Allow
+            Action: [cloudformation:DescribeStacks, cloudformation:DescribeStackEvents]
+            Resource: !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/ledger-flow-email/*
+          - Effect: Allow
+            Action:
+              - ses:GetAccount
+              - ses:ListEmailIdentities
+              - ses:GetEmailIdentity
+              - ses:GetConfigurationSet
+              - sns:ListSubscriptionsByTopic
+              - sns:GetTopicAttributes
+              - cloudwatch:DescribeAlarms
+              - budgets:ViewBudget
+              - budgets:DescribeBudgetActionsForBudget
+              - iam:SimulatePrincipalPolicy
+            Resource: "*"
+
+  InfraCheckPolicy:
+    Type: AWS::IAM::UserPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserName: !Ref DeployUser
+      PolicyName: ledger-flow-infra-check
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: CompareTheStacksWithTheAccount
+            Effect: Allow
+            Action:
+              - cloudformation:DetectStackDrift
+              - cloudformation:DetectStackResourceDrift
+              - cloudformation:DescribeStackDriftDetectionStatus
+              - cloudformation:DescribeStackResourceDrifts
+              - cloudformation:ListStackResources
+            Resource: !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/ledger-flow-*/*
+          - Sid: WhatDriftDetectionReads
+            Effect: Allow
+            Action:
+              - lambda:GetPolicy
+              - lambda:GetFunctionUrlConfig
+              - events:ListTargetsByRule
+              - lambda:GetFunctionRecursionConfig
+              - lambda:GetFunctionScalingConfig
+              - logs:GetDataProtectionPolicy
+              - ses:ListTagsForResource
+            Resource: "*"
+          - Sid: WhatDriftDetectionReadsInTheEmailStack
+            Effect: Allow
+            Action: [lambda:GetFunction, budgets:DescribeBudgetAction, budgets:ListTagsForResource]
+            Resource:
+              - !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:ledger-flow-email-PauseFunction-*
+              - !Sub arn:${AWS::Partition}:budgets::${AWS::AccountId}:budget/ledger-flow-ses/action/*
+              - !Sub arn:${AWS::Partition}:budgets::${AWS::AccountId}:budget/ledger-flow-ses

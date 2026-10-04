@@ -3,7 +3,9 @@
 How to turn on the email the API sends (the [Email module](../modules/email.md)) with Amazon SES,
 and how to put the guards around it that keep the bill under 1 USD a month. It is done once, by
 hand, by whoever owns the AWS account, the `alexpiral.com` zone in Cloudflare and the web client's
-Vercel project. Nothing here runs in `npm run deploy:lambda`.
+Vercel project. Nothing here runs in `npm run deploy:lambda`. Once the stack exists, it is kept up to date
+with `npm run deploy:infra -- email`, and the Lambda's variables of steps 4 and 8 live in `infra/api.yaml`
+([The AWS Account, Declared](./aws.md)).
 
 Most of it is one CloudFormation stack, `infra/email.yaml`. The rest is what a template cannot do:
 the SES pricing plan, the DNS records, the production access request, the captcha and Vercel's
@@ -142,18 +144,17 @@ _Custom MAIL FROM domain_ must read **Successful**. It usually takes minutes, an
 `EMAIL_SES_EVENTS_TOPIC_ARN`, and SNS sends the subscription's confirmation seconds after it is
 created.
 
-1. Lambda console → the API's function → _Configuration → Environment variables_, add:
+1. In `infra/api.yaml`, `ApiFunction` → `Environment` (already there today), with `npm run deploy:infra -- api`:
 
    | Variable | Value |
    | --- | --- |
    | `EMAIL_SES_CONFIGURATION_SET` | `ledger-flow` (output `ConfigurationSet`) |
    | `EMAIL_SES_EVENTS_TOPIC_ARN` | output `EventsTopicArn` |
 
-   Leave `EMAIL_PROVIDERS` unset for now. A saved variable applies from the next invocation.
-2. **Update the stack** (_Update → Use existing template_) with `WebhookUrl` = the Function URL +
-   `webhooks/email/ses`. The Function URL already ends in `/`:
-   `https://<id>.lambda-url.us-east-1.on.aws/webhooks/email/ses`, with a single slash before
-   `webhooks`.
+   Leave `EMAIL_PROVIDERS` out for now. A deployed variable applies from the next invocation.
+2. **Update the stack** with `npm run deploy:infra -- email`: it sets `WebhookUrl` to the `FunctionUrl`
+   output of the api stack + `webhooks/email/ses`
+   (`https://<id>.lambda-url.us-east-1.on.aws/webhooks/email/ses`, a single slash before `webhooks`).
 3. Check: SNS console → _Topics_ → `ledger-flow-email-events` → _Subscriptions_. The HTTPS one must be
    **Confirmed**, and the API's log has a line with `code: EMAIL_EVENTS_SUBSCRIBED`.
 
@@ -231,7 +232,8 @@ The form has no field for the quota, and AWS neither documents a minimum nor pro
 lower one: the request asks for it in the description. Whatever quota AWS grants, the caps keep the
 month at 9,000 emails and the sends alarm pauses SES above 100 in an hour. The answer also says the
 maximum send rate (emails a second): check it in the _Account dashboard_, since a send over it fails
-and the API does not retry it.
+and the API does not retry it. This account was granted AWS's default, **50,000 a day at 14 a second**
+(read on 2026-10-04), not the 300 asked for: the caps and the sends alarm are what hold it.
 
 ## 7. The captcha: Cloudflare Turnstile
 
@@ -260,7 +262,8 @@ production refuses to start, since the captcha is what keeps strangers from spen
 
 ## 8. Turn sending on
 
-With production access granted, add `EMAIL_PROVIDERS=ses` to the Lambda's environment.
+With production access granted, add `EMAIL_PROVIDERS: ses` to the Lambda's environment in `infra/api.yaml`
+and deploy the api part.
 `EMAIL_SES_EVENTS_TOPIC_ARN` (step 4) and `TURNSTILE_SECRET` (step 7) must already be there: without
 either, production refuses to start. From then on Forgot your password? emails its codes, and every
 sign-up emails its confirmation.
@@ -272,7 +275,7 @@ client signs in, so a flood from one address is turned away before it reaches th
 
 Vercel → the web client's project → _Firewall → Configure → New rule_:
 
-- **If** _Request Path_ matches the expression `^/api/auth/(login|login/restore|sign-up|sign-up/confirm|sign-up/resend|forgot|reset|verify|resend|restore|change-email|change-email/resend|confirm-change)$` **and**
+- **If** _Request Path_ matches the expression `^/api/auth/(login|login/restore|sign-up|sign-up/confirm|sign-up/resend|forgot|reset|verify|resend|restore|undo|change-email|change-email/resend|confirm-change)$` **and**
   _Method_ equals `POST`;
 - **Then** _Rate Limit_: fixed window of 60 seconds, 10 requests, keyed on **IP**, answering the
   default `429`.
@@ -281,8 +284,8 @@ Save and publish it. `/api/auth/refresh` stays out on purpose: a session refresh
 many sessions share one address behind a carrier NAT; the API's own limiter covers it. `sign-up`,
 `sign-up/confirm` and `sign-up/resend` create an account with its emailed code, and `login/restore` and
 `restore` bring a deleted one back (T-239); `forgot` and `reset` are the password reset's (T-208);
-`verify` and `resend`, the email's confirmation's (T-210); `change-email`, `change-email/resend` and
-`confirm-change`, the change of email's (T-222).
+`verify` and `resend`, the email's confirmation's (T-210); `undo`, the "It wasn't me" of a security
+notice (T-219); `change-email`, `change-email/resend` and `confirm-change`, the change of email's (T-222).
 
 ## After the web client confirms emails: invitations wait for it
 
@@ -338,7 +341,7 @@ Every command below runs with `--profile <deploy profile> --region us-east-1`.
 | "ALARM: ledger-flow-email-sends-per-hour" (or `bounces-per-hour`, `complaints-per-day`, `bounce-rate`, `complaint-rate`) and "SES sending is paused" | More sends, bounces or complaints than the app can explain | Every SES send of the account: the API answers `failed / unavailable` and logs `EMAIL_SEND_FAILED` | Find out why (below), then resume with `aws sesv2 put-account-sending-attributes --sending-enabled` |
 | "SES could NOT be paused" | An alarm fired and the pause Lambda failed; Lambda retries it twice | Nothing yet | Pause it yourself: `aws sesv2 put-account-sending-attributes --no-sending-enabled`, or `EMAIL_SENDING_ENABLED=false` on the Lambda |
 | "ALARM: ledger-flow-server-needs-attention" | The API logged one of four codes; the log says which. `EMAIL_CAP_REACHED`: the app reached a daily or monthly email cap. `ACCOUNT_ERASE_FAILED`: the nightly pass could not erase an account past its 30 days. `ACCOUNT_ERASE_BACKLOG`: it ran out of time with accounts left. `NIGHTLY_PASS_FAILED`: the pass stopped | A cap: that share's emails, until the UTC day or month ends; SES keeps working. The pass: those accounts wait for the next night, out of every read and with their addresses free | A cap: growth is [Raising the limits](#raising-the-limits); abuse, look at the brakes' log lines, and `EMAIL_SENDING_ENABLED=false` stops everything now. The pass: Logs Insights with `filter code like /^(ACCOUNT_ERASE\|NIGHTLY_PASS)/` gives the error and the account; a backlog that repeats every night means more deletions than 10 seconds can erase |
-| "ALARM: ledger-flow-email-events-unsubscribed" | The webhook's subscription was removed (`EMAIL_EVENTS_UNSUBSCRIBED`) | Bounces and complaints stop arriving: the suppression list stops growing | Update the stack with `WebhookUrl` empty, then again with the URL: CloudFormation creates the subscription anew, with its delivery policy |
+| "ALARM: ledger-flow-email-events-unsubscribed" | The webhook's subscription was removed (`EMAIL_EVENTS_UNSUBSCRIBED`) | Bounces and complaints stop arriving: the suppression list stops growing | Update the stack in the console with `WebhookUrl` empty, then run `npm run deploy:infra -- email`, which puts the URL back: CloudFormation creates the subscription anew, with its delivery policy |
 | "ALARM: ledger-flow-email-events-undelivered" | SNS gave up on an event after its retries: the API was down, answered `5xx`, or refused it (`EMAIL_EVENT_REJECTED` in its log) | That bounce or complaint is lost: the address is not suppressed | Find the API's answers in its log around that hour. A lost bounce comes back as a new one the next time that address is emailed |
 | The budget's email at 50 % | SES spent half of the month's budget | Nothing | Check the spend in Cost Explorer: the caps should make this impossible |
 | The budget action's email | SES spent the whole budget | Every SES send from the API's role: `AccessDenied`, logged as `EMAIL_SEND_FAILED` | Find out how the caps were passed, then undo it yourself — do not wait for the new month: Budgets → `ledger-flow-ses` → _Actions_ → reverse it, or detach `ledger-flow-deny-email` from the role in IAM. While it is attached, the stack cannot be deleted |
@@ -395,11 +398,12 @@ When the app grows, five values move together, one row at a time. Each step keep
 | 5 USD | 45,000 | 1,500 | 1,500 | 500 | 25 | 5 | 5 |
 | 20 USD | 180,000 | 6,000 | 6,000 | 2,000 | 100 | 15 | 20 |
 
-- The two caps are environment variables of the Lambda: they apply on the next invocation.
+- The two caps are environment variables of the Lambda, in `infra/api.yaml`: they apply on the next
+  invocation after `npm run deploy:infra -- api`.
 - The SES quota is a request: _Service Quotas → Amazon Simple Email Service → Sending quota_, or the
   SES console. It can take a day.
-- The alarms and the budget are the stack's parameters: _Update → Use existing template_ and change
-  them.
+- The alarms and the budget are the stack's parameters: change their `Default` in `infra/email.yaml`
+  and run `npm run deploy:infra -- email`.
 - The absolute bounce and complaint thresholds grow slower than the volume, so they stay under the
   line at which SES itself would pause the account. The rate alarms stay as they are.
 

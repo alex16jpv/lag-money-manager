@@ -168,6 +168,14 @@
       "mustReadFirst": false
     },
     {
+      "path": "docs/guides/aws.md",
+      "title": "The AWS Account, Declared",
+      "description": "The three CloudFormation stacks (api, access, email), npm run deploy:infra with its change-set preview and refusals, npm run infra:check, the secrets in SSM Parameter Store, how the existing account was adopted, and what stays manual.",
+      "tags": ["guide", "aws", "cloudformation", "deployment", "production", "lambda", "iam"],
+      "audience": "both",
+      "mustReadFirst": false
+    },
+    {
       "path": "docs/guides/backup-restore.md",
       "title": "Backup and Restore",
       "description": "Taking a gzipped copy of a live database and putting one back, with the guards that stop a restore from silently writing nothing.",

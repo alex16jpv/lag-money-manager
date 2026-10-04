@@ -98,6 +98,7 @@ export default withMermaid({
             { text: "Testing", link: "/docs/guides/testing" },
             { text: "Deployment", link: "/docs/guides/deployment" },
             { text: "Email in Production", link: "/docs/guides/email" },
+            { text: "The AWS Account, Declared", link: "/docs/guides/aws" },
             {
               text: "Backup and Restore",
               link: "/docs/guides/backup-restore",

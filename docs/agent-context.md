@@ -435,7 +435,8 @@ export interface Update[Entity]DTO {
 | **`npm run ci`**                                              | **The gate:** typecheck (src and tests), lint, format, `fixtures:check`, Jest |
 | `npm run db:sync-indexes`                                     | Builds Mongo indexes from the schemas (production deploy step)                |
 | `npm run docs`                                                | VitePress dev server for `docs/`                                              |
-| `npm run build:lambda` / `deploy:lambda` / `deploy:keepalive` | Lambda packaging and deploy scripts                                           |
+| `npm run build:lambda` / `deploy:lambda`                      | Lambda packaging and the code deploy                                          |
+| `npm run deploy:infra -- <part>` / `infra:check`              | The AWS account declared in `infra/` ([aws.md](guides/aws.md))                 |
 
 **Before you hand work back, `npm run ci` must pass** — and `npm run check:all`, which adds
 `npm run test:mongo` behind it, when you touched indexes, transactions or pagination. Nothing runs
