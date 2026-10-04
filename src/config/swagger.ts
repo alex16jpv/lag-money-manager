@@ -250,7 +250,7 @@ const responseViews = {
         allOf: [{ $ref: "#/components/schemas/Theme" }],
         nullable: true,
         description:
-          "The palette and mode the owner picked, set by PUT /users/{id}. Null until one was ever picked: each device keeps its own until then.",
+          "The palette and mode the user picked, set by PUT /users/{id}. Null until one was ever picked: each device keeps its own until then.",
       },
       lastLoginAt: nullableDateTime,
       createdAt: dateTime,

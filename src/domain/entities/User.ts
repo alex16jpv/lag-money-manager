@@ -48,7 +48,7 @@ export interface UserProps {
   currency?: string;
   // UI language (en | es). Follows the user across devices.
   locale?: Locale;
-  // Null until the owner picks one: each device keeps its own until then.
+  // Null until the user picks one: each device keeps its own until then.
   theme?: Theme | null;
   // Last session open (login/sign-up); impossible to reconstruct later.
   lastLoginAt?: Date | null;

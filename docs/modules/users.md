@@ -9,7 +9,7 @@ Beyond name/email/password, the profile carries three settings that shape the re
 - **`timezone`** — IANA zone; drives day boundaries in stats and period windows in budgets. Also embedded as a claim in the access token.
 - **`currency`** — ISO 4217 alpha code; the user's single money currency, stamped onto accounts, transactions, and budgets. **Locked once the user has accounts.**
 - **`locale`** — UI language, `en` (default) or `es`. Purely a preference the front reads to pick copy and `Intl` formatting; it follows the user across devices.
-- **`theme`** — `{ palette, mode }`: the palette (`brisa`, `tinta`) and the mode (`light`, `dark`, `system`) the owner picked in Appearance, so it follows them to every device (T-212, the owner's decision 9 of 2026-09-26). The two lists are copied from the web client's (`src/shared/theme.ts`): a palette added there is added here too. **`null` until one is ever picked**, never a default: every device already keeps its own theme, and a default here would overwrite each one the first time the client applied the profile. The client uploads its own when it reads `null`. The API never reads it.
+- **`theme`** — `{ palette, mode }`: the palette (`brisa`, `tinta`) and the mode (`light`, `dark`, `system`) the user picked in Appearance, so it follows them to every device (T-212, the owner's decision 9 of 2026-09-26). The two lists are copied from the web client's (`src/shared/theme.ts`): a palette added there is added here too. **`null` until one is ever picked**, never a default: every device already keeps its own theme, and a default here would overwrite each one the first time the client applied the profile; `null` tells the client nothing was picked yet. The API never reads it.
 
 ## Files and Responsibilities
 
@@ -63,7 +63,7 @@ Get the authenticated user's profile. Returns `UserResponseDTO`: `id`, `name`, `
 
 ### `PUT /users/:id`
 
-Update the profile. Partial updates over `name`, `password`, `timezone`, `currency`, `locale`, `theme`; at least one field must be present. **`theme` goes whole** (`{ palette, mode }`, both required: `400 VALIDATION` otherwise) and replaces the one saved; the last write wins. Like every profile change it bumps `updatedAt`, so the sync feed carries it to the other devices.
+Update the profile. Partial updates over `name`, `password`, `timezone`, `currency`, `locale`, `theme`; at least one field must be present. **`theme` goes whole** (`{ palette, mode }`, both required: `400 VALIDATION` otherwise) and replaces the one saved; the last write to arrive wins (there is no version check: a device that changed only the mode offline also sends its palette). Like every profile change it bumps `updatedAt`, so the sync feed carries it to the other devices.
 
 **The email does not change here.** A body that carries `email` — any value, the account's own address and `null` included — is refused whole with `400 EMAIL_CHANGE_REQUIRES_VERIFICATION` (`details` on the field `email`), once the session is checked and before the password limiter or the validation run: nothing else is checked, spent or written. The email changes only through [Changing the email](#changing-the-email), once the new address confirms it. Until T-232 this `PUT` moved the account at once and confirmed afterwards (the web client's way before T-222); it is refused rather than dropped as an undeclared field, because a client still sending it would otherwise read a `200` and believe the account had moved.
 
