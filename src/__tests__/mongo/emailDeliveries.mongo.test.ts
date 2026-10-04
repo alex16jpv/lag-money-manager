@@ -58,6 +58,7 @@ const sendReset = (svc: EmailService): Promise<EmailOutcome> =>
 describe("email deliveries against MongoDB", () => {
   beforeAll(async () => {
     await connect();
+    await dropDatabase();
     await EmailDeliveryModel.syncIndexes();
   });
 

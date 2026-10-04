@@ -57,6 +57,7 @@ const statusOf = async (messageId: string): Promise<unknown> =>
 describe("email suppressions against MongoDB", () => {
   beforeAll(async () => {
     await connect();
+    await dropDatabase();
     await EmailSuppressionModel.syncIndexes();
     await EmailDeliveryModel.syncIndexes();
   });
