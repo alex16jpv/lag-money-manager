@@ -10,7 +10,14 @@ import request from "supertest";
 import { OutgoingEmail } from "../../domain/email/EmailProvider";
 import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
 import { UserModel } from "../../infrastructure/models/UserModel";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import {
+  connect,
+  disconnect,
+  dropDatabase,
+  SignedInUser,
+  signedInUser,
+  TEST_CAPTCHA,
+} from "./support";
 
 const mockSent: OutgoingEmail[] = [];
 
@@ -74,14 +81,15 @@ const sessionOf = (body: {
   userId: body.user.id,
 });
 
-const signUp = (email: string, name = "Somebody"): request.Test =>
-  request(app).post("/auth/register").send({
-    captcha: TEST_CAPTCHA,
-    name,
-    email,
-    password: PASSWORD,
-    currency: "COP",
-  });
+const newAccount = (
+  email: string,
+  name = "Somebody",
+  fromBefore = false,
+): Promise<SignedInUser> =>
+  signedInUser(
+    { name, email, password: PASSWORD, currency: "COP" },
+    { fromBefore },
+  );
 
 const logIn = (
   email: string,
@@ -125,18 +133,7 @@ const codeIn = (email: OutgoingEmail): string => {
 };
 
 async function confirmedAccount(email: string): Promise<Session> {
-  const res = await signUp(email);
-  expect(res.status).toBe(201);
-  const session = sessionOf(res.body);
-  const verified = await as(
-    session,
-    request(app)
-      .post("/auth/email/verify")
-      .send({ code: codeIn(lastEmail(email, "verify-email")) }),
-  );
-  expect(verified.status).toBe(200);
-  await minutePasses();
-  return session;
+  return sessionOf(await newAccount(email));
 }
 
 const askToMove = (session: Session, email: string): request.Test =>
@@ -190,9 +187,10 @@ describe("Security notices against mongod [T-211]", () => {
     expect(notice.text).toContain("thief@notice.test");
     expect(notice.text).toContain("Chrome");
 
-    const stolen = await signUp("ana@notice.test");
-    expect(stolen.status).toBe(409);
-    expect(stolen.body.code).toBe("EMAIL_TAKEN");
+    await expect(newAccount("ana@notice.test")).rejects.toMatchObject({
+      statusCode: 409,
+      code: "EMAIL_TAKEN",
+    });
     const beto = await confirmedAccount("beto@notice.test");
     const taken = await askToMove(beto, "ana@notice.test");
     expect(taken.status).toBe(202);
@@ -215,7 +213,9 @@ describe("Security notices against mongod [T-211]", () => {
       .post("/auth/refresh")
       .send({ refreshToken: moved.refreshToken });
     expect(stale.body.code).toBe("REFRESH_REVOKED");
-    expect((await signUp("thief@notice.test")).status).toBe(201);
+    await expect(newAccount("thief@notice.test")).resolves.toMatchObject({
+      user: { email: "thief@notice.test" },
+    });
     expect(sentTo("ana@notice.test", "password-changed")).toHaveLength(0);
 
     const code = codeIn(
@@ -291,7 +291,10 @@ describe("Security notices against mongod [T-211]", () => {
 
     const byThief = await undo(thiefs.undoToken);
     expect(byThief.body.email).toBe("thief.b@notice.test");
-    expect((await signUp("owner@notice.test")).body.code).toBe("EMAIL_TAKEN");
+    await expect(newAccount("owner@notice.test")).rejects.toMatchObject({
+      statusCode: 409,
+      code: "EMAIL_TAKEN",
+    });
     await minutePasses();
 
     const byOwner = await undo(toThief.undoToken);
@@ -381,14 +384,17 @@ describe("Security notices against mongod [T-211]", () => {
     expect(
       (await UserModel.findById(olga.userId).lean())?.heldEmails?.sort(),
     ).toEqual(["olga.new@notice.test", "olga@notice.test"]);
-    expect((await signUp("olga@notice.test")).body.code).toBe("EMAIL_TAKEN");
+    await expect(newAccount("olga@notice.test")).rejects.toMatchObject({
+      statusCode: 409,
+      code: "EMAIL_TAKEN",
+    });
     expect((await undo(undoToken)).status).toBe(200);
     expect((await UserModel.findById(olga.userId).lean())?.heldEmails).toEqual([
       "olga@notice.test",
     ]);
   });
 
-  it("never lets a register take the old address while the move that leaves it lands", async () => {
+  it("never lets a new account take the old address while the move that leaves it lands", async () => {
     for (let i = 0; i < 5; i++) {
       const from = `race${i}@notice.test`;
       const pepe = await confirmedAccount(from);
@@ -404,18 +410,16 @@ describe("Security notices against mongod [T-211]", () => {
           pepe,
           request(app).post("/auth/email/confirm-change").send({ code }),
         ),
-        signUp(from, "Racer"),
+        newAccount(from, "Racer").catch((err: unknown) => err),
       ]);
 
       expect(moved.status).toBe(200);
-      expect(stolen.status).toBe(409);
+      expect(stolen).toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
     }
   });
 
   it("mails an address that was never confirmed nothing, and keeps it for nobody", async () => {
-    const res = await signUp("eva@notice.test");
-    const eva = sessionOf(res.body);
-    await minutePasses();
+    const eva = sessionOf(await newAccount("eva@notice.test", "Eva", true));
 
     expect((await askToMove(eva, "eva.new@notice.test")).status).toBe(202);
     expect(sentTo("eva@notice.test", "email-change-requested")).toHaveLength(0);
@@ -430,7 +434,9 @@ describe("Security notices against mongod [T-211]", () => {
         }),
     );
     expect(moved.status).toBe(200);
-    expect((await signUp("eva@notice.test")).status).toBe(201);
+    await expect(newAccount("eva@notice.test")).resolves.toMatchObject({
+      user: { email: "eva@notice.test" },
+    });
   });
 
   it("lets the address go once its undo links lapsed, through the unique index", async () => {
@@ -451,8 +457,11 @@ describe("Security notices against mongod [T-211]", () => {
       { _id: fede.userId },
       { $set: { "undoLinks.$[].expiresAt": new Date(Date.now() - 1000) } },
     );
-    const gina = await signUp("fede@notice.test", "Gina");
-    expect(gina.status).toBe(201);
+    await expect(newAccount("fede@notice.test", "Gina")).resolves.toMatchObject(
+      {
+        user: { email: "fede@notice.test" },
+      },
+    );
     const released = await UserModel.findById(fede.userId).lean();
     expect(released?.heldEmails).toEqual(["fede.new@notice.test"]);
     expect(released?.undoLinks).toEqual([]);
@@ -474,7 +483,10 @@ describe("Security notices against mongod [T-211]", () => {
     );
     expect(deleted.status).toBe(200);
     expect(sentTo("hugo.new@notice.test", "account-deleted")).toHaveLength(1);
-    expect((await signUp("hugo@notice.test")).body.code).toBe("EMAIL_TAKEN");
+    await expect(newAccount("hugo@notice.test")).rejects.toMatchObject({
+      statusCode: 409,
+      code: "EMAIL_TAKEN",
+    });
 
     const undone = await undo(undoToken);
     expect(undone.status).toBe(200);
@@ -495,7 +507,9 @@ describe("Security notices against mongod [T-211]", () => {
       });
     expect(reset.status).toBe(200);
     expect(reset.body.user.id).toBe(hugo.userId);
-    expect((await signUp("hugo.new@notice.test")).status).toBe(201);
+    await expect(newAccount("hugo.new@notice.test")).resolves.toMatchObject({
+      user: { email: "hugo.new@notice.test" },
+    });
   });
 
   it("tells about a sign-in from an unknown device, and knows a device until Sign out everywhere, through a reset [T-238 E]", async () => {

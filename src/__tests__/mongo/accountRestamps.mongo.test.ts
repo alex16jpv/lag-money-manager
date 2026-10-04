@@ -7,7 +7,7 @@
 import request from "supertest";
 
 import app from "../../app";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 interface Restamp {
   entity: string;
@@ -93,14 +93,12 @@ describe("what a movement did to its account's stamp, against mongod", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    const registered = await request(app).post("/auth/register").send({
-      captcha: TEST_CAPTCHA,
+    const registered = await signedInUser({
       name: "Owner",
       email: "owner@account-restamps.test",
       password: "Offline!2026",
     });
-    expect(registered.status).toBe(201);
-    token = registered.body.accessToken as string;
+    token = registered.accessToken;
     expect(
       (
         await as(

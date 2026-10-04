@@ -145,136 +145,6 @@ describe("AuthService", () => {
     });
   });
 
-  describe("register", () => {
-    it("lets any other create failure through untouched", async () => {
-      const failure = new Error("connection reset");
-      repo.create.mockRejectedValue(failure);
-
-      await expect(
-        service.register({
-          name: "John",
-          email: "john@example.com",
-          password: "newpassword123",
-        }),
-      ).rejects.toBe(failure);
-    });
-
-    it("answers EMAIL_TAKEN for an address kept for another account's undo link [T-211]", async () => {
-      repo.create.mockRejectedValue(
-        Object.assign(new Error("E11000 duplicate key"), {
-          code: 11000,
-          keyPattern: { heldEmails: 1 },
-        }),
-      );
-
-      await expect(
-        service.register({
-          name: "John",
-          email: "john@example.com",
-          password: "newpassword123",
-        }),
-      ).rejects.toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
-    });
-
-    it("answers EMAIL_TAKEN for the email of a live account [T-153]", async () => {
-      repo.create.mockRejectedValue(
-        Object.assign(new Error("E11000 duplicate key"), {
-          name: "MongoServerError",
-          code: 11000,
-          keyPattern: { email: 1 },
-          keyValue: { email: "john@example.com" },
-        }),
-      );
-
-      await expect(
-        service.register({
-          name: "John",
-          email: "john@example.com",
-          password: "newpassword123",
-        }),
-      ).rejects.toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
-      expect(categoryService.seedDefaultCategories).not.toHaveBeenCalled();
-    });
-
-    it("should hash the password and create a user", async () => {
-      const input = {
-        name: "John",
-        email: "john@example.com",
-        password: "password123",
-      };
-      const createdUser = new User({
-        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-        name: "John",
-        email: "john@example.com",
-        password: "hashed",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      repo.create.mockResolvedValue(createdUser);
-
-      const result = await service.register(input);
-
-      expect(repo.create).toHaveBeenCalledTimes(1);
-      const createArg = repo.create.mock.calls[0][0];
-      expect(createArg.password).not.toBe("password123");
-      expect(await bcryptjs.compare("password123", createArg.password!)).toBe(
-        true,
-      );
-      expect(result.user).not.toHaveProperty("password");
-      expect(result.user.name).toBe("John");
-      expect(typeof result.accessToken).toBe("string");
-      expect(typeof result.refreshToken).toBe("string");
-    });
-
-    it("should seed default categories for the new user", async () => {
-      const input = {
-        name: "John",
-        email: "john@example.com",
-        password: "password123",
-      };
-      const createdUser = new User({
-        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-        name: "John",
-        email: "john@example.com",
-        password: "hashed",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      repo.create.mockResolvedValue(createdUser);
-
-      await service.register(input);
-
-      expect(categoryService.seedDefaultCategories).toHaveBeenCalledWith(
-        "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-      );
-    });
-
-    it("should still register user when category seeding fails", async () => {
-      const input = {
-        name: "John",
-        email: "john@example.com",
-        password: "password123",
-      };
-      const createdUser = new User({
-        id: "019576a0-d7b6-7d6d-af6a-2b7545f5ac70",
-        name: "John",
-        email: "john@example.com",
-        password: "hashed",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      repo.create.mockResolvedValue(createdUser);
-      categoryService.seedDefaultCategories.mockRejectedValue(
-        new Error("DB write failed"),
-      );
-
-      const result = await service.register(input);
-
-      expect(result.user.name).toBe("John");
-      expect(result.user).not.toHaveProperty("password");
-    });
-  });
-
   describe("login", () => {
     const hashedPassword = bcryptjs.hashSync("password123", 12);
     const existingUser = new User({
@@ -683,10 +553,58 @@ describe("AuthService", () => {
           name: "Ana",
           email: "ana@example.com",
           passwordHash: "$2b$04$hash",
-          emailVerifiedAt: null,
+          emailVerifiedAt: new Date("2026-09-28T00:00:00Z"),
         }),
       ).rejects.toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
       expect(categoryService.seedDefaultCategories).not.toHaveBeenCalled();
+    });
+
+    it("answers EMAIL_TAKEN for an address kept for another account's undo link [T-211]", async () => {
+      repo.create.mockRejectedValue(
+        Object.assign(new Error("E11000 duplicate key"), {
+          code: 11000,
+          keyPattern: { heldEmails: 1 },
+        }),
+      );
+
+      await expect(
+        service.createAccount({
+          name: "Ana",
+          email: "ana@example.com",
+          passwordHash: "$2b$04$hash",
+          emailVerifiedAt: new Date("2026-09-28T00:00:00Z"),
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "EMAIL_TAKEN" });
+    });
+
+    it("lets any other create failure through untouched", async () => {
+      const failure = new Error("connection reset");
+      repo.create.mockRejectedValue(failure);
+
+      await expect(
+        service.createAccount({
+          name: "Ana",
+          email: "ana@example.com",
+          passwordHash: "$2b$04$hash",
+          emailVerifiedAt: new Date("2026-09-28T00:00:00Z"),
+        }),
+      ).rejects.toBe(failure);
+    });
+
+    it("still creates the account when seeding its categories fails", async () => {
+      repo.create.mockImplementation(async (user) => new User(user as User));
+      categoryService.seedDefaultCategories.mockRejectedValue(
+        new Error("DB write failed"),
+      );
+
+      await expect(
+        service.createAccount({
+          name: "Ana",
+          email: "ana@example.com",
+          passwordHash: "$2b$04$hash",
+          emailVerifiedAt: new Date("2026-09-28T00:00:00Z"),
+        }),
+      ).resolves.toMatchObject({ name: "Ana" });
     });
   });
 

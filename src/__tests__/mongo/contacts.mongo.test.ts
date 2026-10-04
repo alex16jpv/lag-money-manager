@@ -6,7 +6,7 @@
 import request from "supertest";
 
 import app from "../../app";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 // A valid uuid v7 minted before any row here, so `_id > it` would match every one of them.
 const BEFORE_EVERY_ID = "01950000-0000-7000-8000-a00000000099";
@@ -16,15 +16,13 @@ interface Session {
   userId: string;
 }
 
-async function register(email: string): Promise<Session> {
-  const res = await request(app).post("/auth/register").send({
-    captcha: TEST_CAPTCHA,
+async function accountFor(email: string): Promise<Session> {
+  const res = await signedInUser({
     name: "Owner",
     email,
     password: "Offline!2026",
   });
-  expect(res.status).toBe(201);
-  return { token: res.body.accessToken, userId: res.body.user.id };
+  return { token: res.accessToken, userId: res.user.id };
 }
 
 const as = (session: Session, req: request.Test): request.Test =>
@@ -43,8 +41,8 @@ describe("contacts against mongod", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    alice = await register("alice@contacts.test");
-    bob = await register("bob@contacts.test");
+    alice = await accountFor("alice@contacts.test");
+    bob = await accountFor("bob@contacts.test");
   });
 
   afterAll(async () => {

@@ -47,7 +47,7 @@ export interface UserProps {
   currency?: string;
   // UI language (en | es). Follows the user across devices.
   locale?: Locale;
-  // Last session open (login/register); impossible to reconstruct later.
+  // Last session open (login/sign-up); impossible to reconstruct later.
   lastLoginAt?: Date | null;
   emailVerifiedAt?: Date | null;
   confirmDeadline?: ConfirmDeadline | null;

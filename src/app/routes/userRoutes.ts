@@ -274,7 +274,7 @@ router.delete(
  *       and its link stop working. `currentPassword` re-authenticates, as a
  *       password change on PUT /users/{id} does; `captcha` is a Cloudflare
  *       Turnstile token for the action `email-change`; `deviceToken`, from
- *       this device's last login or register, lets the limits count this
+ *       this device's last login or sign-up, lets the limits count this
  *       device instead of its IP. It is the only way the email changes:
  *       PUT /users/{id} refuses `email` (EMAIL_CHANGE_REQUIRES_VERIFICATION).
  *       When the account's email is confirmed, `email-change-requested` goes

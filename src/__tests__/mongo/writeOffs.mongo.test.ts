@@ -6,7 +6,7 @@
 import request from "supertest";
 
 import app from "../../app";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 interface Session {
   token: string;
@@ -46,16 +46,14 @@ describe("writing off, against mongod", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    const registered = await request(app).post("/auth/register").send({
-      captcha: TEST_CAPTCHA,
+    const registered = await signedInUser({
       name: "Owner",
       email: "owner@write-offs.test",
       password: "Offline!2026",
     });
-    expect(registered.status).toBe(201);
     session = {
-      token: registered.body.accessToken,
-      userId: registered.body.user.id,
+      token: registered.accessToken,
+      userId: registered.user.id,
     };
     await as(
       request(app).post("/accounts").send({

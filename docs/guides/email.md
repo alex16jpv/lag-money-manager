@@ -272,19 +272,17 @@ client signs in, so a flood from one address is turned away before it reaches th
 
 Vercel → the web client's project → _Firewall → Configure → New rule_:
 
-- **If** _Request Path_ matches the expression `^/api/auth/(login|register|forgot|reset|verify|resend|not-me|change-email|change-email/resend|confirm-change)$` **and**
+- **If** _Request Path_ matches the expression `^/api/auth/(login|login/restore|sign-up|sign-up/confirm|sign-up/resend|forgot|reset|verify|resend|restore|change-email|change-email/resend|confirm-change)$` **and**
   _Method_ equals `POST`;
 - **Then** _Rate Limit_: fixed window of 60 seconds, 10 requests, keyed on **IP**, answering the
   default `429`.
 
 Save and publish it. `/api/auth/refresh` stays out on purpose: a session refreshes on its own, and
-many sessions share one address behind a carrier NAT; the API's own limiter covers it. `forgot` and
-`reset` are the password reset's (T-208); `verify`, `resend` and `not-me`, the email's confirmation's
-(T-210); `change-email`, `change-email/resend` and `confirm-change`, the change of email's (T-222).
-
-T-238 changed the backend's routes behind these (`POST /auth/sign-up` and its `/confirm` and `/resend`,
-`/auth/login/restore`, `/auth/email/restore`; `/auth/email/not-me` is gone). The web client's own paths,
-and so this expression, change with T-239; this guide gets the new one then.
+many sessions share one address behind a carrier NAT; the API's own limiter covers it. `sign-up`,
+`sign-up/confirm` and `sign-up/resend` create an account with its emailed code, and `login/restore` and
+`restore` bring a deleted one back (T-239); `forgot` and `reset` are the password reset's (T-208);
+`verify` and `resend`, the email's confirmation's (T-210); `change-email`, `change-email/resend` and
+`confirm-change`, the change of email's (T-222).
 
 ## After the web client confirms emails: invitations wait for it
 

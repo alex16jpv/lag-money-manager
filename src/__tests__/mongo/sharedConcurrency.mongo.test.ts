@@ -7,7 +7,7 @@
 import request from "supertest";
 
 import app from "../../app";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 const ACCOUNT_ID = "019576a0-d7b6-7d6d-af6a-2b7545510001";
 const OTHER_ACCOUNT_ID = "019576a0-d7b6-7d6d-af6a-2b7545510002";
@@ -58,14 +58,12 @@ describe("two writes with the same person at once, against mongod", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    const registered = await request(app).post("/auth/register").send({
-      captcha: TEST_CAPTCHA,
+    const registered = await signedInUser({
       name: "Owner",
       email: "owner@concurrency.test",
       password: "Offline!2026",
     });
-    expect(registered.status).toBe(201);
-    token = registered.body.accessToken;
+    token = registered.accessToken;
     for (const [id, name] of [
       [ACCOUNT_ID, "Bancolombia"],
       [OTHER_ACCOUNT_ID, "Nequi"],

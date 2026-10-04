@@ -6,9 +6,10 @@
 ### tiene cuenta: la respuesta es la misma en los dos casos.
 ### Hacen falta dos usuarios: el que invita (@email) y el
 ### invitado (@inviteeEmail), registrado con la misma moneda.
-### Con EMAIL_VERIFICATION_REQUIRED=true los dos tienen que haber
-### confirmado su correo (auth.http, T-209): si no, invitar, ver y
-### contestar invitaciones dan 403 EMAIL_NOT_VERIFIED.
+### Una cuenta nueva nace con el correo confirmado. Con
+### EMAIL_VERIFICATION_REQUIRED=true, una de antes del correo tiene que
+### confirmarlo (auth.http, T-209): si no, invitar, ver y contestar
+### invitaciones dan 403 EMAIL_NOT_VERIFIED.
 ### ==========================================================
 @baseUrl = http://localhost:3000
 @email = tester@test.com
@@ -26,11 +27,23 @@ Content-Type: application/json
 
 @token = {{login.response.body.accessToken}}
 
-### Registrar al invitado (solo la primera vez; luego 409 EMAIL_TAKEN)
-POST {{baseUrl}}/auth/register
+### Crear la cuenta del invitado (solo la primera vez): guarda lo escrito y manda el
+### código a Mailpit (http://localhost:8025)
+# @name inviteeSignUp
+POST {{baseUrl}}/auth/sign-up
 Content-Type: application/json
 
 { "name": "Invitee", "email": "{{inviteeEmail}}", "password": "{{inviteePassword}}", "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
+
+###
+
+@inviteeSignUpToken = {{inviteeSignUp.response.body.signUpToken}}
+
+### Crearla con el código del correo (sustituye 123456)
+POST {{baseUrl}}/auth/sign-up/confirm
+Content-Type: application/json
+
+{ "signUpToken": "{{inviteeSignUpToken}}", "code": "123456" }
 
 ### Login del invitado
 # @name inviteeLogin

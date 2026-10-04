@@ -57,7 +57,6 @@ const bodyOf = (schema: z.ZodObject): Record<string, unknown> =>
   toJson((schema.shape as { body: z.ZodType }).body);
 
 const requestBodies = {
-  RegisterInput: bodyOf(v.registerSchema),
   SignUpInput: bodyOf(v.signUpSchema),
   SignUpResendInput: bodyOf(v.signUpResendSchema),
   SignUpConfirmInput: bodyOf(v.signUpConfirmSchema),
@@ -476,7 +475,7 @@ const responseViews = {
         deviceToken: {
           type: "string",
           description:
-            "Login, sign-up, register, restore and password reset only. Proof that this device already signed in to this email: send it back as `deviceToken` on the next login, register or Forgot your password? and its attempts get a budget of their own, so a stranger's failures cannot lock this device out. Keep it across logouts, and keep the new one each of them answers. A password or email change and a logout-all revoke every device token issued before.",
+            "Login, sign-up, restore and password reset only. Proof that this device already signed in to this email: send it back as `deviceToken` on the next login, sign-up or Forgot your password? and its attempts get a budget of their own, so a stranger's failures cannot lock this device out. Keep it across logouts, and keep the new one each of them answers. A password or email change and a logout-all revoke every device token issued before.",
         },
       },
       required: ["accessToken", "refreshToken"],

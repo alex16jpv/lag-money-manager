@@ -13,7 +13,7 @@ que quieras, cambias valores a gusto, y pruebas casos de éxito y de error.
 
 Cada archivo es **autosuficiente**: arriba hace `login` y captura el `accessToken`
 automáticamente; el resto de peticiones lo reutilizan. Corre primero el `login` de
-cada archivo (o el `register` si aún no existe el usuario), luego lo que quieras.
+cada archivo (o el `signUp` de `auth.http` si aún no existe el usuario), luego lo que quieras.
 
 ## Variables
 

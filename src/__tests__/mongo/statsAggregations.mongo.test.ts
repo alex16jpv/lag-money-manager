@@ -3,7 +3,7 @@ import request from "supertest";
 
 import app from "../../app";
 import { TransactionModel } from "../../infrastructure/models/TransactionModel";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 interface Bucket {
   key: string;
@@ -54,16 +54,14 @@ describe("spending aggregations against mongod", () => {
     await connect();
     await dropDatabase();
 
-    const registered = await request(app).post("/auth/register").send({
-      captcha: TEST_CAPTCHA,
+    const registered = await signedInUser({
       name: "Stats",
       email: "stats@aggregations.test",
       password: "Offline!2026",
       timezone: "America/Bogota",
     });
-    expect(registered.status).toBe(201);
-    token = registered.body.accessToken;
-    userId = registered.body.user.id;
+    token = registered.accessToken;
+    userId = registered.user.id;
 
     const as = (req: request.Test): request.Test =>
       req.set("Authorization", `Bearer ${token}`);

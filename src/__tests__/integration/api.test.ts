@@ -1,6 +1,5 @@
 import bcryptjs from "bcryptjs";
 
-import { EmailVerificationService } from "../../app/services/EmailVerificationService";
 import { Account } from "../../domain/entities/Account";
 import { Budget } from "../../domain/entities/Budget";
 import { Category } from "../../domain/entities/Category";
@@ -529,52 +528,22 @@ describe("Integration Tests", () => {
     });
   });
 
-  describe("POST /auth/register", () => {
-    it("should register a new user, and send it the code to confirm its email", async () => {
-      mockUserRepo.create.mockResolvedValue(testUser);
-      const send = jest.spyOn(EmailVerificationService.prototype, "send");
-
-      const res = await request(app).post("/auth/register").send({
+  describe("POST /auth/register [T-248]", () => {
+    it("is gone: it answers like a route that never existed, and creates nothing", async () => {
+      const body = {
         name: "John Doe",
         email: "john@example.com",
         password: "password123",
         captcha: CAPTCHA,
-      });
+      };
 
-      expect(res.status).toBe(201);
-      expect(mockUserRepo.create).toHaveBeenCalledTimes(1);
-      expect(mockCaptchaVerify).toHaveBeenCalledWith(
-        expect.objectContaining({ token: CAPTCHA, action: "register" }),
-      );
-      expect(send).toHaveBeenCalledWith(
-        expect.objectContaining({ email: testUser.email }),
-        expect.anything(),
-      );
-      send.mockRestore();
-    });
+      const res = await request(app).post("/auth/register").send(body);
+      const never = await request(app).post("/auth/never-existed").send(body);
 
-    it("should return 400 for invalid email", async () => {
-      const res = await request(app).post("/auth/register").send({
-        name: "John",
-        email: "not-an-email",
-        password: "password123",
-        captcha: CAPTCHA,
-      });
-
-      expect(res.status).toBe(400);
-      expect(res.body.error).toBe("ValidationError");
-    });
-
-    it("should return 400 for short password", async () => {
-      const res = await request(app).post("/auth/register").send({
-        name: "John",
-        email: "john@example.com",
-        password: "short",
-        captcha: CAPTCHA,
-      });
-
-      expect(res.status).toBe(400);
-      expect(res.body.error).toBe("ValidationError");
+      expect(res.status).toBe(never.status);
+      expect(res.body).toEqual(never.body);
+      expect(mockCaptchaVerify).not.toHaveBeenCalled();
+      expect(mockUserRepo.create).not.toHaveBeenCalled();
     });
   });
 
@@ -765,60 +734,6 @@ describe("Integration Tests", () => {
     });
   });
 
-  describe("POST /auth/register's captcha [T-228]", () => {
-    it("creates nothing without a captcha", async () => {
-      mockUserRepo.create.mockResolvedValue(testUser);
-
-      const res = await request(app).post("/auth/register").send({
-        name: "John Doe",
-        email: "john@example.com",
-        password: "password123",
-      });
-
-      expect(res.status).toBe(400);
-      expect(res.body.code).toBe("VALIDATION");
-      expect(res.body.details).toEqual([
-        expect.objectContaining({ field: "captcha" }),
-      ]);
-      expect(mockCaptchaVerify).not.toHaveBeenCalled();
-      expect(mockUserRepo.create).not.toHaveBeenCalled();
-    });
-
-    it("creates nothing when Cloudflare refuses the captcha", async () => {
-      mockCaptchaVerify.mockResolvedValueOnce({
-        passed: false,
-        reason: "refused",
-        detail: "timeout-or-duplicate",
-      });
-
-      const res = await request(app).post("/auth/register").send({
-        name: "John Doe",
-        email: "john@example.com",
-        password: "password123",
-        captcha: CAPTCHA,
-      });
-
-      expect(res.status).toBe(400);
-      expect(res.body.code).toBe("CAPTCHA_INVALID");
-      expect(mockUserRepo.create).not.toHaveBeenCalled();
-    });
-
-    it("creates nothing when the captcha cannot be checked", async () => {
-      mockCaptchaVerify.mockResolvedValueOnce(UNCHECKED);
-
-      const res = await request(app).post("/auth/register").send({
-        name: "John Doe",
-        email: "john@example.com",
-        password: "password123",
-        captcha: CAPTCHA,
-      });
-
-      expect(res.status).toBe(503);
-      expect(res.body.code).toBe("CAPTCHA_UNAVAILABLE");
-      expect(mockUserRepo.create).not.toHaveBeenCalled();
-    });
-  });
-
   describe("POST /auth/email/verify [T-209]", () => {
     it("needs the session for a code", async () => {
       const res = await request(app)
@@ -966,6 +881,43 @@ describe("Integration Tests", () => {
       expect(mockCaptchaVerify).toHaveBeenCalledWith(
         expect.objectContaining({ token: CAPTCHA, action: "register" }),
       );
+    });
+
+    it.each([
+      ["an invalid email", { email: "not-an-email" }],
+      ["a short password", { password: "short" }],
+    ])("writes nothing for %s", async (_label, change) => {
+      const res = await request(app)
+        .post("/auth/sign-up")
+        .send({ ...body, ...change });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION");
+      expect(mockSignUpRepo.replace).not.toHaveBeenCalled();
+    });
+
+    it("writes nothing when Cloudflare refuses the captcha [T-228]", async () => {
+      mockCaptchaVerify.mockResolvedValueOnce({
+        passed: false,
+        reason: "refused",
+        detail: "timeout-or-duplicate",
+      });
+
+      const res = await request(app).post("/auth/sign-up").send(body);
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("CAPTCHA_INVALID");
+      expect(mockSignUpRepo.replace).not.toHaveBeenCalled();
+    });
+
+    it("writes nothing when the captcha cannot be checked [T-228]", async () => {
+      mockCaptchaVerify.mockResolvedValueOnce(UNCHECKED);
+
+      const res = await request(app).post("/auth/sign-up").send(body);
+
+      expect(res.status).toBe(503);
+      expect(res.body.code).toBe("CAPTCHA_UNAVAILABLE");
+      expect(mockSignUpRepo.replace).not.toHaveBeenCalled();
     });
 
     it("writes nothing without the captcha", async () => {

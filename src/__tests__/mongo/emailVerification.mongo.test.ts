@@ -6,17 +6,19 @@
  */
 import request from "supertest";
 
-import { createEmailService } from "../../app/factories/emailServiceFactory";
-import repositoryFactory from "../../app/factories/RepositoryFactory";
-import { AuthService } from "../../app/services/AuthService";
-import { CategoryService } from "../../app/services/CategoryService";
 import { OutgoingEmail } from "../../domain/email/EmailProvider";
 import { AuthCodeModel } from "../../infrastructure/models/AuthCodeModel";
 import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
 import { SharedInvitationModel } from "../../infrastructure/models/SharedInvitationModel";
 import { UserModel } from "../../infrastructure/models/UserModel";
 import { hashEmailAddress } from "../../shared/emailHash";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import {
+  connect,
+  disconnect,
+  dropDatabase,
+  signedInUser,
+  TEST_CAPTCHA,
+} from "./support";
 
 const mockSent: OutgoingEmail[] = [];
 const mockUnreachable = new Set<string>();
@@ -80,45 +82,18 @@ interface Session {
 
 const PASSWORD = "Offline!2026";
 
-async function register(email: string, name: string): Promise<Session> {
-  const res = await request(app).post("/auth/register").send({
-    captcha: TEST_CAPTCHA,
-    name,
-    email,
-    password: PASSWORD,
-    currency: "COP",
-  });
-  expect(res.status).toBe(201);
-  return {
-    token: res.body.accessToken,
-    refreshToken: res.body.refreshToken,
-    userId: res.body.user.id,
-  };
-}
-
-// Made the way every account from before the email was: by the service, with no email sent.
 async function accountFromBeforeEmail(
   email: string,
   name: string,
 ): Promise<Session> {
-  const auth = new AuthService(
-    repositoryFactory.getUserRepository(),
-    new CategoryService(
-      repositoryFactory.getCategoryRepository(),
-      repositoryFactory.getTransactionRepository(),
-    ),
-    repositoryFactory.getRefreshSessionRepository(),
-    createEmailService(),
+  const opened = await signedInUser(
+    { name, email, password: PASSWORD, currency: "COP" },
+    { fromBefore: true },
   );
-  await auth.register({ name, email, password: PASSWORD });
-  const res = await request(app)
-    .post("/auth/login")
-    .send({ email, password: PASSWORD });
-  expect(res.status).toBe(200);
   return {
-    token: res.body.accessToken,
-    refreshToken: res.body.refreshToken,
-    userId: res.body.user.id,
+    token: opened.accessToken,
+    refreshToken: opened.refreshToken,
+    userId: opened.user.id,
   };
 }
 
@@ -153,6 +128,13 @@ const resend = (session: Session): request.Test =>
     request(app).post("/auth/email/resend").send({ captcha: TEST_CAPTCHA }),
   );
 
+// Only an account from before email is ever sent verify-email, by its Send code.
+async function withCode(email: string, name: string): Promise<Session> {
+  const session = await accountFromBeforeEmail(email, name);
+  expect((await resend(session)).status).toBe(202);
+  return session;
+}
+
 function lastEmailTo(address: string): {
   code: string;
   token: string;
@@ -180,8 +162,8 @@ describe("Confirming an email against mongod [T-209]", () => {
     await disconnect();
   });
 
-  it("mails the code at sign-up and shows it live, with Resend's countdown", async () => {
-    const ana = await register("ana@verify.test", "Ana Ruiz");
+  it("mails the code on Send code and shows it live, with Resend's countdown", async () => {
+    const ana = await withCode("ana@verify.test", "Ana Ruiz");
 
     const email = mockSent.find((sent) => sent.to === "ana@verify.test");
     expect(email?.template).toBe("verify-email");
@@ -201,7 +183,7 @@ describe("Confirming an email against mongod [T-209]", () => {
   });
 
   it("tells a wrong code from a right one, confirms with it, and keeps the link good afterwards", async () => {
-    const beto = await register("beto@verify.test", "Beto Cano");
+    const beto = await withCode("beto@verify.test", "Beto Cano");
     const { code, token } = lastEmailTo("beto@verify.test");
     const wrong = code === "000000" ? "111111" : "000000";
 
@@ -224,7 +206,7 @@ describe("Confirming an email against mongod [T-209]", () => {
   });
 
   it("uses a code up after five wrong tries, even for the right one after them", async () => {
-    const cata = await register("cata@verify.test", "Cata Diaz");
+    const cata = await withCode("cata@verify.test", "Cata Diaz");
     const { code } = lastEmailTo("cata@verify.test");
     const wrong = code === "000000" ? "111111" : "000000";
 
@@ -245,11 +227,13 @@ describe("Confirming an email against mongod [T-209]", () => {
     expect(row?.attempts).toBe(5);
   });
 
-  it("signs up even when its email cannot go out, and its Send code goes at once [T-228]", async () => {
+  it("leaves no code when its email cannot go out, and Send code goes again at once [T-228]", async () => {
+    const dora = await accountFromBeforeEmail("dora@verify.test", "Dora Paz");
     mockUnreachable.add("dora@verify.test");
-    let dora: Session;
     try {
-      dora = await register("dora@verify.test", "Dora Paz");
+      const failed = await resend(dora);
+      expect(failed.status).toBe(503);
+      expect(failed.body.code).toBe("EMAIL_SEND_FAILED");
     } finally {
       mockUnreachable.delete("dora@verify.test");
     }
@@ -286,7 +270,7 @@ describe("Confirming an email against mongod [T-209]", () => {
   });
 
   it("refuses to move the email on the profile's PUT, and the address keeps its code and link [T-232]", async () => {
-    const eva = await register("eva@verify.test", "Eva Paz");
+    const eva = await withCode("eva@verify.test", "Eva Paz");
     const old = lastEmailTo("eva@verify.test");
 
     const refused = await as(
@@ -313,12 +297,15 @@ describe("Confirming an email against mongod [T-209]", () => {
   });
 
   it("keeps invitations waiting for a confirmed address, and hands them to the feed once it is", async () => {
-    const john = await register("john@verify.test", "John Doe");
-    const unconfirmedInviter = await register("sam@verify.test", "Sam Ray");
+    const john = await withCode("john@verify.test", "John Doe");
+    const unconfirmedInviter = await accountFromBeforeEmail(
+      "sam@verify.test",
+      "Sam Ray",
+    );
     expect(
       (await verifyCode(john, lastEmailTo("john@verify.test").code)).status,
     ).toBe(200);
-    const fede = await register("fede@verify.test", "Fede Luna");
+    const fede = await withCode("fede@verify.test", "Fede Luna");
 
     const contact = await as(
       john,

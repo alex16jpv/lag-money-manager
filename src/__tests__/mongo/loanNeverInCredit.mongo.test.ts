@@ -9,7 +9,7 @@ import request from "supertest";
 
 import app from "../../app";
 import { AccountModel } from "../../infrastructure/models/AccountModel";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 const uuid = (n: number): string =>
   `01960000-0000-7000-8000-c${String(n).padStart(11, "0")}`;
@@ -81,15 +81,13 @@ describe("a loan never ends above zero, whatever the write (T-156)", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    const res = await request(app).post("/auth/register").send({
-      captcha: TEST_CAPTCHA,
+    const res = await signedInUser({
       name: "Loan tester",
       email: "loan@movements.test",
       password: "Offline!2026",
       currency: "USD",
     });
-    expect(res.status).toBe(201);
-    owner = { token: res.body.accessToken, userId: res.body.user.id };
+    owner = { token: res.accessToken, userId: res.user.id };
     const created = await as(
       owner,
       request(app)

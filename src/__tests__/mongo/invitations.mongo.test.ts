@@ -9,27 +9,25 @@ import request from "supertest";
 import app from "../../app";
 import { SharedInvitationModel } from "../../infrastructure/models/SharedInvitationModel";
 import { UserModel } from "../../infrastructure/models/UserModel";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 interface Session {
   token: string;
   userId: string;
 }
 
-async function register(
+async function accountFor(
   email: string,
   name: string,
   currency = "COP",
 ): Promise<Session> {
-  const res = await request(app).post("/auth/register").send({
-    captcha: TEST_CAPTCHA,
+  const opened = await signedInUser({
     name,
     email,
     password: "Offline!2026",
     currency,
   });
-  expect(res.status).toBe(201);
-  return { token: res.body.accessToken, userId: res.body.user.id };
+  return { token: opened.accessToken, userId: opened.user.id };
 }
 
 const as = (session: Session, req: request.Test): request.Test =>
@@ -89,9 +87,9 @@ describe("invitations against mongod", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    john = await register("john@invitations.test", "John Doe");
-    beto = await register("beto@invitations.test", "Beto Cano");
-    tom = await register("tom@invitations.test", "Tom Baker", "EUR");
+    john = await accountFor("john@invitations.test", "John Doe");
+    beto = await accountFor("beto@invitations.test", "Beto Cano");
+    tom = await accountFor("tom@invitations.test", "Tom Baker", "EUR");
   });
 
   afterAll(async () => {
@@ -222,8 +220,8 @@ describe("invitations against mongod", () => {
     expect(received[0]).toMatchObject({ status: "ACCEPTED" });
   });
 
-  it("never hands somebody else's answers to whoever registers the old address", async () => {
-    const newcomer = await register("beto@invitations.test", "Not Beto");
+  it("never hands somebody else's answers to whoever signs up with the old address", async () => {
+    const newcomer = await accountFor("beto@invitations.test", "Not Beto");
 
     expect((await feed(newcomer)).invitationsReceived).toHaveLength(0);
   });

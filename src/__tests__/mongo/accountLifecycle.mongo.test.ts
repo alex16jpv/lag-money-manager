@@ -13,7 +13,13 @@ import { RateLimitModel } from "../../infrastructure/models/RateLimitModel";
 import { RefreshSessionModel } from "../../infrastructure/models/RefreshSessionModel";
 import { SignUpModel } from "../../infrastructure/models/SignUpModel";
 import { UserModel } from "../../infrastructure/models/UserModel";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import {
+  connect,
+  disconnect,
+  dropDatabase,
+  signedInUser,
+  TEST_CAPTCHA,
+} from "./support";
 
 const mockSent: OutgoingEmail[] = [];
 
@@ -277,6 +283,29 @@ describe("The account lifecycle against mongod [T-238]", () => {
       expect((await logIn("cata@life.test", "Second!2026")).status).toBe(200);
       expect(await SignUpModel.countDocuments({})).toBeGreaterThan(0);
     });
+
+    it("answers EMAIL_TAKEN to the code when the address became another account's meanwhile, and lets go of its claim", async () => {
+      await minutePasses();
+      const started = await startSignUp("race@life.test");
+      const code = codeIn(lastEmail("race@life.test", "sign-up"));
+      const other = await signedInUser({
+        name: "Faster",
+        email: "race@life.test",
+        password: "Faster!2026",
+      });
+
+      const late = await confirmSignUp(started.body.signUpToken, code);
+
+      expect(late.status).toBe(409);
+      expect(late.body.code).toBe("EMAIL_TAKEN");
+      expect(late.body).not.toHaveProperty("accessToken");
+      expect(
+        await UserModel.find({ email: "race@life.test" }).distinct("_id"),
+      ).toEqual([other.user.id]);
+      expect(
+        await SignUpModel.findOne({ email: "race@life.test" }).lean(),
+      ).toMatchObject({ userId: null, signedInAt: null });
+    });
   });
 
   describe("a deleted account", () => {
@@ -421,18 +450,13 @@ describe("The account lifecycle against mongod [T-238]", () => {
   });
 
   describe("an account from before email existed", () => {
-    // Made the way the accounts from before were: confirmed by nobody.
-    const fromBefore = async (email: string): Promise<Session> => {
-      await minutePasses();
-      const res = await request(app).post("/auth/register").send({
-        captcha: TEST_CAPTCHA,
-        name: "Old",
-        email,
-        password: PASSWORD,
-      });
-      expect(res.status).toBe(201);
-      return sessionOf(res.body);
-    };
+    const fromBefore = async (email: string): Promise<Session> =>
+      sessionOf(
+        await signedInUser(
+          { name: "Old", email, password: PASSWORD },
+          { fromBefore: true },
+        ),
+      );
 
     it("gets its deadline from the pass, and its link confirms it until then", async () => {
       const iris = await fromBefore("iris@life.test");

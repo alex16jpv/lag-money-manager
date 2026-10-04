@@ -1,7 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 
 import { ENVIRONMENT } from "../../shared/constants";
-import logger from "../../shared/logger";
 import { createEmailChangeService } from "../factories/emailChangeFactory";
 import { createEmailService } from "../factories/emailServiceFactory";
 import { createEmailVerificationService } from "../factories/emailVerificationFactory";
@@ -110,24 +109,6 @@ export class AuthController {
       code,
       req.get("User-Agent") ?? undefined,
     );
-    res.status(201).json(result);
-  };
-
-  static register = async (req: Request, res: Response): Promise<void> => {
-    const result = await authService.register(
-      req.body,
-      req.get("User-Agent") ?? undefined,
-    );
-    if (!result.user.emailVerified) {
-      try {
-        await verification.send(result.user, requesterOf(req));
-      } catch (err) {
-        logger.error(
-          { err, code: "VERIFICATION_NOT_SENT", userId: result.user.id },
-          "The account was created but its confirmation code could not be sent",
-        );
-      }
-    }
     res.status(201).json(result);
   };
 

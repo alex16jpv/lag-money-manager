@@ -50,18 +50,6 @@ Content-Type: application/json
 
 { "signUpToken": "{{signUpToken}}", "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
 
-### Register (solo hasta T-239) — crea la cuenta sin confirmar y devuelve tokens.
-### Correo con cuenta (viva o borrada): 409 EMAIL_TAKEN.
-POST {{baseUrl}}/auth/register
-Content-Type: application/json
-
-{
-  "name": "Tester",
-  "email": "old-{{$randomInt 100 999}}@test.com",
-  "password": "{{password}}",
-  "captcha": "XXXX.DUMMY.TOKEN.XXXX"
-}
-
 ### Login (éxito) — captura accessToken, refreshToken y deviceToken
 # @name login
 POST {{baseUrl}}/auth/login
@@ -192,26 +180,22 @@ Authorization: Bearer {{accessToken}}
 
 ### ---------- Casos de error ----------
 
-### Register — email duplicado (409 EMAIL_TAKEN vía índice único)
-POST {{baseUrl}}/auth/register
-Content-Type: application/json
-
-{ "name": "Otro", "email": "{{email}}", "password": "{{password}}", "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
-
-### Register — email con mayúsculas = misma cuenta (409; emails normalizados)
-POST {{baseUrl}}/auth/register
+### Crear cuenta con un correo que ya tiene cuenta, en mayúsculas (los correos se
+### normalizan): el MISMO 202 que cualquier otro; al buzón le llega account-exists, sin
+### código, así que ese registro nunca se puede confirmar. Nada dice que la cuenta existe.
+POST {{baseUrl}}/auth/sign-up
 Content-Type: application/json
 
 { "name": "Otro", "email": "TESTER@test.com", "password": "{{password}}", "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
 
-### Register — currency inválida (400: debe ser ISO 4217 de 3 letras)
-POST {{baseUrl}}/auth/register
+### Crear cuenta — currency inválida (400: debe ser ISO 4217 de 3 letras)
+POST {{baseUrl}}/auth/sign-up
 Content-Type: application/json
 
 { "name": "X", "email": "x@test.com", "password": "{{password}}", "currency": "pesos", "captcha": "XXXX.DUMMY.TOKEN.XXXX" }
 
-### Register — sin captcha (400 VALIDATION; no se crea nada)
-POST {{baseUrl}}/auth/register
+### Crear cuenta — sin captcha (400 VALIDATION; no se guarda nada)
+POST {{baseUrl}}/auth/sign-up
 Content-Type: application/json
 
 { "name": "X", "email": "x@test.com", "password": "{{password}}" }
@@ -301,19 +285,10 @@ Content-Type: application/json
 ### CONFIRMAR EL CORREO de una cuenta de antes (T-209, T-238) — con Mailpit
 ### (docker compose up -d mailpit, EMAIL_PROVIDERS=mailpit): el código y los
 ### enlaces se leen en http://localhost:8025
+### Una cuenta nueva nace confirmada y el API ya no crea cuentas de antes (T-248):
+### para probar esto en local, pon emailVerifiedAt a null en la tuya (Mongoku,
+### http://localhost:3100) y vuelve a correr "login".
 ### ==========================================================
-
-### Register (hasta T-239) — además de la sesión, manda verify-email (código y
-### enlace). Si el envío falla, la cuenta se crea igual sin código vivo.
-POST {{baseUrl}}/auth/register
-Content-Type: application/json
-
-{
-  "name": "Tester",
-  "email": "verify-{{$randomInt 100 999}}@test.com",
-  "password": "{{password}}",
-  "captcha": "XXXX.DUMMY.TOKEN.XXXX"
-}
 
 ### Send code / Resend — con sesión y captcha. 202 { resendAfterSeconds };
 ### antes de un minuto 429 RATE_LIMITED; ya confirmado 409 EMAIL_ALREADY_VERIFIED;

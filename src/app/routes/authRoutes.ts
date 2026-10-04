@@ -14,7 +14,6 @@ import {
   idParamSchema,
   loginSchema,
   refreshSchema,
-  registerSchema,
   resendVerificationSchema,
   resetPasswordSchema,
   restoreAccountSchema,
@@ -72,7 +71,7 @@ const accountLimiters = [
   emailLimiter,
 ];
 
-const registerLimiter = authRateLimit({
+const signUpLimiter = authRateLimit({
   keyPrefix: "register",
   max: ENVIRONMENT.AUTH_IP_RATE_LIMIT_MAX,
   windowMs: AUTH_WINDOW_MS,
@@ -202,7 +201,7 @@ const refreshLimiter = authRateLimit({
  */
 router.post(
   "/sign-up",
-  registerLimiter,
+  signUpLimiter,
   AuthController.recognizeDevice,
   validate(signUpSchema),
   requireCaptcha("register", captcha),
@@ -266,7 +265,7 @@ router.post(
  */
 router.post(
   "/sign-up/resend",
-  registerLimiter,
+  signUpLimiter,
   validate(signUpResendSchema),
   requireCaptcha("register", captcha),
   AuthController.resendSignUp,
@@ -333,78 +332,6 @@ router.post(
 
 /**
  * @openapi
- * /auth/register:
- *   post:
- *     tags: [Auth]
- *     deprecated: true
- *     summary: Register a new user, before its email is confirmed
- *     description: >
- *       Kept only until the app confirms the email before the account
- *       exists (`POST /auth/sign-up`); then it goes. Register acts as login:
- *       the response already carries the token pair. Emails are normalized
- *       (trim + lowercase). An address with any account, live or deleted and
- *       still kept, answers 409 EMAIL_TAKEN: a deleted account comes back by
- *       signing in. `captcha` is a Cloudflare Turnstile token for the action
- *       `register`. The account is sent `verify-email`; a send that fails does
- *       not fail the register.
- *     security: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/RegisterInput'
- *     responses:
- *       201:
- *         description: User registered and logged in
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/AuthTokens'
- *       400:
- *         description: >
- *           Validation error, a missing captcha among them (code
- *           VALIDATION), or Cloudflare refused the captcha token (code
- *           CAPTCHA_INVALID). Ask for a new token and try again
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       409:
- *         description: Email is already registered (code EMAIL_TAKEN)
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       429:
- *         description: >
- *           Too many attempts from this client IP, or too many failed ones
- *           for this email, counted with the failed logins (code
- *           RATE_LIMITED)
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       503:
- *         description: >
- *           The captcha could not be checked (code CAPTCHA_UNAVAILABLE):
- *           nothing was created. Try again
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.post(
-  "/register",
-  registerLimiter,
-  ...accountLimiters,
-  validate(registerSchema),
-  requireCaptcha("register", captcha),
-  AuthController.register,
-);
-
-/**
- * @openapi
  * /auth/login:
  *   post:
  *     tags: [Auth]
@@ -412,7 +339,7 @@ router.post(
  *     description: >
  *       Returns a short-lived access token (~15 min), a refresh token and a
  *       `deviceToken`. Rate-limited per IP, and failed attempts per account:
- *       send the `deviceToken` of this device's last login or register and
+ *       send the `deviceToken` of this device's last login or sign-up and
  *       they count against this device alone, so nobody else's failures can
  *       lock it out; without one they count per email and IP and per email in
  *       total. Successful logins are refunded. A login whose `deviceToken` is
@@ -547,7 +474,7 @@ router.post(
  *       accepted for delivery. `captcha` is a Cloudflare Turnstile token
  *       issued for the action `forgot-password`, asked for when the button is
  *       pressed: it works once. `deviceToken`, from this device's last login
- *       or register, lets the limits count this device instead of its IP.
+ *       or sign-up, lets the limits count this device instead of its IP.
  *     security: []
  *     requestBody:
  *       required: true
@@ -840,7 +767,7 @@ router.post(
  *       password?, a failed send is said: the address is the account's own.
  *       `captcha` is a Cloudflare Turnstile token for the action
  *       `verify-email`; `deviceToken`, from this device's last login or
- *       register, lets the limits count this device instead of its IP.
+ *       sign-up, lets the limits count this device instead of its IP.
  *     requestBody:
  *       required: true
  *       content:

@@ -7,22 +7,20 @@
 import request from "supertest";
 
 import app from "../../app";
-import { connect, disconnect, dropDatabase, TEST_CAPTCHA } from "./support";
+import { connect, disconnect, dropDatabase, signedInUser } from "./support";
 
 interface Session {
   token: string;
   userId: string;
 }
 
-async function register(email: string): Promise<Session> {
-  const res = await request(app).post("/auth/register").send({
-    captcha: TEST_CAPTCHA,
+async function accountFor(email: string): Promise<Session> {
+  const res = await signedInUser({
     name: "Owner",
     email,
     password: "Offline!2026",
   });
-  expect(res.status).toBe(201);
-  return { token: res.body.accessToken, userId: res.body.user.id };
+  return { token: res.accessToken, userId: res.user.id };
 }
 
 const as = (session: Session, req: request.Test): request.Test =>
@@ -63,8 +61,8 @@ describe("shared groups against mongod", () => {
   beforeAll(async () => {
     await connect();
     await dropDatabase();
-    alice = await register("alice@shared.test");
-    bob = await register("bob@shared.test");
+    alice = await accountFor("alice@shared.test");
+    bob = await accountFor("bob@shared.test");
     ana = await newContact(alice, "Ana");
     beto = await newContact(alice, "Beto");
   });

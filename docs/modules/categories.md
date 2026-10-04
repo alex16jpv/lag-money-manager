@@ -105,12 +105,12 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant AUTH as AuthService.register
+    participant AUTH as AuthService.createAccount
     participant SVC as CategoryService
     participant REPO as CategoryRepository
 
     AUTH->>SVC: seedDefaultCategories(userId)
-    Note over AUTH: Failures are logged, never fail the registration
+    Note over AUTH: Failures are logged, never fail the sign-up
     SVC->>REPO: createMany(DEFAULT_CATEGORIES)
 
     Note over SVC: Later — POST /categories/restore-defaults
@@ -127,7 +127,7 @@ sequenceDiagram
 **Imported by:**
 
 - Category routes registered in `src/app.ts` at `/categories`, after `authMiddleware`
-- `AuthService` calls `seedDefaultCategories()` on registration
+- `AuthService.createAccount` calls `seedDefaultCategories()` when a sign-up's code creates the account
 - `TransactionService` and `BudgetService` validate `categoryId` references through `ICategoryRepository`
 
 ## Environment Variables
