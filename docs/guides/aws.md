@@ -48,6 +48,17 @@ npm run deploy:infra -- <api|access|email>   # an administrator profile: INFRA_A
 npm run infra:check                           # the deploy profile: AWS_PROFILE
 ```
 
+**Which part to run.** Each part is one area of the account; run the one whose file you changed.
+
+| Part | What it is, in short | Run it when |
+| --- | --- | --- |
+| `api` | The server: the Lambda that answers the web client, everything around it (its variables and secrets, memory and timeout, public URL, logs) and the daily rule that keeps Atlas awake and runs the nightly pass (deadline emails, erasing accounts past their 30 days) | You changed `infra/api.yaml` (a variable, a cap, a switch, the daily rule) or a secret in Parameter Store. The most common one |
+| `access` | Who may deploy: the `lag-deploy` user and what it is allowed to do (upload the code, read the account) | You changed `infra/access.yaml`. Rare |
+| `email` | Sending email: SES, its bounce and complaint events, the alarms that pause SES, and the 1 USD budget | You changed `infra/email.yaml` (an alarm threshold, the budget), or the api part changed the function's name, role or URL |
+
+Not sure which one? Run all three, `access`, `api` and `email`: a part with nothing new says "Nothing
+to deploy" and touches nothing. The **code** is none of them: that is `npm run deploy:lambda`.
+
 `deploy:infra` never applies anything on its own. It creates a CloudFormation change set, prints one
 line per resource it would add, modify or import (the names of what changes, never a value), and
 waits for `yes`; anything else, or Ctrl-C, discards it. It **refuses**, and applies nothing:
