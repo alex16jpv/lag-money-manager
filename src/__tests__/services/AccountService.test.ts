@@ -786,8 +786,14 @@ describe("AccountService", () => {
   });
 
   describe("restoreAccount", () => {
+    const archived = new Account({
+      ...validAccountProps,
+      archivedAt: new Date("2026-08-20T00:00:00.000Z"),
+    });
+
     // Otherwise the user is stuck: restore 409s on the name and renaming the archived one is refused.
     it("renames as part of the same write when a new name is given", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(archived);
       repo.restore.mockResolvedValue(
         new Account({ ...validAccountProps, name: "Nequi antiguo" }),
       );
@@ -808,6 +814,7 @@ describe("AccountService", () => {
     });
 
     it("restores the user's archived account", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(archived);
       repo.restore.mockResolvedValue(mockAccount);
 
       const result = await service.restoreAccount(
@@ -830,6 +837,66 @@ describe("AccountService", () => {
       await expect(
         service.restoreAccount(mockAccount.id, mockAccount.userId),
       ).rejects.toThrow("Account not found");
+    });
+
+    // T-38: the cap is on active accounts, so coming back from the archive has to fit under it.
+    it("refuses to bring one back past the cap of active accounts", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(archived);
+      repo.countByUserId.mockResolvedValue(100);
+
+      await expect(
+        service.restoreAccount(mockAccount.id, mockAccount.userId),
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        code: "ACCOUNT_LIMIT_REACHED",
+      });
+      expect(repo.restore).not.toHaveBeenCalled();
+    });
+
+    it("brings back the one that makes it exactly 100", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(archived);
+      repo.countByUserId.mockResolvedValue(99);
+      repo.restore.mockResolvedValue(mockAccount);
+
+      await expect(
+        service.restoreAccount(mockAccount.id, mockAccount.userId),
+      ).resolves.toMatchObject({ id: mockAccount.id });
+    });
+
+    it("answers an account that is already active unchanged, even at the cap", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(mockAccount);
+      repo.countByUserId.mockResolvedValue(100);
+
+      await expect(
+        service.restoreAccount(mockAccount.id, mockAccount.userId),
+      ).resolves.toMatchObject({ id: mockAccount.id, archivedAt: null });
+      expect(repo.restore).not.toHaveBeenCalled();
+    });
+
+    it("still succeeds when a concurrent restore won the race", async () => {
+      repo.getByIdIncludingArchived
+        .mockResolvedValueOnce(archived)
+        .mockResolvedValueOnce(mockAccount);
+      repo.restore.mockResolvedValue(null);
+
+      await expect(
+        service.restoreAccount(mockAccount.id, mockAccount.userId),
+      ).resolves.toMatchObject({ id: mockAccount.id, archivedAt: null });
+    });
+
+    it("answers 404 for another user's account without counting anything", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({
+          ...validAccountProps,
+          userId: "019576a0-d7b6-7d6d-af6a-2b7545f5ac99",
+        }),
+      );
+
+      await expect(
+        service.restoreAccount(mockAccount.id, mockAccount.userId),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(repo.countByUserId).not.toHaveBeenCalled();
+      expect(repo.restore).not.toHaveBeenCalled();
     });
   });
 

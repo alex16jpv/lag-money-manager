@@ -1322,6 +1322,12 @@ describe("Integration Tests", () => {
   });
 
   describe("POST /accounts/:id/restore [archive]", () => {
+    beforeEach(() => {
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...testAccount, archivedAt: new Date("2026-08-20") }),
+      );
+    });
+
     it("restores an archived account", async () => {
       mockAccountRepo.restore.mockResolvedValue(testAccount);
 
@@ -1339,6 +1345,18 @@ describe("Integration Tests", () => {
     });
 
     // The way out of a restore that 409s on a taken name: rename it on the way out, in one write.
+    it("refuses with ACCOUNT_LIMIT_REACHED when 100 are already active [T-38]", async () => {
+      mockAccountRepo.countByUserId.mockResolvedValueOnce(100);
+
+      const res = await request(app)
+        .post("/accounts/019576a0-d7b6-7d6d-af6a-2b7545f5ac71/restore")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("ACCOUNT_LIMIT_REACHED");
+      expect(mockAccountRepo.restore).not.toHaveBeenCalled();
+    });
+
     it("restores under a new name when the body carries one", async () => {
       mockAccountRepo.restore.mockResolvedValue(testAccount);
 
@@ -2541,6 +2559,9 @@ describe("Integration Tests", () => {
         V1,
       );
 
+      mockAccountRepo.getByIdIncludingArchived.mockResolvedValue(
+        new Account({ ...at(V1), archivedAt: V1 }),
+      );
       mockAccountRepo.restore.mockResolvedValue(at(V2));
       await request(app)
         .post(`/accounts/${ACC}/restore`)

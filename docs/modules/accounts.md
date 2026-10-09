@@ -52,7 +52,7 @@ Get all accounts for the authenticated user (paginated, offset + cursor).
 
 Create a new account. Requires: `name`, `type`. Optional: `balance` (defaults to 0, becomes the immutable `openingBalance`), `color`, and the debt amount of its type — `creditLimit` (CARD, OVERDRAFT) or `borrowedAmount` (LOAN), both greater than zero.
 
-The server sets `currency` from the owner's currency and marks the **first** account as default. A user is capped at 100 accounts (`ACCOUNT_LIMIT_REACHED`).
+The server sets `currency` from the owner's currency and marks the **first** account as default. A user is capped at **100 active accounts** (`400 ACCOUNT_LIMIT_REACHED`), here **and on restore**; archived ones do not count, so a user may hold more than 100 in all and a client has to follow the list's cursor to see them.
 
 **Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. An id the user already owns replays with **200** and the stored account **whatever the payload says now** — the row may have been edited from another device between a lost response and the retry, and a 409 there would make the client mint a second id and duplicate it. An id that belongs to **another user** is rejected with **409 `ID_TAKEN`**, worded so the caller cannot tell it exists; the foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
 
@@ -76,7 +76,7 @@ The **default account cannot be archived** (`DEFAULT_ACCOUNT_ARCHIVE_BLOCKED`); 
 
 ### `POST /accounts/:id/restore`
 
-Un-archive an account. Idempotent: restoring an already-active account returns it unchanged.
+Un-archive an account. Idempotent: restoring an already-active account returns it unchanged. Bringing one back when the user already has 100 active accounts is `400 ACCOUNT_LIMIT_REACHED`: archive another one first. Before T-38 restore did not look at the cap, so a user could end up with more than 100 active accounts; those stay as they are, and only the next create or restore is refused.
 
 ### `POST /accounts/:id/default`
 
@@ -132,7 +132,7 @@ None specific to this module.
 | --------------------------------- | ------ | ------------------------------------------------------------------------------------------ |
 | `ValidationError`                 | 400    | Invalid input (bad type, missing name, unknown color, …)                                   |
 | `BadRequest`                      | 400    | ID mismatch between URL param and body                                                     |
-| `ACCOUNT_LIMIT_REACHED`           | 400    | The user already has 100 accounts                                                          |
+| `ACCOUNT_LIMIT_REACHED`           | 400    | The user already has 100 active accounts (create or restore)                               |
 | `RESOURCE_ARCHIVED`               | 400    | Updating an archived account                                                               |
 | `ACCOUNT_FIELD_NOT_FOR_TYPE`      | 400    | A debt amount on a type that has no such field, or a type change that would orphan one     |
 | `AMOUNT_PRECISION`                | 400    | `balance`, `creditLimit` or `borrowedAmount` with more decimals than the currency has      |

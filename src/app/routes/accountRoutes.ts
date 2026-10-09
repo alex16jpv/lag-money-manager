@@ -318,7 +318,8 @@ router.delete("/:id", validate(idParamSchema), AccountController.deleteAccount);
  *             $ref: '#/components/schemas/RestoreInput'
  *     description: >
  *       Idempotent - restoring an already-active account returns it
- *       unchanged.
+ *       unchanged. The cap of 100 counts active accounts, so bringing one
+ *       back when 100 are already active is 400 ACCOUNT_LIMIT_REACHED.
  *     parameters:
  *       - in: path
  *         name: id
@@ -334,7 +335,7 @@ router.delete("/:id", validate(idParamSchema), AccountController.deleteAccount);
  *             schema:
  *               $ref: '#/components/schemas/Account'
  *       400:
- *         description: Invalid ID format (code VALIDATION)
+ *         description: Invalid ID format (code VALIDATION), or 100 active accounts already (code ACCOUNT_LIMIT_REACHED)
  *         content:
  *           application/json:
  *             schema:
