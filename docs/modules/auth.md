@@ -338,7 +338,7 @@ never touched: past the deadline only the door closes.
 - **The nightly pass sends it** ([users.md](users.md#the-nightly-pass)): to each unconfirmed live account
   with none yet, `confirm-deadline` with a link to `/verify` of its own; once that email was accepted (or
   may have gone), `confirmDeadline` is written: `{ day, endsAt, remindedAt, links }`, the day 14 days from
-  the send where the account lives, whole, `endsAt` its end. An email that does not go starts nothing, and
+  the send where the account lives, whole, `endsAt` its end (the next local midnight, as a budget period ends: [budgets.md](budgets.md#period-types)). An email that does not go starts nothing, and
   the account is tried again the next night. Four days or fewer before `day`, `confirm-deadline-reminder`
   goes once, with the days left and its own link. Both spend at most half of the day's verification and
   security share of the cap (`EMAIL_DAILY_CAP`), and the pass spreads the rest over the next nights: a cap

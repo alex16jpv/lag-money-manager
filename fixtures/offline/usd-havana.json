@@ -1,0 +1,260 @@
+{
+  "id": "usd-havana",
+  "title": "USD · America/Havana · a midnight that happens twice",
+  "pins": [
+    "Midnight on 1 November 2020 happens twice, at 04:00Z and at 05:00Z: November starts at the first one.",
+    "Both 00:30s of 1 November are November, and so is the window that starts there."
+  ],
+  "generatedBy": "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline",
+  "user": {
+    "id": "01930006-0000-7000-8000-0000000u0001",
+    "timezone": "America/Havana",
+    "currency": "USD",
+    "minorUnits": 2
+  },
+  "accounts": [
+    {
+      "key": "bank",
+      "id": "01930006-0000-7000-8000-0000000a0001",
+      "name": "Bank",
+      "type": "ACCOUNT",
+      "color": "BLUE",
+      "currency": "USD",
+      "openingBalance": 1000,
+      "isDefault": true,
+      "archivedAt": null
+    }
+  ],
+  "categories": [
+    {
+      "key": "food",
+      "id": "01930006-0000-7000-8000-0000000c0001",
+      "name": "Food",
+      "type": "EXPENSE",
+      "archivedAt": null
+    }
+  ],
+  "transactions": [
+    {
+      "key": "october-first",
+      "id": "01930006-0000-7000-8000-0000000t0001",
+      "type": "EXPENSE",
+      "amount": 10,
+      "date": "2020-10-01T00:30:00-04:00",
+      "dayKey": "2020-10-01",
+      "description": "Bakery",
+      "categoryId": "01930006-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930006-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "USD",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "october-last",
+      "id": "01930006-0000-7000-8000-0000000t0002",
+      "type": "EXPENSE",
+      "amount": 20,
+      "date": "2020-10-31T23:30:00-04:00",
+      "dayKey": "2020-10-31",
+      "description": "Late dinner",
+      "categoryId": "01930006-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930006-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "USD",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "The last half hour of October."
+    },
+    {
+      "key": "first-half-past-midnight",
+      "id": "01930006-0000-7000-8000-0000000t0003",
+      "type": "EXPENSE",
+      "amount": 40,
+      "date": "2020-11-01T00:30:00-04:00",
+      "dayKey": "2020-11-01",
+      "description": "Taxi",
+      "categoryId": "01930006-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930006-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "USD",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "04:30Z, the first 00:30: already November."
+    },
+    {
+      "key": "second-half-past-midnight",
+      "id": "01930006-0000-7000-8000-0000000t0004",
+      "type": "EXPENSE",
+      "amount": 80,
+      "date": "2020-11-01T00:30:00-05:00",
+      "dayKey": "2020-11-01",
+      "description": "Snack",
+      "categoryId": "01930006-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930006-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "USD",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "05:30Z, the same wall clock an hour later: November as well."
+    }
+  ],
+  "budgets": [
+    {
+      "key": "food",
+      "id": "01930006-0000-7000-8000-0000000b0001",
+      "name": "Food",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930006-0000-7000-8000-0000000c0001"
+      ],
+      "amount": 100,
+      "amountOverrides": {},
+      "currency": "USD",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2020-01-01T00:00:00-05:00",
+      "archivedAt": null,
+      "note": "November spends 120, both 00:30s of its first day; October's 30 stays out."
+    },
+    {
+      "key": "everything",
+      "id": "01930006-0000-7000-8000-0000000b0002",
+      "name": "All spending",
+      "type": "EXPENSE",
+      "categoryIds": [],
+      "amount": 500,
+      "amountOverrides": {},
+      "currency": "USD",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2020-01-01T00:00:00-05:00",
+      "archivedAt": null
+    }
+  ],
+  "contacts": [],
+  "sharedGroups": [],
+  "sharedExpenses": [],
+  "settlements": [],
+  "expected": {
+    "balances": [
+      {
+        "key": "bank",
+        "accountId": "01930006-0000-7000-8000-0000000a0001",
+        "balance": 850
+      }
+    ],
+    "pending": {
+      "count": 0,
+      "expense": 0,
+      "income": 0,
+      "transactionIds": []
+    },
+    "spending": [
+      {
+        "name": "november-by-day",
+        "query": {
+          "groupBy": "day",
+          "splitBy": null,
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2020-11-01T00:00:00-04:00",
+          "to": "2020-12-01T00:00:00-05:00",
+          "timezone": "America/Havana"
+        },
+        "total": 120,
+        "buckets": [
+          {
+            "key": "2020-11-01",
+            "total": 120,
+            "count": 2,
+            "avg": 60
+          }
+        ]
+      }
+    ],
+    "lists": [
+      {
+        "name": "november-oldest-first",
+        "query": {
+          "sort": "date",
+          "order": "asc",
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2020-11-01T00:00:00-04:00",
+          "to": "2020-12-01T00:00:00-05:00",
+          "timezone": "America/Havana",
+          "limit": 1
+        },
+        "transactionIds": [
+          "01930006-0000-7000-8000-0000000t0003"
+        ],
+        "note": "The two 00:30s in the order they happened: the taxi an hour before the snack."
+      }
+    ],
+    "countsAsYours": [
+      {
+        "key": "october-first",
+        "transactionId": "01930006-0000-7000-8000-0000000t0001",
+        "amount": 10
+      },
+      {
+        "key": "october-last",
+        "transactionId": "01930006-0000-7000-8000-0000000t0002",
+        "amount": 20
+      },
+      {
+        "key": "first-half-past-midnight",
+        "transactionId": "01930006-0000-7000-8000-0000000t0003",
+        "amount": 40
+      },
+      {
+        "key": "second-half-past-midnight",
+        "transactionId": "01930006-0000-7000-8000-0000000t0004",
+        "amount": 80
+      }
+    ],
+    "shared": [],
+    "budgets": {
+      "reference": "2020-11-15T12:00:00-05:00",
+      "views": [
+        {
+          "key": "food",
+          "id": "01930006-0000-7000-8000-0000000b0001",
+          "periodKey": "2020-11",
+          "periodFrom": "2020-11-01T04:00:00.000Z",
+          "periodTo": "2020-12-01T05:00:00.000Z",
+          "baseAmount": 100,
+          "amount": 100,
+          "hasOverride": false,
+          "spent": 120,
+          "expired": false,
+          "archivedCategoryIds": []
+        },
+        {
+          "key": "everything",
+          "id": "01930006-0000-7000-8000-0000000b0002",
+          "periodKey": "2020-11",
+          "periodFrom": "2020-11-01T04:00:00.000Z",
+          "periodTo": "2020-12-01T05:00:00.000Z",
+          "baseAmount": 500,
+          "amount": 500,
+          "hasOverride": false,
+          "spent": 120,
+          "expired": false,
+          "archivedCategoryIds": []
+        }
+      ]
+    }
+  }
+}

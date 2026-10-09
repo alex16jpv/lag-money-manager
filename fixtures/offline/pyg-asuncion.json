@@ -1,0 +1,266 @@
+{
+  "id": "pyg-asuncion",
+  "title": "PYG · America/Asuncion · a midnight that never happens",
+  "pins": [
+    "1 October 2023 has no midnight: the clock jumps from 23:59 to 01:00, and the day starts at 04:00Z.",
+    "October ends at midnight on 1 November (03:00Z), not an hour later: the month is 743 hours long.",
+    "PYG has no minor unit: the amounts are the integers as typed."
+  ],
+  "generatedBy": "lag-money-manager · scripts/offline-fixtures · npm run fixtures:offline",
+  "user": {
+    "id": "01930007-0000-7000-8000-0000000u0001",
+    "timezone": "America/Asuncion",
+    "currency": "PYG",
+    "minorUnits": 0
+  },
+  "accounts": [
+    {
+      "key": "bank",
+      "id": "01930007-0000-7000-8000-0000000a0001",
+      "name": "Banco",
+      "type": "ACCOUNT",
+      "color": "GREEN",
+      "currency": "PYG",
+      "openingBalance": 1000000,
+      "isDefault": true,
+      "archivedAt": null
+    }
+  ],
+  "categories": [
+    {
+      "key": "food",
+      "id": "01930007-0000-7000-8000-0000000c0001",
+      "name": "Comida",
+      "type": "EXPENSE",
+      "archivedAt": null
+    }
+  ],
+  "transactions": [
+    {
+      "key": "september-last",
+      "id": "01930007-0000-7000-8000-0000000t0001",
+      "type": "EXPENSE",
+      "amount": 50000,
+      "date": "2023-09-30T23:30:00-04:00",
+      "dayKey": "2023-09-30",
+      "description": "Cena",
+      "categoryId": "01930007-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930007-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "PYG",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "The last half hour before the jump: September."
+    },
+    {
+      "key": "october-first",
+      "id": "01930007-0000-7000-8000-0000000t0002",
+      "type": "EXPENSE",
+      "amount": 30000,
+      "date": "2023-10-01T01:30:00-03:00",
+      "dayKey": "2023-10-01",
+      "description": "Chipa",
+      "categoryId": "01930007-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930007-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "PYG",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "Half an hour into 1 October, which began at 01:00."
+    },
+    {
+      "key": "october-last",
+      "id": "01930007-0000-7000-8000-0000000t0003",
+      "type": "EXPENSE",
+      "amount": 20000,
+      "date": "2023-10-31T23:30:00-03:00",
+      "dayKey": "2023-10-31",
+      "description": "Mercado",
+      "categoryId": "01930007-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930007-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "PYG",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null
+    },
+    {
+      "key": "november-first",
+      "id": "01930007-0000-7000-8000-0000000t0004",
+      "type": "EXPENSE",
+      "amount": 70000,
+      "date": "2023-11-01T00:30:00-03:00",
+      "dayKey": "2023-11-01",
+      "description": "Farmacia",
+      "categoryId": "01930007-0000-7000-8000-0000000c0001",
+      "fromAccountId": "01930007-0000-7000-8000-0000000a0001",
+      "toAccountId": null,
+      "tags": [],
+      "currency": "PYG",
+      "source": "MANUAL",
+      "pendingDetails": false,
+      "deletedAt": null,
+      "note": "03:30Z: November; a window that ended an hour late would count it in October."
+    }
+  ],
+  "budgets": [
+    {
+      "key": "food",
+      "id": "01930007-0000-7000-8000-0000000b0001",
+      "name": "Comida",
+      "type": "EXPENSE",
+      "categoryIds": [
+        "01930007-0000-7000-8000-0000000c0001"
+      ],
+      "amount": 100000,
+      "amountOverrides": {},
+      "currency": "PYG",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2023-01-01T00:00:00-03:00",
+      "archivedAt": null,
+      "note": "October spends 50 000: neither 30 September nor 1 November."
+    },
+    {
+      "key": "everything",
+      "id": "01930007-0000-7000-8000-0000000b0002",
+      "name": "Todo",
+      "type": "EXPENSE",
+      "categoryIds": [],
+      "amount": 500000,
+      "amountOverrides": {},
+      "currency": "PYG",
+      "periodType": "MONTHLY",
+      "periodStartDate": null,
+      "periodEndDate": null,
+      "effectiveFrom": "2023-01-01T00:00:00-03:00",
+      "archivedAt": null
+    }
+  ],
+  "contacts": [],
+  "sharedGroups": [],
+  "sharedExpenses": [],
+  "settlements": [],
+  "expected": {
+    "balances": [
+      {
+        "key": "bank",
+        "accountId": "01930007-0000-7000-8000-0000000a0001",
+        "balance": 830000
+      }
+    ],
+    "pending": {
+      "count": 0,
+      "expense": 0,
+      "income": 0,
+      "transactionIds": []
+    },
+    "spending": [
+      {
+        "name": "october-by-day",
+        "query": {
+          "groupBy": "day",
+          "splitBy": null,
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2023-10-01T01:00:00-03:00",
+          "to": "2023-11-01T00:00:00-03:00",
+          "timezone": "America/Asuncion"
+        },
+        "total": 50000,
+        "buckets": [
+          {
+            "key": "2023-10-01",
+            "total": 30000,
+            "count": 1,
+            "avg": 30000
+          },
+          {
+            "key": "2023-10-31",
+            "total": 20000,
+            "count": 1,
+            "avg": 20000
+          }
+        ]
+      }
+    ],
+    "lists": [
+      {
+        "name": "october-newest-first",
+        "query": {
+          "sort": "date",
+          "order": "desc",
+          "categoryIds": null,
+          "type": "EXPENSE",
+          "from": "2023-10-01T01:00:00-03:00",
+          "to": "2023-11-01T00:00:00-03:00",
+          "timezone": "America/Asuncion",
+          "limit": 1
+        },
+        "transactionIds": [
+          "01930007-0000-7000-8000-0000000t0003"
+        ]
+      }
+    ],
+    "countsAsYours": [
+      {
+        "key": "september-last",
+        "transactionId": "01930007-0000-7000-8000-0000000t0001",
+        "amount": 50000
+      },
+      {
+        "key": "october-first",
+        "transactionId": "01930007-0000-7000-8000-0000000t0002",
+        "amount": 30000
+      },
+      {
+        "key": "october-last",
+        "transactionId": "01930007-0000-7000-8000-0000000t0003",
+        "amount": 20000
+      },
+      {
+        "key": "november-first",
+        "transactionId": "01930007-0000-7000-8000-0000000t0004",
+        "amount": 70000
+      }
+    ],
+    "shared": [],
+    "budgets": {
+      "reference": "2023-10-15T12:00:00-03:00",
+      "views": [
+        {
+          "key": "food",
+          "id": "01930007-0000-7000-8000-0000000b0001",
+          "periodKey": "2023-10",
+          "periodFrom": "2023-10-01T04:00:00.000Z",
+          "periodTo": "2023-11-01T03:00:00.000Z",
+          "baseAmount": 100000,
+          "amount": 100000,
+          "hasOverride": false,
+          "spent": 50000,
+          "expired": false,
+          "archivedCategoryIds": []
+        },
+        {
+          "key": "everything",
+          "id": "01930007-0000-7000-8000-0000000b0002",
+          "periodKey": "2023-10",
+          "periodFrom": "2023-10-01T04:00:00.000Z",
+          "periodTo": "2023-11-01T03:00:00.000Z",
+          "baseAmount": 500000,
+          "amount": 500000,
+          "hasOverride": false,
+          "spent": 50000,
+          "expired": false,
+          "archivedCategoryIds": []
+        }
+      ]
+    }
+  }
+}

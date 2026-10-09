@@ -37,7 +37,26 @@ describe("offline parity fixtures", () => {
       "jpy-tokyo",
       "usd-new-york",
       "cop-shared",
+      "usd-havana",
+      "pyg-asuncion",
     ]);
+  });
+
+  it("cuts a budget period at the first midnight, or at the jump when there is none [T-39]", () => {
+    const window = (id: string): unknown =>
+      fixtures
+        .find((f) => f.id === id)
+        ?.expected.budgets.views.find((v) => v.key === "food");
+
+    expect(window("usd-havana")).toMatchObject({
+      periodFrom: "2020-11-01T04:00:00.000Z",
+      spent: 120,
+    });
+    expect(window("pyg-asuncion")).toMatchObject({
+      periodFrom: "2023-10-01T04:00:00.000Z",
+      periodTo: "2023-11-01T03:00:00.000Z",
+      spent: 50_000,
+    });
   });
 
   // The one figure of the four scenarios a running float sum gets wrong.

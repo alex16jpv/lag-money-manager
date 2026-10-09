@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 
 import { DomainValidationError } from "../domain/errors";
 import { BudgetPeriodType } from "./constants";
+import { localDayStart } from "./dayKey";
 
 export interface BudgetPeriodDef {
   type: BudgetPeriodType;
@@ -40,22 +41,26 @@ export function resolvePeriod(
     };
   }
 
-  const ref = DateTime.fromJSDate(reference, { zone: timezone });
+  const local = DateTime.fromJSDate(reference, { zone: timezone });
+  // Calendar arithmetic in UTC, where no day is skipped or repeated; each edge becomes a local midnight last.
+  const day = DateTime.utc(local.year, local.month, local.day);
+  const window = (
+    from: DateTime,
+    to: DateTime,
+    key: string,
+  ): ResolvedPeriod => ({
+    from: localDayStart(dayOf(from), timezone),
+    to: localDayStart(dayOf(to), timezone),
+    key,
+  });
 
   if (period.type === "BIWEEKLY") {
     // 2-week windows aligned to a global grid anchored on a fixed Monday.
-    const anchor = DateTime.fromISO("2024-01-01T00:00:00", {
-      zone: timezone,
-    }).startOf("week");
-    const weekStart = ref.startOf("week");
-    const weeks = Math.floor(weekStart.diff(anchor, "weeks").weeks);
+    const anchor = DateTime.utc(2024, 1, 1).startOf("week");
+    const weekStart = day.startOf("week");
+    const weeks = Math.round(weekStart.diff(anchor, "weeks").weeks);
     const from = weekStart.minus({ weeks: ((weeks % 2) + 2) % 2 });
-    const to = from.plus({ weeks: 2 });
-    return {
-      from: from.toJSDate(),
-      to: to.toJSDate(),
-      key: from.toFormat("kkkk-'BW'WW"),
-    };
+    return window(from, from.plus({ weeks: 2 }), from.toFormat("kkkk-'BW'WW"));
   }
 
   const unit =
@@ -67,14 +72,15 @@ export function resolvePeriod(
           ? "quarter"
           : "year";
 
-  const start = ref.startOf(unit);
-  const end = start.plus({ [`${unit}s`]: 1 });
-  return {
-    from: start.toJSDate(),
-    to: end.toJSDate(),
-    key: periodKey(period.type, start),
-  };
+  const start = day.startOf(unit);
+  return window(
+    start,
+    start.plus({ [`${unit}s`]: 1 }),
+    periodKey(period.type, start),
+  );
 }
+
+const dayOf = (calendar: DateTime): string => calendar.toFormat("yyyy-MM-dd");
 
 // Exclusive end of the window `reference` falls into, for every recurring period type.
 export function recurringWindowEnds(

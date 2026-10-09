@@ -1,5 +1,5 @@
 import { DomainValidationError } from "../../domain/errors";
-import { dayKeyOf, lastDayKeyOf } from "../../shared/dayKey";
+import { dayKeyOf, lastDayKeyOf, localDayStart } from "../../shared/dayKey";
 
 describe("dayKeyOf", () => {
   it("resolves the day in the account's zone, not in UTC", () => {
@@ -52,5 +52,22 @@ describe("lastDayKeyOf", () => {
     expect(
       lastDayKeyOf(new Date("2026-09-15T17:00:00.000Z"), "America/Bogota"),
     ).toBe("2026-09-15");
+  });
+});
+
+describe("localDayStart [T-39]", () => {
+  it("starts a day at its midnight when the zone changes the clock at another hour", () => {
+    expect(localDayStart("2026-10-04", "Australia/Lord_Howe")).toEqual(
+      new Date("2026-10-03T13:30:00.000Z"),
+    );
+  });
+
+  it("takes the first of two midnights and the first instant after a skipped one", () => {
+    expect(localDayStart("2020-11-01", "America/Havana")).toEqual(
+      new Date("2020-11-01T04:00:00.000Z"),
+    );
+    expect(localDayStart("2023-10-01", "America/Asuncion")).toEqual(
+      new Date("2023-10-01T04:00:00.000Z"),
+    );
   });
 });

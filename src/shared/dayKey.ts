@@ -24,3 +24,23 @@ export function dayKeyOf(date: Date, timezone: string): string {
 export function lastDayKeyOf(exclusiveEnd: Date, timezone: string): string {
   return dayKeyOf(new Date(exclusiveEnd.getTime() - 1), timezone);
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// A repeated midnight starts the day at the first of the two; a skipped one, at the first instant after the jump.
+export function localDayStart(day: string, timezone: string): Date {
+  const target = DateTime.fromISO(day, { zone: "utc" }).toMillis();
+  const offsetAt = (ms: number): number =>
+    DateTime.fromMillis(ms, { zone: timezone }).offset * 60_000;
+  const sides = [
+    target - offsetAt(target - DAY_MS),
+    target - offsetAt(target + DAY_MS),
+  ];
+  const real = sides.filter(
+    (ms) =>
+      DateTime.fromMillis(ms, { zone: timezone }).toFormat(
+        "yyyy-MM-dd'T'HH:mm",
+      ) === `${day}T00:00`,
+  );
+  return new Date(real.length > 0 ? Math.min(...real) : Math.max(...sides));
+}

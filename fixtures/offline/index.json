@@ -45,6 +45,24 @@
       "currency": "COP",
       "minorUnits": 0,
       "transactions": 4
+    },
+    {
+      "id": "usd-havana",
+      "file": "usd-havana.json",
+      "title": "USD · America/Havana · a midnight that happens twice",
+      "timezone": "America/Havana",
+      "currency": "USD",
+      "minorUnits": 2,
+      "transactions": 4
+    },
+    {
+      "id": "pyg-asuncion",
+      "file": "pyg-asuncion.json",
+      "title": "PYG · America/Asuncion · a midnight that never happens",
+      "timezone": "America/Asuncion",
+      "currency": "PYG",
+      "minorUnits": 0,
+      "transactions": 4
     }
   ]
 }
