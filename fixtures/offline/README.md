@@ -23,7 +23,9 @@ change with it — invariant 6 of `OFFLINE-SYNC-PLAN.md §10`.
   is what makes the rule easy to skip and hard to see.)
 - **Windows are half-open `[from, to)`** and built in the **user's timezone**. A
   month is `[1st 00:00 local, next 1st 00:00 local)`; the two ends can carry
-  different UTC offsets across a DST change.
+  different UTC offsets across a DST change. A midnight the zone repeats is the
+  first of the two, and one it skips is the first instant after the jump
+  (`usd-havana`, `pyg-asuncion`): a period always ends where the next starts.
 - **A day bucket is the local calendar day** of the instant, `yyyy-MM-dd`, and a
   **month bucket is its first seven characters**, `yyyy-MM`. Months and days can
   never disagree about which window a row belongs to: they read the same frozen day.
@@ -212,3 +214,18 @@ Four fields of the shared layer are worth spelling out:
 - Payments are imputed in the order they were recorded (`createdAt`, then id), never by their date: People's, recorded first, takes Comer's oldest line, so Comer's own payment finds only its newer one open and Cine stays unpaid.
 
 4 transactions · 1 accounts · 1 categories · 1 budgets · 2 spending queries · 1 ordered list · reference `2026-08-20T12:00:00-05:00`
+
+### `usd-havana.json` — USD · America/Havana · a midnight that happens twice
+
+- Midnight on 1 November 2020 happens twice, at 04:00Z and at 05:00Z: November starts at the first one.
+- Both 00:30s of 1 November are November, and so is the window that starts there.
+
+4 transactions · 1 accounts · 1 categories · 2 budgets · 1 spending queries · 1 ordered list · reference `2020-11-15T12:00:00-05:00`
+
+### `pyg-asuncion.json` — PYG · America/Asuncion · a midnight that never happens
+
+- 1 October 2023 has no midnight: the clock jumps from 23:59 to 01:00, and the day starts at 04:00Z.
+- October ends at midnight on 1 November (03:00Z), not an hour later: the month is 743 hours long.
+- PYG has no minor unit: the amounts are the integers as typed.
+
+4 transactions · 1 accounts · 1 categories · 2 budgets · 1 spending queries · 1 ordered list · reference `2023-10-15T12:00:00-03:00`

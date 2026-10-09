@@ -48,4 +48,52 @@ describe("resolvePeriod", () => {
     expect(res.from).toBe(from);
     expect(res.to).toBe(to);
   });
+
+  describe("a midnight the zone skips or repeats [T-39]", () => {
+    it("ends a period at the next one's midnight, not an hour later, when its own was skipped", () => {
+      const october = resolvePeriod(
+        { type: "MONTHLY" },
+        new Date("2023-10-15T12:00:00-03:00"),
+        "America/Asuncion",
+      );
+
+      expect(october.from.toISOString()).toBe("2023-10-01T04:00:00.000Z");
+      expect(october.to.toISOString()).toBe("2023-11-01T03:00:00.000Z");
+    });
+
+    it("starts a period at the first of two midnights", () => {
+      const november = resolvePeriod(
+        { type: "MONTHLY" },
+        new Date("2020-11-15T12:00:00-05:00"),
+        "America/Havana",
+      );
+      const october = resolvePeriod(
+        { type: "MONTHLY" },
+        new Date("2020-10-15T12:00:00-04:00"),
+        "America/Havana",
+      );
+
+      expect(november.from.toISOString()).toBe("2020-11-01T04:00:00.000Z");
+      expect(october.to).toEqual(november.from);
+    });
+
+    it("cuts a week and a fortnight at a Monday whose midnight was skipped", () => {
+      const reference = new Date("2021-03-24T12:00:00+04:30");
+      const weekly = resolvePeriod(
+        { type: "WEEKLY" },
+        reference,
+        "Asia/Tehran",
+      );
+      const biweekly = resolvePeriod(
+        { type: "BIWEEKLY" },
+        reference,
+        "Asia/Tehran",
+      );
+
+      expect(weekly.from.toISOString()).toBe("2021-03-21T20:30:00.000Z");
+      expect(weekly.to.toISOString()).toBe("2021-03-28T19:30:00.000Z");
+      expect(biweekly.from.toISOString()).toBe("2021-03-14T20:30:00.000Z");
+      expect(biweekly.to.toISOString()).toBe("2021-03-28T19:30:00.000Z");
+    });
+  });
 });

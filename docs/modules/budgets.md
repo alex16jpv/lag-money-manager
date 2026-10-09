@@ -136,6 +136,8 @@ Drops the override for the period containing `reference`, so the period falls ba
 
 Windows are half-open `[from, to)` and computed in the **user's IANA timezone**, so a month starts at their local midnight, not UTC's. `spent` then aggregates the transactions whose frozen accounting day (`dayKey`, see `transactions.md`) falls inside the **local days** that window covers, so a past period's `spent` no longer changes when the account moves to another timezone.
 
+**A period ends exactly where the next one starts** (T-39, the owner's call on 2026-10-08, and the rule the offline client already followed). The calendar is worked out without a zone, and each edge becomes the local midnight of its day (`localDayStart` in `src/shared/dayKey.ts`): where the zone repeats midnight (`America/Havana`, 1 November 2020) the first of the two, where it skips it (`America/Asuncion`, 1 October 2023) the first instant after the jump, 01:00. Until T-39 the end was the start plus one period, which carried that 01:00 into the next month — October in Asunción ended at 01:00 on 1 November, so that day's movements counted in October — and a repeated midnight started the period at the second one. The parity fixtures `usd-havana` and `pyg-asuncion` pin both. The deadlines of `src/shared/accountDays.ts` end their day the same way.
+
 | Type        | Window                                                            | Period key example                           | Expires |
 | ----------- | ----------------------------------------------------------------- | -------------------------------------------- | ------- |
 | `WEEKLY`    | ISO week containing `reference`                                   | `2026-W35`                                   | No      |

@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 
 import { DomainValidationError } from "../domain/errors";
+import { localDayStart } from "./dayKey";
 
 export const DELETED_ACCOUNT_KEPT_DAYS = 30;
 export const CONFIRM_DEADLINE_DAYS = 14;
@@ -29,7 +30,10 @@ export function dayAfter(from: Date, days: number, timezone: string): WholeDay {
   const day = localDay(from, timezone).plus({ days });
   return {
     day: day.toFormat("yyyy-MM-dd"),
-    endsAt: day.plus({ days: 1 }).toJSDate(),
+    endsAt: localDayStart(
+      day.plus({ days: 1 }).toFormat("yyyy-MM-dd"),
+      timezone,
+    ),
   };
 }
 

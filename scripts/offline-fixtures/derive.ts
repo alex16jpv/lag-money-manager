@@ -355,15 +355,17 @@ export function resolvePeriod(
 
   if (budget.periodType === "BIWEEKLY") {
     // Anchored on a global grid: the same fortnight for every budget of every user.
-    const anchor = DateTime.fromISO("2024-01-01T00:00:00", {
-      zone: timezone,
-    }).startOf("week");
+    const anchor = DateTime.fromISO("2024-01-01", { zone: timezone }).startOf(
+      "week",
+    );
     const weekStart = ref.startOf("week");
-    const weeks = Math.floor(weekStart.diff(anchor, "weeks").weeks);
-    const from = weekStart.minus({ weeks: ((weeks % 2) + 2) % 2 });
+    const weeks = Math.round(weekStart.diff(anchor, "weeks").weeks);
+    const from = calendarDay(weekStart).minus({
+      weeks: ((weeks % 2) + 2) % 2,
+    });
     return {
-      from: from.toJSDate(),
-      to: from.plus({ weeks: 2 }).toJSDate(),
+      from: localMidnight(from, timezone),
+      to: localMidnight(from.plus({ weeks: 2 }), timezone),
       key: from.toFormat("kkkk-'BW'WW"),
     };
   }
@@ -377,12 +379,29 @@ export function resolvePeriod(
     } as const
   )[budget.periodType as Exclude<PeriodType, "CUSTOM" | "BIWEEKLY">];
 
-  const start = ref.startOf(unit);
+  const start = calendarDay(ref.startOf(unit));
   return {
-    from: start.toJSDate(),
-    to: start.plus({ [`${unit}s`]: 1 }).toJSDate(),
+    from: localMidnight(start, timezone),
+    to: localMidnight(start.plus({ [`${unit}s`]: 1 }), timezone),
     key: periodKey(budget.periodType, start),
   };
+}
+
+const calendarDay = (local: DateTime): DateTime =>
+  DateTime.utc(local.year, local.month, local.day);
+
+// A period ends where the next starts: a repeated midnight is the first of the two, a skipped one the first instant after the jump.
+function localMidnight(day: DateTime, timezone: string): Date {
+  const wall = DateTime.fromObject(
+    { year: day.year, month: day.month, day: day.day },
+    { zone: timezone },
+  );
+  const reads = (at: DateTime): string => at.toFormat("yyyy-MM-dd HH:mm");
+  for (let minutes = 120; minutes > 0; minutes -= 30) {
+    const earlier = wall.minus({ minutes });
+    if (reads(earlier) === reads(wall)) return earlier.toJSDate();
+  }
+  return wall.toJSDate();
 }
 
 function periodKey(type: PeriodType, start: DateTime): string {
