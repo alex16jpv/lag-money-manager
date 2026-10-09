@@ -350,11 +350,102 @@ describe("CategoryService", () => {
       repo.listSeedKeys.mockResolvedValue(
         DEFAULT_CATEGORIES.map((c) => c.seedKey),
       );
+      repo.countByUserId.mockResolvedValue(200);
 
       const created = await service.restoreDefaults(testUserId);
 
       expect(created).toEqual([]);
       expect(repo.createMany).not.toHaveBeenCalled();
+    });
+
+    it("refuses the whole set when the missing defaults do not all fit under the cap", async () => {
+      repo.countByUserId.mockResolvedValue(200 - DEFAULT_CATEGORIES.length + 1);
+
+      await expect(service.restoreDefaults(testUserId)).rejects.toMatchObject({
+        statusCode: 400,
+        code: "CATEGORY_LIMIT_REACHED",
+      });
+      expect(repo.createMany).not.toHaveBeenCalled();
+    });
+
+    it("creates the missing defaults when they land exactly on the cap", async () => {
+      repo.countByUserId.mockResolvedValue(200 - DEFAULT_CATEGORIES.length);
+      repo.createMany.mockImplementation(async (cats) =>
+        cats.map((c) => new Category(c as Category)),
+      );
+
+      await expect(service.restoreDefaults(testUserId)).resolves.toHaveLength(
+        DEFAULT_CATEGORIES.length,
+      );
+    });
+  });
+
+  describe("restoreCategory", () => {
+    const archived = new Category({
+      ...mockCategory,
+      archivedAt: new Date("2026-08-20T00:00:00.000Z"),
+    });
+
+    // T-38: the cap is on active categories, so coming back from the archive has to fit under it.
+    it("refuses to bring one back past the cap of active categories", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(archived);
+      repo.countByUserId.mockResolvedValue(200);
+
+      await expect(
+        service.restoreCategory(mockCategory.id, testUserId),
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        code: "CATEGORY_LIMIT_REACHED",
+      });
+      expect(repo.restore).not.toHaveBeenCalled();
+    });
+
+    it("brings back the one that makes it exactly 200, under a new name if asked", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(archived);
+      repo.countByUserId.mockResolvedValue(199);
+      repo.restore.mockResolvedValue(mockCategory);
+
+      await expect(
+        service.restoreCategory(mockCategory.id, testUserId, "Groceries"),
+      ).resolves.toMatchObject({ id: mockCategory.id });
+      expect(repo.restore).toHaveBeenCalledWith(
+        mockCategory.id,
+        testUserId,
+        "Groceries",
+        undefined,
+      );
+    });
+
+    it("answers a category that is already active unchanged, even at the cap", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(mockCategory);
+      repo.countByUserId.mockResolvedValue(200);
+
+      await expect(
+        service.restoreCategory(mockCategory.id, testUserId),
+      ).resolves.toMatchObject({ id: mockCategory.id, archivedAt: null });
+      expect(repo.restore).not.toHaveBeenCalled();
+    });
+
+    it("still succeeds when a concurrent restore won the race", async () => {
+      repo.getByIdIncludingArchived
+        .mockResolvedValueOnce(archived)
+        .mockResolvedValueOnce(mockCategory);
+      repo.restore.mockResolvedValue(null);
+
+      await expect(
+        service.restoreCategory(mockCategory.id, testUserId),
+      ).resolves.toMatchObject({ id: mockCategory.id, archivedAt: null });
+    });
+
+    it("answers 404 for another user's category without counting anything", async () => {
+      repo.getByIdIncludingArchived.mockResolvedValue(
+        new Category({ ...mockCategory, userId: "someone-else" }),
+      );
+
+      await expect(
+        service.restoreCategory(mockCategory.id, testUserId),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(repo.countByUserId).not.toHaveBeenCalled();
     });
   });
 

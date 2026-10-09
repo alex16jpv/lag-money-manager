@@ -46,13 +46,13 @@ Get all categories for the authenticated user (paginated, offset + cursor).
 
 Create a new category. Requires: `name` (1–255 chars). Optional: `icon` (one of `CATEGORY_ICONS`; anything else is `400 VALIDATION`), `color`, `type`. The former free-text `emoji` field was removed in favour of `icon` (2026-09); an `emoji` key in the body is dropped by validation.
 
-Names are unique per user, **case-insensitively** — "Comida" and "comida" collide; accents stay distinct. A user is capped at 200 categories (`CATEGORY_LIMIT_REACHED`).
+Names are unique per user, **case-insensitively** — "Comida" and "comida" collide; accents stay distinct. A user is capped at **200 active categories** (`400 CATEGORY_LIMIT_REACHED`), here, on restore and on `restore-defaults`; archived ones do not count.
 
 **Client-minted `id` (optional).** An offline client can mint the UUID itself and send it as `id`; the server never replaces it. An id the user already owns replays with **200** and the stored category **whatever the payload says now** — the row may have been edited from another device between a lost response and the retry, and a 409 there would make the client mint a second id and duplicate it. An id that belongs to **another user** is rejected with **409 `ID_TAKEN`**, worded so the caller cannot tell it exists; the foreign document is never read. Without `id` the behaviour is unchanged: the server mints one and answers `201`.
 
 ### `POST /categories/restore-defaults`
 
-Recreate the missing default categories. Idempotent by `seedKey`: archived seed categories count as present (the user removed them on purpose) and renamed ones keep their `seedKey`, so neither is duplicated. Responds `200` with `{ "data": [...] }` — an empty array when nothing was missing.
+Recreate the missing default categories. Idempotent by `seedKey`: archived seed categories count as present (the user removed them on purpose) and renamed ones keep their `seedKey`, so neither is duplicated. Responds `200` with `{ "data": [...] }` — an empty array when nothing was missing. **All or nothing** (the owner's decision, T-38): when the missing defaults do not all fit under the cap of 200 active categories, none is created and the answer is `400 CATEGORY_LIMIT_REACHED`, the same as creating one past it; a half-restored set would need explaining.
 
 ### `GET /categories/:id`
 
@@ -72,7 +72,7 @@ An archived category can no longer be assigned to a new transaction or budget (`
 
 ### `POST /categories/:id/restore`
 
-Un-archive a category. Idempotent: restoring an already-active category returns it unchanged. Fails with `409 DUPLICATE` when another active category took its name meanwhile.
+Un-archive a category. Idempotent: restoring an already-active category returns it unchanged. Fails with `409 DUPLICATE` when another active category took its name meanwhile, and with `400 CATEGORY_LIMIT_REACHED` when the user already has 200 active ones: archive another one first. Before T-38 neither restore looked at the cap, so a user may already be past 200; those stay, and only the next create or restore is refused.
 
 ## Internal Flow
 
@@ -140,7 +140,7 @@ None specific to this module.
 | ------------------------ | ------ | ------------------------------------------------------------------------------------------ |
 | `ValidationError`        | 400    | Invalid input (missing name, name too long, unknown type/color)                            |
 | `BadRequest`             | 400    | ID mismatch between URL param and body                                                     |
-| `CATEGORY_LIMIT_REACHED` | 400    | The user already has 200 categories                                                        |
+| `CATEGORY_LIMIT_REACHED` | 400    | 200 active categories already (create, restore, or `restore-defaults` that would pass it)  |
 | `RESOURCE_ARCHIVED`      | 400    | Updating an archived category (restore it first)                                           |
 | `CATEGORY_TYPE_LOCKED`   | 400    | Changing `type` on a category that already has transactions                                |
 | `Unauthorized`           | 401    | Missing, invalid or expired access token                                                   |
@@ -191,7 +191,7 @@ The `seedKey` is the category's identity for re-seeding: it survives renames, so
 
 ### Restoring under a different name
 
-`POST /categorys/:id/restore` accepts an optional `{ name }`. Archiving frees a
+`POST /categories/:id/restore` accepts an optional `{ name }`. Archiving frees a
 name, so by the time you restore, another category may hold it — and then restore
 answers **409 `DUPLICATE`** while `PUT` refuses the archived row with
 **400 `RESOURCE_ARCHIVED`**. Without a way to rename on the way out, the only
