@@ -75,6 +75,7 @@ const router = Router();
  *       (uncategorized and quick-adds included); only one global budget per period type
  *       can exist. `periodStartDate`/`periodEndDate` are required with `periodType=CUSTOM`
  *       and rejected for any other period type. `currency` is stamped from the user.
+ *       There are no income budgets: `type` only takes EXPENSE.
  *
  *       Accepts an optional client-minted `id` (UUID). An id the user already
  *       owns replays with 200 and the stored budget, whatever the payload

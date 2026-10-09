@@ -939,6 +939,10 @@ export const budgetIdParamSchema = z.object({
   query: budgetReferenceQuery,
 });
 
+const budgetType = z.enum(budgetTypeValues, {
+  error: `Invalid budget type. Available: ${budgetTypeValues.join(", ")}`,
+});
+
 export const createBudgetSchema = z.object({
   query: budgetReferenceQuery,
   body: z.object({
@@ -951,7 +955,7 @@ export const createBudgetSchema = z.object({
     categoryIds: z
       .array(z.string().uuid("Each categoryId must be a valid UUID"))
       .max(MAX_BUDGET_CATEGORIES),
-    type: z.enum(budgetTypeValues).optional(),
+    type: budgetType.optional(),
     amount: moneyAmount,
     periodType: z.enum(budgetPeriodValues, {
       error: `Invalid period. Available: ${budgetPeriodValues.join(", ")}`,
@@ -974,7 +978,7 @@ export const updateBudgetSchema = z.object({
         .array(z.string().uuid("Each categoryId must be a valid UUID"))
         .max(MAX_BUDGET_CATEGORIES)
         .optional(),
-      type: z.enum(budgetTypeValues).optional(),
+      type: budgetType.optional(),
       amount: moneyAmount.optional(),
       periodType: z.enum(budgetPeriodValues).optional(),
       periodStartDate: isoDate.optional(),

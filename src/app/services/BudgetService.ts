@@ -10,6 +10,7 @@ import { IUserRepository } from "../../domain/repositories/user/IUserRepository"
 import { recurringWindowEnds, resolvePeriod } from "../../shared/budgetPeriod";
 import { createOrReplay, CreateOutcome } from "../../shared/clientMintedId";
 import { assertFresh, guardedWrite } from "../../shared/concurrency";
+import { BudgetType } from "../../shared/constants";
 import { DEFAULT_CURRENCY } from "../../shared/currency";
 import { ApiError } from "../../shared/errors";
 import { assertAmountPrecision } from "../../shared/money";
@@ -431,7 +432,7 @@ export class BudgetService {
       {
         from: Date;
         to: Date;
-        type: "EXPENSE" | "INCOME";
+        type: BudgetType;
         categoryIds: Set<string>;
         hasGlobal: boolean;
       }

@@ -7,7 +7,6 @@ export interface BudgetProps {
   name: string;
   color: Color;
   categoryIds: string[];
-  // EXPENSE = spending limit; INCOME = earning goal.
   type?: BudgetType;
   // ISO 4217; stamped by the server from the owner's currency at creation.
   currency?: string;

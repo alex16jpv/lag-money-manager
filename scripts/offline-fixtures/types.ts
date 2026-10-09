@@ -161,7 +161,6 @@ export interface ScenarioContact {
 export interface ScenarioBudget {
   key: string;
   name: string;
-  type?: MoneyType;
   categories: string[];
   amount: number;
   periodType: PeriodType;
@@ -273,7 +272,7 @@ export interface FixtureBudget {
   key: string;
   id: string;
   name: string;
-  type: MoneyType;
+  type: "EXPENSE";
   categoryIds: string[];
   amount: number;
   amountOverrides: Record<string, number>;

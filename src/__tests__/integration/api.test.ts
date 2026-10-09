@@ -330,7 +330,7 @@ jest.mock("../../shared/constants", () => ({
     ADJUSTMENT: "ADJUSTMENT",
     SETTLEMENT: "SETTLEMENT",
   },
-  BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
+  BUDGET_TYPES: { EXPENSE: "EXPENSE" },
   SPENDING_GROUP_BY: {
     category: "category",
     day: "day",

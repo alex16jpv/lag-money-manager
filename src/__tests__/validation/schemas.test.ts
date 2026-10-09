@@ -47,7 +47,7 @@ jest.mock("../../shared/constants", () => ({
     ADJUSTMENT: "ADJUSTMENT",
     SETTLEMENT: "SETTLEMENT",
   },
-  BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
+  BUDGET_TYPES: { EXPENSE: "EXPENSE" },
   SPENDING_GROUP_BY: {
     category: "category",
     day: "day",
@@ -127,6 +127,7 @@ import {
   spendingStatsSchema,
   syncBatchSchema,
   updateAccountSchema,
+  updateBudgetSchema,
   updateCategorySchema,
   updateContactSchema,
   updateTransactionSchema,
@@ -1776,6 +1777,49 @@ describe("Validation Schemas", () => {
         expect(result.success).toBe(false);
       },
     );
+  });
+
+  describe("budget type [T-37]", () => {
+    const budget = {
+      name: "Monthly",
+      color: "TEAL",
+      categoryIds: [],
+      amount: 100,
+      periodType: "MONTHLY",
+    };
+
+    it("creates an EXPENSE budget, with or without the type", () => {
+      expect(
+        createBudgetSchema.safeParse({
+          query: {},
+          body: { ...budget, type: "EXPENSE" },
+        }).success,
+      ).toBe(true);
+      expect(
+        createBudgetSchema.safeParse({ query: {}, body: budget }).success,
+      ).toBe(true);
+    });
+
+    it("refuses an INCOME budget on create and on update", () => {
+      const created = createBudgetSchema.safeParse({
+        query: {},
+        body: { ...budget, type: "INCOME" },
+      });
+      const updated = updateBudgetSchema.safeParse({
+        params: { id: "11111111-1111-4111-8111-111111111111" },
+        query: {},
+        body: { type: "INCOME" },
+      });
+
+      expect(created.success).toBe(false);
+      expect(created.error?.issues[0]?.message).toBe(
+        "Invalid budget type. Available: EXPENSE",
+      );
+      expect(updated.success).toBe(false);
+      expect(updated.error?.issues[0]?.message).toBe(
+        "Invalid budget type. Available: EXPENSE",
+      );
+    });
   });
 
   describe("createSharedExpenseSchema (T-115)", () => {

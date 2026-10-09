@@ -913,6 +913,55 @@ describe("POST /sync against mongod", () => {
       expect(await BudgetModel.findById(second).lean()).toBeNull();
     });
 
+    it("files an INCOME budget as rejected VALIDATION, created or edited into one [T-37]", async () => {
+      const yearly = uuid("b", 7);
+      const results = await push(alice, [
+        op({
+          entity: "budget",
+          action: "create",
+          id: uuid("b", 6),
+          payload: {
+            body: {
+              name: "Monthly income",
+              color: "GREEN",
+              categoryIds: [],
+              type: "INCOME",
+              amount: 3500,
+              periodType: "MONTHLY",
+            },
+          },
+        }),
+        op({
+          entity: "budget",
+          action: "create",
+          id: yearly,
+          payload: {
+            body: {
+              name: "Yearly",
+              color: "GREEN",
+              categoryIds: [],
+              amount: 3500,
+              periodType: "YEARLY",
+            },
+          },
+        }),
+        op({
+          entity: "budget",
+          action: "update",
+          id: yearly,
+          payload: { body: { type: "INCOME" } },
+        }),
+      ]);
+
+      expect(statuses(results)).toEqual(["rejected", "applied", "rejected"]);
+      expect(results[0].code).toBe("VALIDATION");
+      expect(results[2].code).toBe("VALIDATION");
+      expect(await BudgetModel.findById(uuid("b", 6)).lean()).toBeNull();
+      expect(await BudgetModel.findById(yearly).lean()).toMatchObject({
+        type: "EXPENSE",
+      });
+    });
+
     it("judges FUTURE_DATE by the server's clock, not the device's", async () => {
       const future = new Date(Date.now() + 48 * 3_600_000).toISOString();
 

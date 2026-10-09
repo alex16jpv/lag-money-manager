@@ -911,12 +911,12 @@ const tokyo: Scenario = {
 
 const newYork: Scenario = {
   id: "usd-new-york",
-  title: "USD · America/New_York · the repeated hour and an INCOME budget",
+  title: "USD · America/New_York · the repeated hour and income",
   pins: [
     "The autumn DST change repeats an hour: 01:30 happens twice on 2025-11-02, one real hour apart, and both are that same day.",
     "November opens at −04:00 and closes at −05:00: the month is 721 hours long, not 720.",
     "`avg` rounds half up in minor units: 10.01 over 2 rows is 5.01, not 5.00.",
-    "A budget's `type` filters the rows: an INCOME budget ignores every expense in its own window.",
+    "A budget counts only expenses: the global one leaves out the income in its own window.",
     "A query for `type: INCOME` groups income by category the same way expenses are grouped.",
     "An INCOME bucket is keyed by the account the money reached, not the one it left.",
   ],
@@ -1047,16 +1047,6 @@ const newYork: Scenario = {
     },
   ],
   budgets: [
-    {
-      key: "income-goal",
-      name: "Monthly income",
-      type: "INCOME",
-      categories: ["salary", "freelance"],
-      amount: 3_500,
-      periodType: "MONTHLY",
-      effectiveFrom: "2025-01-01T00:00:00-05:00",
-      note: "An INCOME budget: the 1 908.35 of expenses in the same window count for nothing here.",
-    },
     {
       key: "dining",
       name: "Dining out",
