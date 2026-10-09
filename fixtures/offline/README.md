@@ -184,16 +184,16 @@ Four fields of the shared layer are worth spelling out:
 
 8 transactions · 2 accounts · 4 categories · 3 budgets · 4 spending queries · 1 ordered list · reference `2026-05-15T12:00:00+09:00`
 
-### `usd-new-york.json` — USD · America/New_York · the repeated hour and an INCOME budget
+### `usd-new-york.json` — USD · America/New_York · the repeated hour and income
 
 - The autumn DST change repeats an hour: 01:30 happens twice on 2025-11-02, one real hour apart, and both are that same day.
 - November opens at −04:00 and closes at −05:00: the month is 721 hours long, not 720.
 - `avg` rounds half up in minor units: 10.01 over 2 rows is 5.01, not 5.00.
-- A budget's `type` filters the rows: an INCOME budget ignores every expense in its own window.
+- A budget counts only expenses: the global one leaves out the income in its own window.
 - A query for `type: INCOME` groups income by category the same way expenses are grouped.
 - An INCOME bucket is keyed by the account the money reached, not the one it left.
 
-10 transactions · 2 accounts · 4 categories · 3 budgets · 5 spending queries · 1 ordered list · reference `2025-11-15T12:00:00-05:00`
+10 transactions · 2 accounts · 4 categories · 2 budgets · 5 spending queries · 1 ordered list · reference `2025-11-15T12:00:00-05:00`
 
 ### `cop-shared.json` — COP · America/Bogota · the split, the imputation and what counts as yours
 

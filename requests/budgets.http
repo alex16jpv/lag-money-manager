@@ -59,7 +59,7 @@ Content-Type: application/json
 
 { "name": "Total del mes", "color": "GRAY", "categoryIds": [], "amount": 3000, "periodType": "MONTHLY" }
 
-### Meta de INGRESO (backend-ready; el front MVP no la expone)
+### No hay budgets de ingreso (T-37) → 400 VALIDATION
 POST {{baseUrl}}/budgets
 Authorization: Bearer {{token}}
 Content-Type: application/json

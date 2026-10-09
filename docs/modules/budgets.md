@@ -2,12 +2,14 @@
 
 ## What This Module Does
 
-Manages recurring spending limits (and income goals) per user. A budget carries a **base amount**, a **period type**, and a set of **categories**; the API never stores the amount already spent — every read resolves the period window that a `reference` instant falls into and aggregates the matching transactions live.
+Manages recurring spending limits per user. A budget carries a **base amount**, a **period type**, and a set of **categories**; the API never stores the amount already spent — every read resolves the period window that a `reference` instant falls into and aggregates the matching transactions live.
 
 Two shapes exist:
 
 - **Per-category budget** — `categoryIds` lists one or more categories; `spent` is the sum of those categories in the window.
-- **Global budget** — `categoryIds: []`; `spent` is the window's **total** flow of that type, uncategorized transactions and quick-adds included.
+- **Global budget** — `categoryIds: []`; `spent` is the window's **total** spend, uncategorized transactions and quick-adds included.
+
+**There are no income budgets** (T-37, the owner's call on 2026-10-08): every screen reads a budget as a spending limit, so an income one would show its figures backwards. `type` stays in the contract with `EXPENSE` as its only value, so clients that still send or read it keep working; `INCOME` is refused with **400 `VALIDATION`** on create, update and through `POST /sync`.
 
 **What `spent` adds up is `countsAsYours`, not `amount`** — what left the account minus what has come back, which is the same figure on everything except an expense split with other people ([transactions.md](transactions.md#what-counts-as-yours-countsasyours)). A shared expense therefore keeps counting in full until somebody pays it back, and the month it counted in is the one that falls when they do. Rows written before that field existed count their whole amount.
 
@@ -68,7 +70,7 @@ Create a budget.
 ```
 
 - `categoryIds` — up to 20 UUIDs; **empty array creates a global budget**.
-- `type` — `EXPENSE` (default) or `INCOME`.
+- `type` — optional; `EXPENSE` is the only value.
 - `amount` — decimal, positive, at most 2 decimals.
 - `periodStartDate` / `periodEndDate` — required with `periodType: "CUSTOM"`, rejected for every other period type.
 - `effectiveFrom` — optional backdating of the budget's lifetime floor.
@@ -158,9 +160,9 @@ A budget does not exist before its floor. `Budget.lifetimeFloor()` returns `effe
 `spent` is never stored. `BudgetService.toViews()` resolves every budget's window, groups budgets that share the same `(from, to, type)` window, and issues **one aggregation per window**:
 
 - Windows containing per-category budgets → `sumAmountsByCategory()` over the union of their category ids, then each budget sums its own slice.
-- Windows containing a global budget → `sumAmounts()`, the window's total for that flow type regardless of category.
+- Windows containing a global budget → `sumAmounts()`, the window's total spend regardless of category.
 
-Both aggregations skip soft-deleted transactions (`deletedAt: null`), sum `countsAsYours` rather than `amount`, and match only the budget's `type` (`EXPENSE` or `INCOME`), so `ADJUSTMENT`, `TRANSFER` and `SETTLEMENT` never move a budget. Money coming back from somebody is not income and never was: what it does is lower what the expense it covers counts as.
+Both aggregations skip soft-deleted transactions (`deletedAt: null`), sum `countsAsYours` rather than `amount`, and match only `EXPENSE` rows, so `ADJUSTMENT`, `TRANSFER` and `SETTLEMENT` never move a budget. Money coming back from somebody is not income and never was: what it does is lower what the expense it covers counts as.
 
 ## Internal Flow
 
@@ -246,10 +248,10 @@ None specific to this module.
 | `ValidationError`        | 400    | Invalid body or query (bad color, >20 categories, amount with >2 decimals, …)                                                                                                                                     |
 | `BadRequest`             | 400    | `CUSTOM` without both dates, or `startDate >= endDate`                                                                                                                                                            |
 | `BadRequest`             | 400    | `periodStartDate` / `periodEndDate` sent for a non-CUSTOM budget                                                                                                                                                  |
-| `BUDGET_PERIOD_OVERLAP`  | 400    | A budget for this type + period type already covers one of the categories (`CUSTOM`: only when the date windows intersect)                                                                                        |
+| `BUDGET_PERIOD_OVERLAP`  | 400    | A budget for this period type already covers one of the categories (`CUSTOM`: only when the date windows intersect)                                                                                        |
 | `AMOUNT_PRECISION`       | 400    | `amount`, on create, update or a period override, with more decimals than the currency has — none at all in a `ZeroDecimalCurrency`. Judged on the amount the request carries, never on one already stored (T-67) |
 | `CATEGORY_ARCHIVED`      | 400    | Assigning an archived category (keeping one the budget already had is allowed)                                                                                                                                    |
-| `CATEGORY_TYPE_MISMATCH` | 400    | Category type differs from the budget type                                                                                                                                                                        |
+| `CATEGORY_TYPE_MISMATCH` | 400    | A category that is not an `EXPENSE` one                                                                                                                                                                           |
 | `RESOURCE_ARCHIVED`      | 400    | Writing to (or overriding the amount of) an archived budget                                                                                                                                                       |
 | `Unauthorized`           | 401    | Missing, invalid or expired access token                                                                                                                                                                          |
 | `NotFound`               | 404    | Budget missing **or owned by another user** (uniform, so ids can't be probed)                                                                                                                                     |

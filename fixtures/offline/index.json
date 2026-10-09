@@ -31,7 +31,7 @@
     {
       "id": "usd-new-york",
       "file": "usd-new-york.json",
-      "title": "USD · America/New_York · the repeated hour and an INCOME budget",
+      "title": "USD · America/New_York · the repeated hour and income",
       "timezone": "America/New_York",
       "currency": "USD",
       "minorUnits": 2,

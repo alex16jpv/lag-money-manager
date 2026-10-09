@@ -410,7 +410,7 @@ export function buildFixture(scenario: Scenario, index: number): Fixture {
       key: b.key,
       id: fixtureId(index, "b", i + 1),
       name: b.name,
-      type: b.type ?? ("EXPENSE" as const),
+      type: "EXPENSE" as const,
       categoryIds: b.categories.map((key) => {
         const id = categoryId(key);
         if (id === null) throw new Error(`${scenario.id}: unknown ${key}`);

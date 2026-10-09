@@ -44,7 +44,7 @@ Cada archivo define arriba: `@baseUrl`, `@email`, `@password` y `@apiSecret`.
 | `shared-groups.http` | Grupos compartidos: reparto heredado y propio (los cuatro modos), invitados como un bloque, el sobrante para quien pagó, añadir gente con simulación previa, rango y totales derivados, `PARTICIPANT_*`, `SPLIT_INVALID` |
 | `categories.http` | Categorías, seedKey/restore-defaults, type bloqueado con historial, unicidad case-insensitive, archivar idempotente, `INVALID_CURSOR` |
 | `transactions.http` | Transacciones, ADJUSTMENT, quick-add con idempotencia, hash de payload (422), filtros nuevos (categoría/fechas/tag/uncategorized), `GET /transactions/tags`, FUTURE_DATE |
-| `budgets.http` | Budgets por categoría y GLOBAL, meta INCOME, effectiveFrom, overrides (set/0/DELETE), CUSTOM con expiración, sin restore, `INVALID_CURSOR` |
+| `budgets.http` | Budgets por categoría y GLOBAL, INCOME rechazado (400), effectiveFrom, overrides (set/0/DELETE), CUSTOM con expiración, sin restore, `INVALID_CURSOR` |
 | `stats.http` | Estadísticas (day cronológico, untagged, total real en tags, ADJUSTMENT excluido, from<=to) |
 | `sync.http` | Tirón incremental y snapshot del mirror offline: `since`/`cursor`/`limit`, archivados y borrados en el feed, `INVALID_CURSOR` |
 

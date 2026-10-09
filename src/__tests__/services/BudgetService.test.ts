@@ -2,7 +2,7 @@ jest.mock("../../shared/constants", () => ({
   ENVIRONMENT: { NODE_ENV: "test" },
   DB_TYPES: { MONGO: "MONGO" },
   COLORS: { RED: "RED", TEAL: "TEAL" },
-  BUDGET_TYPES: { EXPENSE: "EXPENSE", INCOME: "INCOME" },
+  BUDGET_TYPES: { EXPENSE: "EXPENSE" },
   BUDGET_PERIOD_TYPES: {
     WEEKLY: "WEEKLY",
     BIWEEKLY: "BIWEEKLY",
@@ -516,11 +516,10 @@ describe("BudgetService", () => {
     });
   });
 
-  describe("budget type [R2-16c]", () => {
-    it("an INCOME budget sums INCOME amounts", async () => {
-      const goal = makeBudget({ id: "bi", type: "INCOME", categoryIds: [] });
+  describe("budget type [T-37]", () => {
+    it("a global budget sums only EXPENSE amounts", async () => {
       budgetRepo.getAllByUserId.mockResolvedValue({
-        data: [goal],
+        data: [makeBudget({ id: "bg", categoryIds: [] })],
         pagination: {
           limit: 20,
           offset: 0,
@@ -542,41 +541,10 @@ describe("BudgetService", () => {
         USER,
         expect.any(Date),
         expect.any(Date),
-        "INCOME",
+        "EXPENSE",
         CTX.timezone,
       );
-      expect(result.data[0].type).toBe("INCOME");
-      expect(result.data[0].spent).toBe(2000);
-    });
-
-    it("EXPENSE and INCOME budgets over the same category do not overlap", async () => {
-      budgetRepo.findOverlapping.mockResolvedValue([]);
-      budgetRepo.create.mockImplementation(
-        async (b) => new Budget(b as Budget),
-      );
-
-      await service.createBudget(
-        {
-          name: "Meta Salary",
-          color: "TEAL",
-          categoryIds: ["c1"],
-          type: "INCOME",
-          amount: 5000,
-          periodType: "MONTHLY",
-          userId: USER,
-        },
-        CTX,
-      );
-
-      expect(budgetRepo.findOverlapping).toHaveBeenCalledWith(
-        USER,
-        expect.objectContaining({
-          type: "INCOME",
-          periodType: "MONTHLY",
-          categoryIds: ["c1"],
-        }),
-        undefined,
-      );
+      expect(result.data[0]).toMatchObject({ type: "EXPENSE", spent: 2000 });
     });
 
     it("rejects a category whose type contradicts the budget type", async () => {

@@ -521,7 +521,7 @@ route is also behind `gatewaySecretMiddleware`, `dbReadinessMiddleware` and the 
 - **Budgets:** period types `WEEKLY`, `BIWEEKLY`, `MONTHLY`, `QUARTERLY`, `YEARLY`, `CUSTOM`,
   resolved in the user's timezone (Luxon, `src/shared/budgetPeriod.ts`). Each budget exposes a
   `BudgetView` with the resolved window, `baseAmount`, the per-period `amount` (override ?? base),
-  `spent` and `hasOverride`. Budget type is `EXPENSE` or `INCOME` (goal).
+  `spent` and `hasOverride`. Budget type is always `EXPENSE`: there are no income budgets (T-37).
 - **Mono-currency mode:** one currency per user, stamped onto accounts and transactions by the
   server. Cross-currency movements are rejected (`CURRENCY_MISMATCH`) until multi-currency lands.
 
