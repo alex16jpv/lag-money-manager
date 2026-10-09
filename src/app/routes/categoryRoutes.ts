@@ -145,6 +145,9 @@ router.get(
  *     description: >
  *       Creates only the missing defaults. Archived seed categories count as
  *       present and renamed ones keep their seedKey, so neither is duplicated.
+ *       All or nothing: when the missing ones do not all fit under the cap of
+ *       200 active categories, none is created and the answer is
+ *       400 CATEGORY_LIMIT_REACHED.
  *     responses:
  *       200:
  *         description: Newly created defaults (empty array when none were missing)
@@ -152,6 +155,12 @@ router.get(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/RestoreDefaultsResponse'
+ *       400:
+ *         description: The missing defaults would take the user past 200 active categories (code CATEGORY_LIMIT_REACHED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       401:
  *         description: Unauthorized
  *         content:
@@ -347,7 +356,8 @@ router.delete(
  *             $ref: '#/components/schemas/RestoreInput'
  *     description: >
  *       Idempotent — restoring an already-active category returns it unchanged.
- *       Fails with 409 when another active category took its name meanwhile.
+ *       Fails with 409 when another active category took its name meanwhile,
+ *       and with 400 CATEGORY_LIMIT_REACHED when 200 are already active.
  *     parameters:
  *       - in: path
  *         name: id
@@ -363,7 +373,7 @@ router.delete(
  *             schema:
  *               $ref: '#/components/schemas/Category'
  *       400:
- *         description: Invalid ID format (code VALIDATION)
+ *         description: Invalid ID format (code VALIDATION), or 200 active categories already (code CATEGORY_LIMIT_REACHED)
  *         content:
  *           application/json:
  *             schema:

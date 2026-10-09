@@ -88,8 +88,7 @@ export class AccountService {
     });
   }
 
-  private async insertAccount(dto: CreateAccountDTO): Promise<Account> {
-    const count = await this.repo.countByUserId(dto.userId);
+  private assertRoomForOneMore(count: number): void {
     if (count >= MAX_ACCOUNTS_PER_USER) {
       throw new ApiError(
         "BadRequest",
@@ -97,6 +96,11 @@ export class AccountService {
         "ACCOUNT_LIMIT_REACHED",
       );
     }
+  }
+
+  private async insertAccount(dto: CreateAccountDTO): Promise<Account> {
+    const count = await this.repo.countByUserId(dto.userId);
+    this.assertRoomForOneMore(count);
     // Mono-currency: the currency is only editable with no accounts, so this read is exact.
     const owner = await this.userRepo.getById(dto.userId);
     const currency = owner?.currency ?? DEFAULT_CURRENCY;
@@ -275,6 +279,17 @@ export class AccountService {
     name?: string,
     expectedUpdatedAt?: Date,
   ): Promise<Account> {
+    const current = await this.repo.getByIdIncludingArchived(id);
+    if (!current || current.userId !== userId) {
+      throw new ApiError("NotFound", "Account not found");
+    }
+    assertFresh(current, expectedUpdatedAt, (a) => new Account(a));
+    if (!current.archivedAt) {
+      return new Account(current);
+    }
+    // The cap counts ACTIVE accounts, so coming back from the archive has to fit under it (T-38).
+    this.assertRoomForOneMore(await this.repo.countByUserId(userId));
+
     const restored = await this.repo.restore(
       id,
       userId,
@@ -284,11 +299,12 @@ export class AccountService {
     if (restored) {
       return new Account(restored);
     }
-    const current = await this.repo.getByIdIncludingArchived(id);
-    if (!current || current.userId !== userId) {
+    // Lost the race to a concurrent restore: the same outcome, so still a success.
+    const raced = await this.repo.getByIdIncludingArchived(id);
+    if (!raced || raced.userId !== userId) {
       throw new ApiError("NotFound", "Account not found");
     }
-    assertFresh(current, expectedUpdatedAt, (a) => new Account(a));
-    return new Account(current);
+    assertFresh(raced, expectedUpdatedAt, (a) => new Account(a));
+    return new Account(raced);
   }
 }

@@ -63,9 +63,10 @@ export class CategoryService {
     });
   }
 
-  private async insertCategory(dto: CreateCategoryDTO): Promise<Category> {
+  private async assertRoomFor(userId: string, more: number): Promise<void> {
     if (
-      (await this.repo.countByUserId(dto.userId)) >= MAX_CATEGORIES_PER_USER
+      (await this.repo.countByUserId(userId)) + more >
+      MAX_CATEGORIES_PER_USER
     ) {
       throw new ApiError(
         "BadRequest",
@@ -73,6 +74,10 @@ export class CategoryService {
         "CATEGORY_LIMIT_REACHED",
       );
     }
+  }
+
+  private async insertCategory(dto: CreateCategoryDTO): Promise<Category> {
+    await this.assertRoomFor(dto.userId, 1);
     const category = new Category(dto);
     return new Category(await this.repo.create(category));
   }
@@ -164,6 +169,17 @@ export class CategoryService {
     name?: string,
     expectedUpdatedAt?: Date,
   ): Promise<Category> {
+    const current = await this.repo.getByIdIncludingArchived(id);
+    if (!current || current.userId !== userId) {
+      throw new ApiError("NotFound", "Category not found");
+    }
+    assertFresh(current, expectedUpdatedAt, (c) => new Category(c));
+    if (!current.archivedAt) {
+      return new Category(current);
+    }
+    // The cap counts ACTIVE categories, so coming back from the archive has to fit under it (T-38).
+    await this.assertRoomFor(userId, 1);
+
     const restored = await this.repo.restore(
       id,
       userId,
@@ -173,12 +189,13 @@ export class CategoryService {
     if (restored) {
       return new Category(restored);
     }
-    const current = await this.repo.getByIdIncludingArchived(id);
-    if (!current || current.userId !== userId) {
+    // Lost the race to a concurrent restore: the same outcome, so still a success.
+    const raced = await this.repo.getByIdIncludingArchived(id);
+    if (!raced || raced.userId !== userId) {
       throw new ApiError("NotFound", "Category not found");
     }
-    assertFresh(current, expectedUpdatedAt, (c) => new Category(c));
-    return new Category(current);
+    assertFresh(raced, expectedUpdatedAt, (c) => new Category(c));
+    return new Category(raced);
   }
 
   async seedDefaultCategories(userId: string): Promise<Category[]> {
@@ -196,6 +213,7 @@ export class CategoryService {
     if (missing.length === 0) {
       return [];
     }
+    await this.assertRoomFor(userId, missing.length);
     const created = await this.repo.createMany(
       missing.map((cat) => new Category({ ...cat, userId })),
     );
