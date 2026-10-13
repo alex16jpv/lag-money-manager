@@ -20,6 +20,7 @@ export interface ISyncOpDocument {
     previousUpdatedAt: Date;
     updatedAt: Date;
   }[];
+  rowUpdatedAt?: Date;
   createdAt: Date;
 }
 
@@ -42,6 +43,7 @@ const SyncOpSchema = new Schema<ISyncOpDocument>(
     entityId: { type: String, required: true },
     code: { type: String, default: null },
     restamped: { type: [RestampSchema], default: undefined },
+    rowUpdatedAt: { type: Date, default: undefined },
     createdAt: { type: Date, required: true, default: () => new Date() },
   },
   { versionKey: false },

@@ -26,6 +26,7 @@ export class SyncOpRepository implements ISyncOpRepository {
           updatedAt: row.updatedAt,
         })),
       }),
+      ...(doc.rowUpdatedAt && { rowUpdatedAt: doc.rowUpdatedAt }),
     };
   }
 

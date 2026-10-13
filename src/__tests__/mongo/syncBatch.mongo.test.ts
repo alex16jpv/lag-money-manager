@@ -47,6 +47,7 @@ interface Result {
   blockedBy?: string;
   mergedInto?: string;
   warnings?: string[];
+  rowUpdatedAt?: string;
 }
 
 let opCounter = 0;
@@ -245,6 +246,108 @@ describe("POST /sync against mongod", () => {
       // Same rule as O-B1: the row wins, and nothing says "mint another id".
       expect(result.status).toBe("duplicate");
       expect(result.result).toMatchObject({ id, name: "Made online" });
+    });
+  });
+
+  describe("a resend after a lost answer [T-168]", () => {
+    const movement = async (
+      n: number,
+    ): Promise<{ accountId: string; txId: string; version: string }> => {
+      const accountId = uuid("a", n);
+      const txId = uuid("e", n);
+      await push(alice, [
+        op({
+          entity: "account",
+          action: "create",
+          id: accountId,
+          payload: { body: accountBody(`Lost answer ${n}`, 1000) },
+        }),
+      ]);
+      const [created] = await push(alice, [
+        op({
+          entity: "transaction",
+          action: "create",
+          id: txId,
+          payload: { body: expense(accountId, 100) },
+        }),
+      ]);
+      return { accountId, txId, version: versionOf(created) };
+    };
+
+    const amountEdit = (
+      txId: string,
+      amount: number,
+      baseUpdatedAt?: string,
+    ): Operation =>
+      op({
+        entity: "transaction",
+        action: "update",
+        id: txId,
+        payload: { body: { amount } },
+        ...(baseUpdatedAt && { baseUpdatedAt }),
+      });
+
+    it("asks before the next edit overwrites what another device changed meanwhile", async () => {
+      const { accountId, txId, version } = await movement(30);
+      const first = amountEdit(txId, 300, version);
+      expect(statuses(await push(alice, [first]))).toEqual(["applied"]);
+      await as(
+        alice,
+        request(app).put(`/transactions/${txId}`).send({ amount: 500 }),
+      ).expect(200);
+
+      const again = await push(alice, [first, amountEdit(txId, 400)]);
+
+      expect(statuses(again)).toEqual(["duplicate", "conflict"]);
+      expect(again[1].code).toBe("STALE_UPDATE");
+      expect(again[1].current).toMatchObject({ id: txId, amount: 500 });
+      expect(await balanceOf(accountId)).toBe(50_000);
+    });
+
+    it("lands the next edit when nobody else touched the movement", async () => {
+      const { accountId, txId, version } = await movement(31);
+      const first = amountEdit(txId, 300, version);
+      const [landed] = await push(alice, [first]);
+      expect(landed.status).toBe("applied");
+
+      const again = await push(alice, [first, amountEdit(txId, 400)]);
+
+      expect(statuses(again)).toEqual(["duplicate", "applied"]);
+      expect(again[0].rowUpdatedAt).toBe(versionOf(landed));
+      expect(await balanceOf(accountId)).toBe(60_000);
+    });
+
+    it("follows the account through a movement that moved its balance in between", async () => {
+      const accountId = uuid("a", 32);
+      const [created] = await push(alice, [
+        op({
+          entity: "account",
+          action: "create",
+          id: accountId,
+          payload: { body: accountBody("Chained 32", 1000) },
+        }),
+      ]);
+
+      const results = await push(alice, [
+        op({
+          entity: "account",
+          action: "update",
+          id: accountId,
+          payload: { body: { name: "Chained once" } },
+          baseUpdatedAt: versionOf(created),
+        }),
+        op({
+          entity: "transaction",
+          action: "create",
+          id: uuid("e", 32),
+          payload: { body: expense(accountId, 100) },
+        }),
+        op({ entity: "account", action: "archive", id: accountId }),
+      ]);
+
+      expect(statuses(results)).toEqual(["applied", "applied", "applied"]);
+      expect(results[2].result).toMatchObject({ id: accountId });
+      expect(await balanceOf(accountId)).toBe(90_000);
     });
   });
 

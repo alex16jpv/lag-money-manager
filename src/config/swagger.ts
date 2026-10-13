@@ -1527,6 +1527,15 @@ const syncOpResult = withRequired(
           "Later operations of the same batch guarded by a `previousUpdatedAt` " +
           "here were already run against its `updatedAt`.",
       },
+      rowUpdatedAt: {
+        ...dateTime,
+        description:
+          "duplicate opId only: the `updatedAt` the operation left on its own " +
+          "row when it first landed, which a queued guard on that stamp may " +
+          "move to. Absent when the server did not keep it. Later operations " +
+          "of the same batch sent without `baseUpdatedAt` were already run " +
+          "against it.",
+      },
     },
   },
   [
@@ -1539,6 +1548,7 @@ const syncOpResult = withRequired(
     "mergedInto",
     "warnings",
     "restamped",
+    "rowUpdatedAt",
   ],
 );
 

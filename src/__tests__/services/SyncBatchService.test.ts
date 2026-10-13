@@ -199,6 +199,7 @@ describe("SyncBatchService", () => {
         status: "applied",
         entityId: id,
         code: null,
+        rowUpdatedAt: new Date("2026-09-05T09:00:00.000Z"),
       });
     });
 
@@ -936,6 +937,7 @@ describe("SyncBatchService", () => {
         status: "merged",
         entityId: serverId,
         code: null,
+        rowUpdatedAt: new Date("2026-09-05T09:00:00.000Z"),
       });
       expect(results[1].status).toBe("applied");
     });
@@ -1005,7 +1007,7 @@ describe("SyncBatchService", () => {
         serverId,
         { icon: "utensils" },
         USER,
-        undefined,
+        new Date("2026-09-05T09:00:00.000Z"),
       );
       // The result still echoes the id the device sent, plus where it went.
       expect(results[1]).toMatchObject({ id: localId, status: "applied" });
@@ -2032,6 +2034,262 @@ describe("SyncBatchService", () => {
         A,
         groupId,
       );
+    });
+  });
+
+  describe("the stamp a write left on its own row [T-168]", () => {
+    const A = new Date("2026-09-05T09:00:00.000Z");
+    const B = new Date("2026-09-05T10:00:00.000Z");
+    const C = new Date("2026-09-05T11:00:00.000Z");
+    const movementId = uuid(70);
+    const accountId = uuid(71);
+    const amountEdit = (amount: number, guard?: Date): SyncOperationInput =>
+      op({
+        entity: "transaction",
+        action: "update",
+        id: movementId,
+        payload: { body: { amount } },
+        ...(guard && { baseUpdatedAt: guard.toISOString() }),
+      });
+    const guardOf = (call: number): unknown =>
+      transactions.updateTransaction.mock.calls[call][4];
+
+    beforeEach(() => {
+      transactions.updateTransaction.mockResolvedValue({
+        id: movementId,
+        updatedAt: C,
+        restamped: [],
+      });
+    });
+
+    it("runs an unguarded write behind a remembered one against the stamp that one left", async () => {
+      const landed = amountEdit(300, A);
+      syncOps.find.mockImplementation(async (_user, opId) =>
+        opId === landed.opId
+          ? {
+              status: "applied",
+              entityId: movementId,
+              code: null,
+              rowUpdatedAt: B,
+            }
+          : null,
+      );
+
+      const { results } = await service.apply(ctx, [landed, amountEdit(400)]);
+
+      expect(results.map((r) => r.status)).toEqual(["duplicate", "applied"]);
+      expect(results[0].rowUpdatedAt).toEqual(B);
+      expect(transactions.updateTransaction).toHaveBeenCalledTimes(1);
+      expect(guardOf(0)).toEqual(B);
+    });
+
+    it("runs an unguarded write behind an applied one against the stamp it just left", async () => {
+      transactions.updateTransaction.mockResolvedValueOnce({
+        id: movementId,
+        updatedAt: B,
+        restamped: [],
+      });
+
+      await service.apply(ctx, [amountEdit(300, A), amountEdit(400)]);
+
+      expect(guardOf(0)).toEqual(A);
+      expect(guardOf(1)).toEqual(B);
+    });
+
+    it("chains the stamp through every write of the row in the batch", async () => {
+      transactions.updateTransaction
+        .mockResolvedValueOnce({ id: movementId, updatedAt: B, restamped: [] })
+        .mockResolvedValueOnce({ id: movementId, updatedAt: C, restamped: [] });
+
+      await service.apply(ctx, [
+        amountEdit(300, A),
+        amountEdit(400),
+        amountEdit(500),
+      ]);
+
+      expect(guardOf(2)).toEqual(C);
+    });
+
+    it("remembers the stamp the write left, so a resend can chain on it", async () => {
+      const landed = amountEdit(300, A);
+      transactions.updateTransaction.mockResolvedValueOnce({
+        id: movementId,
+        updatedAt: B,
+        restamped: [],
+      });
+
+      await service.apply(ctx, [landed]);
+
+      expect(syncOps.record).toHaveBeenCalledWith(USER, landed.opId, {
+        status: "applied",
+        entityId: movementId,
+        code: null,
+        rowUpdatedAt: B,
+      });
+    });
+
+    it("keeps the guard the device sent", async () => {
+      transactions.updateTransaction.mockResolvedValueOnce({
+        id: movementId,
+        updatedAt: B,
+        restamped: [],
+      });
+
+      await service.apply(ctx, [amountEdit(300, A), amountEdit(400, C)]);
+
+      expect(guardOf(1)).toEqual(C);
+    });
+
+    it("follows the stamp when a later write rewrote the row", async () => {
+      accounts.updateAccount.mockResolvedValue({ id: accountId, updatedAt: A });
+      transactions.updateTransaction.mockResolvedValueOnce({
+        id: movementId,
+        updatedAt: C,
+        restamped: [
+          {
+            entity: "account",
+            id: accountId,
+            previousUpdatedAt: A,
+            updatedAt: B,
+          },
+        ],
+      });
+      const rename = (name: string): SyncOperationInput =>
+        op({
+          entity: "account",
+          action: "update",
+          id: accountId,
+          payload: { body: { name } },
+        });
+
+      await service.apply(ctx, [
+        rename("First"),
+        amountEdit(300),
+        rename("Second"),
+      ]);
+
+      expect(accounts.updateAccount).toHaveBeenNthCalledWith(
+        2,
+        accountId,
+        { name: "Second" },
+        USER,
+        B,
+      );
+    });
+
+    it("leaves a write unguarded behind a stamp it cannot vouch for", async () => {
+      const remembered = amountEdit(300, A);
+      syncOps.find.mockImplementation(async (_user, opId) =>
+        opId === remembered.opId
+          ? { status: "applied", entityId: movementId, code: null }
+          : null,
+      );
+      const { results } = await service.apply(ctx, [
+        remembered,
+        amountEdit(400),
+      ]);
+      expect(results[0]).not.toHaveProperty("rowUpdatedAt");
+
+      syncOps.find.mockResolvedValue(null);
+      transactions.updateTransaction.mockResolvedValueOnce({
+        id: uuid(72),
+        updatedAt: B,
+        restamped: [],
+      });
+      await service.apply(ctx, [amountEdit(300, A), amountEdit(400)]);
+
+      expect(guardOf(0)).toBeUndefined();
+      expect(guardOf(2)).toBeUndefined();
+    });
+
+    it("forgets the stamp an earlier write left once a later one cannot vouch for its own", async () => {
+      transactions.updateTransaction
+        .mockResolvedValueOnce({ id: movementId, updatedAt: B, restamped: [] })
+        .mockResolvedValueOnce({ id: uuid(72), updatedAt: C, restamped: [] });
+
+      await service.apply(ctx, [
+        amountEdit(300, A),
+        amountEdit(400),
+        amountEdit(500),
+      ]);
+
+      expect(guardOf(1)).toEqual(B);
+      expect(guardOf(2)).toBeUndefined();
+    });
+
+    it("finds the group inside the answer of adding people to it", async () => {
+      const groupId = uuid(73);
+      sharedGroups.addParticipants.mockResolvedValue({
+        group: { id: groupId, updatedAt: B },
+        applied: {},
+        restamped: [],
+      });
+      sharedGroups.updateGroup.mockResolvedValue({ id: groupId, updatedAt: C });
+      const add = op({
+        entity: "sharedGroup",
+        action: "addParticipants",
+        id: groupId,
+        payload: { body: { contactIds: [uuid(74)] } },
+        baseUpdatedAt: A.toISOString(),
+      });
+
+      await service.apply(ctx, [
+        add,
+        op({
+          entity: "sharedGroup",
+          action: "update",
+          id: groupId,
+          payload: { body: { name: "Trip" } },
+        }),
+      ]);
+
+      expect(sharedGroups.updateGroup).toHaveBeenCalledWith(
+        groupId,
+        { name: "Trip" },
+        USER,
+        B,
+      );
+      expect(syncOps.record).toHaveBeenCalledWith(
+        USER,
+        add.opId,
+        expect.objectContaining({ rowUpdatedAt: B }),
+      );
+    });
+
+    it("does not take the stamp of a create the service replayed: the row may have moved since", async () => {
+      accounts.createAccount.mockImplementation(async (_dto, outcome) => {
+        outcome.replayed = true;
+        return account(accountId);
+      });
+      accounts.updateAccount.mockResolvedValue(account(accountId, "Renamed"));
+
+      const { results } = await service.apply(ctx, [
+        op({
+          entity: "account",
+          action: "create",
+          id: accountId,
+          payload: { body: accountBody },
+        }),
+        op({
+          entity: "account",
+          action: "update",
+          id: accountId,
+          payload: { body: { name: "Renamed" } },
+        }),
+      ]);
+
+      expect(results[0].status).toBe("duplicate");
+      expect(accounts.updateAccount).toHaveBeenCalledWith(
+        accountId,
+        { name: "Renamed" },
+        USER,
+        undefined,
+      );
+      expect(syncOps.record).toHaveBeenCalledWith(USER, results[0].opId, {
+        status: "duplicate",
+        entityId: accountId,
+        code: null,
+      });
     });
   });
 });

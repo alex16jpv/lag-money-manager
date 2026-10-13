@@ -14,6 +14,8 @@ export interface SyncOpRecord {
   code: string | null;
   // A resend of a batch that landed only in part still has to move the guards behind it.
   restamped?: RestampRecord[];
+  // The `updatedAt` it left on its own row: a write resent behind it in a batch runs against it.
+  rowUpdatedAt?: Date;
 }
 
 export interface ISyncOpRepository {
