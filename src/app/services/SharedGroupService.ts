@@ -728,10 +728,13 @@ export class SharedGroupService {
     name?: string,
     expectedUpdatedAt?: Date,
   ): Promise<SharedGroupView> {
-    const restored =
-      (await this.repo.restore(id, userId, name, expectedUpdatedAt)) ??
-      (await this.ownedGroup(id, userId));
-    assertFresh(restored, expectedUpdatedAt, (g) => new SharedGroup(g));
+    const present = (g: SharedGroup): SharedGroup => new SharedGroup(g);
+    assertFresh(await this.ownedGroup(id, userId), expectedUpdatedAt, present);
+    let restored = await this.repo.restore(id, userId, name, expectedUpdatedAt);
+    if (!restored) {
+      restored = await this.ownedGroup(id, userId);
+      assertFresh(restored, expectedUpdatedAt, present);
+    }
     const [view] = await this.withTotals(userId, [restored]);
     return view as SharedGroupView;
   }

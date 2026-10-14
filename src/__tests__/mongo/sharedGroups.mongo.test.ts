@@ -295,6 +295,32 @@ describe("shared groups against mongod", () => {
       expect(restored.body.code).toBe("DUPLICATE");
     });
 
+    it("restores with the If-Match the archive answered, and refuses a stale one [T-168]", async () => {
+      const id = (await newGroup({ name: "Guarded restore" })).body
+        .id as string;
+      const archived = await as(
+        alice,
+        request(app).delete(`/shared-groups/${id}`),
+      ).expect(200);
+      const stale = new Date(
+        Date.parse(archived.body.updatedAt as string) - 1000,
+      ).toISOString();
+
+      const refused = await as(
+        alice,
+        request(app).post(`/shared-groups/${id}/restore`).send({}),
+      ).set("If-Match", stale);
+      const restored = await as(
+        alice,
+        request(app).post(`/shared-groups/${id}/restore`).send({}),
+      ).set("If-Match", archived.body.updatedAt as string);
+
+      expect(refused.status).toBe(409);
+      expect(refused.body.code).toBe("STALE_UPDATE");
+      expect(restored.status).toBe(200);
+      expect(restored.body).toMatchObject({ id, archivedAt: null });
+    });
+
     it("refuses a new expense in an archived group", async () => {
       const created = await newGroup({ name: "Closed" });
       const id = created.body.id as string;

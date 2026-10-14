@@ -46,6 +46,8 @@ export interface SyncOpResult {
   warnings?: SyncWarning[];
   // Other rows the write rewrote, lifted out of `result` so a removal still answers none.
   restamped?: Restamp[];
+  // duplicate from the record: the stamp the write left on its own row, where it was kept.
+  rowUpdatedAt?: Date;
 }
 
 export interface SyncBatchResult {
@@ -97,6 +99,8 @@ interface Handler {
   params?: readonly PathParam[];
   // Conservative: what it cannot compare answers false and the conflict stands.
   holds?: (current: unknown, body: Body) => boolean;
+  // Where the result carries the operation's own row, when it is not the result itself.
+  row?: (result: unknown) => unknown;
   run: (args: RunArgs) => Promise<unknown>;
 }
 
@@ -104,9 +108,10 @@ const ACCOUNT_SIDES = ["fromAccountId", "toAccountId"] as const;
 
 type PathParam = "groupId" | "partyId";
 
-// A guard moves only from a stamp an earlier operation of this batch moved the row from.
+// A sent guard moves only from a stamp this batch moved the row from; a missing one takes the stamp it left.
 class MovedGuards {
   private readonly rows = new Map<string, { from: Set<number>; to: Date }>();
+  private readonly left = new Map<string, Date>();
 
   record(restamped: Restamp[]): void {
     for (const row of restamped) {
@@ -119,7 +124,16 @@ class MovedGuards {
       } else {
         this.rows.set(key, { from: new Set([before]), to: row.updatedAt });
       }
+      if (this.left.get(key)?.getTime() === before) {
+        this.left.set(key, row.updatedAt);
+      }
     }
+  }
+
+  landed(entity: SyncEntity, id: string, stamp: Date | undefined): void {
+    const key = `${entity}:${id}`;
+    if (stamp === undefined) this.left.delete(key);
+    else this.left.set(key, stamp);
   }
 
   guard(
@@ -127,10 +141,19 @@ class MovedGuards {
     id: string,
     sent: Date | undefined,
   ): Date | undefined {
-    if (sent === undefined) return undefined;
-    const moved = this.rows.get(`${entity}:${id}`);
+    const key = `${entity}:${id}`;
+    if (sent === undefined) return this.left.get(key);
+    const moved = this.rows.get(key);
     return moved?.from.has(sent.getTime()) ? moved.to : sent;
   }
+}
+
+function stampOn(result: unknown, id: string): Date | undefined {
+  if (typeof result !== "object" || result === null) return undefined;
+  const row = result as { id?: unknown; updatedAt?: unknown };
+  return row.id === id && row.updatedAt instanceof Date
+    ? row.updatedAt
+    : undefined;
 }
 
 function liftRestamps(answer: unknown): {
@@ -520,6 +543,7 @@ export class SyncBatchService {
       },
       "sharedGroup:addParticipants": {
         body: bodyOf(v.addParticipantsSchema),
+        row: (result) => (result as { group?: unknown } | undefined)?.group,
         run: ({ id, body, ctx, guard }) =>
           this.sharedGroups.addParticipants(
             id,
@@ -687,22 +711,33 @@ export class SyncBatchService {
 
     const seen = await this.syncOps.find(ctx.userId, op.opId);
     if (seen) {
+      moved.landed(op.entity, seen.entityId, seen.rowUpdatedAt);
       return {
         status: "duplicate",
         ...(seen.code && { code: seen.code as ErrorCode }),
         // A merge the device may not know yet; the rest of the batch still names the id it minted.
         ...(seen.entityId !== op.id && { mergedInto: seen.entityId }),
         ...(seen.restamped && { restamped: seen.restamped }),
+        ...(seen.rowUpdatedAt && { rowUpdatedAt: seen.rowUpdatedAt }),
       };
     }
 
     const outcome = await this.execute(ctx, op, id, merged, moved);
     if (SYNC_LANDED_STATUSES.includes(outcome.status)) {
+      const entityId = outcome.mergedInto ?? id;
+      const handler = this.handlers[`${op.entity}:${op.action}`];
+      // A `duplicate` answers the row as it is now, if at all: it may have moved since the write landed.
+      const rowUpdatedAt =
+        outcome.status === "duplicate"
+          ? undefined
+          : stampOn(handler?.row?.(outcome.result) ?? outcome.result, entityId);
+      moved.landed(op.entity, entityId, rowUpdatedAt);
       await this.syncOps.record(ctx.userId, op.opId, {
         status: outcome.status,
-        entityId: outcome.mergedInto ?? id,
+        entityId,
         code: outcome.code ?? null,
         ...(outcome.restamped?.length && { restamped: outcome.restamped }),
+        ...(rowUpdatedAt && { rowUpdatedAt }),
       });
     }
     return outcome;
